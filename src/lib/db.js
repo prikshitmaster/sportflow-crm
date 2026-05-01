@@ -224,21 +224,67 @@ export async function insertStaff(s) {
 export async function fetchAttendanceForDate(date) {
   const { data, error } = await supabase
     .from('attendance')
-    .select('student_id, present')
+    .select('student_id, present, status')
     .eq('date', date)
   if (error) throw error
   const record = {}
-  data.forEach(row => { record[row.student_id] = row.present })
+  data.forEach(row => {
+    record[row.student_id] = row.status || (row.present ? 'Present' : 'Absent')
+  })
   return record
 }
 
 export async function saveAttendanceForDate(date, records) {
-  // Upsert each student record for that date
-  const rows = Object.entries(records).map(([student_id, present]) => ({
+  const rows = Object.entries(records).map(([student_id, status]) => ({
     date,
     student_id: Number(student_id),
-    present: !!present,
+    present: status === 'Present',
+    status: status || 'Present',
   }))
+  if (rows.length === 0) return
+  const { error } = await supabase
+    .from('attendance')
+    .upsert(rows, { onConflict: 'date,student_id' })
+  if (error) throw error
+}
+
+// Fetch all attendance records for a full month
+// Returns: { [studentId]: { [day]: 'Present'|'Absent'|'Late'|'Leave' } }
+export async function fetchAttendanceForMonth(year, month) {
+  const pad = n => String(n).padStart(2, '0')
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const start = `${year}-${pad(month + 1)}-01`
+  const end   = `${year}-${pad(month + 1)}-${pad(lastDay)}`
+  const { data, error } = await supabase
+    .from('attendance')
+    .select('student_id, date, present, status')
+    .gte('date', start)
+    .lte('date', end)
+  if (error) throw error
+  const result = {}
+  data.forEach(row => {
+    const day = new Date(row.date).getDate()
+    if (!result[row.student_id]) result[row.student_id] = {}
+    result[row.student_id][day] = row.status || (row.present ? 'Present' : 'Absent')
+  })
+  return result
+}
+
+// Save entire month's attendance in one upsert
+export async function saveAttendanceMonth(year, month, monthData) {
+  const pad = n => String(n).padStart(2, '0')
+  const rows = []
+  for (const [studentId, days] of Object.entries(monthData)) {
+    for (const [day, status] of Object.entries(days)) {
+      if (!status) continue
+      rows.push({
+        date:       `${year}-${pad(month + 1)}-${pad(Number(day))}`,
+        student_id: Number(studentId),
+        present:    status === 'Present',
+        status,
+      })
+    }
+  }
   if (rows.length === 0) return
   const { error } = await supabase
     .from('attendance')
