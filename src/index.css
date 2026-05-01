@@ -44,3 +44,17 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { @apply bg-gray-200 rounded-full; }
 ::-webkit-scrollbar-thumb:hover { @apply bg-gray-300; }
+
+/* Mobile touch scrolling */
+.overflow-x-auto { -webkit-overflow-scrolling: touch; }
+
+/* Safe area for bottom nav */
+.safe-pb { padding-bottom: env(safe-area-inset-bottom, 0); }
+
+/* Responsive grid helpers */
+@layer utilities {
+  .stat-grid   { @apply grid grid-cols-2 lg:grid-cols-4 gap-3; }
+  .stat-grid-3 { @apply grid grid-cols-1 sm:grid-cols-3 gap-3; }
+  .two-col     { @apply grid grid-cols-1 lg:grid-cols-2 gap-4; }
+  .three-col   { @apply grid grid-cols-1 lg:grid-cols-3 gap-4; }
+}
