@@ -10,68 +10,72 @@ export default function StudentScan() {
 
   const [phase, setPhase] = useState('ready')  // ready | scanning | processing | success | error
   const [errMsg, setErrMsg] = useState('')
-  const scannerInstanceRef = useRef(null)
-  const handledRef = useRef(false)  // prevent double-fire from scanner
+  const scannerRef = useRef(null)
+  const handledRef = useRef(false)
 
-  // Auto-navigate to attendance page 2s after success
+  // Auto-navigate to attendance 2s after success
   useEffect(() => {
     if (phase !== 'success') return
     const t = setTimeout(() => navigate('/student/attendance'), 2000)
     return () => clearTimeout(t)
   }, [phase])
 
+  // Start scanner AFTER 'scanning' phase renders the #qr-reader-div into DOM
   useEffect(() => {
-    return () => { stopScanner() }
-  }, [])
+    if (phase !== 'scanning') return
+    let cancelled = false
 
-  const stopScanner = async () => {
-    if (scannerInstanceRef.current) {
+    async function initScanner() {
       try {
-        await scannerInstanceRef.current.stop()
-        scannerInstanceRef.current.clear()
-      } catch (_) {}
-      scannerInstanceRef.current = null
+        const { Html5Qrcode } = await import('html5-qrcode')
+        if (cancelled) return
+
+        const scanner = new Html5Qrcode('qr-reader-div', { verbose: false })
+        scannerRef.current = scanner
+
+        await scanner.start(
+          { facingMode: { ideal: 'environment' } },
+          { fps: 15, qrbox: { width: 250, height: 250 } },
+          async (decodedText) => {
+            if (handledRef.current) return
+            handledRef.current = true
+            try {
+              await scanner.stop()
+              scanner.clear()
+            } catch (_) {}
+            scannerRef.current = null
+            setPhase('processing')
+            try {
+              await db.markAttendanceViaQR(studentUser.id, decodedText.trim())
+              setPhase('success')
+            } catch (err) {
+              setErrMsg(err.message || 'Could not mark attendance.')
+              setPhase('error')
+            }
+          },
+          () => {}
+        )
+      } catch (err) {
+        if (!cancelled) {
+          setErrMsg('Camera error: ' + (err?.message || 'Could not start camera. Check permissions.'))
+          setPhase('error')
+        }
+      }
     }
-  }
 
-  const startScanner = async () => {
-    handledRef.current = false
-    setPhase('scanning')
-    try {
-      const { Html5Qrcode } = await import('html5-qrcode')
-      const scanner = new Html5Qrcode('qr-reader-div', { verbose: false })
-      scannerInstanceRef.current = scanner
+    initScanner()
 
-      await scanner.start(
-        { facingMode: { ideal: 'environment' } },
-        { fps: 15, qrbox: { width: 260, height: 260 }, aspectRatio: 1.0 },
-        async (decodedText) => {
-          if (handledRef.current) return
-          handledRef.current = true
-          await stopScanner()
-          setPhase('processing')
-          await handleScanResult(decodedText)
-        },
-        () => {}
-      )
-    } catch (err) {
-      setErrMsg('Camera access denied. Please allow camera permissions and try again.')
-      setPhase('error')
+    return () => {
+      cancelled = true
+      if (scannerRef.current) {
+        scannerRef.current.stop().catch(() => {})
+        try { scannerRef.current.clear() } catch (_) {}
+        scannerRef.current = null
+      }
     }
-  }
+  }, [phase])
 
-  const handleScanResult = async (qrValue) => {
-    try {
-      await db.markAttendanceViaQR(studentUser.id, qrValue.trim())
-      setPhase('success')
-    } catch (err) {
-      setErrMsg(err.message || 'Could not mark attendance.')
-      setPhase('error')
-    }
-  }
-
-  const reset = async () => {
-    await stopScanner()
+  const reset = () => {
     handledRef.current = false
     setPhase('ready')
     setErrMsg('')
@@ -92,8 +96,10 @@ export default function StudentScan() {
     <div className="max-w-lg mx-auto px-4 py-5">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => { reset(); navigate('/student/attendance') }}
-          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition">
+        <button
+          onClick={() => { reset(); navigate('/student/attendance') }}
+          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition"
+        >
           <ArrowLeft size={20} />
         </button>
         <div>
@@ -113,7 +119,10 @@ export default function StudentScan() {
             <p className="text-sm text-gray-500 mb-6">
               Point your camera at the QR code posted at the academy entrance gate.
             </p>
-            <button onClick={startScanner} className="w-full btn-primary justify-center py-3.5 text-base gap-3">
+            <button
+              onClick={() => { handledRef.current = false; setPhase('scanning') }}
+              className="w-full btn-primary justify-center py-3.5 text-base gap-3"
+            >
               <Camera size={20} /> Open Camera &amp; Scan QR
             </button>
             <button onClick={markDirect} className="w-full btn-secondary justify-center py-3 text-sm gap-2 mt-2">
@@ -132,7 +141,7 @@ export default function StudentScan() {
         </div>
       )}
 
-      {/* Scanning */}
+      {/* Scanning — #qr-reader-div MUST be in DOM before scanner.start() */}
       {phase === 'scanning' && (
         <div className="space-y-4">
           <div className="bg-black rounded-2xl overflow-hidden relative">
