@@ -8,75 +8,119 @@ export default function StudentScan() {
   const { studentUser } = useApp()
   const navigate = useNavigate()
 
-  const [phase, setPhase] = useState('ready')  // ready | scanning | processing | success | error
+  // ready | scanning | processing | success | already | error
+  const [phase, setPhase] = useState('ready')
   const [errMsg, setErrMsg] = useState('')
-  const scannerRef = useRef(null)
-  const handledRef = useRef(false)
 
-  // Auto-navigate to attendance 2s after success
+  const videoRef   = useRef(null)
+  const canvasRef  = useRef(null)
+  const streamRef  = useRef(null)
+  const rafRef     = useRef(null)
+  const doneRef    = useRef(false)
+
+  // Auto-navigate to attendance 2s after success or already
   useEffect(() => {
-    if (phase !== 'success') return
-    const t = setTimeout(() => navigate('/student/attendance'), 2000)
+    if (phase !== 'success' && phase !== 'already') return
+    const t = setTimeout(() => navigate('/student/attendance'), 2500)
     return () => clearTimeout(t)
   }, [phase])
 
-  // Start scanner AFTER 'scanning' phase renders the #qr-reader-div into DOM
-  useEffect(() => {
-    if (phase !== 'scanning') return
-    let cancelled = false
+  // Cleanup on unmount
+  useEffect(() => () => stopCamera(), [])
 
-    async function initScanner() {
+  const stopCamera = () => {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+  }
+
+  const startCamera = async () => {
+    doneRef.current = false
+    setPhase('scanning')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
+      streamRef.current = stream
+      // videoRef is rendered now because phase === 'scanning'
+      // wait one tick for React to paint
+      await new Promise(r => setTimeout(r, 80))
+      if (!videoRef.current) return
+      videoRef.current.srcObject = stream
+      await videoRef.current.play()
+      tickScan()
+    } catch (err) {
+      setErrMsg('Camera error: ' + (err?.message || 'Please allow camera access and try again.'))
+      setPhase('error')
+    }
+  }
+
+  const tickScan = async () => {
+    if (doneRef.current) return
+    const video  = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas || video.readyState < 2) {
+      rafRef.current = requestAnimationFrame(tickScan)
+      return
+    }
+
+    canvas.width  = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(video, 0, 0)
+
+    let qrValue = null
+
+    // Try native BarcodeDetector first (Chrome Android, Edge)
+    if ('BarcodeDetector' in window) {
       try {
-        const { Html5Qrcode } = await import('html5-qrcode')
-        if (cancelled) return
-
-        const scanner = new Html5Qrcode('qr-reader-div', { verbose: false })
-        scannerRef.current = scanner
-
-        await scanner.start(
-          { facingMode: { ideal: 'environment' } },
-          { fps: 15, qrbox: { width: 250, height: 250 } },
-          async (decodedText) => {
-            if (handledRef.current) return
-            handledRef.current = true
-            try {
-              await scanner.stop()
-              scanner.clear()
-            } catch (_) {}
-            scannerRef.current = null
-            setPhase('processing')
-            try {
-              await db.markAttendanceViaQR(studentUser.id, decodedText.trim())
-              setPhase('success')
-            } catch (err) {
-              setErrMsg(err.message || 'Could not mark attendance.')
-              setPhase('error')
-            }
-          },
-          () => {}
-        )
-      } catch (err) {
-        if (!cancelled) {
-          setErrMsg('Camera error: ' + (err?.message || 'Could not start camera. Check permissions.'))
-          setPhase('error')
-        }
-      }
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
+        const codes = await detector.detect(canvas)
+        if (codes.length > 0) qrValue = codes[0].rawValue
+      } catch (_) {}
     }
 
-    initScanner()
+    // Fallback: jsQR
+    if (!qrValue) {
+      try {
+        const { default: jsQR } = await import('jsqr')
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' })
+        if (code) qrValue = code.data
+      } catch (_) {}
+    }
 
-    return () => {
-      cancelled = true
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {})
-        try { scannerRef.current.clear() } catch (_) {}
-        scannerRef.current = null
+    if (qrValue) {
+      doneRef.current = true
+      stopCamera()
+      setPhase('processing')
+      await processQR(qrValue)
+      return
+    }
+
+    rafRef.current = requestAnimationFrame(tickScan)
+  }
+
+  const processQR = async (token) => {
+    try {
+      await db.markAttendanceViaQR(studentUser.id, token.trim())
+      setPhase('success')
+    } catch (err) {
+      if (err.message?.includes('already marked')) {
+        setPhase('already')
+      } else {
+        setErrMsg(err.message || 'Could not mark attendance.')
+        setPhase('error')
       }
     }
-  }, [phase])
+  }
 
   const reset = () => {
-    handledRef.current = false
+    stopCamera()
+    doneRef.current = false
     setPhase('ready')
     setErrMsg('')
   }
@@ -87,8 +131,12 @@ export default function StudentScan() {
       await db.markAttendanceDirect(studentUser.id)
       setPhase('success')
     } catch (err) {
-      setErrMsg(err.message || 'Could not mark attendance.')
-      setPhase('error')
+      if (err.message?.includes('already marked')) {
+        setPhase('already')
+      } else {
+        setErrMsg(err.message || 'Could not mark attendance.')
+        setPhase('error')
+      }
     }
   }
 
@@ -96,10 +144,8 @@ export default function StudentScan() {
     <div className="max-w-lg mx-auto px-4 py-5">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={() => { reset(); navigate('/student/attendance') }}
-          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition"
-        >
+        <button onClick={() => { reset(); navigate('/student/attendance') }}
+          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition">
           <ArrowLeft size={20} />
         </button>
         <div>
@@ -119,17 +165,13 @@ export default function StudentScan() {
             <p className="text-sm text-gray-500 mb-6">
               Point your camera at the QR code posted at the academy entrance gate.
             </p>
-            <button
-              onClick={() => { handledRef.current = false; setPhase('scanning') }}
-              className="w-full btn-primary justify-center py-3.5 text-base gap-3"
-            >
+            <button onClick={startCamera} className="w-full btn-primary justify-center py-3.5 text-base gap-3">
               <Camera size={20} /> Open Camera &amp; Scan QR
             </button>
             <button onClick={markDirect} className="w-full btn-secondary justify-center py-3 text-sm gap-2 mt-2">
-              ✓ Mark Attendance Without Scan (Test)
+              ✓ Mark Without Scan (Test)
             </button>
           </div>
-
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
             <p className="text-xs font-semibold text-blue-800 mb-1">How it works</p>
             <ol className="text-xs text-blue-700 space-y-1">
@@ -141,11 +183,20 @@ export default function StudentScan() {
         </div>
       )}
 
-      {/* Scanning — #qr-reader-div MUST be in DOM before scanner.start() */}
+      {/* Scanning — video + hidden canvas for decoding */}
       {phase === 'scanning' && (
         <div className="space-y-4">
-          <div className="bg-black rounded-2xl overflow-hidden relative">
-            <div id="qr-reader-div" className="w-full" style={{ minHeight: 320 }} />
+          <div className="bg-black rounded-2xl overflow-hidden relative" style={{ minHeight: 320 }}>
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              style={{ minHeight: 320 }}
+              playsInline
+              muted
+              autoPlay
+            />
+            <canvas ref={canvasRef} className="hidden" />
+            {/* Viewfinder corners */}
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
               <div className="w-52 h-52 relative">
                 <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-brand-400 rounded-tl-lg" />
@@ -154,8 +205,10 @@ export default function StudentScan() {
                 <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-brand-400 rounded-br-lg" />
               </div>
             </div>
+            <p className="absolute bottom-3 left-0 right-0 text-center text-xs text-white/70">
+              Align QR code within the frame
+            </p>
           </div>
-          <p className="text-center text-sm text-gray-500">Align the gate QR code within the frame</p>
           <button onClick={reset} className="w-full btn-secondary justify-center py-3">Cancel</button>
         </div>
       )}
@@ -170,7 +223,7 @@ export default function StudentScan() {
             </svg>
           </div>
           <h2 className="text-xl font-black text-gray-900 mb-2">Marking Attendance…</h2>
-          <p className="text-gray-400 text-sm">Please wait a moment</p>
+          <p className="text-gray-400 text-sm">Please wait</p>
         </div>
       )}
 
@@ -187,7 +240,24 @@ export default function StudentScan() {
           <p className="text-xs text-gray-400 mb-2">
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
-          <p className="text-xs text-brand-500 mb-8 animate-pulse">Redirecting to attendance…</p>
+          <p className="text-xs text-brand-500 mb-8 animate-pulse">Going to attendance…</p>
+          <button onClick={() => navigate('/student/attendance')} className="w-full btn-primary justify-center py-3">
+            View Attendance
+          </button>
+        </div>
+      )}
+
+      {/* Already marked */}
+      {phase === 'already' && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
+          <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-5">
+            <CheckCircle2 size={44} className="text-blue-400" strokeWidth={1.5} />
+          </div>
+          <h2 className="text-2xl font-black text-gray-900 mb-2">Already Marked</h2>
+          <p className="text-gray-500 text-sm mb-2">
+            Your attendance is already recorded for today.
+          </p>
+          <p className="text-xs text-brand-500 mb-8 animate-pulse">Going to attendance…</p>
           <button onClick={() => navigate('/student/attendance')} className="w-full btn-primary justify-center py-3">
             View Attendance
           </button>
@@ -200,7 +270,7 @@ export default function StudentScan() {
           <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-5">
             <XCircle size={44} className="text-red-400" strokeWidth={1.5} />
           </div>
-          <h2 className="text-2xl font-black text-gray-900 mb-2">Scan Failed</h2>
+          <h2 className="text-2xl font-black text-gray-900 mb-2">Error</h2>
           <p className="text-gray-500 text-sm mb-8">{errMsg || 'Something went wrong. Please try again.'}</p>
           <div className="flex gap-3">
             <button onClick={reset} className="flex-1 btn-primary justify-center py-3">Try Again</button>
