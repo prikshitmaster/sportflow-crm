@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
 import { QrCode, CheckCircle2, XCircle, Camera, ArrowLeft } from 'lucide-react'
+import jsQR from 'jsqr'
 
 export default function StudentScan() {
   const { studentUser } = useApp()
@@ -86,7 +87,6 @@ export default function StudentScan() {
     // Fallback: jsQR
     if (!qrValue) {
       try {
-        const { default: jsQR } = await import('jsqr')
         const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
         const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' })
         if (code) qrValue = code.data
