@@ -8,7 +8,7 @@ export default function StudentScan() {
   const { studentUser } = useApp()
   const navigate = useNavigate()
 
-  const [phase, setPhase] = useState('ready')   // ready | scanning | success | error | already
+  const [phase, setPhase] = useState('ready')   // ready | scanning | processing | success | error | already
   const [errMsg, setErrMsg] = useState('')
   const scannerRef = useRef(null)
   const scannerInstanceRef = useRef(null)
@@ -36,6 +36,7 @@ export default function StudentScan() {
         { fps: 10, qrbox: { width: 240, height: 240 } },
         async (decodedText) => {
           stopScanner()
+          setPhase('processing')
           await handleScanResult(decodedText)
         },
         () => {}   // suppress per-frame errors
@@ -130,6 +131,20 @@ export default function StudentScan() {
           </div>
           <p className="text-center text-sm text-gray-500">Align the gate QR code within the frame</p>
           <button onClick={reset} className="w-full btn-secondary justify-center py-3">Cancel</button>
+        </div>
+      )}
+
+      {/* Processing state */}
+      {phase === 'processing' && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
+          <div className="w-20 h-20 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-5">
+            <svg className="animate-spin h-10 w-10 text-brand-600" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+          </div>
+          <h2 className="text-xl font-black text-gray-900 mb-2">Marking Attendance…</h2>
+          <p className="text-gray-400 text-sm">Please wait a moment</p>
         </div>
       )}
 

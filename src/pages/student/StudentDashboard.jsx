@@ -17,7 +17,7 @@ export default function StudentDashboard() {
   useEffect(() => {
     if (!studentUser?.id) return
     loadData()
-  }, [studentUser])
+  }, [])
 
   // Load announcements if not already loaded
   useEffect(() => {
