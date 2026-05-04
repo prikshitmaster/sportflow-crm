@@ -456,17 +456,12 @@ export async function markAttendanceViaQR(studentId, gateToken) {
   const isValid = await validateGateToken(gateToken)
   if (!isValid) throw new Error('Invalid gate QR code')
 
-  const { data: existing } = await supabase
-    .from('attendance')
-    .select('id')
-    .eq('date', today)
-    .eq('student_id', studentId)
-    .maybeSingle()
-  if (existing) throw new Error('Attendance already marked for today')
-
   const { error } = await supabase
     .from('attendance')
-    .insert({ date: today, student_id: studentId, present: true, status: 'Present' })
+    .upsert(
+      { date: today, student_id: studentId, present: true, status: 'Present' },
+      { onConflict: 'date,student_id' }
+    )
   if (error) throw error
 }
 

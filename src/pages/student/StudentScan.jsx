@@ -55,15 +55,8 @@ export default function StudentScan() {
       await db.markAttendanceViaQR(studentUser.id, token)
       setPhase('success')
     } catch (err) {
-      if (err.message?.includes('already marked')) {
-        setPhase('already')
-      } else if (err.message?.includes('Invalid gate')) {
-        setErrMsg('This QR code is not a valid academy gate QR.')
-        setPhase('error')
-      } else {
-        setErrMsg(err.message || 'Could not mark attendance.')
-        setPhase('error')
-      }
+      setErrMsg(err.message || 'Could not mark attendance.')
+      setPhase('error')
     }
   }
 
