@@ -88,6 +88,8 @@ export default function Attendance() {
   const totalDays      = daysInMonth(year, month)
   const days           = Array.from({ length: totalDays }, (_, i) => i + 1)
   const isCurrentMonth = year === todayYear && month === todayMonth
+  const isFutureMonth  = year > todayYear || (year === todayYear && month > todayMonth)
+  const isFuture       = (d) => isFutureMonth || (isCurrentMonth && d > todayDay)
 
   const activeStudents = students.filter(s => s.status === 'Active')
   const displayed      = selectedBatch
@@ -106,6 +108,7 @@ export default function Attendance() {
   const getStatus = (sid, day) => monthData[sid]?.[day] || ''
 
   const cycle = (sid, day) => {
+    if (isFuture(day)) return
     const cur  = getStatus(sid, day)
     const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length]
     setMonthData(prev => ({ ...prev, [sid]: { ...(prev[sid] || {}), [day]: next } }))
@@ -113,6 +116,7 @@ export default function Attendance() {
 
   const markAll = (status, day) => {
     const d = day ?? (isCurrentMonth ? todayDay : 1)
+    if (isFuture(d)) return
     setMonthData(prev => {
       const next = { ...prev }
       displayed.forEach(s => { next[s.id] = { ...(next[s.id] || {}), [d]: status } })
@@ -128,7 +132,10 @@ export default function Attendance() {
   }
 
   const prevMonth = () => { if (month===0){setYear(y=>y-1);setMonth(11)}else setMonth(m=>m-1) }
-  const nextMonth = () => { if (month===11){setYear(y=>y+1);setMonth(0)}else setMonth(m=>m+1) }
+  const nextMonth = () => {
+    if (year === todayYear && month === todayMonth) return  // already at current month
+    if (month===11){setYear(y=>y+1);setMonth(0)}else setMonth(m=>m+1)
+  }
 
   const todayStats = useMemo(() => {
     const c = { Present:0, Absent:0, Late:0, Leave:0 }
@@ -266,9 +273,12 @@ export default function Attendance() {
               return (
                 <button
                   key={d}
-                  onClick={() => setMobileDay(d)}
+                  onClick={() => !isFuture(d) && setMobileDay(d)}
+                  disabled={isFuture(d)}
                   className={`flex-shrink-0 snap-start flex flex-col items-center w-12 py-2 rounded-xl transition font-semibold ${
-                    mobileDay === d
+                    isFuture(d)
+                      ? 'text-gray-300 cursor-not-allowed opacity-40'
+                      : mobileDay === d
                       ? 'bg-brand-600 text-white shadow-sm'
                       : isToday
                       ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-300'
@@ -392,18 +402,20 @@ export default function Attendance() {
                       </div>
                     </td>
                     {days.map(d => {
-                      const st  = getStatus(s.id, d)
-                      const cfg = st ? S[st] : null
+                      const st      = getStatus(s.id, d)
+                      const cfg     = st ? S[st] : null
+                      const locked  = isFuture(d)
                       return (
                         <td key={d}
                           onClick={() => cycle(s.id, d)}
-                          className={`py-2 text-center cursor-pointer select-none transition
+                          className={`py-2 text-center select-none transition
+                            ${locked ? 'cursor-not-allowed opacity-30' : 'cursor-pointer'}
                             ${isCurrentMonth && d===todayDay ? 'bg-brand-50/60' : ''}
                             ${isSun(year,month,d) ? 'bg-red-50/30' : ''}`}
-                          title={`${s.name} — ${dayName(year,month,d)} ${d} — ${st||'Not marked'}`}
+                          title={locked ? 'Future date — cannot mark' : `${s.name} — ${dayName(year,month,d)} ${d} — ${st||'Not marked'}`}
                         >
                           {cfg ? (
-                            <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold text-white ${cfg.bg} hover:opacity-80 transition`}>{cfg.icon}</span>
+                            <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold text-white ${cfg.bg} ${!locked && 'hover:opacity-80'} transition`}>{cfg.icon}</span>
                           ) : (
                             <span className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-gray-200 text-gray-300 hover:border-gray-300 transition">–</span>
                           )}
