@@ -66,6 +66,17 @@ export default function StudentScan() {
     setErrMsg('')
   }
 
+  const markDirect = async () => {
+    setPhase('processing')
+    try {
+      await db.markAttendanceDirect(studentUser.id)
+      setPhase('success')
+    } catch (err) {
+      setErrMsg(err.message || 'Could not mark attendance.')
+      setPhase('error')
+    }
+  }
+
   return (
     <div className="max-w-lg mx-auto px-4 py-5">
       {/* Header */}
@@ -92,7 +103,10 @@ export default function StudentScan() {
               Point your camera at the QR code posted at the academy entrance gate.
             </p>
             <button onClick={startScanner} className="w-full btn-primary justify-center py-3.5 text-base gap-3">
-              <Camera size={20} /> Open Camera
+              <Camera size={20} /> Open Camera &amp; Scan QR
+            </button>
+            <button onClick={markDirect} className="w-full btn-secondary justify-center py-3 text-sm gap-2 mt-2">
+              ✓ Mark Attendance Without Scan (Test)
             </button>
           </div>
 

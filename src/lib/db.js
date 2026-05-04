@@ -450,6 +450,17 @@ export async function validateGateToken(token) {
 
 // ── QR Attendance ─────────────────────────────────────────
 
+export async function markAttendanceDirect(studentId) {
+  const today = new Date().toISOString().split('T')[0]
+  const { error } = await supabase
+    .from('attendance')
+    .upsert(
+      { date: today, student_id: studentId, present: true, status: 'Present' },
+      { onConflict: 'date,student_id' }
+    )
+  if (error) throw error
+}
+
 export async function markAttendanceViaQR(studentId, gateToken) {
   const today = new Date().toISOString().split('T')[0]
 
