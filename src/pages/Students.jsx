@@ -3,7 +3,8 @@ import { useApp } from '../context/AppContext'
 import { SPORTS, BATCH_NAMES } from '../data/mockData'
 import {
   Search, Plus, MoreVertical, UserCheck, UserX, X, Users as UsersIcon,
-  Copy, KeyRound, CheckCheck, RefreshCw,
+  Copy, KeyRound, CheckCheck, RefreshCw, Phone, Calendar, IndianRupee,
+  ShieldCheck, Award, ChevronRight,
 } from 'lucide-react'
 
 const accountBadge = {
@@ -12,14 +13,15 @@ const accountBadge = {
 }
 
 export default function Students() {
-  const { students, addStudent, updateStudentStatus, resetStudentPasswordAdmin, batches } = useApp()
+  const { students, addStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments } = useApp()
   const [search,       setSearch]       = useState('')
   const [sportFilter,  setSportFilter]  = useState('All')
-  const [accFilter,    setAccFilter]    = useState('All')   // All / pending / active
+  const [accFilter,    setAccFilter]    = useState('All')
   const [showModal,    setShowModal]    = useState(false)
   const [openMenu,     setOpenMenu]     = useState(null)
-  const [copied,       setCopied]       = useState(null)   // student id whose code was copied
-  const [resetResult,  setResetResult]  = useState(null)   // { id, code }
+  const [copied,       setCopied]       = useState(null)
+  const [resetResult,  setResetResult]  = useState(null)
+  const [profile,      setProfile]      = useState(null)   // student being viewed
 
   const filtered = students.filter(s => {
     const q = search.toLowerCase()
@@ -127,17 +129,17 @@ export default function Students() {
               {filtered.map(s => (
                 <tr key={s.id} className="hover:bg-gray-50/60 transition group">
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
+                    <button onClick={() => setProfile(s)} className="flex items-center gap-3 text-left hover:opacity-80 transition">
                       <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-xs font-bold text-brand-700 flex-shrink-0">
                         {s.name[0]}
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-900">{s.name}</p>
+                        <p className="font-semibold text-gray-900 hover:text-brand-600 transition">{s.name}</p>
                         {s.studentCode && (
                           <p className="text-[10px] font-mono text-gray-400">{s.studentCode}</p>
                         )}
                       </div>
-                    </div>
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-gray-700 font-medium">{s.parent}</p>
@@ -239,6 +241,15 @@ export default function Students() {
           onClose={() => setShowModal(false)}
           onSave={async (data) => { await addStudent(data); setShowModal(false) }}
           batches={batches}
+        />
+      )}
+      {profile && (
+        <StudentProfileModal
+          student={profile}
+          payments={payments.filter(p => p.studentId === profile.id)}
+          onClose={() => setProfile(null)}
+          onStatusChange={(id, status) => { updateStudentStatus(id, status); setProfile(p => ({ ...p, status })) }}
+          onReset={async (s) => { const c = await resetStudentPasswordAdmin(s.id); setResetResult({ id: s.id, studentCode: s.studentCode, joinCode: c }); setProfile(null) }}
         />
       )}
       {openMenu && <div className="fixed inset-0 z-0" onClick={() => setOpenMenu(null)} />}
@@ -345,6 +356,133 @@ function AddStudentModal({ onClose, onSave, batches = [] }) {
         </button>
       </div>
     </Modal>
+  )
+}
+
+function StudentProfileModal({ student: s, payments, onClose, onStatusChange, onReset }) {
+  const paid    = payments.filter(p => p.status === 'Paid')
+  const pending = payments.filter(p => p.status !== 'Paid')
+  const totalPaid = paid.reduce((sum, p) => sum + p.amount, 0)
+
+  const infoRow = (label, value, mono = false) => (
+    <div className="flex justify-between items-start gap-4 py-2.5 border-b border-gray-50 last:border-0">
+      <span className="text-xs text-gray-400 flex-shrink-0">{label}</span>
+      <span className={`text-xs font-semibold text-gray-800 text-right ${mono ? 'font-mono tracking-wider' : ''}`}>{value || '—'}</span>
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white h-full w-full max-w-md shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-6 pt-6 pb-8">
+          <div className="flex items-start justify-between mb-4">
+            <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition">
+              <X size={16} className="text-white" />
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => onStatusChange(s.id, s.status === 'Active' ? 'Inactive' : 'Active')}
+                className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white/15 hover:bg-white/25 text-white transition"
+              >
+                {s.status === 'Active' ? 'Mark Inactive' : 'Mark Active'}
+              </button>
+              {s.studentCode && (
+                <button
+                  onClick={() => onReset(s)}
+                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white/15 hover:bg-white/25 text-white transition"
+                >
+                  Reset Password
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-2xl font-black text-white">
+              {s.name[0]}
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-white">{s.name}</h2>
+              <p className="text-brand-200 text-sm">{s.sport} · {s.batch || 'No batch'}</p>
+              {s.studentCode && <p className="text-brand-300 text-xs font-mono mt-0.5">{s.studentCode}</p>}
+            </div>
+          </div>
+          {/* Quick stats */}
+          <div className="grid grid-cols-3 gap-3 mt-5">
+            <div className="bg-white/15 rounded-xl p-3 text-center">
+              <p className="text-lg font-black text-white">{s.age || '—'}</p>
+              <p className="text-[10px] text-brand-200">Age</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-3 text-center">
+              <p className="text-lg font-black text-white">₹{(s.fees || 0).toLocaleString('en-IN')}</p>
+              <p className="text-[10px] text-brand-200">Monthly Fee</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-3 text-center">
+              <p className={`text-lg font-black ${s.status === 'Active' ? 'text-emerald-300' : 'text-red-300'}`}>{s.status}</p>
+              <p className="text-[10px] text-brand-200">Status</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Personal Info */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Personal Info</p>
+            {infoRow('Parent', s.parent)}
+            {infoRow('Student Phone', s.phone)}
+            {infoRow('Parent Phone', s.parentPhone)}
+            {infoRow('Join Date', s.joinDate ? new Date(s.joinDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
+            {infoRow('Paid Till', s.paidTill ? new Date(s.paidTill).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
+            {infoRow('Fee Due Day', s.feeDueDay ? `${s.feeDueDay}th of month` : null)}
+          </div>
+
+          {/* Account Info */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Account</p>
+            {infoRow('Account Status', s.accountStatus === 'active' ? '✓ Activated' : '⏳ Pending Activation')}
+            {s.accountStatus === 'pending' && s.joinCode && infoRow('Join Code', s.joinCode, true)}
+            {infoRow('Student ID', s.studentCode, true)}
+          </div>
+
+          {/* Payment Summary */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Payments</p>
+              <div className="flex gap-2 text-xs">
+                <span className="badge badge-green">{paid.length} paid</span>
+                {pending.length > 0 && <span className="badge badge-red">{pending.length} due</span>}
+              </div>
+            </div>
+            {payments.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-3">No payment records</p>
+            ) : (
+              <>
+                <div className="bg-emerald-50 rounded-xl p-3 mb-3 flex items-center justify-between">
+                  <span className="text-xs text-emerald-700 font-medium">Total Paid</span>
+                  <span className="text-sm font-black text-emerald-700">₹{totalPaid.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {payments.slice(0, 8).map(p => (
+                    <div key={p.id} className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-gray-700">{p.month}</p>
+                        <p className="text-[10px] text-gray-400">{p.date || 'Unpaid'} · {p.mode || '—'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-bold text-gray-800">₹{p.amount.toLocaleString('en-IN')}</p>
+                        <span className={`badge text-[10px] ${p.status === 'Paid' ? 'badge-green' : p.status === 'Overdue' ? 'badge-red' : 'badge-yellow'}`}>{p.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
