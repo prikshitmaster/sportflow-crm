@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import {
   LayoutDashboard, Users, CalendarCheck, CreditCard, UserPlus,
-  Layers, UserCog, BarChart3, Megaphone, Settings, LogOut, Zap, ChevronLeft,
+  Layers, UserCog, BarChart3, Megaphone, Settings, LogOut, Zap, ChevronLeft, QrCode,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -13,6 +13,7 @@ const nav = [
   { to: '/payments',   label: 'Payments',    icon: CreditCard },
   { to: '/trials',     label: 'Trials',      icon: UserPlus },
   { to: '/batches',    label: 'Batches',     icon: Layers },
+  { to: '/gate-qr',    label: 'Gate QR',     icon: QrCode },
   { to: '/staff',      label: 'Staff',       icon: UserCog },
   { to: '/reports',    label: 'Reports',     icon: BarChart3 },
   { to: '/community',  label: 'Community',   icon: Megaphone },
@@ -20,10 +21,10 @@ const nav = [
 ]
 
 export default function Sidebar({ collapsed, setCollapsed }) {
-  const { user, logout } = useApp()
+  const { user, logoutAdmin } = useApp()
   const navigate = useNavigate()
 
-  const handleLogout = () => { logout(); navigate('/') }
+  const handleLogout = () => { logoutAdmin(); navigate('/login') }
 
   return (
     <aside className={`fixed top-0 left-0 h-full z-40 flex flex-col bg-gray-900 text-white transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'}`}>

@@ -13,6 +13,7 @@ const titles = {
   '/reports':    'Reports & Analytics',
   '/community':  'Community Updates',
   '/settings':   'Settings',
+  '/gate-qr':    'Gate QR Code',
 }
 
 export default function Header({ onMenuClick }) {

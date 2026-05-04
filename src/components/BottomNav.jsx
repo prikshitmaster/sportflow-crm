@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, Users, CalendarCheck, CreditCard, MoreHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { Layers, UserCog, BarChart3, Megaphone, Settings, UserPlus, LogOut, X } from 'lucide-react'
+import { Layers, UserCog, BarChart3, Megaphone, Settings, UserPlus, LogOut, X, QrCode } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 const primary = [
@@ -15,6 +15,7 @@ const primary = [
 const more = [
   { to: '/trials',    label: 'Trials',     icon: UserPlus },
   { to: '/batches',   label: 'Batches',    icon: Layers },
+  { to: '/gate-qr',   label: 'Gate QR',    icon: QrCode },
   { to: '/staff',     label: 'Staff',      icon: UserCog },
   { to: '/reports',   label: 'Reports',    icon: BarChart3 },
   { to: '/community', label: 'Community',  icon: Megaphone },
@@ -23,7 +24,7 @@ const more = [
 
 export default function BottomNav() {
   const [showMore, setShowMore] = useState(false)
-  const { logout } = useApp()
+  const { logoutAdmin } = useApp()
   const navigate = useNavigate()
 
   return (
@@ -57,7 +58,7 @@ export default function BottomNav() {
               ))}
             </div>
             <button
-              onClick={() => { logout(); navigate('/login') }}
+              onClick={() => { logoutAdmin(); navigate('/login') }}
               className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition"
             >
               <LogOut size={16} /> Sign Out

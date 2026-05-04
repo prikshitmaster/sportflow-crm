@@ -1,5 +1,5 @@
 import { useApp } from '../context/AppContext'
-import { revenueData, attendanceData, sportBreakdown } from '../data/mockData'
+import { revenueData, sportBreakdown } from '../data/mockData'
 import {
   Users, CalendarCheck, CreditCard, TrendingUp, UserPlus, ChevronRight,
   ArrowUpRight, Bell, Zap, CheckCircle, Clock,
@@ -13,9 +13,9 @@ import { Link } from 'react-router-dom'
 const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4']
 
 export default function Dashboard() {
-  const { students, payments, trials, user, loading } = useApp()
+  const { students, payments, trials, user, dataLoading, attendanceData } = useApp()
 
-  if (loading) {
+  if (dataLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-3">
@@ -30,7 +30,7 @@ export default function Dashboard() {
   }
   const activeStudents = students.filter(s => s.status === 'Active').length
   const todayStr = new Date().toISOString().split('T')[0]
-  const todayAttendance = Object.values(useApp().attendanceData[todayStr] || {}).filter(Boolean).length
+  const todayAttendance = Object.values(attendanceData[todayStr] || {}).filter(v => v === 'Present' || v === true).length
   const pendingAmt = payments.filter(p => p.status !== 'Paid').reduce((s, p) => s + p.amount, 0)
   const paidAmt = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
   const overdueCount = payments.filter(p => p.status === 'Overdue').length
