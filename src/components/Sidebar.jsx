@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import {
   LayoutDashboard, Users, CalendarCheck, CreditCard, UserPlus,
-  Layers, UserCog, BarChart3, Megaphone, Settings, LogOut, Zap, ChevronLeft, QrCode,
+  Layers, UserCog, BarChart3, Megaphone, Settings, LogOut, Zap, ChevronLeft, QrCode, Trophy,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -14,6 +14,7 @@ const nav = [
   { to: '/trials',     label: 'Trials',      icon: UserPlus },
   { to: '/batches',    label: 'Batches',     icon: Layers },
   { to: '/gate-qr',    label: 'Gate QR',     icon: QrCode },
+  { to: '/events',     label: 'Events',      icon: Trophy },
   { to: '/staff',      label: 'Staff',       icon: UserCog },
   { to: '/reports',    label: 'Reports',     icon: BarChart3 },
   { to: '/community',  label: 'Community',   icon: Megaphone },

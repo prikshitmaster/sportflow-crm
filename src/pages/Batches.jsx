@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { Layers, Plus, Users, Clock, UserCog, AlertCircle } from 'lucide-react'
+import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 
 const COLORS = ['bg-brand-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600']
 
 export default function Batches() {
-  const { batches, addBatch, staff } = useApp()
+  const { batches, addBatch, staff, students, updateBatchCoach } = useApp()
   const [showModal, setShowModal] = useState(false)
+  const [selectedBatch, setSelectedBatch] = useState(null)
 
   const handleAdd = async (b) => {
     await addBatch(b)
@@ -111,17 +112,37 @@ export default function Batches() {
                 <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600">
                   {(b.coach || 'C')[0]}
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-xs font-semibold text-gray-700">{b.coach || 'Unassigned'}</p>
                   <p className="text-xs text-gray-400">Assigned Coach</p>
                 </div>
               </div>
+
+              <button
+                onClick={() => setSelectedBatch(b)}
+                className="w-full mt-4 btn-secondary text-xs justify-center py-2 gap-2"
+              >
+                View Details <ChevronRight size={12} />
+              </button>
             </div>
           )
         })}
       </div>
 
       {showModal && <AddBatchModal onClose={() => setShowModal(false)} onSave={handleAdd} staff={staff} />}
+
+      {selectedBatch && (
+        <BatchDetailPanel
+          batch={selectedBatch}
+          students={students}
+          staff={staff}
+          onClose={() => setSelectedBatch(null)}
+          onAssignCoach={async (id, name) => {
+            await updateBatchCoach(id, name)
+            setSelectedBatch(prev => ({ ...prev, coach: name }))
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -210,5 +231,123 @@ function AddBatchModal({ onClose, onSave, staff }) {
         <button className="btn-primary" onClick={() => onSave(form)}>Create Batch</button>
       </div>
     </Modal>
+  )
+}
+
+function BatchDetailPanel({ batch: b, students, staff, onClose, onAssignCoach }) {
+  const enrolled = students.filter(s => s.status === 'Active' && s.batch === b.name)
+  const [editCoach, setEditCoach] = useState(false)
+  const [newCoach, setNewCoach] = useState(b.coach || '')
+  const [saving, setSaving] = useState(false)
+  const coaches = staff.filter(s => s.role !== 'Admin')
+  const pct = Math.round((b.enrolled / b.capacity) * 100)
+
+  const handleSaveCoach = async () => {
+    setSaving(true)
+    await onAssignCoach(b.id, newCoach)
+    setSaving(false)
+    setEditCoach(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white h-full w-full max-w-md shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
+        <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-6 pt-6 pb-8">
+          <div className="flex items-start justify-between mb-4">
+            <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition">
+              <X size={16} className="text-white" />
+            </button>
+          </div>
+          <h2 className="text-2xl font-black text-white">{b.name}</h2>
+          <p className="text-brand-200 text-sm">{b.time}</p>
+          {b.days?.length > 0 && (
+            <div className="flex gap-1.5 mt-2">
+              {b.days.map(d => <span key={d} className="text-[10px] bg-white/15 text-white px-2 py-0.5 rounded-full font-semibold">{d}</span>)}
+            </div>
+          )}
+          <div className="grid grid-cols-3 gap-3 mt-5">
+            <div className="bg-white/15 rounded-xl p-3 text-center">
+              <p className="text-lg font-black text-white">{enrolled.length}</p>
+              <p className="text-[10px] text-brand-200">Enrolled</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-3 text-center">
+              <p className="text-lg font-black text-white">{b.capacity - b.enrolled}</p>
+              <p className="text-[10px] text-brand-200">Seats Left</p>
+            </div>
+            <div className="bg-white/15 rounded-xl p-3 text-center">
+              <p className="text-lg font-black text-white">{pct}%</p>
+              <p className="text-[10px] text-brand-200">Filled</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Sports */}
+          {b.sports?.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {b.sports.map(sp => <span key={sp} className="badge badge-blue">{sp}</span>)}
+            </div>
+          )}
+
+          {/* Coach */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Assigned Coach</p>
+              <button onClick={() => setEditCoach(e => !e)} className="text-xs text-brand-600 font-semibold hover:underline">
+                {editCoach ? 'Cancel' : 'Change'}
+              </button>
+            </div>
+            {editCoach ? (
+              <div className="flex gap-2">
+                <select className="input flex-1 text-xs" value={newCoach} onChange={e => setNewCoach(e.target.value)}>
+                  <option value="">— Unassigned —</option>
+                  {coaches.map(c => <option key={c.id} value={c.name}>{c.name} ({c.role})</option>)}
+                </select>
+                <button onClick={handleSaveCoach} disabled={saving} className="btn-primary text-xs px-3 py-2">
+                  {saving ? '…' : 'Save'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center text-sm font-bold text-gray-600">
+                  {(b.coach || 'U')[0]}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">{b.coach || 'Unassigned'}</p>
+                  <p className="text-xs text-gray-400">Head Coach</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Student list */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
+              Enrolled Students ({enrolled.length})
+            </p>
+            {enrolled.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">No active students in this batch</p>
+            ) : (
+              <div className="space-y-2.5 max-h-64 overflow-y-auto">
+                {enrolled.map((s, i) => (
+                  <div key={s.id} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400 w-5">{i + 1}</span>
+                    <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-xs font-bold text-brand-700">
+                      {s.name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
+                      <p className="text-xs text-gray-400">{s.sport} · {s.age} yrs</p>
+                    </div>
+                    <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'} text-[10px]`}>{s.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

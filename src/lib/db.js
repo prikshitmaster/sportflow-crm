@@ -564,3 +564,58 @@ export async function insertAnnouncement(a) {
   if (error) throw error
   return { ...a, id: data.id, date: data.date }
 }
+
+export async function updateBatchCoach(batchId, coachName) {
+  const { error } = await supabase
+    .from('batches')
+    .update({ coach: coachName })
+    .eq('id', batchId)
+  if (error) throw error
+}
+
+export async function fetchEvents() {
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .order('date', { ascending: true })
+  if (error) {
+    if (error.code === '42P01') return []  // table doesn't exist yet
+    throw error
+  }
+  return data
+}
+
+export async function insertEvent(e) {
+  const { data, error } = await supabase
+    .from('events')
+    .insert({
+      title:       e.title,
+      type:        e.type,
+      sport:       e.sport || null,
+      date:        e.date,
+      end_date:    e.endDate || null,
+      venue:       e.venue || null,
+      description: e.description || null,
+      status:      e.status || 'Upcoming',
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateEventStatus(id, status) {
+  const { error } = await supabase
+    .from('events')
+    .update({ status })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEvent(id) {
+  const { error } = await supabase
+    .from('events')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}

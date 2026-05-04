@@ -22,6 +22,7 @@ export function AppProvider({ children }) {
   const [staff,          setStaff]          = useState([])
   const [attendanceData, setAttendanceData] = useState({})
   const [announcements,  setAnnouncements]  = useState([])
+  const [events,         setEvents]         = useState([])
   const [toast,          setToast]          = useState(null)
   const [dataLoading,    setDataLoading]    = useState(false)   // true while loadAll() is running
 
@@ -35,16 +36,18 @@ export function AppProvider({ children }) {
   const loadAll = useCallback(async () => {
     setDataLoading(true)
     try {
-      const [s, p, t, b, st, a] = await Promise.all([
+      const [s, p, t, b, st, a, ev] = await Promise.all([
         db.fetchStudents(),
         db.fetchPayments(),
         db.fetchTrials(),
         db.fetchBatches(),
         db.fetchStaff(),
         db.fetchAnnouncements(),
+        db.fetchEvents(),
       ])
       setStudents(s); setPayments(p); setTrials(t)
       setBatches(b);  setStaff(st);   setAnnouncements(a)
+      setEvents(ev)
       const today = new Date().toISOString().split('T')[0]
       const att = await db.fetchAttendanceForDate(today)
       setAttendanceData({ [today]: att })
@@ -110,6 +113,7 @@ export function AppProvider({ children }) {
     setTrials([]);   setBatches([])
     setStaff([]);    setAnnouncements([])
     setAttendanceData({})
+    setEvents([])
   }
 
   // ── Student Auth ───────────────────────────────────────
@@ -283,6 +287,48 @@ export function AppProvider({ children }) {
     }
   }
 
+  const updateBatchCoach = async (batchId, coachName) => {
+    try {
+      await db.updateBatchCoach(batchId, coachName)
+      setBatches(prev => prev.map(b => b.id === batchId ? { ...b, coach: coachName } : b))
+      showToast('Coach assigned to batch')
+    } catch (err) {
+      showToast(err.message || 'Failed to assign', 'error')
+    }
+  }
+
+  const addEvent = async (e) => {
+    try {
+      const created = await db.insertEvent(e)
+      setEvents(prev => [...prev, created].sort((a, b) => a.date.localeCompare(b.date)))
+      showToast('Event added')
+      return created
+    } catch (err) {
+      showToast(err.message || 'Failed to add event', 'error')
+      throw err
+    }
+  }
+
+  const updateEventStatus = async (id, status) => {
+    try {
+      await db.updateEventStatus(id, status)
+      setEvents(prev => prev.map(e => e.id === id ? { ...e, status } : e))
+      showToast('Event updated')
+    } catch (err) {
+      showToast(err.message || 'Update failed', 'error')
+    }
+  }
+
+  const removeEvent = async (id) => {
+    try {
+      await db.deleteEvent(id)
+      setEvents(prev => prev.filter(e => e.id !== id))
+      showToast('Event deleted')
+    } catch (err) {
+      showToast(err.message || 'Delete failed', 'error')
+    }
+  }
+
   // ── Staff ──────────────────────────────────────────────
   const addStaffMember = async (s) => {
     try {
@@ -340,7 +386,8 @@ export function AppProvider({ children }) {
       students, addStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments, addPayment, markPaymentPaid,
       trials, addTrial, updateTrialStatus,
-      batches, setBatches, addBatch,
+      batches, setBatches, addBatch, updateBatchCoach,
+      events, addEvent, updateEventStatus, removeEvent,
       staff, addStaffMember,
       attendanceData, loadAttendanceForDate, saveAttendance,
       announcements, addAnnouncement,

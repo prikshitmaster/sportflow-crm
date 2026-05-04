@@ -15,6 +15,7 @@ import Reports from './pages/Reports'
 import Community from './pages/Community'
 import Settings from './pages/Settings'
 import AdminQR from './pages/AdminQR'
+import Events from './pages/Events'
 import StudentDashboard from './pages/student/StudentDashboard'
 import StudentScan from './pages/student/StudentScan'
 import StudentAttendance from './pages/student/StudentAttendance'
@@ -80,6 +81,7 @@ function AppRoutes() {
         <Route path="community"  element={<Community />} />
         <Route path="settings"   element={<Settings />} />
         <Route path="gate-qr"    element={<AdminQR />} />
+        <Route path="events"      element={<Events />} />
       </Route>
 
       {/* Student portal */}
