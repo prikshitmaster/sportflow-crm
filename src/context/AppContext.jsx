@@ -35,11 +35,12 @@ import {
 } from '../data/mockData'
 
 // profiles.role is always 'owner' or 'staff'
-// actual granular role (admin/coach/receptionist/accountant) lives in user_permissions.access_role
+// actual granular role lives in user_permissions.access_role
+// coach + generic staff → mobile staff portal; everyone else → desktop owner portal
 function resolveContextRole(profileRole, accessRole) {
   if (profileRole === 'owner') return 'owner'
-  if (accessRole === 'admin') return 'admin'
-  return 'staff'
+  if (accessRole === 'coach' || accessRole === 'staff' || !accessRole) return 'staff'
+  return 'admin'  // receptionist, accountant, admin → desktop portal with filtered sidebar
 }
 
 const AppContext = createContext(null)
@@ -164,9 +165,9 @@ export function AppProvider({ children }) {
     restore()
   }, [])
 
-  // Load data whenever owner or staff logs in — skip in demo mode
+  // Load data whenever owner/admin/staff logs in — skip in demo mode
   useEffect(() => {
-    if ((role === 'owner' || role === 'staff') && !demoMode) loadAll()
+    if ((role === 'owner' || role === 'admin' || role === 'staff') && !demoMode) loadAll()
   }, [role, loadAll, demoMode])
 
   // ── Owner Auth ────────────────────────────────────────

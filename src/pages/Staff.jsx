@@ -9,9 +9,8 @@ import * as db from '../lib/db'
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
 
 export default function Staff() {
-  const { staff, addStaffMember, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess } = useApp()
-  const [showModal,   setShowModal]   = useState(false)
-  const [profile,     setProfile]     = useState(null)
+  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess } = useApp()
+  const [profile, setProfile] = useState(null)
   const [activeTab,   setActiveTab]   = useState('staff')  // 'staff' | 'leaves' | 'access'
 
   useEffect(() => { loadLeaveRequests?.() }, [])
@@ -28,9 +27,6 @@ export default function Staff() {
           <h2 className="text-xl font-black text-gray-900">Staff & Coaches</h2>
           <p className="text-sm text-gray-500">{staff.filter(s => s.status === 'Active').length} active members</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> Add Staff
-        </button>
       </div>
 
       {/* Tab switcher */}
@@ -162,14 +158,6 @@ export default function Staff() {
         })}
       </div>
       </>
-      )}
-
-      {/* Modals — rendered regardless of active tab */}
-      {showModal && (
-        <AddStaffModal
-          onClose={() => setShowModal(false)}
-          onSave={async (data) => { await addStaffMember(data); setShowModal(false) }}
-        />
       )}
 
       {profile && (
@@ -488,11 +476,23 @@ function AccessPanel({ staff, user, demoMode, inviteStaff, updateStaffAccess, re
     }).finally(() => setFetching(false))
   }, [demoMode, user?.academyId])
 
-  // Refresh list after invite is created (real DB)
-  const refreshInvites = async () => {
-    if (demoMode || !user?.academyId) return
-    const invites = await db.fetchPendingInvites(user.academyId)
-    setPendingInvites(invites)
+  // Called by InviteModal after link is generated
+  const handleInviteGenerated = ({ name, accessRole, permissions }) => {
+    if (demoMode) {
+      // Add directly to local state — no DB in demo mode
+      setPendingInvites(prev => [...prev, {
+        id:          'demo-' + Date.now(),
+        token:       'demo-xxx',
+        name,
+        accessRole,
+        permissions,
+        expiresAt:   new Date(Date.now() + 7 * 86400000).toISOString(),
+      }])
+      return
+    }
+    // Real DB — re-fetch
+    if (!user?.academyId) return
+    db.fetchPendingInvites(user.academyId).then(setPendingInvites)
   }
 
   const handleDeleteInvite = async (id) => {
@@ -651,7 +651,7 @@ function AccessPanel({ staff, user, demoMode, inviteStaff, updateStaffAccess, re
       {showInvite && (
         <InviteModal
           onClose={() => setShowInvite(false)}
-          onGenerated={refreshInvites}
+          onGenerated={handleInviteGenerated}
           inviteStaff={inviteStaff}
         />
       )}
@@ -696,7 +696,7 @@ function InviteModal({ onClose, onGenerated, inviteStaff }) {
     try {
       const url = await inviteStaff(name.trim(), accessRole, permissions)
       setLink(url)
-      onGenerated?.()
+      onGenerated?.({ name: name.trim(), accessRole, permissions })
     } catch (err) {
       setError(err.message || 'Failed to generate invite')
     } finally {
@@ -751,7 +751,9 @@ function InviteModal({ onClose, onGenerated, inviteStaff }) {
           <div>
             <label className="label mb-2">Permissions</label>
             <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50">
-              {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => (
+              {Object.entries(PERMISSION_GROUPS)
+                .filter(([group]) => accessRole === 'coach' || group !== 'Batches')
+                .map(([group, perms]) => (
                 <div key={group} className="px-4 py-3">
                   <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">{group}</p>
                   <div className="flex flex-wrap gap-x-5 gap-y-2">

@@ -39,12 +39,8 @@ export default function Invite() {
     setError('')
     setLoading(true)
     try {
-      const result = await db.acceptInvite(token, email, password)
-      if (result.session) {
-        navigate('/staff/dashboard')
-      } else {
-        setDone(true)
-      }
+      await db.acceptInvite(token, email, password)
+      setDone(true)
     } catch (err) {
       setError(err.message || 'Something went wrong')
     } finally {
@@ -120,9 +116,12 @@ export default function Invite() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full text-center">
           <CheckCircle size={48} className="text-emerald-500 mx-auto mb-4" />
-          <h2 className="text-xl font-black text-gray-900 mb-2">Almost there!</h2>
-          <p className="text-sm text-gray-500 mb-5">
-            Check your email and click the confirmation link. Then log in with your new password.
+          <h2 className="text-xl font-black text-gray-900 mb-2">Account created!</h2>
+          <p className="text-sm text-gray-500 mb-2">
+            Your account is ready. Use your email and password to log in.
+          </p>
+          <p className="text-xs text-gray-400 mb-5">
+            If email confirmation is required, check your inbox first.
           </p>
           <button onClick={() => navigate('/login')} className="btn-primary justify-center">
             Go to Login
