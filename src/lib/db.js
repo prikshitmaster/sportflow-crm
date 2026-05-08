@@ -894,6 +894,19 @@ export async function acceptInvite(token, email, password) {
   await createProfile(data.user.id, 'staff', invite.academy_id, invite.name)
   await saveUserPermissions(data.user.id, invite.academy_id, invite.access_role, invite.permissions, invite.name)
 
+  // Create HR staff record so they appear in the Staff & Coaches tab
+  const roleLabel = { coach: 'Coach', receptionist: 'Receptionist', accountant: 'Accountant', admin: 'Admin', staff: 'Staff' }
+  await supabase.from('staff').insert({
+    name:       invite.name,
+    role:       roleLabel[invite.access_role] || invite.access_role,
+    phone:      '',
+    sports:     [],
+    salary:     0,
+    join_date:  new Date().toISOString().split('T')[0],
+    status:     'Active',
+    attendance: 100,
+  })
+
   await supabase.from('staff_invites').update({ used: true }).eq('token', token)
 
   return { user: data.user, session: data.session, invite }
