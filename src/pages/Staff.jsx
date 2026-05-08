@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { UserCog, Plus, Phone, IndianRupee, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera } from 'lucide-react'
+import { UserCog, Plus, Phone, IndianRupee, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
@@ -942,12 +942,15 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
     name: '', role: ROLES[1], phone: '', sports: [], salary: 25000,
     joinDate: new Date().toISOString().split('T')[0], status: 'Active',
   })
-  const [giveAccess,   setGiveAccess]   = useState(false)
-  const [accessRole,   setAccessRole]   = useState('coach')
-  const [perms,        setPerms]        = useState(ROLE_PRESETS['coach'])
-  const [inviteLink,   setInviteLink]   = useState(null)
-  const [copied,       setCopied]       = useState(false)
-  const [loading,      setLoading]      = useState(false)
+  const [giveAccess,  setGiveAccess]  = useState(false)
+  const [portalType,  setPortalType]  = useState('field')  // 'field' | 'office'
+  const [accessRole,  setAccessRole]  = useState('coach')
+  const [perms,       setPerms]       = useState([])
+  const [inviteLink,  setInviteLink]  = useState(null)
+  const [copied,      setCopied]      = useState(false)
+  const [loading,     setLoading]     = useState(false)
+
+  const FIELD_PERMS = ['attendance.manage', 'students.view', 'batches.view']
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const toggleSport = sp => setForm(f => ({
@@ -961,14 +964,23 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
     setPhotoPreview(URL.createObjectURL(file))
   }
 
-  const handleAccessRole = role => {
-    setAccessRole(role)
-    setPerms(ROLE_PRESETS[role] || [])
+  const selectPortalType = type => {
+    setPortalType(type)
+    if (type === 'field') {
+      setAccessRole('coach')
+      setPerms(FIELD_PERMS)
+    } else {
+      setAccessRole('admin')
+      setPerms([])
+    }
   }
 
   const togglePerm = perm => setPerms(prev =>
     prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm]
   )
+
+  // Office staff permission groups — attendance is field-only
+  const OFFICE_GROUPS = Object.entries(PERMISSION_GROUPS).filter(([g]) => g !== 'Attendance')
 
   const handleSave = async () => {
     if (!form.name.trim()) return
@@ -1106,45 +1118,95 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
           </div>
 
           {giveAccess && (
-            <div className="mt-4 space-y-4 bg-gray-50 rounded-xl p-4 border border-gray-100">
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Access Role</p>
-                <div className="flex flex-wrap gap-2">
-                  {ACCESS_ROLES.map(r => (
-                    <button key={r} type="button" onClick={() => handleAccessRole(r)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
-                        accessRole === r
-                          ? 'bg-brand-600 text-white border-brand-600'
-                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                      }`}>
-                      {ACCESS_ROLE_LABEL[r]}
-                    </button>
-                  ))}
-                </div>
+            <div className="mt-4 space-y-4">
+              {/* Portal type cards */}
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Portal Type</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => selectPortalType('field')}
+                  className={`relative flex flex-col items-start gap-2 p-4 rounded-2xl border-2 text-left transition ${
+                    portalType === 'field'
+                      ? 'border-brand-500 bg-brand-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  {portalType === 'field' && (
+                    <span className="absolute top-2 right-2 w-5 h-5 bg-brand-600 rounded-full flex items-center justify-center">
+                      <Check size={11} className="text-white" />
+                    </span>
+                  )}
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${portalType === 'field' ? 'bg-brand-600' : 'bg-gray-100'}`}>
+                    <Smartphone size={18} className={portalType === 'field' ? 'text-white' : 'text-gray-500'} />
+                  </div>
+                  <div>
+                    <p className={`text-sm font-bold ${portalType === 'field' ? 'text-brand-700' : 'text-gray-800'}`}>Field Staff</p>
+                    <p className="text-[11px] text-gray-500 leading-tight mt-0.5">Mobile portal · Attendance & schedule</p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => selectPortalType('office')}
+                  className={`relative flex flex-col items-start gap-2 p-4 rounded-2xl border-2 text-left transition ${
+                    portalType === 'office'
+                      ? 'border-purple-500 bg-purple-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  {portalType === 'office' && (
+                    <span className="absolute top-2 right-2 w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center">
+                      <Check size={11} className="text-white" />
+                    </span>
+                  )}
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${portalType === 'office' ? 'bg-purple-600' : 'bg-gray-100'}`}>
+                    <Monitor size={18} className={portalType === 'office' ? 'text-white' : 'text-gray-500'} />
+                  </div>
+                  <div>
+                    <p className={`text-sm font-bold ${portalType === 'office' ? 'text-purple-700' : 'text-gray-800'}`}>Office Staff</p>
+                    <p className="text-[11px] text-gray-500 leading-tight mt-0.5">Desktop portal · Custom permissions</p>
+                  </div>
+                </button>
               </div>
 
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Permissions</p>
-                <div className="space-y-2">
-                  {Object.entries(PERMISSION_GROUPS).map(([group, groupPerms]) => (
-                    <div key={group}>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">{group}</p>
-                      <div className="flex flex-wrap gap-1.5">
+              {/* Field Staff: read-only permission badges */}
+              {portalType === 'field' && (
+                <div className="bg-brand-50 border border-brand-100 rounded-xl p-3">
+                  <p className="text-[11px] font-bold text-brand-700 uppercase tracking-wide mb-2">Included Permissions</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {FIELD_PERMS.map(p => (
+                      <span key={p} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-brand-100 text-brand-700">
+                        <Check size={10} /> {PERM_LABEL[p]}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-brand-500 mt-2">Only coaches & field staff can mark attendance.</p>
+                </div>
+              )}
+
+              {/* Office Staff: custom permission checkboxes */}
+              {portalType === 'office' && (
+                <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50">
+                  {OFFICE_GROUPS.map(([group, groupPerms]) => (
+                    <div key={group} className="px-4 py-3">
+                      <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">{group}</p>
+                      <div className="flex flex-wrap gap-x-5 gap-y-2">
                         {groupPerms.map(perm => (
-                          <button key={perm} type="button" onClick={() => togglePerm(perm)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${
-                              perms.includes(perm)
-                                ? 'bg-emerald-600 text-white border-emerald-600'
-                                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
-                            }`}>
-                            {PERM_LABEL[perm]}
-                          </button>
+                          <label key={perm} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={perms.includes(perm)}
+                              onChange={() => togglePerm(perm)}
+                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 w-3.5 h-3.5"
+                            />
+                            <span className="text-xs text-gray-700">{PERM_LABEL[perm]}</span>
+                          </label>
                         ))}
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              )}
 
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3">
                 <Link2 size={13} className="text-amber-500 flex-shrink-0 mt-0.5" />
