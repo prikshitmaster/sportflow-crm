@@ -64,6 +64,12 @@ export default function Batches() {
                   <div className="flex items-center gap-1.5 text-gray-500 text-xs">
                     <Clock size={12} /> {b.time}
                   </div>
+                  {b.ground && (
+                    <div className="flex items-center gap-1.5 text-gray-400 text-xs mt-0.5">
+                      <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                      {b.ground}
+                    </div>
+                  )}
                   {b.days?.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {b.days.map(d => (
@@ -152,7 +158,7 @@ const ALL_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 function AddBatchModal({ onClose, onSave, staff }) {
   const [form, setForm] = useState({
     name: '', startTime: '', endTime: '', sports: [], coach: staff[0]?.name || '',
-    capacity: 20, days: [], ageMin: 0, ageMax: 99,
+    capacity: 20, days: [], ageMin: 0, ageMax: 99, ground: '',
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -182,6 +188,11 @@ function AddBatchModal({ onClose, onSave, staff }) {
             <label className="label">End Time</label>
             <input className="input" type="time" value={form.endTime} onChange={e => set('endTime', e.target.value)} />
           </div>
+        </div>
+        <div>
+          <label className="label">Ground / Venue <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input className="input" placeholder="e.g. Ground A, Court 1, Indoor Hall"
+            value={form.ground} onChange={e => set('ground', e.target.value)} />
         </div>
         <div>
           <label className="label">Batch Days</label>
@@ -261,6 +272,12 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onAssignCoach })
           </div>
           <h2 className="text-2xl font-black text-white">{b.name}</h2>
           <p className="text-brand-200 text-sm">{b.time}</p>
+          {b.ground && (
+            <p className="text-brand-300 text-xs mt-0.5 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              {b.ground}
+            </p>
+          )}
           {b.days?.length > 0 && (
             <div className="flex gap-1.5 mt-2">
               {b.days.map(d => <span key={d} className="text-[10px] bg-white/15 text-white px-2 py-0.5 rounded-full font-semibold">{d}</span>)}

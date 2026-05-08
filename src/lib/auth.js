@@ -1,5 +1,8 @@
-const SALT       = 'sportflow-2026'
-const ADMIN_KEY  = 'sf_admin'
+// ── SportFlow Auth Helpers ────────────────────────────────
+// Owner / Staff → Supabase Auth (supabase.auth.*) — no custom storage needed
+// Student      → custom: student_code + hashed password + DB session token
+
+const SALT        = 'sportflow-2026'
 const STUDENT_KEY = 'sf_student'
 
 // ── Password hashing (SHA-256 via SubtleCrypto) ───────────
@@ -17,7 +20,7 @@ export function generateStudentCode(existingCount) {
   return 'SA' + String(existingCount + 1).padStart(3, '0')
 }
 
-// ── One-time join code (6 unambiguous chars) ─────────────
+// ── One-time student join code (6 unambiguous chars) ──────
 export function generateJoinCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   return Array.from({ length: 6 }, () =>
@@ -25,34 +28,15 @@ export function generateJoinCode() {
   ).join('')
 }
 
-// ── Cryptographic token (64 hex chars) ───────────────────
+// ── Academy join code (staff use this to link to an academy)
+// Same charset, reuses generateJoinCode logic
+export const generateAcademyCode = generateJoinCode
+
+// ── Cryptographic token (64 hex chars, for student sessions)
 export function generateToken() {
   const arr = new Uint8Array(32)
   crypto.getRandomValues(arr)
   return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-// ── Admin session (localStorage, simple) ─────────────────
-export function getAdminSession() {
-  try {
-    const raw = localStorage.getItem(ADMIN_KEY)
-    if (!raw) return null
-    const s = JSON.parse(raw)
-    if (new Date(s.expiresAt) < new Date()) {
-      localStorage.removeItem(ADMIN_KEY)
-      return null
-    }
-    return s
-  } catch { return null }
-}
-
-export function setAdminSession(userData) {
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-  localStorage.setItem(ADMIN_KEY, JSON.stringify({ ...userData, expiresAt }))
-}
-
-export function clearAdminSession() {
-  localStorage.removeItem(ADMIN_KEY)
 }
 
 // ── Student session (localStorage + DB token) ────────────

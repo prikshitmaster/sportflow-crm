@@ -9,7 +9,7 @@ const titles = {
   '/payments':   'Payments',
   '/trials':     'Trial Management',
   '/batches':    'Batch Management',
-  '/staff':      'Staff & Coaches',
+  '/coaches':    'Staff & Coaches',
   '/reports':    'Reports & Analytics',
   '/community':  'Community Updates',
   '/settings':   'Settings',
@@ -54,7 +54,7 @@ export default function Header({ onMenuClick }) {
           </div>
           <div className="hidden md:block">
             <p className="text-xs font-semibold text-gray-800 leading-tight">{user?.name}</p>
-            <p className="text-[10px] text-gray-400 leading-tight">{user?.role}</p>
+            <p className="text-[10px] text-gray-400 leading-tight capitalize">{user?.role || 'Owner'}</p>
           </div>
         </div>
       </div>

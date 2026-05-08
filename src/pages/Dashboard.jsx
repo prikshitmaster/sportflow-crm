@@ -1,9 +1,9 @@
 import { useApp } from '../context/AppContext'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Users, CreditCard, TrendingUp, UserPlus, ChevronRight,
   AlertCircle, CalendarDays, CheckCircle, XCircle, UserCog,
-  BarChart3, Layers,
+  BarChart3, Layers, Pencil, X, Plus, Check,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -12,20 +12,26 @@ export default function Dashboard() {
     students, payments, trials, batches, staff,
     user, role, hasPermission, dataLoading, attendanceData,
     leaveRequests, loadLeaveRequests, updateLeave,
+    branches, addBranch, removeBranch,
   } = useApp()
 
-  const [sport, setSport] = useState('All')
+  const [sport,      setSport]      = useState('All')
+  const [editBranch, setEditBranch] = useState(false)
+  const [newBranch,  setNewBranch]  = useState('')
+  const inputRef = useRef(null)
 
   useEffect(() => { loadLeaveRequests?.() }, [])
+  useEffect(() => { if (editBranch) inputRef.current?.focus() }, [editBranch])
 
   // ── All hooks must run before any early return ────────────
 
-  // Sport filter list (from actual student data)
+  // Sport filter list — use managed branches list; fall back to student sports if empty
   const sportList = useMemo(() => {
+    if (branches.length > 0) return branches
     const set = new Set()
     students.forEach(s => s.sport && set.add(s.sport))
-    return ['All', ...Array.from(set).sort()]
-  }, [students])
+    return Array.from(set).sort()
+  }, [branches, students])
 
   // Filtered data
   const filteredStudents = useMemo(() =>
@@ -142,20 +148,78 @@ export default function Dashboard() {
       </div>
 
       {/* ── Branch / Sport filter tabs ───────────────────────── */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        {/* All Branches pill */}
+        <button
+          onClick={() => setSport('All')}
+          className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition ${
+            sport === 'All' ? 'bg-gray-900 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          All Branches
+        </button>
+
         {sportList.map(s => (
-          <button
-            key={s}
-            onClick={() => setSport(s)}
-            className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition ${
-              sport === s
-                ? 'bg-gray-900 text-white shadow-sm'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {s === 'All' ? 'All Branches' : s}
-          </button>
+          <div key={s} className="relative flex-shrink-0 group">
+            <button
+              onClick={() => !editBranch && setSport(s)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition ${
+                sport === s && !editBranch
+                  ? 'bg-gray-900 text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              } ${editBranch ? 'pr-7' : ''}`}
+            >
+              {s}
+            </button>
+            {editBranch && (
+              <button
+                onClick={() => { removeBranch(s); if (sport === s) setSport('All') }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition"
+              >
+                <X size={9} strokeWidth={3} />
+              </button>
+            )}
+          </div>
         ))}
+
+        {/* Edit / Add controls — owner only */}
+        {role === 'owner' && (
+          editBranch ? (
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <input
+                ref={inputRef}
+                value={newBranch}
+                onChange={e => setNewBranch(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newBranch.trim()) { addBranch(newBranch); setNewBranch('') }
+                  if (e.key === 'Escape') setEditBranch(false)
+                }}
+                placeholder="New branch…"
+                className="px-3 py-2 rounded-xl text-xs border border-gray-300 bg-white w-28 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <button
+                onClick={() => { if (newBranch.trim()) { addBranch(newBranch); setNewBranch('') } }}
+                className="w-7 h-7 bg-brand-600 hover:bg-brand-700 text-white rounded-lg flex items-center justify-center transition flex-shrink-0"
+              >
+                <Plus size={13} />
+              </button>
+              <button
+                onClick={() => { setEditBranch(false); setNewBranch('') }}
+                className="w-7 h-7 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center transition flex-shrink-0"
+              >
+                <Check size={13} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditBranch(true)}
+              className="flex-shrink-0 w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
+              title="Manage branches"
+            >
+              <Pencil size={13} className="text-gray-500" />
+            </button>
+          )
+        )}
       </div>
 
       {/* ── KPI cards ────────────────────────────────────────── */}

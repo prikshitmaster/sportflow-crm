@@ -38,3 +38,16 @@ CREATE INDEX IF NOT EXISTS staff_invites_token_idx         ON staff_invites    (
 
 -- 5. Ground column on batches (if not already added)
 ALTER TABLE batches ADD COLUMN IF NOT EXISTS ground text;
+
+-- 6. Photo URL on staff table
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS photo_url text;
+
+-- 7. Academy branches — owner-managed list of sports/branches shown on Dashboard
+CREATE TABLE IF NOT EXISTS academy_branches (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  academy_id uuid NOT NULL,
+  name       text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE (academy_id, name)
+);
+CREATE INDEX IF NOT EXISTS academy_branches_academy_id_idx ON academy_branches (academy_id);

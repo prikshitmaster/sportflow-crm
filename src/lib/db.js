@@ -226,7 +226,17 @@ export async function fetchStaff() {
     joinDate:   row.join_date,
     status:     row.status,
     attendance: row.attendance,
+    photoUrl:   row.photo_url || null,
   }))
+}
+
+export async function uploadStaffPhoto(file, staffName) {
+  const ext  = file.name.split('.').pop()
+  const path = `staff/${Date.now()}_${staffName.replace(/\s+/g, '_')}.${ext}`
+  const { error } = await supabase.storage.from('staff-photos').upload(path, file, { upsert: true })
+  if (error) throw error
+  const { data } = supabase.storage.from('staff-photos').getPublicUrl(path)
+  return data.publicUrl
 }
 
 export async function insertStaff(s) {
@@ -241,6 +251,7 @@ export async function insertStaff(s) {
       join_date: s.joinDate,
       status:    s.status || 'Active',
       attendance: 100,
+      photo_url:  s.photoUrl || null,
     })
     .select()
     .single()
@@ -726,6 +737,36 @@ export async function upsertFeatureFlag(academyId, feature, enabled) {
   const { error } = await supabase
     .from('feature_flags')
     .upsert({ academy_id: academyId, feature, enabled })
+  if (error) throw error
+}
+
+// ── Branches ──────────────────────────────────────────────
+export async function fetchBranches(academyId) {
+  const { data, error } = await supabase
+    .from('academy_branches')
+    .select('name')
+    .eq('academy_id', academyId)
+    .order('name')
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
+  return data.map(r => r.name)
+}
+
+export async function insertBranch(academyId, name) {
+  const { error } = await supabase
+    .from('academy_branches')
+    .upsert({ academy_id: academyId, name })
+  if (error) throw error
+}
+
+export async function deleteBranch(academyId, name) {
+  const { error } = await supabase
+    .from('academy_branches')
+    .delete()
+    .eq('academy_id', academyId)
+    .eq('name', name)
   if (error) throw error
 }
 

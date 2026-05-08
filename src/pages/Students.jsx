@@ -16,6 +16,7 @@ export default function Students() {
   const { students, addStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments } = useApp()
   const [search,       setSearch]       = useState('')
   const [sportFilter,  setSportFilter]  = useState('All')
+  const [batchFilter,  setBatchFilter]  = useState('All')
   const [accFilter,    setAccFilter]    = useState('All')
   const [showModal,    setShowModal]    = useState(false)
   const [openMenu,     setOpenMenu]     = useState(null)
@@ -30,9 +31,10 @@ export default function Students() {
       (s.parent || '').toLowerCase().includes(q) ||
       (s.phone || '').includes(q) ||
       (s.studentCode || '').toLowerCase().includes(q)
-    const matchSport = sportFilter === 'All' || s.sport === sportFilter
+    const matchSport = sportFilter === 'All' || s.sport  === sportFilter
+    const matchBatch = batchFilter === 'All' || s.batch === batchFilter
     const matchAcc   = accFilter   === 'All' || s.accountStatus === accFilter
-    return matchQ && matchSport && matchAcc
+    return matchQ && matchSport && matchBatch && matchAcc
   })
 
   const pendingCount = students.filter(s => s.accountStatus === 'pending').length
@@ -76,9 +78,13 @@ export default function Students() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <select className="input w-auto" value={sportFilter} onChange={e => setSportFilter(e.target.value)}>
+        <select className="input w-auto" value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
           <option value="All">All Sports</option>
           {SPORTS.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <select className="input w-auto" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
+          <option value="All">All Batches</option>
+          {batches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
         </select>
         <select className="input w-auto" value={accFilter} onChange={e => setAccFilter(e.target.value)}>
           <option value="All">All Accounts</option>

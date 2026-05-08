@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { Building, Bell, MessageCircle, Shield, CreditCard, ChevronRight, Check } from 'lucide-react'
+import { Building, Bell, MessageCircle, Shield, CreditCard, Check, ToggleLeft, Key } from 'lucide-react'
 
 const tabs = [
   { id: 'academy',       label: 'Academy Profile', icon: Building },
+  { id: 'features',      label: 'Features',        icon: ToggleLeft },
   { id: 'fees',          label: 'Fee Plans',        icon: CreditCard },
   { id: 'notifications', label: 'Notifications',    icon: Bell },
   { id: 'whatsapp',      label: 'WhatsApp',         icon: MessageCircle },
@@ -28,14 +29,14 @@ export default function Settings() {
         <p className="text-sm text-gray-500">Manage your academy preferences</p>
       </div>
 
-      <div className="flex gap-6">
-        {/* Sidebar tabs */}
-        <div className="w-48 flex-shrink-0 space-y-1">
+      <div className="flex gap-6 flex-col md:flex-row">
+        {/* Sidebar tabs — horizontal scroll on mobile */}
+        <div className="md:w-48 flex-shrink-0 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible pb-1 md:pb-0">
           {tabs.map(t => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-left transition ${activeTab === t.id ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              className={`flex items-center gap-2 flex-shrink-0 md:flex-shrink px-3 py-2.5 rounded-xl text-sm font-medium text-left transition whitespace-nowrap ${activeTab === t.id ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100'}`}
             >
               <t.icon size={16} className={activeTab === t.id ? 'text-brand-600' : 'text-gray-400'} />
               {t.label}
@@ -45,11 +46,12 @@ export default function Settings() {
 
         {/* Content panel */}
         <div className="flex-1 card p-6">
-          {activeTab === 'academy' && <AcademyTab user={user} onSave={handleSave} saved={saved} />}
-          {activeTab === 'fees' && <FeePlansTab onSave={handleSave} saved={saved} />}
+          {activeTab === 'academy'       && <AcademyTab user={user} onSave={handleSave} saved={saved} />}
+          {activeTab === 'features'      && <FeaturesTab />}
+          {activeTab === 'fees'          && <FeePlansTab onSave={handleSave} saved={saved} />}
           {activeTab === 'notifications' && <NotificationsTab onSave={handleSave} saved={saved} />}
-          {activeTab === 'whatsapp' && <WhatsAppTab onSave={handleSave} saved={saved} />}
-          {activeTab === 'security' && <SecurityTab onSave={handleSave} saved={saved} />}
+          {activeTab === 'whatsapp'      && <WhatsAppTab onSave={handleSave} saved={saved} />}
+          {activeTab === 'security'      && <SecurityTab onSave={handleSave} saved={saved} />}
         </div>
       </div>
     </div>
@@ -256,6 +258,72 @@ function WhatsAppTab({ onSave, saved }) {
         </div>
       ))}
       <SaveButton onSave={onSave} saved={saved} />
+    </div>
+  )
+}
+
+// ── Features Tab (owner only) ──────────────────────────────
+// Each toggle calls AppContext.toggleFeature() which saves to DB immediately
+function FeaturesTab() {
+  const { features, toggleFeature, user } = useApp()
+
+  const FEATURE_LIST = [
+    { key: 'attendance', label: 'Attendance',        desc: 'Mark and track daily attendance' },
+    { key: 'payments',   label: 'Payments & Fees',   desc: 'Fee tracking, invoices, receipts' },
+    { key: 'trials',     label: 'Trial Management',  desc: 'Capture trial leads and track conversion' },
+    { key: 'batches',    label: 'Batch Management',  desc: 'Create and manage sport batches' },
+    { key: 'staff',      label: 'Staff & HR',        desc: 'Coach profiles and salary tracking' },
+    { key: 'reports',    label: 'Reports',           desc: 'Financial and attendance reports' },
+    { key: 'community',  label: 'Community',         desc: 'Notices, announcements, holidays' },
+    { key: 'events',     label: 'Events & Tournaments', desc: 'Manage upcoming events' },
+    { key: 'gate_qr',    label: 'Gate QR Attendance', desc: 'QR code-based entry attendance' },
+  ]
+
+  return (
+    <div>
+      <SectionHeader
+        title="Feature Toggles"
+        desc="Enable or disable modules for your entire academy. Staff will only see enabled features."
+      />
+
+      {/* Academy join code — staff use this to sign up */}
+      {user?.joinCode && (
+        <div className="flex items-center justify-between p-4 bg-brand-50 border border-brand-100 rounded-xl mb-6">
+          <div>
+            <p className="text-xs font-semibold text-brand-800 uppercase tracking-wide">Academy Join Code</p>
+            <p className="text-xs text-brand-600 mt-0.5">Share this with staff so they can sign up</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-lg font-black text-brand-700 tracking-widest">{user.joinCode}</span>
+            <button
+              onClick={() => navigator.clipboard?.writeText(user.joinCode)}
+              className="text-xs text-brand-600 hover:underline font-semibold"
+            >Copy</button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-1">
+        {FEATURE_LIST.map(({ key, label, desc }) => (
+          <div key={key} className="flex items-center justify-between py-3.5 border-b border-gray-50 last:border-0">
+            <div>
+              <p className="text-sm font-semibold text-gray-700">{label}</p>
+              <p className="text-xs text-gray-400">{desc}</p>
+            </div>
+            {/* Toggle — calls DB immediately on click */}
+            <button
+              onClick={() => toggleFeature(key, features[key] === false ? true : false)}
+              className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                features[key] !== false ? 'bg-brand-600' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block w-4 h-4 bg-white rounded-full shadow transition-transform mt-1 ${
+                features[key] !== false ? 'translate-x-6' : 'translate-x-1'
+              }`} />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

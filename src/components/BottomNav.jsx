@@ -1,35 +1,50 @@
-import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, CalendarCheck, CreditCard, MoreHorizontal } from 'lucide-react'
+// BottomNav — owner mobile navigation
+// Primary 4 items always visible; "More" sheet shows the rest
+// Both lists are filtered by feature flags
+
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { Layers, UserCog, BarChart3, Megaphone, Settings, UserPlus, LogOut, X, QrCode } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import {
+  LayoutDashboard, Users, CalendarCheck, CreditCard,
+  MoreHorizontal, X, LogOut,
+  UserPlus, Layers, UserCog, BarChart3, Megaphone, Settings, QrCode, Trophy,
+} from 'lucide-react'
 
-const primary = [
-  { to: '/dashboard',  label: 'Home',       icon: LayoutDashboard },
-  { to: '/students',   label: 'Students',   icon: Users },
-  { to: '/attendance', label: 'Attendance', icon: CalendarCheck },
-  { to: '/payments',   label: 'Payments',   icon: CreditCard },
+// Primary bar — always 4 items (feature-gated)
+const primaryItems = [
+  { to: '/dashboard',  label: 'Home',       icon: LayoutDashboard, feature: null },
+  { to: '/students',   label: 'Students',   icon: Users,            feature: null },
+  { to: '/attendance', label: 'Attendance', icon: CalendarCheck,   feature: 'attendance' },
+  { to: '/payments',   label: 'Payments',   icon: CreditCard,      feature: 'payments' },
 ]
 
-const more = [
-  { to: '/trials',    label: 'Trials',     icon: UserPlus },
-  { to: '/batches',   label: 'Batches',    icon: Layers },
-  { to: '/gate-qr',   label: 'Gate QR',    icon: QrCode },
-  { to: '/staff',     label: 'Staff',      icon: UserCog },
-  { to: '/reports',   label: 'Reports',    icon: BarChart3 },
-  { to: '/community', label: 'Community',  icon: Megaphone },
-  { to: '/settings',  label: 'Settings',   icon: Settings },
+// "More" sheet — everything else
+const moreItems = [
+  { to: '/trials',    label: 'Trials',    icon: UserPlus,  feature: 'trials' },
+  { to: '/batches',   label: 'Batches',   icon: Layers,    feature: 'batches' },
+  { to: '/gate-qr',   label: 'Gate QR',   icon: QrCode,    feature: 'gate_qr' },
+  { to: '/events',    label: 'Events',    icon: Trophy,    feature: 'events' },
+  { to: '/coaches',   label: 'Staff',     icon: UserCog,   feature: 'staff' },
+  { to: '/reports',   label: 'Reports',   icon: BarChart3, feature: 'reports' },
+  { to: '/community', label: 'Community', icon: Megaphone, feature: 'community' },
+  { to: '/settings',  label: 'Settings',  icon: Settings,  feature: null },
 ]
 
 export default function BottomNav() {
   const [showMore, setShowMore] = useState(false)
-  const { logoutAdmin } = useApp()
+  const { isFeatureOn, logoutOwner } = useApp()
   const navigate = useNavigate()
+
+  // Filter by feature flags
+  const primary = primaryItems.filter(i => i.feature === null || isFeatureOn(i.feature))
+  const more    = moreItems.filter(i => i.feature === null || isFeatureOn(i.feature))
+
+  const handleLogout = async () => { await logoutOwner(); navigate('/login') }
 
   return (
     <>
-      {/* More sheet overlay */}
+      {/* "More" sheet overlay */}
       {showMore && (
         <>
           <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setShowMore(false)} />
@@ -42,25 +57,19 @@ export default function BottomNav() {
             </div>
             <div className="grid grid-cols-3 gap-3">
               {more.map(({ to, label, icon: Icon }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  onClick={() => setShowMore(false)}
+                <NavLink key={to} to={to} onClick={() => setShowMore(false)}
                   className={({ isActive }) =>
                     `flex flex-col items-center gap-1.5 p-3 rounded-xl text-xs font-semibold transition ${
                       isActive ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-50'
                     }`
                   }
                 >
-                  <Icon size={22} />
-                  {label}
+                  <Icon size={22} /> {label}
                 </NavLink>
               ))}
             </div>
-            <button
-              onClick={() => { logoutAdmin(); navigate('/login') }}
-              className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition"
-            >
+            <button onClick={handleLogout}
+              className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 transition">
               <LogOut size={16} /> Sign Out
             </button>
           </div>
@@ -70,9 +79,7 @@ export default function BottomNav() {
       {/* Bottom bar */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-100 flex items-center safe-pb">
         {primary.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
+          <NavLink key={to} to={to}
             className={({ isActive }) =>
               `flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-semibold transition ${
                 isActive ? 'text-brand-600' : 'text-gray-400'
@@ -93,9 +100,7 @@ export default function BottomNav() {
           onClick={() => setShowMore(s => !s)}
           className="flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-semibold text-gray-400"
         >
-          <div className="p-1.5 rounded-xl">
-            <MoreHorizontal size={20} />
-          </div>
+          <div className="p-1.5 rounded-xl"><MoreHorizontal size={20} /></div>
           More
         </button>
       </nav>

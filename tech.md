@@ -211,7 +211,7 @@ Simple, sharp, modern.
 4. Attendance
 5. Payments
 6. Trials
-7. Reports
+7. Reports 2
 8. mobile responsive
 
 ## Final Goal

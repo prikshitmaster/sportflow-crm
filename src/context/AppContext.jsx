@@ -65,6 +65,7 @@ export function AppProvider({ children }) {
   const [announcements,  setAnnouncements]  = useState([])
   const [events,         setEvents]         = useState([])
   const [leaveRequests,  setLeaveRequests]  = useState([])   // owner: all; staff: their own
+  const [branches,       setBranches]       = useState([])   // owner-managed branch/sport list
   const [toast,          setToast]          = useState(null)
   const [dataLoading,    setDataLoading]    = useState(false)
 
@@ -169,6 +170,14 @@ export function AppProvider({ children }) {
   useEffect(() => {
     if ((role === 'owner' || role === 'admin' || role === 'staff') && !demoMode) loadAll()
   }, [role, loadAll, demoMode])
+
+  // Load branches when academy is known
+  useEffect(() => {
+    if (!user?.academyId || demoMode) return
+    db.fetchBranches(user.academyId).then(list => {
+      if (list.length > 0) setBranches(list)
+    }).catch(() => {})
+  }, [user?.academyId, demoMode])
 
   // ── Owner Auth ────────────────────────────────────────
 
@@ -492,14 +501,44 @@ export function AppProvider({ children }) {
   // ── Staff (HR) ────────────────────────────────────────
 
   const addStaffMember = async (s) => {
+    if (demoMode) {
+      const newMember = { ...s, id: Date.now(), attendance: 100, userId: null, accessRole: null, permissions: [] }
+      setStaff(prev => [...prev, newMember])
+      showToast('Staff member added (demo)')
+      return newMember
+    }
     try {
       const created = await db.insertStaff(s)
-      setStaff(prev => [...prev, { ...created, userId: null, accessRole: null, permissions: [] }])
+      setStaff(prev => [...prev, { ...created, photoUrl: created.photoUrl || null, userId: null, accessRole: null, permissions: [] }])
       showToast('Staff member added')
     } catch (err) {
       showToast(err.message || 'Failed', 'error')
     }
   }
+
+  // ── Branches ──────────────────────────────────────────
+  const addBranch = async (name) => {
+    const trimmed = name.trim()
+    if (!trimmed || branches.includes(trimmed)) return
+    setBranches(prev => [...prev, trimmed].sort())
+    if (!demoMode && user?.academyId) {
+      try { await db.insertBranch(user.academyId, trimmed) } catch (err) {
+        showToast(err.message || 'Failed to save branch', 'error')
+        setBranches(prev => prev.filter(b => b !== trimmed))
+      }
+    }
+  }
+
+  const removeBranch = async (name) => {
+    setBranches(prev => prev.filter(b => b !== name))
+    if (!demoMode && user?.academyId) {
+      try { await db.deleteBranch(user.academyId, name) } catch (err) {
+        showToast(err.message || 'Failed to remove branch', 'error')
+        setBranches(prev => [...prev, name].sort())
+      }
+    }
+  }
+
 
   // ── Staff Access / Invite ─────────────────────────────
 
@@ -650,6 +689,7 @@ export function AppProvider({ children }) {
         { id: 'dlr2', staff_id: 'demo-s3', staff_name: 'Anita Singh',    start_date: '2026-04-28', end_date: '2026-04-28', reason: 'Medical appointment', status: 'Approved', created_at: '2026-04-25T09:00:00Z' },
         { id: 'dlr3', staff_id: 'demo-s4', staff_name: 'Ravi Shankar',   start_date: '2026-04-15', end_date: '2026-04-15', reason: 'Personal work',       status: 'Rejected', created_at: '2026-04-12T11:00:00Z' },
       ])
+      setBranches(['Badminton', 'Basketball', 'Cricket', 'Dance', 'Football', 'Martial Arts', 'Tennis'])
     } else if (demoRole === 'staff') {
       // Logs in as Suresh Yadav — Head Coach of Morning A
       setUser({ id: 'demo-staff', name: 'Suresh Yadav', email: 'coach@demo.sportflow', academy: 'SportFlow Academy', academyId: 'demo-acad', joinCode: 'DEMO01', role: 'coach' })
@@ -704,6 +744,7 @@ export function AppProvider({ children }) {
       batches, setBatches, addBatch, updateBatchCoach,
       events, addEvent, updateEventStatus, removeEvent,
       staff, addStaffMember,
+      branches, addBranch, removeBranch,
       attendanceData, loadAttendanceForDate, saveAttendance,
       announcements, addAnnouncement,
       // staff access / invite

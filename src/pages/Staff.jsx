@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { UserCog, Plus, Phone, IndianRupee, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check } from 'lucide-react'
+import { UserCog, Plus, Phone, IndianRupee, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
@@ -9,15 +9,16 @@ import * as db from '../lib/db'
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
 
 export default function Staff() {
-  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess } = useApp()
-  const [profile, setProfile] = useState(null)
-  const [activeTab,   setActiveTab]   = useState('staff')  // 'staff' | 'leaves' | 'access'
+  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember } = useApp()
+  const [profile,    setProfile]    = useState(null)
+  const [showModal,  setShowModal]  = useState(false)
+  const [activeTab,  setActiveTab]  = useState('staff')  // 'staff' | 'leaves' | 'access'
 
   useEffect(() => { loadLeaveRequests?.() }, [])
 
   const pendingLeaves = (leaveRequests || []).filter(r => r.status === 'Pending').length
 
-  const totalSalary  = staff.reduce((s, m) => s + m.salary, 0)
+  const totalSalary   = staff.reduce((s, m) => s + m.salary, 0)
   const avgAttendance = staff.length ? Math.round(staff.reduce((s, m) => s + m.attendance, 0) / staff.length) : 0
 
   return (
@@ -27,6 +28,11 @@ export default function Staff() {
           <h2 className="text-xl font-black text-gray-900">Staff & Coaches</h2>
           <p className="text-sm text-gray-500">{staff.filter(s => s.status === 'Active').length} active members</p>
         </div>
+        {(role === 'owner' || role === 'admin') && activeTab === 'staff' && (
+          <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2 text-sm">
+            <Plus size={15} /> Add Staff
+          </button>
+        )}
       </div>
 
       {/* Tab switcher */}
@@ -95,9 +101,13 @@ export default function Staff() {
           return (
             <div key={s.id} className="card p-5 hover:shadow-md transition">
               <div className="flex items-start gap-4 mb-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl flex items-center justify-center text-white text-lg font-black flex-shrink-0">
-                  {s.name[0]}
-                </div>
+                {s.photoUrl ? (
+                  <img src={s.photoUrl} alt={s.name} className="w-12 h-12 rounded-2xl object-cover flex-shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl flex items-center justify-center text-white text-lg font-black flex-shrink-0">
+                    {s.name[0]}
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <h3 className="font-bold text-gray-900 truncate">{s.name}</h3>
                   <p className="text-xs text-gray-500">{s.role}</p>
@@ -171,6 +181,26 @@ export default function Staff() {
           onUnassign={async (batchId) => {
             await updateBatchCoach(batchId, '')
           }}
+        />
+      )}
+
+      {showModal && (
+        <AddStaffModal
+          onClose={() => setShowModal(false)}
+          onSave={async (form, photoFile, accessConfig) => {
+            let photoUrl = null
+            if (photoFile && !demoMode) {
+              try { photoUrl = await db.uploadStaffPhoto(photoFile, form.name) } catch (_) {}
+            }
+            await addStaffMember({ ...form, photoUrl })
+            if (accessConfig) {
+              const link = await inviteStaff(form.name, accessConfig.accessRole, accessConfig.permissions)
+              return link
+            }
+            setShowModal(false)
+            return null
+          }}
+          demoMode={demoMode}
         />
       )}
     </div>
@@ -904,67 +934,231 @@ function PermissionPanel({ target, onClose, onSave }) {
   )
 }
 
-function AddStaffModal({ onClose, onSave }) {
+function AddStaffModal({ onClose, onSave, demoMode }) {
+  const fileRef = useRef(null)
+  const [photoPreview, setPhotoPreview] = useState(null)
+  const [photoFile,    setPhotoFile]    = useState(null)
   const [form, setForm] = useState({
     name: '', role: ROLES[1], phone: '', sports: [], salary: 25000,
     joinDate: new Date().toISOString().split('T')[0], status: 'Active',
   })
-  const [loading, setLoading] = useState(false)
+  const [giveAccess,   setGiveAccess]   = useState(false)
+  const [accessRole,   setAccessRole]   = useState('coach')
+  const [perms,        setPerms]        = useState(ROLE_PRESETS['coach'])
+  const [inviteLink,   setInviteLink]   = useState(null)
+  const [copied,       setCopied]       = useState(false)
+  const [loading,      setLoading]      = useState(false)
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const toggleSport = (sp) => setForm(f => ({
-    ...f,
-    sports: f.sports.includes(sp) ? f.sports.filter(s => s !== sp) : [...f.sports, sp],
+  const toggleSport = sp => setForm(f => ({
+    ...f, sports: f.sports.includes(sp) ? f.sports.filter(s => s !== sp) : [...f.sports, sp],
   }))
 
+  const handlePhoto = e => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
+
+  const handleAccessRole = role => {
+    setAccessRole(role)
+    setPerms(ROLE_PRESETS[role] || [])
+  }
+
+  const togglePerm = perm => setPerms(prev =>
+    prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm]
+  )
+
   const handleSave = async () => {
-    if (!form.name) return
+    if (!form.name.trim()) return
     setLoading(true)
-    try { await onSave(form) } finally { setLoading(false) }
+    try {
+      const accessConfig = giveAccess ? { accessRole, permissions: perms } : null
+      const link = await onSave(form, photoFile, accessConfig)
+      if (giveAccess && link) setInviteLink(link)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(inviteLink)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  // Success screen — shown after invite is generated
+  if (inviteLink) {
+    return (
+      <Modal title="Staff Added!" onClose={onClose}>
+        <div className="text-center py-4 space-y-4">
+          <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+            <CheckCircle size={28} className="text-emerald-600" />
+          </div>
+          <div>
+            <p className="font-bold text-gray-900">{form.name} added successfully</p>
+            <p className="text-sm text-gray-500 mt-1">Share this invite link so they can create their account</p>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-left">
+            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Invite Link</p>
+            <p className="text-xs text-gray-700 break-all font-mono">{inviteLink}</p>
+          </div>
+          <button
+            onClick={copyLink}
+            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition ${copied ? 'bg-emerald-600 text-white' : 'bg-brand-600 hover:bg-brand-700 text-white'}`}
+          >
+            {copied ? <><Check size={14}/> Copied!</> : <><Copy size={14}/> Copy Link</>}
+          </button>
+          <button onClick={onClose} className="w-full btn-secondary text-sm">Done</button>
+        </div>
+      </Modal>
+    )
   }
 
   return (
     <Modal title="Add Staff Member" onClose={onClose}>
-      <div className="space-y-4">
-        <div>
-          <label className="label">Full Name *</label>
-          <input className="input" placeholder="Staff name" value={form.name} onChange={e => set('name', e.target.value)} />
+      <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+
+        {/* Photo */}
+        <div className="flex flex-col items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="relative group w-20 h-20 rounded-full overflow-hidden flex-shrink-0 border-2 border-dashed border-gray-300 hover:border-brand-400 transition bg-gray-50"
+          >
+            {photoPreview ? (
+              <img src={photoPreview} alt="preview" className="w-full h-full object-cover" />
+            ) : (
+              <div className="flex flex-col items-center justify-center w-full h-full gap-1 text-gray-400 group-hover:text-brand-500 transition">
+                <Camera size={20} />
+                <span className="text-[10px] font-semibold">Photo</span>
+              </div>
+            )}
+            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+              <Camera size={16} className="text-white" />
+            </div>
+          </button>
+          <p className="text-[11px] text-gray-400">Optional photo</p>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label">Role</label>
-            <select className="input" value={form.role} onChange={e => set('role', e.target.value)}>
-              {ROLES.map(r => <option key={r}>{r}</option>)}
-            </select>
+
+        {/* HR Details */}
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Staff Details</p>
+          <div className="space-y-3">
+            <div>
+              <label className="label">Full Name *</label>
+              <input className="input" placeholder="Staff name" value={form.name} onChange={e => set('name', e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">HR Role</label>
+                <select className="input" value={form.role} onChange={e => set('role', e.target.value)}>
+                  {ROLES.map(r => <option key={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Phone</label>
+                <input className="input" placeholder="Mobile number" value={form.phone} onChange={e => set('phone', e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Monthly Salary (₹)</label>
+                <input className="input" type="number" value={form.salary} onChange={e => set('salary', Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="label">Join Date</label>
+                <input className="input" type="date" value={form.joinDate} onChange={e => set('joinDate', e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="label">Sports / Expertise</label>
+              <div className="flex flex-wrap gap-2">
+                {SPORTS.map(sp => (
+                  <button key={sp} type="button" onClick={() => toggleSport(sp)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                      form.sports.includes(sp) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                    }`}>{sp}</button>
+                ))}
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="label">Phone</label>
-            <input className="input" placeholder="Mobile number" value={form.phone} onChange={e => set('phone', e.target.value)} />
+        </div>
+
+        {/* Portal Access toggle */}
+        <div className="border-t border-gray-100 pt-4">
+          <div className="flex items-center justify-between mb-1">
+            <div>
+              <p className="text-sm font-bold text-gray-900">Portal Access</p>
+              <p className="text-xs text-gray-500">Let this staff member log in to the portal</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setGiveAccess(v => !v)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${giveAccess ? 'bg-brand-600' : 'bg-gray-200'}`}
+            >
+              <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${giveAccess ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
           </div>
-        </div>
-        <div>
-          <label className="label">Sports / Expertise</label>
-          <div className="flex flex-wrap gap-2">
-            {SPORTS.map(sp => (
-              <button key={sp} type="button" onClick={() => toggleSport(sp)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                  form.sports.includes(sp) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                }`}>{sp}</button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label className="label">Monthly Salary (₹)</label>
-          <input className="input" type="number" value={form.salary} onChange={e => set('salary', Number(e.target.value))} />
-        </div>
-        <div>
-          <label className="label">Join Date</label>
-          <input className="input" type="date" value={form.joinDate} onChange={e => set('joinDate', e.target.value)} />
+
+          {giveAccess && (
+            <div className="mt-4 space-y-4 bg-gray-50 rounded-xl p-4 border border-gray-100">
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Access Role</p>
+                <div className="flex flex-wrap gap-2">
+                  {ACCESS_ROLES.map(r => (
+                    <button key={r} type="button" onClick={() => handleAccessRole(r)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+                        accessRole === r
+                          ? 'bg-brand-600 text-white border-brand-600'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      }`}>
+                      {ACCESS_ROLE_LABEL[r]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Permissions</p>
+                <div className="space-y-2">
+                  {Object.entries(PERMISSION_GROUPS).map(([group, groupPerms]) => (
+                    <div key={group}>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">{group}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {groupPerms.map(perm => (
+                          <button key={perm} type="button" onClick={() => togglePerm(perm)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition ${
+                              perms.includes(perm)
+                                ? 'bg-emerald-600 text-white border-emerald-600'
+                                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                            }`}>
+                            {PERM_LABEL[perm]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3">
+                <Link2 size={13} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700">An invite link will be generated after saving. Share it with the staff member to complete their account setup.</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-      <div className="flex justify-end gap-3 mt-6">
+
+      <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-gray-100">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={handleSave} disabled={loading}>
-          {loading ? '…' : 'Add Staff Member'}
+        <button className="btn-primary" onClick={handleSave} disabled={loading || !form.name.trim()}>
+          {loading ? '…' : giveAccess ? 'Add & Send Invite' : 'Add Staff Member'}
         </button>
       </div>
     </Modal>

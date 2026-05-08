@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { CreditCard, Plus, Search, Download, CheckCircle, Clock, AlertCircle, X } from 'lucide-react'
 import { Modal } from './Students'
@@ -12,21 +12,37 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, addPayment, markPaymentPaid } = useApp()
-  const [search, setSearch] = useState('')
+  const { payments, students, batches, addPayment, markPaymentPaid } = useApp()
+  const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
-  const [showModal, setShowModal] = useState(false)
+  const [sportFilter,  setSportFilter]  = useState('All')
+  const [batchFilter,  setBatchFilter]  = useState('All')
+  const [showModal,    setShowModal]    = useState(false)
+
+  // Build studentId → { sport, batch } lookup for filter joins
+  const studentMap = useMemo(() => {
+    const m = {}
+    students.forEach(s => { m[s.id] = s })
+    return m
+  }, [students])
+
+  const sportOptions = useMemo(() =>
+    [...new Set(students.map(s => s.sport).filter(Boolean))].sort()
+  , [students])
 
   const filtered = payments.filter(p => {
-    const q = search.toLowerCase()
-    const matchQ = !q || p.student.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
+    const q    = search.toLowerCase()
+    const matchQ = !q || (p.student || '').toLowerCase().includes(q) || (p.id || '').toLowerCase().includes(q)
     const matchS = statusFilter === 'All' || p.status === statusFilter
-    return matchQ && matchS
+    const stu  = studentMap[p.studentId]
+    const matchSport = sportFilter === 'All' || stu?.sport === sportFilter
+    const matchBatch = batchFilter === 'All' || stu?.batch === batchFilter
+    return matchQ && matchS && matchSport && matchBatch
   })
 
-  const paid     = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
-  const pending  = payments.filter(p => p.status === 'Pending').reduce((s, p) => s + p.amount, 0)
-  const overdue  = payments.filter(p => p.status === 'Overdue').reduce((s, p) => s + p.amount, 0)
+  const paid    = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + (p.amount ?? 0), 0)
+  const pending = payments.filter(p => p.status === 'Pending').reduce((s, p) => s + (p.amount ?? 0), 0)
+  const overdue = payments.filter(p => p.status === 'Overdue').reduce((s, p) => s + (p.amount ?? 0), 0)
 
   return (
     <div className="space-y-5 max-w-[1400px]">
@@ -64,26 +80,44 @@ export default function Payments() {
       </div>
 
       {/* Filters */}
-      <div className="card p-4 flex flex-wrap gap-3 items-center">
-        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex-1 min-w-48">
-          <Search size={14} className="text-gray-400 flex-shrink-0" />
-          <input
-            className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full"
-            placeholder="Search by student or invoice..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+      <div className="card p-4 space-y-3">
+        {/* Row 1: search + status pills */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex-1 min-w-48">
+            <Search size={14} className="text-gray-400 flex-shrink-0" />
+            <input
+              className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full"
+              placeholder="Search by student or invoice..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          {['All','Paid','Pending','Overdue'].map(s => (
+            <button key={s} onClick={() => setStatusFilter(s)}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold border transition ${statusFilter===s ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              {s}
+            </button>
+          ))}
         </div>
-        {['All','Paid','Pending','Overdue'].map(s => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold border transition ${statusFilter===s ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-          >
-            {s}
-          </button>
-        ))}
-        <span className="text-xs text-gray-400 ml-auto">{filtered.length} records</span>
+        {/* Row 2: Sport + Batch dropdowns */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <select className="input w-auto" value={sportFilter}
+            onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
+            <option value="All">All Sports</option>
+            {sportOptions.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select className="input w-auto" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
+            <option value="All">All Batches</option>
+            {batches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+          </select>
+          {(sportFilter !== 'All' || batchFilter !== 'All') && (
+            <button onClick={() => { setSportFilter('All'); setBatchFilter('All') }}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition font-medium">
+              <X size={12} /> Clear filters
+            </button>
+          )}
+          <span className="text-xs text-gray-400 ml-auto">{filtered.length} records</span>
+        </div>
       </div>
 
       {/* Table */}
@@ -105,7 +139,7 @@ export default function Payments() {
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.id}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900">{p.student}</td>
                     <td className="px-4 py-3 text-gray-600">{p.month}</td>
-                    <td className="px-4 py-3 font-bold text-gray-900">₹{p.amount.toLocaleString('en-IN')}</td>
+                    <td className="px-4 py-3 font-bold text-gray-900">₹{(p.amount ?? 0).toLocaleString('en-IN')}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{p.mode || '—'}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{p.date || '—'}</td>
                     <td className="px-4 py-3">
