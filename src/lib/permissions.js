@@ -1,4 +1,5 @@
 export const ALL_PERMISSIONS = [
+  'dashboard.view',
   'students.view',
   'students.manage',
   'attendance.manage',
@@ -23,6 +24,7 @@ export const ROLE_PRESETS = {
 }
 
 export const PERMISSION_GROUPS = {
+  Dashboard:  ['dashboard.view'],
   Students:   ['students.view', 'students.manage'],
   Attendance: ['attendance.manage'],
   Payments:   ['payments.view', 'payments.manage'],
@@ -36,6 +38,7 @@ export const PERMISSION_GROUPS = {
 }
 
 export const PERM_LABEL = {
+  'dashboard.view':    'View Dashboard',
   'students.view':     'View Students',
   'students.manage':   'Manage Students',
   'attendance.manage': 'Mark Attendance',

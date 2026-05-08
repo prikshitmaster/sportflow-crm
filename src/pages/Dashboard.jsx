@@ -1,20 +1,94 @@
 import { useApp } from '../context/AppContext'
-import { revenueData, sportBreakdown } from '../data/mockData'
+import { useState, useMemo, useEffect } from 'react'
 import {
-  Users, CalendarCheck, CreditCard, TrendingUp, UserPlus, ChevronRight,
-  ArrowUpRight, Bell, Zap, CheckCircle, Clock,
+  Users, CreditCard, TrendingUp, UserPlus, ChevronRight,
+  AlertCircle, CalendarDays, CheckCircle, XCircle, UserCog,
+  BarChart3, Layers,
 } from 'lucide-react'
-import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
-} from 'recharts'
 import { Link } from 'react-router-dom'
 
-const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4']
-
 export default function Dashboard() {
-  const { students, payments, trials, user, dataLoading, attendanceData } = useApp()
+  const {
+    students, payments, trials, batches, staff,
+    user, role, hasPermission, dataLoading, attendanceData,
+    leaveRequests, loadLeaveRequests, updateLeave,
+  } = useApp()
 
+  const [sport, setSport] = useState('All')
+
+  useEffect(() => { loadLeaveRequests?.() }, [])
+
+  // ── All hooks must run before any early return ────────────
+
+  // Sport filter list (from actual student data)
+  const sportList = useMemo(() => {
+    const set = new Set()
+    students.forEach(s => s.sport && set.add(s.sport))
+    return ['All', ...Array.from(set).sort()]
+  }, [students])
+
+  // Filtered data
+  const filteredStudents = useMemo(() =>
+    sport === 'All' ? students : students.filter(s => s.sport === sport)
+  , [students, sport])
+
+  const activeStudents = useMemo(() =>
+    filteredStudents.filter(s => s.status === 'Active')
+  , [filteredStudents])
+
+  const studentSportMap = useMemo(() => {
+    const m = {}
+    students.forEach(s => { m[s.id] = s.sport })
+    return m
+  }, [students])
+
+  const filteredPayments = useMemo(() =>
+    sport === 'All' ? payments : payments.filter(p => studentSportMap[p.studentId] === sport)
+  , [payments, sport, studentSportMap])
+
+  const filteredStaff = useMemo(() =>
+    sport === 'All'
+      ? staff.filter(s => s.status === 'Active')
+      : staff.filter(s => s.status === 'Active' && s.sports?.includes(sport))
+  , [staff, sport])
+
+  const filteredBatches = useMemo(() =>
+    sport === 'All' ? batches : batches.filter(b => b.sports?.includes(sport))
+  , [batches, sport])
+
+  // Derived values (not hooks — safe to compute after all hooks)
+  const collectedAmt  = filteredPayments.filter(p => p.status === 'Paid').reduce((s, p) => s + (p.amount ?? 0), 0)
+  const overdueList   = filteredPayments.filter(p => p.status === 'Overdue')
+  const pendingList   = filteredPayments.filter(p => p.status === 'Pending')
+  const overdueAmt    = overdueList.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const expectedAmt   = activeStudents.reduce((s, st) => s + (st.fees || 0), 0)
+  const collectPct    = expectedAmt > 0 ? Math.round((collectedAmt / expectedAmt) * 100) : 0
+
+  const todayStr    = new Date().toISOString().split('T')[0]
+  const todayAtt    = attendanceData[todayStr] || {}
+
+  const batchStats = (b) => {
+    const bs = activeStudents.filter(s => s.batch === b.name || s.batchId === b.id)
+    const present = bs.filter(s => todayAtt[s.id] === 'Present' || todayAtt[s.id] === true).length
+    const marked  = Object.keys(todayAtt).length > 0
+    const pct = bs.length ? Math.round((present / bs.length) * 100) : 0
+    return { count: bs.length, present, pct, marked }
+  }
+
+  const pendingLeaves   = (leaveRequests || []).filter(r => r.status === 'Pending')
+  const trialFollowUps  = trials.filter(t => {
+    if (t.converted || !t.followUp) return false
+    return t.followUp <= todayStr
+  })
+
+  const quickActions = [
+    { label: '+ Add Student', to: '/students', color: 'bg-brand-600 text-white hover:bg-brand-700' },
+    { label: '+ Add Staff',   to: '/coaches',  color: 'bg-purple-600 text-white hover:bg-purple-700' },
+    { label: 'View Reports',  to: '/reports',  color: 'bg-gray-800 text-white hover:bg-gray-900' },
+    { label: 'Collect Fee',   to: '/payments', color: 'bg-emerald-600 text-white hover:bg-emerald-700' },
+  ]
+
+  // ── Loading state (after all hooks) ──────────────────────
   if (dataLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -23,235 +97,407 @@ export default function Dashboard() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
-          <p className="text-sm text-gray-500 font-medium">Loading academy data...</p>
+          <p className="text-sm text-gray-500 font-medium">Loading…</p>
         </div>
       </div>
     )
   }
-  const activeStudents = students.filter(s => s.status === 'Active').length
-  const todayStr = new Date().toISOString().split('T')[0]
-  const todayAttendance = Object.values(attendanceData[todayStr] || {}).filter(v => v === 'Present' || v === true).length
-  const pendingAmt = payments.filter(p => p.status !== 'Paid').reduce((s, p) => s + p.amount, 0)
-  const paidAmt = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
-  const overdueCount = payments.filter(p => p.status === 'Overdue').length
-  const newTrials = trials.filter(t => !t.converted).length
 
-  const recentPayments = [...payments].sort((a, b) => b.id.localeCompare(a.id)).slice(0, 5)
-
-  const quickActions = [
-    { label: 'Mark Attendance', to: '/attendance', icon: CalendarCheck, color: 'bg-brand-50 text-brand-600' },
-    { label: 'Collect Fee',     to: '/payments',   icon: CreditCard,    color: 'bg-emerald-50 text-emerald-600' },
-    { label: 'Add Student',     to: '/students',   icon: Users,         color: 'bg-purple-50 text-purple-600' },
-    { label: 'Add Trial Lead',  to: '/trials',     icon: UserPlus,      color: 'bg-amber-50 text-amber-600' },
-  ]
+  // ── Permission gate — admin without dashboard.view ────────
+  if (role === 'admin' && !hasPermission('dashboard.view')) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center max-w-sm">
+          <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <BarChart3 size={24} className="text-gray-400" />
+          </div>
+          <h3 className="font-bold text-gray-900 mb-1">Dashboard not accessible</h3>
+          <p className="text-sm text-gray-500">You don't have permission to view the dashboard. Use the sidebar to navigate to your assigned sections.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 max-w-[1400px]">
-      {/* Welcome bar */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+
+      {/* ── Header ──────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-black text-gray-900">Good morning, {user?.name?.split(' ')[0]} 👋</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{user?.academy} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <h2 className="text-xl font-black text-gray-900">
+            Good morning, {user?.name?.split(' ')[0]} 👋
+          </h2>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {user?.academy} · {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {quickActions.map(a => (
-            <Link key={a.label} to={a.to} className={`hidden md:flex items-center gap-2 ${a.color} px-3 py-2 rounded-lg text-xs font-semibold hover:opacity-80 transition`}>
-              <a.icon size={14} />
+            <Link key={a.label} to={a.to}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${a.color}`}>
               {a.label}
             </Link>
           ))}
         </div>
       </div>
 
-      {/* Stat cards */}
+      {/* ── Branch / Sport filter tabs ───────────────────────── */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {sportList.map(s => (
+          <button
+            key={s}
+            onClick={() => setSport(s)}
+            className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition ${
+              sport === s
+                ? 'bg-gray-900 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {s === 'All' ? 'All Branches' : s}
+          </button>
+        ))}
+      </div>
+
+      {/* ── KPI cards ────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Total Students"
-          value={activeStudents}
-          sub={`${students.length - activeStudents} inactive`}
+        <KpiCard
+          label="Active Students"
+          value={activeStudents.length}
+          sub={`${filteredStudents.length - activeStudents.length} inactive`}
           icon={Users}
           color="blue"
-          trend="+3 this month"
         />
-        <StatCard
-          label="Today's Attendance"
-          value={`${todayAttendance}/${activeStudents}`}
-          sub={`${Math.round((todayAttendance / activeStudents) * 100)}% present`}
-          icon={CalendarCheck}
-          color="green"
-          trend="↑ from yesterday"
-        />
-        <StatCard
-          label="Pending Fees"
-          value={`₹${pendingAmt.toLocaleString('en-IN')}`}
-          sub={`${overdueCount} overdue`}
-          icon={CreditCard}
-          color="amber"
-          trend={overdueCount > 0 ? `${overdueCount} overdue` : 'All good'}
-        />
-        <StatCard
-          label="Monthly Revenue"
-          value={`₹${paidAmt.toLocaleString('en-IN')}`}
-          sub="April 2026"
+        <KpiCard
+          label="Collected This Month"
+          value={`₹${fmtAmt(collectedAmt)}`}
+          sub={`${collectPct}% of ₹${fmtAmt(expectedAmt)} expected`}
           icon={TrendingUp}
+          color="green"
+        />
+        <KpiCard
+          label="Overdue Fees"
+          value={`₹${fmtAmt(overdueAmt)}`}
+          sub={`${overdueList.length} overdue · ${pendingList.length} pending`}
+          icon={CreditCard}
+          color="red"
+        />
+        <KpiCard
+          label={sport === 'All' ? 'Active Staff' : `${sport} Coaches`}
+          value={filteredStaff.length}
+          sub={`of ${staff.length} total staff`}
+          icon={UserCog}
           color="purple"
-          trend="↑ vs last month"
         />
       </div>
 
-      {/* Charts row */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        {/* Revenue area chart */}
-        <div className="card p-5 lg:col-span-2">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="font-bold text-gray-900">Revenue Trend</h3>
-              <p className="text-xs text-gray-500">Oct 2025 – May 2026</p>
-            </div>
-            <span className="badge badge-blue">₹ Monthly</span>
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={revenueData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#2563eb" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: 12 }} />
-              <Area type="monotone" dataKey="revenue" stroke="#2563eb" strokeWidth={2.5} fill="url(#revGrad)" />
-              <Area type="monotone" dataKey="target" stroke="#e5e7eb" strokeWidth={1.5} strokeDasharray="4 4" fill="none" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+      {/* ── Main content row ──────────────────────────────────── */}
+      <div className="grid lg:grid-cols-3 gap-5">
 
-        {/* Sport breakdown pie */}
-        <div className="card p-5">
-          <h3 className="font-bold text-gray-900 mb-1">Students by Sport</h3>
-          <p className="text-xs text-gray-500 mb-4">Active enrollment</p>
-          <ResponsiveContainer width="100%" height={150}>
-            <PieChart>
-              <Pie data={sportBreakdown} cx="50%" cy="50%" innerRadius={40} outerRadius={65} dataKey="count" paddingAngle={2}>
-                {sportBreakdown.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip formatter={(v, n, { payload }) => [v, payload.sport]} contentStyle={{ borderRadius: 8, border: 'none', fontSize: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="grid grid-cols-2 gap-1 mt-3">
-            {sportBreakdown.map((s, i) => (
-              <div key={s.sport} className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }}></div>
-                <span className="text-xs text-gray-600 truncate">{s.sport}</span>
-                <span className="text-xs font-bold text-gray-900 ml-auto">{s.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+        {/* Money snapshot — left 2/3 */}
+        <div className="lg:col-span-2 space-y-5">
 
-      {/* Bottom row */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        {/* Recent payments */}
-        <div className="card p-5 lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-gray-900">Recent Payments</h3>
-            <Link to="/payments" className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
-              View all <ChevronRight size={12} />
-            </Link>
-          </div>
-          <div className="space-y-2.5">
-            {recentPayments.map(p => (
-              <div key={p.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-                <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 flex-shrink-0">
-                  {p.student[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 truncate">{p.student}</p>
-                  <p className="text-xs text-gray-400">{p.month}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-gray-900">₹{p.amount.toLocaleString('en-IN')}</p>
-                  <StatusBadge status={p.status} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Quick actions + summary */}
-        <div className="space-y-4">
+          {/* Collection bar */}
           <div className="card p-5">
-            <h3 className="font-bold text-gray-900 mb-3">Quick Actions</h3>
-            <div className="space-y-2">
-              {quickActions.map(a => (
-                <Link key={a.label} to={a.to}
-                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition group"
-                >
-                  <div className={`w-9 h-9 ${a.color} rounded-lg flex items-center justify-center`}>
-                    <a.icon size={16} />
-                  </div>
-                  <span className="text-sm font-semibold text-gray-700 flex-1">{a.label}</span>
-                  <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 transition" />
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-gray-900">Fee Collection</h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {sport === 'All' ? 'All branches' : sport} · {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                </p>
+              </div>
+              <Link to="/reports" className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
+                Full report <ChevronRight size={12} />
+              </Link>
+            </div>
+
+            {/* Tally-style collection summary */}
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="text-center p-3 bg-emerald-50 rounded-xl">
+                <p className="text-lg font-black text-emerald-700">₹{fmtAmt(collectedAmt)}</p>
+                <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">Collected</p>
+              </div>
+              <div className="text-center p-3 bg-amber-50 rounded-xl">
+                <p className="text-lg font-black text-amber-700">₹{fmtAmt(pendingList.reduce((s,p)=>s+p.amount,0))}</p>
+                <p className="text-[10px] text-amber-600 font-semibold mt-0.5">Pending</p>
+              </div>
+              <div className="text-center p-3 bg-red-50 rounded-xl">
+                <p className="text-lg font-black text-red-700">₹{fmtAmt(overdueAmt)}</p>
+                <p className="text-[10px] text-red-600 font-semibold mt-0.5">Overdue</p>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            {expectedAmt > 0 && (
+              <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5">
+                  <span>Collected {collectPct}%</span>
+                  <span>Expected ₹{fmtAmt(expectedAmt)}</span>
+                </div>
+                <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all"
+                    style={{ width: `${Math.min(collectPct, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Overdue students */}
+          {overdueList.length > 0 && (
+            <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                  <AlertCircle size={15} className="text-red-500" /> Overdue Fees
+                </h3>
+                <Link to="/payments" className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
+                  View all <ChevronRight size={12} />
                 </Link>
-              ))}
+              </div>
+              <div className="divide-y divide-gray-50">
+                {overdueList.slice(0, 6).map(p => (
+                  <div key={p.id} className="flex items-center justify-between py-2.5 gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-xs font-bold text-red-600 flex-shrink-0">
+                        {p.student?.[0]}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{p.student}</p>
+                        <p className="text-xs text-gray-400">{p.month}</p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-black text-red-600">₹{(p.amount ?? 0).toLocaleString('en-IN')}</p>
+                      <span className="badge badge-red">Overdue</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Today's batches */}
+          {filteredBatches.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                  <Layers size={15} className="text-brand-600" />
+                  Today's Batches
+                  {sport !== 'All' && <span className="text-xs text-gray-400 font-normal">· {sport}</span>}
+                </h3>
+                <Link to="/batches" className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
+                  Manage <ChevronRight size={12} />
+                </Link>
+              </div>
+              <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {filteredBatches.map(b => {
+                  const { count, present, pct, marked } = batchStats(b)
+                  return (
+                    <div key={b.id} className="card p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-gray-900 truncate">{b.name}</p>
+                          <p className="text-xs text-gray-400 truncate">{b.coach || '—'}</p>
+                        </div>
+                        {marked ? (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full flex-shrink-0">✓ Marked</span>
+                        ) : (
+                          <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-2 py-0.5 rounded-full flex-shrink-0">Pending</span>
+                        )}
+                      </div>
+                      <div className="flex items-end gap-3">
+                        <div>
+                          <p className="text-xl font-black text-gray-900">{count}</p>
+                          <p className="text-[10px] text-gray-400">students</p>
+                        </div>
+                        {count > 0 && (
+                          <div className="flex-1">
+                            <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                              <span>{present} present</span>
+                              <span className={`font-bold ${pct >= 80 ? 'text-emerald-600' : pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{pct}%</span>
+                            </div>
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${pct >= 80 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-400' : 'bg-red-400'}`}
+                                style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      {b.sports?.length > 0 && (
+                        <p className="text-[10px] text-gray-400 mt-2 flex gap-1 flex-wrap">
+                          {b.sports.map(sp => <span key={sp} className="bg-gray-100 px-1.5 py-0.5 rounded">{sp}</span>)}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right column — alerts + reports ─────────────────── */}
+        <div className="space-y-4">
+
+          {/* Pending leave requests — with inline approve/reject */}
+          {pendingLeaves.length > 0 && (
+            <div className="card p-4">
+              <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                <CalendarDays size={15} className="text-purple-600" />
+                Leave Requests
+                <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingLeaves.length}</span>
+              </h3>
+              <div className="space-y-3">
+                {pendingLeaves.map(r => (
+                  <LeaveCard key={r.id} request={r} onUpdate={updateLeave} />
+                ))}
+              </div>
+              <Link to="/coaches" className="mt-3 flex items-center justify-center gap-1 text-xs text-purple-600 font-semibold hover:underline">
+                All leave requests <ChevronRight size={11} />
+              </Link>
+            </div>
+          )}
+
+          {/* Summary alerts */}
+          <div className="card p-4">
+            <h3 className="font-bold text-gray-900 mb-3">Academy Alerts</h3>
+            <div className="space-y-2.5">
+              <AlertRow
+                icon={CreditCard}
+                color="text-red-600" bg="bg-red-50"
+                text={overdueList.length > 0 ? `${overdueList.length} students overdue — ₹${fmtAmt(overdueAmt)}` : 'No overdue fees'}
+                to="/payments"
+              />
+              <AlertRow
+                icon={UserPlus}
+                color="text-amber-600" bg="bg-amber-50"
+                text={trialFollowUps.length > 0 ? `${trialFollowUps.length} trial follow-up${trialFollowUps.length > 1 ? 's' : ''} due` : 'No follow-ups due'}
+                to="/trials"
+              />
+              <AlertRow
+                icon={Users}
+                color="text-brand-600" bg="bg-brand-50"
+                text={`${activeStudents.length} active student${activeStudents.length !== 1 ? 's' : ''}${sport !== 'All' ? ` in ${sport}` : ''}`}
+                to="/students"
+              />
+              <AlertRow
+                icon={BarChart3}
+                color="text-purple-600" bg="bg-purple-50"
+                text="View full reports"
+                to="/reports"
+              />
             </div>
           </div>
 
-          <div className="card p-5">
-            <h3 className="font-bold text-gray-900 mb-3">Alerts</h3>
-            <div className="space-y-2.5">
-              <AlertRow icon={CreditCard} color="text-amber-600" bg="bg-amber-50" text={`${overdueCount} students overdue`} />
-              <AlertRow icon={UserPlus} color="text-brand-600" bg="bg-brand-50" text={`${newTrials} trial follow-ups pending`} />
-              <AlertRow icon={CalendarCheck} color="text-emerald-600" bg="bg-emerald-50" text="Attendance marked for today" />
+          {/* Staff overview */}
+          {filteredStaff.length > 0 && (
+            <div className="card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-gray-900">
+                  {sport === 'All' ? 'Staff' : `${sport} Staff`}
+                </h3>
+                <Link to="/coaches" className="text-xs text-brand-600 font-semibold hover:underline">Manage</Link>
+              </div>
+              <div className="space-y-2.5">
+                {filteredStaff.slice(0, 5).map(s => (
+                  <div key={s.id} className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-brand-100 rounded-xl flex items-center justify-center text-xs font-black text-brand-700 flex-shrink-0">
+                      {s.name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{s.name}</p>
+                      <p className="text-xs text-gray-400 truncate">{s.role}</p>
+                    </div>
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.status === 'Active' ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                  </div>
+                ))}
+                {filteredStaff.length > 5 && (
+                  <p className="text-xs text-gray-400 text-center">+{filteredStaff.length - 5} more</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-function StatCard({ label, value, sub, icon: Icon, color, trend }) {
-  const colorMap = {
-    blue:   { bg: 'bg-brand-50',   icon: 'text-brand-600',   border: 'border-brand-100' },
-    green:  { bg: 'bg-emerald-50', icon: 'text-emerald-600', border: 'border-emerald-100' },
-    amber:  { bg: 'bg-amber-50',   icon: 'text-amber-600',   border: 'border-amber-100' },
-    purple: { bg: 'bg-purple-50',  icon: 'text-purple-600',  border: 'border-purple-100' },
+// ── Leave request card with inline approve/reject ─────────────
+
+function LeaveCard({ request: r, onUpdate }) {
+  const [loading, setLoading] = useState(null)
+  const handle = async (status) => {
+    setLoading(status)
+    try { await onUpdate(r.id, status) } finally { setLoading(null) }
   }
-  const c = colorMap[color]
+  return (
+    <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <p className="text-sm font-bold text-gray-900">{r.staff_name}</p>
+          <p className="text-xs text-gray-500">{fmtDate(r.start_date)} → {fmtDate(r.end_date)}</p>
+          <p className="text-xs text-gray-400 mt-0.5 italic truncate">"{r.reason}"</p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => handle('Approved')} disabled={!!loading}
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition disabled:opacity-50">
+          <CheckCircle size={11} /> {loading === 'Approved' ? '…' : 'Approve'}
+        </button>
+        <button onClick={() => handle('Rejected')} disabled={!!loading}
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-bold transition disabled:opacity-50">
+          <XCircle size={11} /> Reject
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Sub-components ────────────────────────────────────────────
+
+function KpiCard({ label, value, sub, icon: Icon, color }) {
+  const c = {
+    blue:   { bg: 'bg-brand-50',   icon: 'text-brand-600' },
+    green:  { bg: 'bg-emerald-50', icon: 'text-emerald-600' },
+    red:    { bg: 'bg-red-50',     icon: 'text-red-500' },
+    purple: { bg: 'bg-purple-50',  icon: 'text-purple-600' },
+  }[color]
   return (
     <div className="card p-5">
       <div className="flex items-start justify-between mb-3">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</p>
-        <div className={`w-9 h-9 ${c.bg} rounded-xl flex items-center justify-center`}>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide leading-tight">{label}</p>
+        <div className={`w-9 h-9 ${c.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
           <Icon size={18} className={c.icon} />
         </div>
       </div>
       <p className="text-2xl font-black text-gray-900">{value}</p>
-      <p className="text-xs text-gray-400 mt-1">{sub}</p>
+      <p className="text-xs text-gray-400 mt-1 leading-tight">{sub}</p>
     </div>
   )
 }
 
-function AlertRow({ icon: Icon, color, bg, text }) {
+function AlertRow({ icon: Icon, color, bg, text, to }) {
   return (
-    <div className="flex items-center gap-2.5">
+    <Link to={to} className="flex items-center gap-2.5 hover:opacity-80 transition">
       <div className={`w-7 h-7 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
         <Icon size={13} className={color} />
       </div>
-      <p className="text-xs text-gray-600 font-medium">{text}</p>
-    </div>
+      <p className="text-xs text-gray-600 font-medium flex-1">{text}</p>
+      <ChevronRight size={12} className="text-gray-300 flex-shrink-0" />
+    </Link>
   )
 }
 
-function StatusBadge({ status }) {
-  const map = {
-    Paid:    'badge-green',
-    Pending: 'badge-yellow',
-    Overdue: 'badge-red',
-  }
-  return <span className={`badge ${map[status] || 'badge-gray'} mt-0.5`}>{status}</span>
+// ── Helpers ───────────────────────────────────────────────────
+
+function fmtAmt(n) {
+  if (n >= 100000) return `${(n / 100000).toFixed(1)}L`
+  if (n >= 1000)   return `${(n / 1000).toFixed(0)}k`
+  return n.toLocaleString('en-IN')
+}
+
+function fmtDate(d) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }

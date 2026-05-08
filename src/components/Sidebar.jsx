@@ -12,7 +12,7 @@ import {
 import { useState } from 'react'
 
 const nav = [
-  { to: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard, feature: null,        permission: null },
+  { to: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard, feature: null,        permission: 'dashboard.view' },
   { to: '/students',   label: 'Students',   icon: Users,            feature: null,        permission: 'students.view' },
   { to: '/attendance', label: 'Attendance', icon: CalendarCheck,   feature: 'attendance', permission: 'attendance.manage' },
   { to: '/payments',   label: 'Payments',   icon: CreditCard,      feature: 'payments',   permission: 'payments.view' },
