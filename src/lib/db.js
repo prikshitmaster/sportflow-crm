@@ -960,3 +960,26 @@ export async function deleteInvite(id) {
     .eq('id', id)
   if (error) throw error
 }
+
+// ── Staff Attendance ──────────────────────────────────────
+
+export async function logStaffAttendance(academyId, profileId, staffName, date, checkInTime) {
+  const { error } = await supabase
+    .from('staff_attendance')
+    .upsert(
+      { academy_id: academyId, profile_id: profileId, staff_name: staffName, check_in_date: date, check_in_time: checkInTime },
+      { onConflict: 'academy_id,profile_id,check_in_date' }
+    )
+  if (error) throw error
+}
+
+export async function fetchStaffAttendanceForDate(academyId, date) {
+  const { data, error } = await supabase
+    .from('staff_attendance')
+    .select('*')
+    .eq('academy_id', academyId)
+    .eq('check_in_date', date)
+    .order('check_in_time', { ascending: true })
+  if (error) throw error
+  return data || []
+}

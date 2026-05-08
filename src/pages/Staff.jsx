@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { UserCog, Plus, Phone, IndianRupee, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor } from 'lucide-react'
+import { UserCog, Plus, Phone, IndianRupee, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
@@ -54,6 +54,12 @@ export default function Staff() {
             <ShieldCheck size={14} /> Access
           </button>
         )}
+        {role === 'owner' && (
+          <button onClick={() => setActiveTab('attendance')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${activeTab === 'attendance' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            <CalendarCheck size={14} /> Attendance
+          </button>
+        )}
       </div>
 
       {/* Leave requests panel */}
@@ -71,6 +77,11 @@ export default function Staff() {
           updateStaffAccess={updateStaffAccess}
           revokeStaffAccess={revokeStaffAccess}
         />
+      )}
+
+      {/* Staff attendance panel */}
+      {activeTab === 'attendance' && (
+        <StaffAttendancePanel staff={staff} user={user} demoMode={demoMode} />
       )}
 
       {/* Staff list — hidden when on leaves/access tab */}
@@ -930,6 +941,128 @@ function PermissionPanel({ target, onClose, onSave }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Staff Attendance Panel (owner view) ───────────────────
+
+function StaffAttendancePanel({ staff, user, demoMode }) {
+  const today = new Date().toISOString().split('T')[0]
+  const [date,    setDate]    = useState(today)
+  const [records, setRecords] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (demoMode || !user?.academyId) return
+    setLoading(true)
+    db.fetchStaffAttendanceForDate(user.academyId, date)
+      .then(setRecords)
+      .catch(() => setRecords([]))
+      .finally(() => setLoading(false))
+  }, [date, user?.academyId, demoMode])
+
+  const activeStaff = staff.filter(s => s.status === 'Active')
+  const presentSet  = new Set(records.map(r => r.staff_name?.toLowerCase().trim()))
+  const presentCount = activeStaff.filter(s => presentSet.has(s.name?.toLowerCase().trim())).length
+
+  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', {
+    weekday: 'long', day: 'numeric', month: 'long',
+  })
+
+  return (
+    <div className="space-y-4">
+      {/* Header row */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-semibold text-gray-700">Date</label>
+          <input
+            type="date"
+            className="input py-1.5 text-sm"
+            value={date}
+            max={today}
+            onChange={e => setDate(e.target.value)}
+          />
+        </div>
+        <p className="text-xs text-gray-400 hidden sm:block">{dateLabel}</p>
+        <div className="flex items-center gap-3 ml-auto">
+          <div className="text-center">
+            <p className="text-xl font-black text-emerald-600">{presentCount}</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">Present</p>
+          </div>
+          <div className="w-px h-8 bg-gray-200" />
+          <div className="text-center">
+            <p className="text-xl font-black text-red-400">{activeStaff.length - presentCount}</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">Absent</p>
+          </div>
+          <div className="w-px h-8 bg-gray-200" />
+          <div className="text-center">
+            <p className="text-xl font-black text-gray-900">{activeStaff.length}</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">Total</p>
+          </div>
+        </div>
+      </div>
+
+      {demoMode ? (
+        <div className="card p-8 text-center">
+          <CalendarCheck size={32} className="text-gray-200 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-gray-500">Not available in demo mode</p>
+          <p className="text-xs text-gray-400 mt-1">Staff QR check-ins are recorded here in production</p>
+        </div>
+      ) : loading ? (
+        <div className="card p-8 flex items-center justify-center">
+          <svg className="animate-spin h-6 w-6 text-brand-600" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </div>
+      ) : activeStaff.length === 0 ? (
+        <div className="card p-8 text-center">
+          <p className="text-sm text-gray-400">No active staff members found.</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+          {/* Table header */}
+          <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Name</span>
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Role</span>
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Status</span>
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Clock In</span>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {activeStaff.map(s => {
+              const record = records.find(r => r.staff_name?.toLowerCase().trim() === s.name?.toLowerCase().trim())
+              return (
+                <div key={s.id} className="grid md:grid-cols-[2fr_1fr_1fr_1fr] gap-3 md:gap-4 items-center px-5 py-3.5">
+                  <div className="flex items-center gap-3">
+                    {s.photoUrl ? (
+                      <img src={s.photoUrl} alt={s.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 bg-gradient-to-br from-brand-400 to-brand-600 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                        {s.name[0]}
+                      </div>
+                    )}
+                    <p className="text-sm font-semibold text-gray-900">{s.name}</p>
+                  </div>
+                  <p className="text-xs text-gray-500">{s.role}</p>
+                  <div>
+                    {record ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-full">
+                        <CheckCircle size={11} /> Present
+                      </span>
+                    ) : (
+                      <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-0.5 rounded-full">
+                        Absent
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-semibold text-gray-600">{record ? record.check_in_time : '—'}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

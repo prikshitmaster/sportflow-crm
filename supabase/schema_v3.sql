@@ -52,8 +52,22 @@ create table if not exists leave_requests (
   created_at  timestamptz default now()
 );
 
+-- ── Staff Attendance ─────────────────────────────────────
+-- One row per staff member per day they clock in via QR
+create table if not exists staff_attendance (
+  id            uuid default gen_random_uuid() primary key,
+  academy_id    uuid references academies(id) on delete cascade,
+  profile_id    uuid,                    -- profiles.id (Supabase auth UID)
+  staff_name    text not null,
+  check_in_date date not null,
+  check_in_time text not null,
+  created_at    timestamptz default now(),
+  unique(academy_id, profile_id, check_in_date)
+);
+
 -- ── RLS (keep off for now — same as other tables) ─────────
-alter table academies      disable row level security;
-alter table profiles       disable row level security;
-alter table feature_flags  disable row level security;
-alter table leave_requests disable row level security;
+alter table academies        disable row level security;
+alter table profiles         disable row level security;
+alter table feature_flags    disable row level security;
+alter table leave_requests   disable row level security;
+alter table staff_attendance disable row level security;

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
 import { QrCode, CheckCircle2, XCircle, Camera } from 'lucide-react'
 import jsQR from 'jsqr'
+import * as db from '../../lib/db'
 
 const CHECKIN_PREFIX = 'sportflow-staff:'
 
@@ -94,9 +95,11 @@ export default function StaffScanIn() {
       setPhase('error')
       return
     }
-    // Record check-in
     const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
     try { localStorage.setItem(CHECKIN_KEY(user?.id, today), timeStr) } catch (_) {}
+    if (user?.academyId && user?.id) {
+      try { await db.logStaffAttendance(user.academyId, user.id, user.name, today, timeStr) } catch (_) {}
+    }
     setCheckinTime(timeStr)
     setPhase('success')
   }
