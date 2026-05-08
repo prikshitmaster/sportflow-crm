@@ -12,12 +12,14 @@ export default function Batches() {
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [activeBranch, setActiveBranch] = useState('All')
 
-  // Branches that have at least one batch
-  const branchList = useMemo(() =>
-    (branches || []).filter(br => batches.some(b => b.sports?.includes(br)))
-  , [branches, batches])
+  // Derive branch list from batch sports (sorted), regardless of DB branches
+  const branchList = useMemo(() => {
+    const set = new Set()
+    batches.forEach(b => b.sports?.forEach(s => set.add(s)))
+    return [...set].sort()
+  }, [batches])
 
-  // Grouped: [{branch, batches}] — for grouped view
+  // Grouped sections — always available when batches have sports
   const grouped = useMemo(() => {
     if (branchList.length === 0) return null
     return branchList.map(br => ({
