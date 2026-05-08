@@ -72,9 +72,10 @@ export default function Attendance() {
   const todayMonth = now.getMonth()
   const todayYear  = now.getFullYear()
 
-  const [year,          setYear]          = useState(todayYear)
-  const [month,         setMonth]         = useState(todayMonth)
-  const [selectedBatch, setSelectedBatch] = useState(null)
+  const [year,           setYear]           = useState(todayYear)
+  const [month,          setMonth]          = useState(todayMonth)
+  const [selectedBranch, setSelectedBranch] = useState('All')
+  const [selectedBatch,  setSelectedBatch]  = useState(null)
   const [monthData,     setMonthData]     = useState({})
   const [saving,        setSaving]        = useState(false)
   const [loading,       setLoading]       = useState(false)
@@ -162,6 +163,20 @@ export default function Attendance() {
     return { ...b, studentCount: bs.length, presentToday: isCurrentMonth ? bs.filter(s => getStatus(s.id, todayDay)==='Present').length : 0 }
   }), [batches, activeStudents, monthData, todayDay, isCurrentMonth])
 
+  // Branch list derived from batches' sports arrays
+  const branchList = useMemo(() => {
+    const set = new Set()
+    batches.forEach(b => (b.sports || []).forEach(sp => set.add(sp)))
+    return ['All', ...Array.from(set).sort()]
+  }, [batches])
+
+  // Batches filtered by selected branch
+  const visibleBatches = useMemo(() =>
+    selectedBranch === 'All'
+      ? batchStats
+      : batchStats.filter(b => (b.sports || []).includes(selectedBranch))
+  , [batchStats, selectedBranch])
+
   // Mobile day stats
   const mobileDayStats = useMemo(() => {
     const c = { Present:0, Absent:0, Late:0, Leave:0 }
@@ -182,42 +197,70 @@ export default function Attendance() {
         </button>
       </div>
 
-      {/* ── Batch Cards (horizontal scroll on all sizes) ── */}
-      <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
+      {/* ── Branch pills (Level 1) ───────────────────────── */}
+      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+        {branchList.map(br => (
+          <button
+            key={br}
+            onClick={() => { setSelectedBranch(br); setSelectedBatch(null) }}
+            className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              selectedBranch === br
+                ? 'bg-gray-900 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+            }`}
+          >
+            {br === 'All' ? 'All Branches' : br}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Batch pills (Level 2) ────────────────────────── */}
+      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+        {/* All pill */}
         <button
           onClick={() => setSelectedBatch(null)}
-          className={`flex-shrink-0 snap-start rounded-2xl border-2 p-3.5 text-left transition w-36 ${
-            !selectedBatch ? 'border-brand-600 bg-brand-50' : 'border-gray-100 bg-white'
+          className={`flex-shrink-0 flex items-center gap-2 pl-3 pr-3.5 py-2.5 rounded-xl border transition ${
+            !selectedBatch
+              ? 'border-brand-500 bg-brand-50 text-brand-700'
+              : 'border-gray-200 bg-white text-gray-600 active:bg-gray-50'
           }`}
         >
-          <p className={`text-xs font-bold ${!selectedBatch ? 'text-brand-700' : 'text-gray-900'}`}>All Batches</p>
-          <p className={`text-2xl font-black mt-1.5 ${!selectedBatch ? 'text-brand-600' : 'text-gray-700'}`}>{activeStudents.length}</p>
-          <p className="text-[10px] text-gray-400">students</p>
+          <span className="text-xs font-bold whitespace-nowrap">
+            All {selectedBranch !== 'All' ? selectedBranch : 'Batches'}
+          </span>
+          <span className={`text-[11px] font-black px-1.5 py-0.5 rounded-full ${
+            !selectedBatch ? 'bg-brand-200 text-brand-800' : 'bg-gray-100 text-gray-600'
+          }`}>
+            {selectedBranch === 'All'
+              ? activeStudents.length
+              : activeStudents.filter(s => visibleBatches.some(b => b.name === s.batch)).length}
+          </span>
         </button>
 
-        {batchStats.map(b => {
+        {visibleBatches.map(b => {
           const isActive = selectedBatch === b.name
-          const pct = b.studentCount > 0 ? Math.round((b.presentToday / b.studentCount) * 100) : 0
+          const pct = b.studentCount > 0 ? Math.round((b.presentToday / b.studentCount) * 100) : null
+          const pctColor = pct === null ? '' : pct >= 80 ? 'text-emerald-600 bg-emerald-50' : pct >= 60 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50'
           return (
             <button
               key={b.id}
               onClick={() => setSelectedBatch(isActive ? null : b.name)}
-              className={`flex-shrink-0 snap-start rounded-2xl border-2 p-3.5 text-left transition w-44 ${
-                isActive ? 'border-brand-600 bg-brand-50' : 'border-gray-100 bg-white'
+              className={`flex-shrink-0 flex items-center gap-2.5 pl-3 pr-3 py-2.5 rounded-xl border transition ${
+                isActive
+                  ? 'border-brand-500 bg-brand-50 text-brand-700'
+                  : 'border-gray-200 bg-white text-gray-700 active:bg-gray-50'
               }`}
             >
-              <p className={`text-xs font-bold leading-tight ${isActive ? 'text-brand-700' : 'text-gray-900'}`}>{b.name}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5 truncate">{b.time}</p>
-              <div className="flex items-end justify-between mt-2">
-                <div>
-                  <p className={`text-xl font-black ${isActive ? 'text-brand-600' : 'text-gray-700'}`}>{b.studentCount}</p>
-                  <p className="text-[10px] text-gray-400">students</p>
-                </div>
-                {isCurrentMonth && (
-                  <div className="text-right">
-                    <p className={`text-sm font-black ${pct>=80?'text-emerald-600':pct>=60?'text-amber-600':'text-red-600'}`}>{pct}%</p>
-                    <p className="text-[10px] text-gray-400">today</p>
-                  </div>
+              <div className="text-left">
+                <p className="text-xs font-bold whitespace-nowrap leading-tight">{b.name}</p>
+                <p className="text-[10px] text-gray-400 whitespace-nowrap leading-tight">{b.time}</p>
+              </div>
+              <div className="flex flex-col items-end gap-0.5">
+                <span className={`text-[11px] font-black px-1.5 py-0.5 rounded-full ${
+                  isActive ? 'bg-brand-200 text-brand-800' : 'bg-gray-100 text-gray-600'
+                }`}>{b.studentCount}</span>
+                {isCurrentMonth && pct !== null && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${pctColor}`}>{pct}%</span>
                 )}
               </div>
             </button>

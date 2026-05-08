@@ -48,6 +48,10 @@
 /* Mobile touch scrolling */
 .overflow-x-auto { -webkit-overflow-scrolling: touch; }
 
+/* Hide scrollbar but keep scroll functionality */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 /* Safe area for bottom nav */
 .safe-pb { padding-bottom: env(safe-area-inset-bottom, 0); }
 
