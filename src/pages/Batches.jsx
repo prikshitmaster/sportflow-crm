@@ -12,19 +12,24 @@ export default function Batches() {
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [activeBranch, setActiveBranch] = useState('All')
 
-  // Only show branches that have at least one batch
-  const branchList = useMemo(() => {
-    const withBatches = (branches || []).filter(br =>
-      batches.some(b => b.sports?.includes(br))
-    )
-    return withBatches
-  }, [branches, batches])
+  // Branches that have at least one batch
+  const branchList = useMemo(() =>
+    (branches || []).filter(br => batches.some(b => b.sports?.includes(br)))
+  , [branches, batches])
 
-  const visibleBatches = useMemo(() =>
-    activeBranch === 'All'
-      ? batches
-      : batches.filter(b => b.sports?.includes(activeBranch))
-  , [batches, activeBranch])
+  // Grouped: [{branch, batches}] — for grouped view
+  const grouped = useMemo(() => {
+    if (branchList.length === 0) return null
+    return branchList.map(br => ({
+      branch: br,
+      batches: batches.filter(b => b.sports?.includes(br)),
+    }))
+  }, [branchList, batches])
+
+  // Active branch filter (used only when clicking a pill to scroll/jump is not needed — kept for stats)
+  const visibleBatches = activeBranch === 'All'
+    ? batches
+    : batches.filter(b => b.sports?.includes(activeBranch))
 
   const handleAdd = async (b) => {
     await addBatch(b)
@@ -44,45 +49,28 @@ export default function Batches() {
         </button>
       </div>
 
-      {/* Branch filter pills */}
+      {/* Branch jump pills */}
       {branchList.length > 0 && (
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
           <button
             onClick={() => setActiveBranch('All')}
-            className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition ${
-              activeBranch === 'All'
-                ? 'bg-gray-900 text-white border-gray-900'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-            }`}
+            className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition ${activeBranch === 'All' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
           >
-            All
-            <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === 'All' ? 'bg-white/20' : 'bg-gray-100'}`}>
-              {batches.length}
-            </span>
+            All <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === 'All' ? 'bg-white/20' : 'bg-gray-100'}`}>{batches.length}</span>
           </button>
-          {branchList.map(br => {
-            const count = batches.filter(b => b.sports?.includes(br)).length
-            return (
-              <button
-                key={br}
-                onClick={() => setActiveBranch(br)}
-                className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition ${
-                  activeBranch === br
-                    ? 'bg-brand-600 text-white border-brand-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                {br}
-                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === br ? 'bg-white/20' : 'bg-gray-100'}`}>
-                  {count}
-                </span>
-              </button>
-            )
-          })}
+          {branchList.map(br => (
+            <button
+              key={br}
+              onClick={() => setActiveBranch(br)}
+              className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition ${activeBranch === br ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+            >
+              {br} <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === br ? 'bg-white/20' : 'bg-gray-100'}`}>{batches.filter(b => b.sports?.includes(br)).length}</span>
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Summary row — scoped to visible batches */}
+      {/* Summary row — scoped to active branch */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-4 text-center">
           <p className="text-2xl font-black text-gray-900">{visibleBatches.length}</p>
@@ -102,97 +90,46 @@ export default function Batches() {
         </div>
       </div>
 
-      {/* Batch cards */}
-      {visibleBatches.length === 0 ? (
+      {/* ── Grouped branch sections (when branches configured) ── */}
+      {grouped && activeBranch === 'All' ? (
+        <div className="space-y-8">
+          {grouped.map(({ branch, batches: branchBatches }) => (
+            <div key={branch}>
+              {/* Branch heading */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-2 h-6 bg-brand-600 rounded-full" />
+                <h3 className="text-base font-black text-gray-900">{branch}</h3>
+                <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">
+                  {branchBatches.length} batch{branchBatches.length !== 1 ? 'es' : ''} · {branchBatches.reduce((s,b) => s+b.enrolled, 0)} enrolled
+                </span>
+              </div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {branchBatches.map((b, idx) => (
+                  <BatchCard key={b.id} b={b} idx={idx} onSelect={setSelectedBatch} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : visibleBatches.length === 0 ? (
         <div className="card p-10 text-center">
           <Layers size={32} className="text-gray-200 mx-auto mb-3" />
           <p className="text-sm font-semibold text-gray-400">No batches in {activeBranch}</p>
         </div>
       ) : (
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {visibleBatches.map((b, idx) => {
-          const pct = Math.round((b.enrolled / b.capacity) * 100)
-          const isFull = b.enrolled >= b.capacity
-          return (
-            <div key={b.id} className="card p-5 hover:shadow-md transition">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <div className={`inline-flex items-center gap-1.5 text-xs font-bold text-white px-2.5 py-1 rounded-full mb-2 ${COLORS[idx % COLORS.length]}`}>
-                    <Layers size={11} /> {b.name}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-gray-500 text-xs">
-                    <Clock size={12} /> {b.time}
-                  </div>
-                  {b.ground && (
-                    <div className="flex items-center gap-1.5 text-gray-400 text-xs mt-0.5">
-                      <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                      {b.ground}
-                    </div>
-                  )}
-                  {b.days?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {b.days.map(d => (
-                        <span key={d} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-semibold">{d}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {isFull && (
-                  <span className="badge badge-red">Full</span>
-                )}
-                {b.waitlist > 0 && !isFull && (
-                  <span className="badge badge-yellow">{b.waitlist} waiting</span>
-                )}
-              </div>
+        /* Single branch selected — flat grid */
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {visibleBatches.map((b, idx) => (
+            <BatchCard key={b.id} b={b} idx={idx} onSelect={setSelectedBatch} />
+          ))}
+        </div>
+      )}
 
-              {/* Sports tags */}
-              <div className="flex flex-wrap gap-1.5 mb-4">
-                {b.sports.map(s => (
-                  <span key={s} className="badge badge-blue">{s}</span>
-                ))}
-              </div>
-
-              {/* Capacity bar */}
-              <div className="mb-3">
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-                  <span>Capacity</span>
-                  <span className="font-bold text-gray-700">{b.enrolled} / {b.capacity}</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${isFull ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">{pct}% full · {b.capacity - b.enrolled} seats left</p>
-              </div>
-
-              {/* Age range */}
-              {(b.ageMin > 0 || b.ageMax < 99) && (
-                <p className="text-xs text-gray-400 mb-3">Ages {b.ageMin}–{b.ageMax} yrs</p>
-              )}
-
-              {/* Coach */}
-              <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
-                <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600">
-                  {(b.coach || 'C')[0]}
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs font-semibold text-gray-700">{b.coach || 'Unassigned'}</p>
-                  <p className="text-xs text-gray-400">Assigned Coach</p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setSelectedBatch(b)}
-                className="w-full mt-4 btn-secondary text-xs justify-center py-2 gap-2"
-              >
-                View Details <ChevronRight size={12} />
-              </button>
-            </div>
-          )
-        })}
-      </div>
+      {/* Fallback flat grid when no branches configured */}
+      {!grouped && (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} onSelect={setSelectedBatch} />)}
+        </div>
       )}
 
       {showModal && <AddBatchModal onClose={() => setShowModal(false)} onSave={handleAdd} staff={staff} />}
@@ -209,6 +146,73 @@ export default function Batches() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+function BatchCard({ b, idx, onSelect }) {
+  const pct = Math.round((b.enrolled / b.capacity) * 100)
+  const isFull = b.enrolled >= b.capacity
+  return (
+    <div className="card p-5 hover:shadow-md transition">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div className={`inline-flex items-center gap-1.5 text-xs font-bold text-white px-2.5 py-1 rounded-full mb-2 ${COLORS[idx % COLORS.length]}`}>
+            <Layers size={11} /> {b.name}
+          </div>
+          <div className="flex items-center gap-1.5 text-gray-500 text-xs">
+            <Clock size={12} /> {b.time}
+          </div>
+          {b.ground && (
+            <div className="flex items-center gap-1.5 text-gray-400 text-xs mt-0.5">
+              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              {b.ground}
+            </div>
+          )}
+          {b.days?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {b.days.map(d => <span key={d} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-semibold">{d}</span>)}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          {isFull && <span className="badge badge-red">Full</span>}
+          {b.waitlist > 0 && !isFull && <span className="badge badge-yellow">{b.waitlist} waiting</span>}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {b.sports.map(s => <span key={s} className="badge badge-blue">{s}</span>)}
+      </div>
+
+      <div className="mb-3">
+        <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+          <span>Capacity</span>
+          <span className="font-bold text-gray-700">{b.enrolled} / {b.capacity}</span>
+        </div>
+        <div className="w-full bg-gray-100 rounded-full h-2">
+          <div className={`h-2 rounded-full transition-all ${isFull ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
+        </div>
+        <p className="text-xs text-gray-400 mt-1">{pct}% full · {b.capacity - b.enrolled} seats left</p>
+      </div>
+
+      {(b.ageMin > 0 || b.ageMax < 99) && (
+        <p className="text-xs text-gray-400 mb-3">Ages {b.ageMin}–{b.ageMax} yrs</p>
+      )}
+
+      <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+        <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600">
+          {(b.coach || 'C')[0]}
+        </div>
+        <div className="flex-1">
+          <p className="text-xs font-semibold text-gray-700">{b.coach || 'Unassigned'}</p>
+          <p className="text-xs text-gray-400">Assigned Coach</p>
+        </div>
+      </div>
+
+      <button onClick={() => onSelect(b)} className="w-full mt-4 btn-secondary text-xs justify-center py-2 gap-2">
+        View Details <ChevronRight size={12} />
+      </button>
     </div>
   )
 }
