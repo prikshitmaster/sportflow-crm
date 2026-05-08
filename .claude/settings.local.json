@@ -9,7 +9,16 @@
       "Bash(git push *)",
       "PowerShell(New-Item *)",
       "PowerShell(npm run *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(findstr /i \"error built\")",
+      "Bash(claude doctor *)",
+      "Bash(where claude *)",
+      "Bash(claude *)",
+      "PowerShell(claude doctor *)",
+      "Bash(curl -s https://api.github.com/repos/rtk-ai/rtk/releases/latest)",
+      "Bash(python -c \"import sys,json; r=json.load\\(sys.stdin\\); assets=[a for a in r['assets'] if 'windows' in a['name']]; print\\(assets[0]['browser_download_url']\\) if assets else print\\('no windows asset'\\)\")",
+      "PowerShell(& \"$env:USERPROFILE\\\\.local\\\\bin\\\\rtk.exe\" init -g)"
     ]
   }
 }

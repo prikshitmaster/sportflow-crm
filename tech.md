@@ -216,5 +216,5 @@ Simple, sharp, modern.
 
 ## Final Goal
 
-Make users willing to pay ₹1999/month because it saves time, improves fee collection, and removes chaos.
+Make users willing to pay ₹19990/month because it saves time, improves fee collection, and removes chaos.
  

@@ -36,19 +36,18 @@ import {
 
 // profiles.role is always 'owner' or 'staff'
 // actual granular role lives in user_permissions.access_role
-// coach + generic staff → mobile staff portal; everyone else → desktop owner portal
-function resolveContextRole(profileRole, accessRole) {
+// ALL non-owner staff → mobile StaffLayout portal (coach or office)
+function resolveContextRole(profileRole) {
   if (profileRole === 'owner') return 'owner'
-  if (accessRole === 'coach' || accessRole === 'staff' || !accessRole) return 'staff'
-  return 'admin'  // receptionist, accountant, admin → desktop portal with filtered sidebar
+  return 'staff'
 }
 
 const AppContext = createContext(null)
 
 export function AppProvider({ children }) {
   // ── Core auth state ───────────────────────────────────
-  const [role,        setRole]        = useState(null)   // 'owner' | 'admin' | 'staff' | 'student' | null
-  const [user,        setUser]        = useState(null)   // { name, email, academy, academyId, role }
+  const [role,        setRole]        = useState(null)   // 'owner' | 'staff' | 'student' | null
+  const [user,        setUser]        = useState(null)   // { name, email, academy, academyId, role, accessRole }
   const [studentUser, setStudentUser] = useState(null)   // student DB row
   const [features,    setFeatures]    = useState({})     // { attendance: true, payments: false, … }
   const [permissions, setPermissions] = useState([])     // string[] — for admin/staff portal access
@@ -127,15 +126,16 @@ export function AppProvider({ children }) {
             if (profile.role !== 'owner') {
               permsData = await db.fetchUserPermissions(session.user.id)
             }
-            const ctxRole = resolveContextRole(profile.role, permsData?.access_role)
+            const ctxRole = resolveContextRole(profile.role)
             setUser({
-              id:        profile.id,
-              name:      profile.name,
-              email:     session.user.email,
-              academy:   academy.name,
-              academyId: academy.id,
-              joinCode:  academy.join_code,
-              role:      profile.role,
+              id:         profile.id,
+              name:       profile.name,
+              email:      session.user.email,
+              academy:    academy.name,
+              academyId:  academy.id,
+              joinCode:   academy.join_code,
+              role:       profile.role,
+              accessRole: permsData?.access_role || 'staff',
             })
             setFeatures(flags)
             setPermissions(permsData?.permissions || ROLE_PRESETS[permsData?.access_role] || [])
@@ -168,7 +168,7 @@ export function AppProvider({ children }) {
 
   // Load data whenever owner/admin/staff logs in — skip in demo mode
   useEffect(() => {
-    if ((role === 'owner' || role === 'admin' || role === 'staff') && !demoMode) loadAll()
+    if ((role === 'owner' || role === 'staff') && !demoMode) loadAll()
   }, [role, loadAll, demoMode])
 
   // Load branches when academy is known
@@ -265,9 +265,9 @@ export function AppProvider({ children }) {
     const flags     = await db.fetchFeatureFlags(profile.academy_id)
     const permsData = await db.fetchUserPermissions(data.user.id)
     const perms     = permsData?.permissions || ROLE_PRESETS[permsData?.access_role] || []
-    const ctxRole   = resolveContextRole(profile.role, permsData?.access_role)
+    const ctxRole   = resolveContextRole(profile.role)
 
-    setUser({ id: profile.id, name: profile.name, email, academy: academy.name, academyId: academy.id, role: profile.role })
+    setUser({ id: profile.id, name: profile.name, email, academy: academy.name, academyId: academy.id, role: profile.role, accessRole: permsData?.access_role || 'staff' })
     setFeatures(flags)
     setPermissions(perms)
     setRole(ctxRole)
@@ -692,7 +692,7 @@ export function AppProvider({ children }) {
       setBranches(['Badminton', 'Basketball', 'Cricket', 'Dance', 'Football', 'Martial Arts', 'Tennis'])
     } else if (demoRole === 'staff') {
       // Logs in as Suresh Yadav — Head Coach of Morning A
-      setUser({ id: 'demo-staff', name: 'Suresh Yadav', email: 'coach@demo.sportflow', academy: 'SportFlow Academy', academyId: 'demo-acad', joinCode: 'DEMO01', role: 'coach' })
+      setUser({ id: 'demo-staff', name: 'Suresh Yadav', email: 'coach@demo.sportflow', academy: 'SportFlow Academy', academyId: 'demo-acad', joinCode: 'DEMO01', role: 'staff', accessRole: 'coach' })
       setFeatures(ALL_FEATURES)
       setPermissions(ROLE_PRESETS.coach)
       setRole('staff')

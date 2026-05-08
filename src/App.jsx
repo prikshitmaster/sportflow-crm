@@ -35,6 +35,9 @@ import StaffAttendance  from './pages/staff/StaffAttendance'
 import StaffRoster      from './pages/staff/StaffRoster'
 import StaffMe          from './pages/staff/StaffMe'
 import StaffProfile     from './pages/staff/StaffProfile'
+import StaffScanIn      from './pages/staff/StaffScanIn'
+import StaffNotices     from './pages/staff/StaffNotices'
+import StaffAttendanceQR from './pages/StaffAttendanceQR'
 import Invite           from './pages/Invite'
 
 // ── Error boundary — catches render crashes (shows error msg instead of blank) ──
@@ -81,11 +84,11 @@ function PageLoading() {
   )
 }
 
-// Owner + Admin routes (admin gets owner portal filtered by permissions)
+// Owner-only routes
 function OwnerRoute({ children }) {
   const { role, loading } = useApp()
   if (loading) return <PageLoading />
-  if (role === 'owner' || role === 'admin') return children
+  if (role === 'owner') return children
   if (role === 'staff')   return <Navigate to="/staff/dashboard" replace />
   if (role === 'student') return <Navigate to="/student/dashboard" replace />
   return <Navigate to="/login" replace />
@@ -115,7 +118,7 @@ function StudentRoute({ children }) {
 function PublicRoute({ children }) {
   const { role, loading } = useApp()
   if (loading) return <PageLoading />
-  if (role === 'owner' || role === 'admin') return <Navigate to="/dashboard" replace />
+  if (role === 'owner') return <Navigate to="/dashboard" replace />
   if (role === 'staff')   return <Navigate to="/staff/dashboard" replace />
   if (role === 'student') return <Navigate to="/student/dashboard" replace />
   return children
@@ -145,6 +148,7 @@ function AppRoutes() {
         <Route path="community"  element={<Community />} />
         <Route path="settings"   element={<Settings />} />
         <Route path="gate-qr"    element={<AdminQR />} />
+        <Route path="staff-qr"   element={<StaffAttendanceQR />} />
         <Route path="events"     element={<Events />} />
       </Route>
 
@@ -158,6 +162,8 @@ function AppRoutes() {
         <Route path="profile"    element={<StaffProfile />} />
         {/* Community still reuses the owner page */}
         <Route path="community"  element={<Community />} />
+        <Route path="scan-in"    element={<StaffScanIn />} />
+        <Route path="notices"    element={<StaffNotices />} />
       </Route>
 
       {/* Student portal */}

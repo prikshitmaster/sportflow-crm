@@ -1,21 +1,29 @@
-// StaffLayout — coach portal wrapper
-// Bottom nav: Home | Roster | Staff | Me (matches the diagram)
-// Sticky header shows coach name + academy
-
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { Home, Users, UserCog, UserCircle, LogOut, Zap } from 'lucide-react'
+import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut } from 'lucide-react'
 
-const tabs = [
-  { to: '/staff/dashboard', label: 'Home',   icon: Home },
-  { to: '/staff/roster',    label: 'Roster', icon: Users },
-  { to: '/staff/me',        label: 'Staff',  icon: UserCog },
-  { to: '/staff/profile',   label: 'Me',     icon: UserCircle },
+const coachTabs = [
+  { to: '/staff/dashboard',  label: 'Home',    icon: Home },
+  { to: '/staff/attendance', label: 'Attend',  icon: CalendarCheck },
+  { to: '/staff/scan-in',    label: 'Scan In', icon: QrCode },
+  { to: '/staff/me',         label: 'Me',      icon: UserCircle },
+]
+
+const officeTabs = [
+  { to: '/staff/dashboard',  label: 'Home',    icon: Home },
+  { to: '/staff/scan-in',    label: 'Scan In', icon: QrCode },
+  { to: '/staff/notices',    label: 'Notices', icon: Bell },
+  { to: '/staff/me',         label: 'Me',      icon: UserCircle },
 ]
 
 export default function StaffLayout() {
   const { user, logoutStaff } = useApp()
   const navigate = useNavigate()
+
+  const isOffice = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)
+  const tabs = isOffice ? officeTabs : coachTabs
+  const badge = isOffice ? 'Office' : 'Coach'
+  const badgeColor = isOffice ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
 
   const handleLogout = async () => { await logoutStaff(); navigate('/login') }
 
@@ -28,25 +36,21 @@ export default function StaffLayout() {
             <Zap size={13} className="text-white" />
           </div>
           <span className="font-bold text-gray-900 text-sm">SportFlow</span>
-          <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold">Staff</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${badgeColor}`}>{badge}</span>
         </div>
         <div className="flex items-center gap-2">
-          {user && (
-            <p className="text-xs font-semibold text-gray-700 truncate max-w-[140px]">{user.name}</p>
-          )}
-          <button onClick={handleLogout}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
+          {user && <p className="text-xs font-semibold text-gray-700 truncate max-w-[140px]">{user.name}</p>}
+          <button onClick={handleLogout} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
             <LogOut size={15} />
           </button>
         </div>
       </header>
 
-      {/* Page content — pb-20 leaves room for bottom nav */}
       <main className="flex-1 overflow-y-auto pb-20 animate-fade-in">
         <Outlet />
       </main>
 
-      {/* Bottom navigation — 4 tabs */}
+      {/* Bottom navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-100 flex max-w-md mx-auto">
         {tabs.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to}
