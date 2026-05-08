@@ -49,6 +49,7 @@ export default function Trials() {
   const [search,     setSearch]     = useState('')
   const [showModal,  setShowModal]  = useState(false)
   const [viewMode,   setViewMode]   = useState('month')   // 'month' | 'week' | 'all'
+  const [statusFilter, setStatusFilter] = useState('all') // 'all' | 'Scheduled' | 'Completed' | 'Converted' | 'Cancelled'
 
   const now = new Date()
   const [navYear,  setNavYear]  = useState(now.getFullYear())
@@ -99,13 +100,17 @@ export default function Trials() {
     })
   }, [trials, viewMode, navYear, navMonth, navWeek])
 
-  // ── Search on top of period filter ───────────────────
+  // ── Status filter + search on top of period filter ───
   const filtered = useMemo(() => {
+    let result = periodFiltered
+    if (statusFilter === 'Converted') result = result.filter(t => t.converted)
+    else if (statusFilter !== 'all')  result = result.filter(t => !t.converted && t.status === statusFilter)
     const q = search.toLowerCase()
-    return !q ? periodFiltered : periodFiltered.filter(t =>
+    if (q) result = result.filter(t =>
       t.name.toLowerCase().includes(q) || t.sport.toLowerCase().includes(q) || t.phone.includes(q)
     )
-  }, [periodFiltered, search])
+    return [...result].sort((a, b) => (b.trialDate || '').localeCompare(a.trialDate || ''))
+  }, [periodFiltered, search, statusFilter])
 
   // ── Stats — scoped to period ──────────────────────────
   const periodConverted  = periodFiltered.filter(t => t.converted).length
@@ -193,8 +198,8 @@ export default function Trials() {
       <div className="grid lg:grid-cols-3 gap-4">
         {/* Trial table */}
         <div className="lg:col-span-2 card overflow-hidden">
-          <div className="p-4 border-b border-gray-100 flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex-1">
+          <div className="p-4 border-b border-gray-100 space-y-3">
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
               <Search size={14} className="text-gray-400" />
               <input
                 className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full"
@@ -202,6 +207,30 @@ export default function Trials() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
+            </div>
+            {/* Status filter pills */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { key: 'all',       label: 'All',       color: 'bg-gray-800 text-white', base: 'bg-gray-100 text-gray-600' },
+                { key: 'Scheduled', label: 'Scheduled', color: 'bg-blue-600 text-white',  base: 'bg-blue-50 text-blue-600' },
+                { key: 'Completed', label: 'Completed', color: 'bg-amber-500 text-white', base: 'bg-amber-50 text-amber-600' },
+                { key: 'Converted', label: 'Converted ✓', color: 'bg-emerald-600 text-white', base: 'bg-emerald-50 text-emerald-700' },
+                { key: 'Cancelled', label: 'Cancelled', color: 'bg-red-500 text-white',   base: 'bg-red-50 text-red-600' },
+              ].map(({ key, label, color, base }) => {
+                const count = key === 'all' ? periodFiltered.length
+                  : key === 'Converted' ? periodFiltered.filter(t => t.converted).length
+                  : periodFiltered.filter(t => !t.converted && t.status === key).length
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setStatusFilter(key)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition ${statusFilter === key ? color : base + ' hover:opacity-80'}`}
+                  >
+                    {label}
+                    <span className={`text-[10px] font-bold px-1 py-0.5 rounded-full ${statusFilter === key ? 'bg-white/20' : 'bg-black/10'}`}>{count}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
