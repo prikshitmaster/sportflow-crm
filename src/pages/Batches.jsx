@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight } from 'lucide-react'
 import { Modal } from './Students'
@@ -7,9 +7,24 @@ import { SPORTS } from '../data/mockData'
 const COLORS = ['bg-brand-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600']
 
 export default function Batches() {
-  const { batches, addBatch, staff, students, updateBatchCoach } = useApp()
+  const { batches, addBatch, staff, students, updateBatchCoach, branches } = useApp()
   const [showModal, setShowModal] = useState(false)
   const [selectedBatch, setSelectedBatch] = useState(null)
+  const [activeBranch, setActiveBranch] = useState('All')
+
+  // Only show branches that have at least one batch
+  const branchList = useMemo(() => {
+    const withBatches = (branches || []).filter(br =>
+      batches.some(b => b.sports?.includes(br))
+    )
+    return withBatches
+  }, [branches, batches])
+
+  const visibleBatches = useMemo(() =>
+    activeBranch === 'All'
+      ? batches
+      : batches.filter(b => b.sports?.includes(activeBranch))
+  , [batches, activeBranch])
 
   const handleAdd = async (b) => {
     await addBatch(b)
@@ -29,29 +44,73 @@ export default function Batches() {
         </button>
       </div>
 
-      {/* Summary row */}
+      {/* Branch filter pills */}
+      {branchList.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          <button
+            onClick={() => setActiveBranch('All')}
+            className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition ${
+              activeBranch === 'All'
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            All
+            <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === 'All' ? 'bg-white/20' : 'bg-gray-100'}`}>
+              {batches.length}
+            </span>
+          </button>
+          {branchList.map(br => {
+            const count = batches.filter(b => b.sports?.includes(br)).length
+            return (
+              <button
+                key={br}
+                onClick={() => setActiveBranch(br)}
+                className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition ${
+                  activeBranch === br
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {br}
+                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === br ? 'bg-white/20' : 'bg-gray-100'}`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Summary row — scoped to visible batches */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-gray-900">{batches.length}</p>
+          <p className="text-2xl font-black text-gray-900">{visibleBatches.length}</p>
           <p className="text-xs text-gray-500 mt-1">Active Batches</p>
         </div>
         <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-brand-600">{batches.reduce((s,b) => s+b.enrolled, 0)}</p>
+          <p className="text-2xl font-black text-brand-600">{visibleBatches.reduce((s,b) => s+b.enrolled, 0)}</p>
           <p className="text-xs text-gray-500 mt-1">Total Enrolled</p>
         </div>
         <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-amber-600">{batches.reduce((s,b) => s+b.waitlist, 0)}</p>
+          <p className="text-2xl font-black text-amber-600">{visibleBatches.reduce((s,b) => s+b.waitlist, 0)}</p>
           <p className="text-xs text-gray-500 mt-1">On Waitlist</p>
         </div>
         <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-gray-400">{batches.reduce((s,b) => s+(b.capacity-b.enrolled), 0)}</p>
+          <p className="text-2xl font-black text-gray-400">{visibleBatches.reduce((s,b) => s+(b.capacity-b.enrolled), 0)}</p>
           <p className="text-xs text-gray-500 mt-1">Available Seats</p>
         </div>
       </div>
 
       {/* Batch cards */}
+      {visibleBatches.length === 0 ? (
+        <div className="card p-10 text-center">
+          <Layers size={32} className="text-gray-200 mx-auto mb-3" />
+          <p className="text-sm font-semibold text-gray-400">No batches in {activeBranch}</p>
+        </div>
+      ) : (
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {batches.map((b, idx) => {
+        {visibleBatches.map((b, idx) => {
           const pct = Math.round((b.enrolled / b.capacity) * 100)
           const isFull = b.enrolled >= b.capacity
           return (
@@ -134,6 +193,7 @@ export default function Batches() {
           )
         })}
       </div>
+      )}
 
       {showModal && <AddBatchModal onClose={() => setShowModal(false)} onSave={handleAdd} staff={staff} />}
 
