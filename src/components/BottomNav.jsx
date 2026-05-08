@@ -11,34 +11,39 @@ import {
   UserPlus, Layers, UserCog, BarChart3, Megaphone, Settings, QrCode, Trophy,
 } from 'lucide-react'
 
-// Primary bar — always 4 items (feature-gated)
+// Primary bar items
 const primaryItems = [
-  { to: '/dashboard',  label: 'Home',       icon: LayoutDashboard, feature: null },
-  { to: '/students',   label: 'Students',   icon: Users,            feature: null },
-  { to: '/attendance', label: 'Attendance', icon: CalendarCheck,   feature: 'attendance' },
-  { to: '/payments',   label: 'Payments',   icon: CreditCard,      feature: 'payments' },
+  { to: '/dashboard',  label: 'Home',       icon: LayoutDashboard, feature: null,         permission: 'dashboard.view' },
+  { to: '/students',   label: 'Students',   icon: Users,            feature: null,         permission: 'students.view' },
+  { to: '/attendance', label: 'Attendance', icon: CalendarCheck,   feature: 'attendance', permission: 'attendance.manage' },
+  { to: '/payments',   label: 'Payments',   icon: CreditCard,      feature: 'payments',   permission: 'payments.view' },
 ]
 
 // "More" sheet — everything else
 const moreItems = [
-  { to: '/trials',    label: 'Trials',    icon: UserPlus,  feature: 'trials' },
-  { to: '/batches',   label: 'Batches',   icon: Layers,    feature: 'batches' },
-  { to: '/gate-qr',   label: 'Gate QR',   icon: QrCode,    feature: 'gate_qr' },
-  { to: '/events',    label: 'Events',    icon: Trophy,    feature: 'events' },
-  { to: '/coaches',   label: 'Staff',     icon: UserCog,   feature: 'staff' },
-  { to: '/reports',   label: 'Reports',   icon: BarChart3, feature: 'reports' },
-  { to: '/community', label: 'Community', icon: Megaphone, feature: 'community' },
-  { to: '/settings',  label: 'Settings',  icon: Settings,  feature: null },
+  { to: '/trials',    label: 'Trials',    icon: UserPlus,  feature: 'trials',    permission: 'trials.manage' },
+  { to: '/batches',   label: 'Batches',   icon: Layers,    feature: 'batches',   permission: 'batches.view' },
+  { to: '/gate-qr',   label: 'Gate QR',   icon: QrCode,    feature: 'gate_qr',  permission: 'attendance.manage' },
+  { to: '/events',    label: 'Events',    icon: Trophy,    feature: 'events',   permission: 'events.manage' },
+  { to: '/coaches',   label: 'Staff',     icon: UserCog,   feature: 'staff',    permission: 'staff.manage' },
+  { to: '/reports',   label: 'Reports',   icon: BarChart3, feature: 'reports',  permission: 'reports.view' },
+  { to: '/community', label: 'Community', icon: Megaphone, feature: 'community',permission: 'community.manage' },
+  { to: '/settings',  label: 'Settings',  icon: Settings,  feature: null,       permission: 'settings.manage' },
 ]
 
 export default function BottomNav() {
   const [showMore, setShowMore] = useState(false)
-  const { isFeatureOn, logoutOwner } = useApp()
+  const { isFeatureOn, logoutOwner, role, hasPermission } = useApp()
   const navigate = useNavigate()
 
-  // Filter by feature flags
-  const primary = primaryItems.filter(i => i.feature === null || isFeatureOn(i.feature))
-  const more    = moreItems.filter(i => i.feature === null || isFeatureOn(i.feature))
+  const allow = item => {
+    const featureOk = item.feature === null || isFeatureOn(item.feature)
+    const permOk    = role === 'owner' || item.permission === null || hasPermission(item.permission)
+    return featureOk && permOk
+  }
+
+  const primary = primaryItems.filter(allow)
+  const more    = moreItems.filter(allow)
 
   const handleLogout = async () => { await logoutOwner(); navigate('/login') }
 
