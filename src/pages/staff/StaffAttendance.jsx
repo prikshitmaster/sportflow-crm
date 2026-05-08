@@ -1,0 +1,329 @@
+// Staff Attendance — 3-step wizard
+//  Step 1: Pick batch (cards, auto-filtered to today)
+//  Step 2: Student roster + mark Present / Absent / Late (tap cycles)
+//  Step 3: Save & sync to DB
+// No URL routing between steps — internal state machine
+
+import { useState, useMemo } from 'react'
+import { useApp } from '../../context/AppContext'
+import { ArrowLeft, Check, Users, Clock, Search, ChevronRight } from 'lucide-react'
+
+// Status cycle: blank → Present → Absent → Late → Present …
+const NEXT_STATUS = { '': 'Present', Present: 'Absent', Absent: 'Late', Late: 'Present' }
+
+const STATUS_STYLE = {
+  Present: { bg: 'bg-emerald-500', text: 'text-white',     label: 'P' },
+  Absent:  { bg: 'bg-red-500',     text: 'text-white',     label: 'A' },
+  Late:    { bg: 'bg-amber-400',   text: 'text-gray-900',  label: 'L' },
+  '':      { bg: 'bg-gray-100',    text: 'text-gray-400',  label: '·' },
+}
+
+export default function StaffAttendance() {
+  const { user, batches, students, attendanceData, saveAttendance } = useApp()
+
+  const today     = new Date().toISOString().split('T')[0]
+  const todayAtt  = attendanceData[today] || {}
+  const dayShort  = new Date().toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2)
+
+  // Step 1: batch picker state
+  const [step,          setStep]          = useState(1)
+  const [selectedBatch, setSelectedBatch] = useState(null)
+
+  // Step 2: mark attendance state
+  const [marks,         setMarks]         = useState({})  // { studentId: 'Present'|'Absent'|'Late'|'' }
+  const [reasons,       setReasons]       = useState({})  // { studentId: 'reason text' }
+  const [search,        setSearch]        = useState('')
+  const [saving,        setSaving]        = useState(false)
+
+  // Batches assigned to this coach (or all if none assigned)
+  const myBatches = useMemo(() => {
+    const assigned = batches.filter(b =>
+      b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
+    )
+    return assigned.length > 0 ? assigned : batches
+  }, [batches, user])
+
+  // Students in the selected batch
+  const batchStudents = useMemo(() => {
+    if (!selectedBatch) return []
+    return students.filter(
+      s => s.status === 'Active' && (s.batchId === selectedBatch.id || s.batch === selectedBatch.name)
+    )
+  }, [students, selectedBatch])
+
+  // Filter students by search
+  const visible = useMemo(() => {
+    const q = search.toLowerCase()
+    return batchStudents.filter(s =>
+      !q || s.name.toLowerCase().includes(q) || (s.parent || '').toLowerCase().includes(q)
+    )
+  }, [batchStudents, search])
+
+  // Count present for header badge
+  const presentCount = batchStudents.filter(s => (marks[s.id] || todayAtt[s.id] || '') === 'Present').length
+
+  // ── Select a batch → go to step 2 ────────────────────
+  const pickBatch = (batch) => {
+    setSelectedBatch(batch)
+    // Pre-load existing today's marks
+    const existing = {}
+    students
+      .filter(s => s.status === 'Active' && (s.batchId === batch.id || s.batch === batch.name))
+      .forEach(s => { existing[s.id] = todayAtt[s.id] || '' })
+    setMarks(existing)
+    setReasons({})
+    setSearch('')
+    setStep(2)
+  }
+
+  // ── Tap student → cycle status ────────────────────────
+  const cycleMark = (studentId) => {
+    setMarks(prev => {
+      const cur = prev[studentId] || ''
+      return { ...prev, [studentId]: NEXT_STATUS[cur] }
+    })
+  }
+
+  // ── Save attendance to DB ─────────────────────────────
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      // Merge existing today's data with new marks
+      const merged = { ...todayAtt }
+      Object.entries(marks).forEach(([id, status]) => {
+        if (status) merged[id] = status
+      })
+      await saveAttendance(today, merged)
+      setStep(3)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Step 1: Batch picker
+  // ─────────────────────────────────────────────────────
+  if (step === 1) {
+    return (
+      <div className="px-4 pt-5 pb-4">
+        <div className="mb-5">
+          <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">Attendance</p>
+          <h2 className="text-xl font-black text-gray-900">Pick Today's Batch</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+        </div>
+
+        {myBatches.length === 0 ? (
+          <div className="text-center py-16">
+            <Users size={32} className="text-gray-200 mx-auto mb-3" />
+            <p className="text-sm text-gray-500">No batches assigned</p>
+            <p className="text-xs text-gray-400 mt-1">Ask your owner to assign you to a batch</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {myBatches.map(b => {
+              const count = students.filter(
+                s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name)
+              ).length
+              // Is this batch scheduled today?
+              const runsToday = !b.days || b.days.length === 0 ||
+                b.days.some(d => d.toLowerCase().startsWith(dayShort.toLowerCase()))
+              const alreadyMarked = students
+                .filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name))
+                .filter(s => todayAtt[s.id]).length
+
+              return (
+                <button key={b.id}
+                  onClick={() => pickBatch(b)}
+                  className="w-full bg-white rounded-2xl p-4 border border-gray-100 active:bg-gray-50 text-left flex items-center gap-4">
+                  {/* Sport icon placeholder */}
+                  <div className="w-12 h-12 bg-brand-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+                    <span className="text-xl">{getSportEmoji(b.sports?.[0])}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="font-bold text-gray-900 text-sm truncate">{b.name}</p>
+                      {runsToday && (
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold flex-shrink-0">Today</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      {b.startTime && <span className="flex items-center gap-1"><Clock size={10} />{b.startTime}</span>}
+                      <span className="flex items-center gap-1"><Users size={10} />{count} students</span>
+                      {alreadyMarked > 0 && (
+                        <span className="text-emerald-600 font-semibold">{alreadyMarked} marked</span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Step 2: Mark attendance
+  // ─────────────────────────────────────────────────────
+  if (step === 2) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-8rem)]">
+        {/* Header */}
+        <div className="px-4 pt-4 pb-3 bg-white border-b border-gray-100">
+          <div className="flex items-center gap-3 mb-3">
+            <button onClick={() => setStep(1)}
+              className="p-1.5 rounded-xl bg-gray-100 text-gray-600">
+              <ArrowLeft size={16} />
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-gray-900 truncate">{selectedBatch?.name}</p>
+              <p className="text-xs text-gray-400">{selectedBatch?.sports?.join(', ')} · {selectedBatch?.startTime}</p>
+            </div>
+            {/* Live present count badge */}
+            <div className="flex-shrink-0 text-right">
+              <p className="text-lg font-black text-emerald-600">{presentCount}</p>
+              <p className="text-[10px] text-gray-400 leading-tight">present<br/>of {batchStudents.length}</p>
+            </div>
+          </div>
+          {/* Search */}
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              className="input pl-8 py-2 text-sm"
+              placeholder="Search student or parent…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Tap legend */}
+        <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-4">
+          <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">Tap to mark:</p>
+          {[
+            { label: 'Present', color: 'bg-emerald-500 text-white' },
+            { label: 'Absent',  color: 'bg-red-500 text-white' },
+            { label: 'Late',    color: 'bg-amber-400 text-gray-900' },
+          ].map(s => (
+            <span key={s.label} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.color}`}>
+              {s.label}
+            </span>
+          ))}
+        </div>
+
+        {/* Student list */}
+        <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+          {visible.length === 0 ? (
+            <div className="py-12 text-center text-sm text-gray-400">No students found</div>
+          ) : visible.map(s => {
+            const status = marks[s.id] || ''
+            const st = STATUS_STYLE[status] || STATUS_STYLE['']
+            const isLate = status === 'Late'
+            return (
+              <div key={s.id}>
+                <button
+                  onClick={() => cycleMark(s.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 active:bg-gray-50 text-left"
+                >
+                  {/* Avatar */}
+                  <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-sm font-black text-brand-700 flex-shrink-0">
+                    {s.name[0]}
+                  </div>
+                  {/* Name + parent */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{s.name}</p>
+                    {s.parentPhone && (
+                      <p className="text-xs text-gray-400 truncate">{s.parent} · {s.parentPhone}</p>
+                    )}
+                  </div>
+                  {/* Status chip */}
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-base flex-shrink-0 ${st.bg} ${st.text}`}>
+                    {st.label}
+                  </div>
+                </button>
+                {/* Late reason input — shown inline below the row */}
+                {isLate && (
+                  <div className="px-4 pb-3 pt-0">
+                    <input
+                      className="input text-xs py-2"
+                      placeholder="Reason for late (optional — e.g. traffic, drop-off)"
+                      value={reasons[s.id] || ''}
+                      onChange={e => setReasons(prev => ({ ...prev, [s.id]: e.target.value }))}
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Sticky save button */}
+        <div className="px-4 py-4 bg-white border-t border-gray-100">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full btn-primary justify-center py-3.5 text-base"
+          >
+            {saving ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                Saving…
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Check size={18} /> Save & Sync
+              </span>
+            )}
+          </button>
+          <p className="text-xs text-gray-400 text-center mt-2">
+            {Object.values(marks).filter(v => v).length} of {batchStudents.length} marked
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Step 3: Success
+  // ─────────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] px-6 text-center">
+      <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
+        <Check size={28} className="text-emerald-600" />
+      </div>
+      <h2 className="text-xl font-black text-gray-900 mb-1">Attendance Saved!</h2>
+      <p className="text-sm text-gray-500 mb-2">
+        {presentCount} present · {batchStudents.length - presentCount} absent/late
+      </p>
+      <p className="text-xs text-gray-400 mb-6">Synced to {selectedBatch?.name}</p>
+      <button
+        onClick={() => setStep(1)}
+        className="btn-primary px-8 py-3"
+      >
+        Mark Another Batch
+      </button>
+    </div>
+  )
+}
+
+// ── Helper — sport emoji ───────────────────────────────────
+function getSportEmoji(sport) {
+  if (!sport) return '🏃'
+  const s = sport.toLowerCase()
+  if (s.includes('cricket'))    return '🏏'
+  if (s.includes('football'))   return '⚽'
+  if (s.includes('tennis'))     return '🎾'
+  if (s.includes('badminton'))  return '🏸'
+  if (s.includes('basketball')) return '🏀'
+  if (s.includes('swimming'))   return '🏊'
+  if (s.includes('dance'))      return '💃'
+  if (s.includes('martial') || s.includes('karate')) return '🥋'
+  return '🏃'
+}

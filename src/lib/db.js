@@ -6,7 +6,10 @@ export async function fetchStudents() {
     .from('students')
     .select('*')
     .order('name')
-  if (error) throw error
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
   return data.map(row => ({
     id:            row.id,
     name:          row.name,
@@ -64,7 +67,10 @@ export async function fetchPayments() {
     .from('payments')
     .select('*')
     .order('created_at', { ascending: false })
-  if (error) throw error
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
   return data.map(row => ({
     id:        row.id,
     studentId: row.student_id,
@@ -107,7 +113,10 @@ export async function fetchTrials() {
     .from('trials')
     .select('*')
     .order('trial_date', { ascending: false })
-  if (error) throw error
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
   return data.map(row => ({
     id:        row.id,
     name:      row.name,
@@ -157,7 +166,10 @@ export async function fetchBatches() {
     .from('batches')
     .select('*')
     .order('id')
-  if (error) throw error
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
   return data.map(row => ({
     id:        row.id,
     name:      row.name,
@@ -172,6 +184,7 @@ export async function fetchBatches() {
     endTime:   row.end_time,
     ageMin:    row.age_min,
     ageMax:    row.age_max,
+    ground:    row.ground    || null,
   }))
 }
 
@@ -199,7 +212,10 @@ export async function fetchStaff() {
     .from('staff')
     .select('*')
     .order('name')
-  if (error) throw error
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
   return data.map(row => ({
     id:         row.id,
     name:       row.name,
@@ -238,7 +254,10 @@ export async function fetchAttendanceForDate(date) {
     .from('attendance')
     .select('student_id, present, status')
     .eq('date', date)
-  if (error) throw error
+  if (error) {
+    if (error.code === '42P01') return {}
+    throw error
+  }
   const record = {}
   data.forEach(row => {
     record[row.student_id] = row.status || (row.present ? 'Present' : 'Absent')
@@ -525,6 +544,7 @@ export async function insertBatchV2(b) {
       end_time:   b.endTime   || null,
       age_min:    Number(b.ageMin) || 0,
       age_max:    Number(b.ageMax) || 99,
+      ground:     b.ground || null,
     })
     .select()
     .single()
@@ -538,7 +558,10 @@ export async function fetchAnnouncements() {
     .from('announcements')
     .select('*')
     .order('date', { ascending: false })
-  if (error) throw error
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
   return data.map(row => ({
     id:     row.id,
     title:  row.title,
@@ -615,6 +638,270 @@ export async function updateEventStatus(id, status) {
 export async function deleteEvent(id) {
   const { error } = await supabase
     .from('events')
+    .delete()
+    .eq('id', id)
+  if (error) throw error
+}
+
+// ── Academies ─────────────────────────────────────────────
+
+export async function createAcademy(ownerId, name, joinCode) {
+  const { data, error } = await supabase
+    .from('academies')
+    .insert({ name, owner_id: ownerId, join_code: joinCode })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function fetchAcademy(academyId) {
+  const { data, error } = await supabase
+    .from('academies')
+    .select('*')
+    .eq('id', academyId)
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Find academy by the 6-char join code (staff use this to sign up)
+export async function findAcademyByCode(code) {
+  const { data } = await supabase
+    .from('academies')
+    .select('*')
+    .eq('join_code', code.trim().toUpperCase())
+    .single()
+  return data || null
+}
+
+// ── Profiles ──────────────────────────────────────────────
+
+export async function fetchProfile(userId) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single()
+  return data || null
+}
+
+export async function createProfile(userId, role, academyId, name) {
+  const { error } = await supabase
+    .from('profiles')
+    .insert({ id: userId, role, academy_id: academyId, name })
+  if (error) throw error
+}
+
+// ── Feature Flags ─────────────────────────────────────────
+
+// All features that can be toggled on/off
+export const ALL_FEATURES = [
+  'attendance', 'payments', 'trials', 'batches',
+  'staff', 'reports', 'community', 'events', 'gate_qr',
+]
+
+// Insert default flags (all ON) when a new academy is created
+export async function initDefaultFlags(academyId) {
+  const rows = ALL_FEATURES.map(f => ({ academy_id: academyId, feature: f, enabled: true }))
+  const { error } = await supabase.from('feature_flags').upsert(rows)
+  if (error) throw error
+}
+
+// Returns object like { attendance: true, payments: false, … }
+export async function fetchFeatureFlags(academyId) {
+  const { data } = await supabase
+    .from('feature_flags')
+    .select('feature, enabled')
+    .eq('academy_id', academyId)
+  if (!data || data.length === 0) {
+    // No flags found → treat all as enabled
+    return Object.fromEntries(ALL_FEATURES.map(f => [f, true]))
+  }
+  return Object.fromEntries(data.map(r => [r.feature, r.enabled]))
+}
+
+// Toggle a single feature on/off
+export async function upsertFeatureFlag(academyId, feature, enabled) {
+  const { error } = await supabase
+    .from('feature_flags')
+    .upsert({ academy_id: academyId, feature, enabled })
+  if (error) throw error
+}
+
+// ── Leave Requests ────────────────────────────────────────
+
+// Staff submits a leave request
+export async function createLeaveRequest(staffId, staffName, startDate, endDate, reason) {
+  const { data, error } = await supabase
+    .from('leave_requests')
+    .insert({ staff_id: staffId, staff_name: staffName, start_date: startDate, end_date: endDate, reason, status: 'Pending' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Owner fetches all leave requests (all staff)
+export async function fetchLeaveRequests() {
+  const { data, error } = await supabase
+    .from('leave_requests')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) return []
+  return data
+}
+
+// Staff fetches only their own requests
+export async function fetchMyLeaveRequests(staffId) {
+  const { data, error } = await supabase
+    .from('leave_requests')
+    .select('*')
+    .eq('staff_id', staffId)
+    .order('created_at', { ascending: false })
+  if (error) return []
+  return data
+}
+
+// Owner approves or rejects
+export async function updateLeaveStatus(id, status) {
+  const { error } = await supabase
+    .from('leave_requests')
+    .update({ status })
+    .eq('id', id)
+  if (error) throw error
+}
+
+// ── User Permissions ──────────────────────────────────────
+
+export async function fetchUserPermissions(userId) {
+  const { data, error } = await supabase
+    .from('user_permissions')
+    .select('permissions, access_role')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error) {
+    if (error.code === '42P01') return null
+    throw error
+  }
+  return data
+}
+
+export async function saveUserPermissions(userId, academyId, accessRole, permissions, name) {
+  const { error } = await supabase
+    .from('user_permissions')
+    .upsert(
+      { user_id: userId, academy_id: academyId, access_role: accessRole, permissions, name, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    )
+  if (error) throw error
+}
+
+export async function fetchAccessUsers(academyId) {
+  const { data, error } = await supabase
+    .from('user_permissions')
+    .select('*')
+    .eq('academy_id', academyId)
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
+  return data.map(row => ({
+    userId:      row.user_id,
+    name:        row.name || 'Unknown',
+    accessRole:  row.access_role,
+    permissions: row.permissions || [],
+  }))
+}
+
+export async function updateAccessUser(userId, accessRole, permissions) {
+  const { error } = await supabase
+    .from('user_permissions')
+    .update({ access_role: accessRole, permissions, updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+  if (error) throw error
+}
+
+export async function revokeAccessUser(userId) {
+  const { error } = await supabase
+    .from('user_permissions')
+    .delete()
+    .eq('user_id', userId)
+  if (error) throw error
+}
+
+// ── Staff Invites ─────────────────────────────────────────
+
+export async function createInvite(academyId, academyName, name, accessRole, permissions) {
+  const bytes = new Uint8Array(24)
+  crypto.getRandomValues(bytes)
+  const token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('staff_invites')
+    .insert({ token, academy_id: academyId, academy_name: academyName, name, access_role: accessRole, permissions, expires_at: expiresAt, used: false })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function fetchPendingInvites(academyId) {
+  const { data, error } = await supabase
+    .from('staff_invites')
+    .select('*')
+    .eq('academy_id', academyId)
+    .eq('used', false)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
+  return data.map(row => ({
+    id:          row.id,
+    token:       row.token,
+    name:        row.name,
+    accessRole:  row.access_role,
+    permissions: row.permissions || [],
+    expiresAt:   row.expires_at,
+  }))
+}
+
+export async function fetchInviteByToken(token) {
+  const { data, error } = await supabase
+    .from('staff_invites')
+    .select('*')
+    .eq('token', token)
+    .eq('used', false)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle()
+  if (error) {
+    if (error.code === '42P01') return null
+    throw error
+  }
+  return data
+}
+
+export async function acceptInvite(token, email, password) {
+  const invite = await fetchInviteByToken(token)
+  if (!invite) throw new Error('Invite link is invalid or has expired.')
+
+  const { data, error } = await supabase.auth.signUp({ email, password })
+  if (error) throw error
+
+  // profiles table only allows 'owner' | 'staff' — actual access role lives in user_permissions
+  await createProfile(data.user.id, 'staff', invite.academy_id, invite.name)
+  await saveUserPermissions(data.user.id, invite.academy_id, invite.access_role, invite.permissions, invite.name)
+
+  await supabase.from('staff_invites').update({ used: true }).eq('token', token)
+
+  return { user: data.user, session: data.session, invite }
+}
+
+export async function deleteInvite(id) {
+  const { error } = await supabase
+    .from('staff_invites')
     .delete()
     .eq('id', id)
   if (error) throw error

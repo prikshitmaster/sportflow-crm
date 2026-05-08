@@ -1,15 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '../context/AppContext'
-import { UserCog, Plus, Phone, IndianRupee, Award, X, Layers, CheckCircle, ChevronRight } from 'lucide-react'
+import { UserCog, Plus, Phone, IndianRupee, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
+import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
+import * as db from '../lib/db'
 
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
 
 export default function Staff() {
-  const { staff, addStaffMember, batches, updateBatchCoach } = useApp()
-  const [showModal, setShowModal] = useState(false)
-  const [profile, setProfile] = useState(null)
+  const { staff, addStaffMember, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess } = useApp()
+  const [showModal,   setShowModal]   = useState(false)
+  const [profile,     setProfile]     = useState(null)
+  const [activeTab,   setActiveTab]   = useState('staff')  // 'staff' | 'leaves' | 'access'
+
+  useEffect(() => { loadLeaveRequests?.() }, [])
+
+  const pendingLeaves = (leaveRequests || []).filter(r => r.status === 'Pending').length
 
   const totalSalary  = staff.reduce((s, m) => s + m.salary, 0)
   const avgAttendance = staff.length ? Math.round(staff.reduce((s, m) => s + m.attendance, 0) / staff.length) : 0
@@ -26,6 +33,47 @@ export default function Staff() {
         </button>
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={() => setActiveTab('staff')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${activeTab === 'staff' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          <UserCog size={14} /> Staff
+        </button>
+        <button onClick={() => setActiveTab('leaves')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${activeTab === 'leaves' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          <CalendarDays size={14} /> Leave Requests
+          {pendingLeaves > 0 && (
+            <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingLeaves}</span>
+          )}
+        </button>
+        {role === 'owner' && (
+          <button onClick={() => setActiveTab('access')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${activeTab === 'access' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            <ShieldCheck size={14} /> Access
+          </button>
+        )}
+      </div>
+
+      {/* Leave requests panel */}
+      {activeTab === 'leaves' && (
+        <LeaveRequestsPanel leaveRequests={leaveRequests || []} onUpdate={updateLeave} />
+      )}
+
+      {/* Access management panel */}
+      {activeTab === 'access' && (
+        <AccessPanel
+          staff={staff}
+          user={user}
+          demoMode={demoMode}
+          inviteStaff={inviteStaff}
+          updateStaffAccess={updateStaffAccess}
+          revokeStaffAccess={revokeStaffAccess}
+        />
+      )}
+
+      {/* Staff list — hidden when on leaves/access tab */}
+      {activeTab === 'staff' && (
+      <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-4 text-center">
           <p className="text-2xl font-black text-gray-900">{staff.length}</p>
@@ -113,7 +161,10 @@ export default function Staff() {
           )
         })}
       </div>
+      </>
+      )}
 
+      {/* Modals — rendered regardless of active tab */}
       {showModal && (
         <AddStaffModal
           onClose={() => setShowModal(false)}
@@ -136,6 +187,123 @@ export default function Staff() {
       )}
     </div>
   )
+}
+
+// ── Owner-side Leave Requests Panel ──────────────────────────
+
+function LeaveRequestsPanel({ leaveRequests, onUpdate }) {
+  const [loading, setLoading] = useState(null) // id of request being processed
+
+  const pending  = leaveRequests.filter(r => r.status === 'Pending')
+  const resolved = leaveRequests.filter(r => r.status !== 'Pending')
+
+  const handle = async (id, status) => {
+    setLoading(id)
+    try { await onUpdate(id, status) } finally { setLoading(null) }
+  }
+
+  if (leaveRequests.length === 0) {
+    return (
+      <div className="card p-8 text-center">
+        <CalendarDays size={32} className="text-gray-200 mx-auto mb-3" />
+        <p className="text-sm font-semibold text-gray-500">No leave requests yet</p>
+        <p className="text-xs text-gray-400 mt-1">Staff-submitted requests will appear here for approval</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Pending */}
+      {pending.length > 0 && (
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
+            Pending Approval ({pending.length})
+          </p>
+          <div className="space-y-3">
+            {pending.map(r => (
+              <div key={r.id} className="card p-4 border-l-4 border-amber-400">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="font-bold text-gray-900 text-sm">{r.staff_name}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {fmtDate(r.start_date)} → {fmtDate(r.end_date)}
+                      {' · '}{dayCount(r.start_date, r.end_date)} day{dayCount(r.start_date, r.end_date) !== 1 ? 's' : ''}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1.5 italic">"{r.reason}"</p>
+                  </div>
+                  <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg flex-shrink-0">
+                    <Hourglass size={11} /> Pending
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handle(r.id, 'Approved')}
+                    disabled={loading === r.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition disabled:opacity-50"
+                  >
+                    <CheckCircle size={13} /> {loading === r.id ? '…' : 'Approve'}
+                  </button>
+                  <button
+                    onClick={() => handle(r.id, 'Rejected')}
+                    disabled={loading === r.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 text-xs font-bold transition disabled:opacity-50"
+                  >
+                    <XCircle size={13} /> Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Resolved */}
+      {resolved.length > 0 && (
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
+            Resolved ({resolved.length})
+          </p>
+          <div className="space-y-2">
+            {resolved.map(r => (
+              <div key={r.id}
+                className={`card p-3.5 flex items-start justify-between gap-3 ${
+                  r.status === 'Approved' ? 'border-l-4 border-emerald-400' : 'border-l-4 border-red-300'
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-gray-900 truncate">{r.staff_name}</p>
+                  <p className="text-xs text-gray-500">{fmtDate(r.start_date)} → {fmtDate(r.end_date)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5 truncate italic">"{r.reason}"</p>
+                </div>
+                <span className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 ${
+                  r.status === 'Approved'
+                    ? 'text-emerald-700 bg-emerald-50 border border-emerald-100'
+                    : 'text-red-600 bg-red-50 border border-red-100'
+                }`}>
+                  {r.status === 'Approved'
+                    ? <><CheckCircle size={11} /> Approved</>
+                    : <><XCircle size={11} /> Rejected</>
+                  }
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function fmtDate(d) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+function dayCount(start, end) {
+  if (!start || !end) return 0
+  const diff = (new Date(end) - new Date(start)) / 86400000
+  return diff >= 0 ? diff + 1 : 0
 }
 
 function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign }) {
@@ -282,6 +450,452 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign }
               ))}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Access Management Panel ───────────────────────────────
+
+function AccessPanel({ staff, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess }) {
+  const [showInvite,    setShowInvite]    = useState(false)
+  const [editTarget,    setEditTarget]    = useState(null)   // { userId, name, accessRole, permissions }
+  const [accessUsers,   setAccessUsers]   = useState([])
+  const [pendingInvites, setPendingInvites] = useState([])
+  const [fetching,      setFetching]      = useState(!demoMode)
+  const [deletingId,    setDeletingId]    = useState(null)
+
+  // In demo: derive access users from staff array
+  useEffect(() => {
+    if (demoMode) {
+      setAccessUsers(
+        staff.filter(s => s.userId).map(s => ({
+          userId: s.userId, name: s.name, accessRole: s.accessRole, permissions: s.permissions || [],
+        }))
+      )
+      setPendingInvites([])
+      setFetching(false)
+      return
+    }
+    if (!user?.academyId) return
+    Promise.all([
+      db.fetchAccessUsers(user.academyId),
+      db.fetchPendingInvites(user.academyId),
+    ]).then(([users, invites]) => {
+      setAccessUsers(users)
+      setPendingInvites(invites)
+    }).finally(() => setFetching(false))
+  }, [demoMode, user?.academyId])
+
+  // Refresh list after invite is created (real DB)
+  const refreshInvites = async () => {
+    if (demoMode || !user?.academyId) return
+    const invites = await db.fetchPendingInvites(user.academyId)
+    setPendingInvites(invites)
+  }
+
+  const handleDeleteInvite = async (id) => {
+    setDeletingId(id)
+    try {
+      await db.deleteInvite(id)
+      setPendingInvites(prev => prev.filter(i => i.id !== id))
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const handleRevoke = async (userId, name) => {
+    if (!confirm(`Remove portal access for ${name}?`)) return
+    await revokeStaffAccess(userId)
+    setAccessUsers(prev => prev.filter(u => u.userId !== userId))
+  }
+
+  const handleSaveEdit = async (userId, accessRole, permissions) => {
+    await updateStaffAccess(userId, accessRole, permissions)
+    setAccessUsers(prev => prev.map(u => u.userId === userId ? { ...u, accessRole, permissions } : u))
+    setEditTarget(null)
+  }
+
+  if (fetching) {
+    return (
+      <div className="card p-8 text-center">
+        <p className="text-sm text-gray-400">Loading access data…</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-700">
+            {accessUsers.length} active portal {accessUsers.length === 1 ? 'user' : 'users'}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5">Staff with login access to the portal</p>
+        </div>
+        <button className="btn-primary" onClick={() => setShowInvite(true)}>
+          <Link2 size={15} /> Invite Staff
+        </button>
+      </div>
+
+      {/* Active portal users */}
+      <div>
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Portal Users</p>
+        {accessUsers.length === 0 ? (
+          <div className="card p-6 text-center">
+            <ShieldCheck size={28} className="text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">No staff have portal access yet. Invite someone to get started.</p>
+          </div>
+        ) : (
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+            <div className="hidden md:grid grid-cols-[2fr_1fr_2fr_auto] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Name</span>
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Role</span>
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Permissions</span>
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Actions</span>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {accessUsers.map(u => (
+                <div key={u.userId} className="grid md:grid-cols-[2fr_1fr_2fr_auto] gap-3 md:gap-4 items-center px-5 py-4">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">{u.name}</p>
+                  </div>
+                  <div>
+                    <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${ACCESS_ROLE_COLOR[u.accessRole] || 'bg-gray-100 text-gray-700'}`}>
+                      {ACCESS_ROLE_LABEL[u.accessRole] || u.accessRole}
+                    </span>
+                  </div>
+                  <div>
+                    {u.accessRole === 'admin' ? (
+                      <span className="text-xs text-gray-500">Full access ({ALL_PERMISSIONS.length} permissions)</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {(u.permissions || []).slice(0, 3).map(p => (
+                          <span key={p} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
+                            {PERM_LABEL[p] || p}
+                          </span>
+                        ))}
+                        {(u.permissions || []).length > 3 && (
+                          <span className="text-[10px] text-gray-400">+{u.permissions.length - 3} more</span>
+                        )}
+                        {(u.permissions || []).length === 0 && (
+                          <span className="text-xs text-gray-400">No permissions</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setEditTarget(u)}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition"
+                      title="Edit permissions"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => handleRevoke(u.userId, u.name)}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                      title="Revoke access"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Pending invites */}
+      {pendingInvites.length > 0 && (
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
+            Pending Invites ({pendingInvites.length})
+          </p>
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+            <div className="divide-y divide-gray-50">
+              {pendingInvites.map(inv => (
+                <div key={inv.id} className="flex items-center gap-4 px-5 py-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-900">{inv.name}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ACCESS_ROLE_COLOR[inv.accessRole] || 'bg-gray-100 text-gray-700'}`}>
+                        {ACCESS_ROLE_LABEL[inv.accessRole] || inv.accessRole}
+                      </span>
+                      <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
+                        Pending
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        Expires {new Date(inv.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteInvite(inv.id)}
+                    disabled={deletingId === inv.id}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-40"
+                    title="Delete invite"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInvite && (
+        <InviteModal
+          onClose={() => setShowInvite(false)}
+          onGenerated={refreshInvites}
+          inviteStaff={inviteStaff}
+        />
+      )}
+
+      {editTarget && (
+        <PermissionPanel
+          target={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSave={handleSaveEdit}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Invite Modal ──────────────────────────────────────────
+
+function InviteModal({ onClose, onGenerated, inviteStaff }) {
+  const [name,        setName]        = useState('')
+  const [accessRole,  setAccessRole]  = useState('coach')
+  const [permissions, setPermissions] = useState([...ROLE_PRESETS.coach])
+  const [link,        setLink]        = useState('')
+  const [copied,      setCopied]      = useState(false)
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState('')
+
+  const applyPreset = (role) => {
+    setAccessRole(role)
+    setPermissions([...(ROLE_PRESETS[role] || [])])
+  }
+
+  const togglePerm = (perm) => {
+    setPermissions(prev =>
+      prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm]
+    )
+  }
+
+  const handleGenerate = async () => {
+    if (!name.trim()) { setError('Name is required'); return }
+    setError('')
+    setLoading(true)
+    try {
+      const url = await inviteStaff(name.trim(), accessRole, permissions)
+      setLink(url)
+      onGenerated?.()
+    } catch (err) {
+      setError(err.message || 'Failed to generate invite')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(link)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <Modal title="Invite Staff Member" onClose={onClose}>
+      {!link ? (
+        <div className="space-y-5">
+          <div>
+            <label className="label">Staff Name *</label>
+            <input
+              className="input"
+              placeholder="Full name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="label mb-2">Access Role</label>
+            <div className="flex flex-wrap gap-2">
+              {ACCESS_ROLES.map(r => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => applyPreset(r)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                    accessRole === r
+                      ? 'bg-brand-600 text-white border-brand-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {ACCESS_ROLE_LABEL[r]}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1.5">
+              Selecting a role auto-fills permissions below. You can customize them.
+            </p>
+          </div>
+
+          <div>
+            <label className="label mb-2">Permissions</label>
+            <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50">
+              {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => (
+                <div key={group} className="px-4 py-3">
+                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">{group}</p>
+                  <div className="flex flex-wrap gap-x-5 gap-y-2">
+                    {perms.map(perm => (
+                      <label key={perm} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={permissions.includes(perm)}
+                          onChange={() => togglePerm(perm)}
+                          className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5"
+                        />
+                        <span className="text-xs text-gray-700">{PERM_LABEL[perm]}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <div className="flex justify-end gap-3 pt-1">
+            <button className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" onClick={handleGenerate} disabled={loading}>
+              <Link2 size={14} /> {loading ? 'Generating…' : 'Generate Link'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-center">
+            <CheckCircle size={28} className="text-emerald-500 mx-auto mb-2" />
+            <p className="text-sm font-bold text-gray-900">Invite link created!</p>
+            <p className="text-xs text-gray-500 mt-1">Share this link with <strong>{name}</strong>. It expires in 7 days.</p>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-xs text-gray-700 break-all font-mono leading-relaxed">
+            {link}
+          </div>
+          <div className="flex gap-3">
+            <button className="btn-primary flex-1 justify-center" onClick={copyLink}>
+              {copied ? <><Check size={14} /> Copied!</> : <><Copy size={14} /> Copy Link</>}
+            </button>
+            <button className="btn-secondary" onClick={onClose}>Done</button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+// ── Permission Panel (slide-over) ─────────────────────────
+
+function PermissionPanel({ target, onClose, onSave }) {
+  const [accessRole,  setAccessRole]  = useState(target.accessRole || 'staff')
+  const [permissions, setPermissions] = useState([...(target.permissions || [])])
+  const [saving,      setSaving]      = useState(false)
+
+  const applyPreset = (role) => {
+    setAccessRole(role)
+    setPermissions([...(ROLE_PRESETS[role] || [])])
+  }
+
+  const togglePerm = (perm) => {
+    setPermissions(prev =>
+      prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm]
+    )
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try { await onSave(target.userId, accessRole, permissions) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-end">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white h-full w-full max-w-md shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h3 className="font-bold text-gray-900">Edit Access</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{target.name}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
+            <X size={16} className="text-gray-500" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Role selector */}
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Access Role</p>
+            <div className="flex flex-wrap gap-2">
+              {ACCESS_ROLES.map(r => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => applyPreset(r)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                    accessRole === r
+                      ? 'bg-brand-600 text-white border-brand-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {ACCESS_ROLE_LABEL[r]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Permission checkboxes */}
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Permissions</p>
+            <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50">
+              {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => (
+                <div key={group} className="px-4 py-3">
+                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">{group}</p>
+                  <div className="space-y-2">
+                    {perms.map(perm => (
+                      <label key={perm} className="flex items-center gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={permissions.includes(perm)}
+                          onChange={() => togglePerm(perm)}
+                          className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5"
+                        />
+                        <span className="text-sm text-gray-700">{PERM_LABEL[perm]}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-100 px-5 py-4 flex gap-3">
+          <button className="btn-secondary flex-1 justify-center" onClick={onClose}>Cancel</button>
+          <button className="btn-primary flex-1 justify-center" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
         </div>
       </div>
     </div>

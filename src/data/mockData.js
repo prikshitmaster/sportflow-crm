@@ -70,12 +70,12 @@ export const batches = [
 ]
 
 export const staff = [
-  { id: 1, name: 'Suresh Yadav',   role: 'Head Coach',    phone: '9823401567', sports: ['Football', 'Cricket'], salary: 35000, joinDate: '2024-06-01', status: 'Active',   attendance: 96 },
-  { id: 2, name: 'Pradeep Kumar',  role: 'Coach',         phone: '9845612370', sports: ['Cricket', 'Martial Arts'], salary: 28000, joinDate: '2024-08-15', status: 'Active', attendance: 94 },
-  { id: 3, name: 'Anita Singh',    role: 'Dance Trainer', phone: '9867234501', sports: ['Dance'],             salary: 25000, joinDate: '2024-09-01', status: 'Active',   attendance: 98 },
-  { id: 4, name: 'Ravi Shankar',   role: 'Coach',         phone: '9712345670', sports: ['Football'],          salary: 27000, joinDate: '2024-07-10', status: 'Active',   attendance: 91 },
-  { id: 5, name: 'Monica Nair',    role: 'Coach',         phone: '9934012567', sports: ['Tennis', 'Badminton'], salary: 26000, joinDate: '2024-10-01', status: 'Active', attendance: 97 },
-  { id: 6, name: 'Deepak Jha',     role: 'Admin',         phone: '9823456701', sports: [],                    salary: 20000, joinDate: '2024-06-01', status: 'Active',   attendance: 99 },
+  { id: 1, name: 'Suresh Yadav',   role: 'Head Coach',    phone: '9823401567', sports: ['Football', 'Cricket'],    salary: 35000, joinDate: '2024-06-01', status: 'Active', attendance: 96, userId: 'demo-s1', accessRole: 'coach',        permissions: ['attendance.manage', 'students.view', 'batches.view'] },
+  { id: 2, name: 'Pradeep Kumar',  role: 'Coach',         phone: '9845612370', sports: ['Cricket', 'Martial Arts'],salary: 28000, joinDate: '2024-08-15', status: 'Active', attendance: 94, userId: 'demo-s2', accessRole: 'coach',        permissions: ['attendance.manage', 'students.view', 'batches.view'] },
+  { id: 3, name: 'Anita Singh',    role: 'Dance Trainer', phone: '9867234501', sports: ['Dance'],                  salary: 25000, joinDate: '2024-09-01', status: 'Active', attendance: 98, userId: null,       accessRole: null,           permissions: [] },
+  { id: 4, name: 'Ravi Shankar',   role: 'Coach',         phone: '9712345670', sports: ['Football'],               salary: 27000, joinDate: '2024-07-10', status: 'Active', attendance: 91, userId: null,       accessRole: null,           permissions: [] },
+  { id: 5, name: 'Monica Nair',    role: 'Coach',         phone: '9934012567', sports: ['Tennis', 'Badminton'],    salary: 26000, joinDate: '2024-10-01', status: 'Active', attendance: 97, userId: 'demo-s5', accessRole: 'receptionist', permissions: ['students.view', 'students.manage', 'trials.manage'] },
+  { id: 6, name: 'Deepak Jha',     role: 'Admin',         phone: '9823456701', sports: [],                         salary: 20000, joinDate: '2024-06-01', status: 'Active', attendance: 99, userId: 'demo-s6', accessRole: 'admin',        permissions: ['students.view','students.manage','attendance.manage','payments.view','payments.manage','trials.manage','batches.view','batches.manage','reports.view','staff.manage','settings.manage','community.manage','events.manage'] },
 ]
 
 export const attendance = {
