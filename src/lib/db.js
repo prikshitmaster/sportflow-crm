@@ -64,11 +64,13 @@ export async function deleteStudent(id) {
 }
 
 export async function suspendStudent(id) {
-  const { error } = await supabase
-    .from('students')
-    .update({ status: 'Suspended' })
-    .eq('id', id)
-  if (error) throw error
+  const today = new Date().toISOString().split('T')[0]
+  // Try with suspended_since; fall back if column doesn't exist yet
+  const { error } = await supabase.from('students').update({ status: 'Suspended', suspended_since: today }).eq('id', id)
+  if (error) {
+    const { error: e2 } = await supabase.from('students').update({ status: 'Suspended' }).eq('id', id)
+    if (e2) throw e2
+  }
 }
 
 export async function updateStudentStatus(id, status) {
@@ -156,8 +158,11 @@ export async function updateStudentPaidTill(id, paidTill, fees) {
 }
 
 export async function reactivateStudent(id) {
-  const { error } = await supabase.from('students').update({ status: 'Active' }).eq('id', id)
-  if (error) throw error
+  const { error } = await supabase.from('students').update({ status: 'Active', suspended_since: null }).eq('id', id)
+  if (error) {
+    const { error: e2 } = await supabase.from('students').update({ status: 'Active' }).eq('id', id)
+    if (e2) throw e2
+  }
 }
 
 export async function activateStudentWithBatch(id, batchId, batchName, paidTill, fees) {
