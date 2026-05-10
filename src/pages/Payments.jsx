@@ -261,10 +261,10 @@ function SummaryCard({ label, value, count, color }) {
 export function RecordPaymentModal({ onClose, onSave, students, batches = [], initialStudentId }) {
   const initStudent = students.find(s => s.id === initialStudentId) || students[0] || {}
   const [form, setForm] = useState({
-    studentId:   initStudent.id    || '',
-    student:     initStudent.name  || '',
-    baseAmount:  initStudent.fees  || 0,
-    paymentType: 'monthly',
+    studentId:   initStudent.id       || '',
+    student:     initStudent.name     || '',
+    baseAmount:  initStudent.fees     || 0,
+    paymentType: initStudent.feePlan  || 'monthly',
     discountPct: 0,
     batchId:     String(initStudent.batchId || initStudent.lastBatchId || ''),
     batchName:   initStudent.batch || initStudent.lastBatchName || '',
@@ -275,9 +275,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
   const [amountOverride, setAmountOverride] = useState(null) // null = use calculation
 
   const months      = form.paymentType === 'quarterly' ? 3 : form.paymentType === 'yearly' ? 12 : 1
-  const subtotal    = form.baseAmount * months
-  const discountAmt = Math.round(subtotal * form.discountPct / 100)
-  const calcAmount  = subtotal - discountAmt
+  // For quarterly/yearly the entered amount IS the flat total — no multiplication
+  const subtotal    = form.paymentType === 'monthly' ? form.baseAmount : form.baseAmount
+  const discountAmt = Math.round(form.baseAmount * form.discountPct / 100)
+  const calcAmount  = form.baseAmount - discountAmt
   const finalAmount = amountOverride !== null ? amountOverride : calcAmount
 
   const filteredStudents = studentSearch
@@ -290,11 +291,12 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     setAmountOverride(null)
     setForm(f => ({
       ...f,
-      studentId:  s.id,
-      student:    s.name,
-      baseAmount: s.fees || 0,
-      batchId:    String(s.batchId || s.lastBatchId || ''),
-      batchName:  s.batch || s.lastBatchName || '',
+      studentId:   s.id,
+      student:     s.name,
+      baseAmount:  s.fees || 0,
+      paymentType: s.feePlan || 'monthly',
+      batchId:     String(s.batchId || s.lastBatchId || ''),
+      batchName:   s.batch || s.lastBatchName || '',
     }))
   }
 
@@ -370,10 +372,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
           </div>
         </div>
 
-        {/* Monthly rate + discount */}
+        {/* Fee amount + discount */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Monthly Fee (₹)</label>
+            <label className="label">{{ monthly: 'Monthly Fee (₹)', quarterly: 'Quarterly Fee (₹)', yearly: 'Yearly Fee (₹)' }[form.paymentType] || 'Fee (₹)'}</label>
             <input className="input" type="number" min="0" value={form.baseAmount}
               onChange={e => { setAmountOverride(null); setForm(f => ({ ...f, baseAmount: Number(e.target.value) })) }} />
           </div>
@@ -387,8 +389,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
         {/* Amount breakdown */}
         <div className="bg-gray-50 rounded-xl p-3.5 space-y-1.5">
           <div className="flex justify-between text-xs text-gray-500">
-            <span>₹{form.baseAmount.toLocaleString('en-IN')} × {months} month{months > 1 ? 's' : ''}</span>
-            <span>₹{calcAmount.toLocaleString('en-IN')}</span>
+            {form.paymentType === 'monthly'
+              ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × 1 month</span>
+              : <span>₹{form.baseAmount.toLocaleString('en-IN')} ({form.paymentType} flat rate · {months} months)</span>
+            }
+            <span>₹{form.baseAmount.toLocaleString('en-IN')}</span>
           </div>
           {discountAmt > 0 && (
             <div className="flex justify-between text-xs text-emerald-600 font-medium">

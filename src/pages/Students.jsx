@@ -472,7 +472,7 @@ export default function Students() {
 function AddStudentModal({ onClose, onSave }) {
   const { batches } = useApp()
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '', trainingType: 'Daily',
+    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '', trainingType: 'Daily', feePlan: 'monthly',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -547,8 +547,24 @@ function AddStudentModal({ onClose, onSave }) {
             ))}
           </div>
         </div>
+        <div className="col-span-2">
+          <label className="label">Fee Plan</label>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
+              { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
+              { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
+            ].map(p => (
+              <button key={p.key} type="button" onClick={() => set('feePlan', p.key)}
+                className={`py-2.5 rounded-xl text-xs font-bold border transition ${form.feePlan === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <div>{p.label}</div>
+                <div className={`font-normal mt-0.5 ${form.feePlan === p.key ? 'text-brand-200' : 'text-gray-400'}`}>{p.sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
         <div>
-          <label className="label">Monthly Fee (₹) *</label>
+          <label className="label">{{ monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *' }[form.feePlan] || 'Fee (₹) *'}</label>
           <input className="input" type="number" placeholder="e.g. 2000" value={form.fees}
             onChange={e => set('fees', e.target.value)} />
         </div>
@@ -788,6 +804,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     paidTill:     paidTillMonth,
     joinDate:     s.joinDate     || '',
     trainingType: s.trainingType || 'Daily',
+    feePlan:      s.feePlan      || 'monthly',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -840,7 +857,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           </select>
         </div>
         <div>
-          <label className="label">Monthly Fee (₹)</label>
+          <label className="label">{{ monthly: 'Monthly Fee (₹)', quarterly: 'Quarterly Fee (₹)', yearly: 'Yearly Fee (₹)' }[form.feePlan] || 'Fee (₹)'}</label>
           <input className="input" type="number" value={form.fees} onChange={e => set('fees', e.target.value)} />
         </div>
         <div>
@@ -851,6 +868,22 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
                 onClick={() => set('trainingType', t)}
                 className={`flex-1 py-2 rounded-lg text-xs font-bold border transition ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 {t}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="col-span-2">
+          <label className="label">Fee Plan</label>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
+              { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
+              { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
+            ].map(p => (
+              <button key={p.key} type="button" onClick={() => set('feePlan', p.key)}
+                className={`py-2.5 rounded-xl text-xs font-bold border transition ${form.feePlan === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                <div>{p.label}</div>
+                <div className={`font-normal mt-0.5 ${form.feePlan === p.key ? 'text-brand-200' : 'text-gray-400'}`}>{p.sub}</div>
               </button>
             ))}
           </div>

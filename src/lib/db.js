@@ -33,6 +33,7 @@ export async function fetchStudents() {
     lastBatchName:  row.last_batch_name,
     suspendedSince: row.suspended_since,
     trainingType:   row.training_type || 'Daily',
+    feePlan:        row.fee_plan || 'monthly',
   }))
 }
 
@@ -97,6 +98,7 @@ export async function updateStudent(id, s) {
     paid_till:     s.paidTill     || null,
     join_date:     s.joinDate     || null,
     training_type: s.trainingType || 'Daily',
+    fee_plan:      s.feePlan      || 'monthly',
   }
   const { data, error } = await supabase
     .from('students')
@@ -463,6 +465,7 @@ export async function createStudentAccount(s) {
       fee_due_day:    Number(s.feeDueDay) || null,
       paid_till:      s.paidTill || null,
       training_type:  s.trainingType || 'Daily',
+      fee_plan:       s.feePlan      || 'monthly',
     })
     .select()
     .single()
