@@ -474,21 +474,25 @@ export default function Students() {
 const MO_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const PLAN_MOS_MAP = { monthly: 1, quarterly: 3, yearly: 12 }
 
+// Returns YYYY-MM — the last month covered by the fee plan
 function calcPaidTill(joinDate, feePlan) {
   if (!joinDate) return ''
   const [yr, mo] = joinDate.split('-').map(Number) // mo is 1-indexed
   const planMonths = PLAN_MOS_MAP[feePlan] || 1
-  return new Date(yr, mo - 1 + planMonths, 0).toISOString().split('T')[0]
+  const endDate = new Date(yr, mo - 1 + planMonths - 1, 1)
+  return `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`
 }
 
+// paidTill is YYYY-MM; joinDate is YYYY-MM-DD
 function coveragePreview(joinDate, paidTill) {
   if (!joinDate || !paidTill) return null
-  const start = new Date(joinDate + 'T00:00:00')
-  const end   = new Date(paidTill + 'T00:00:00')
-  const months = Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1)
+  const startMo = Number(joinDate.split('-')[1])
+  const startYr = Number(joinDate.split('-')[0])
+  const [endYr, endMo] = paidTill.split('-').map(Number)
+  const months = Math.max(1, (endYr - startYr) * 12 + (endMo - startMo) + 1)
   const label = months === 1
-    ? `${MO_NAMES[end.getMonth()]} ${end.getFullYear()}`
-    : `${MO_NAMES[start.getMonth()]}${start.getFullYear() !== end.getFullYear() ? ` ${start.getFullYear()}` : ''}–${MO_NAMES[end.getMonth()]} ${end.getFullYear()}`
+    ? `${MO_NAMES[endMo - 1]} ${endYr}`
+    : `${MO_NAMES[startMo - 1]}${startYr !== endYr ? ` ${startYr}` : ''}–${MO_NAMES[endMo - 1]} ${endYr}`
   return `${label} · ${months} month${months > 1 ? 's' : ''}`
 }
 
@@ -609,7 +613,7 @@ function AddStudentModal({ onClose, onSave }) {
         </div>
         <div>
           <label className="label">Paid Till</label>
-          <input className="input" type="date" value={form.paidTill}
+          <input className="input" type="month" value={form.paidTill}
             onChange={e => set('paidTill', e.target.value)} />
           {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
         </div>
@@ -847,7 +851,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     batchId:      s.batchId      || '',
     batchName:    s.batch        || '',
     fees:         s.fees         || '',
-    paidTill:     s.paidTill     || '',
+    paidTill:     s.paidTill ? s.paidTill.slice(0, 7) : '',
     joinDate:     s.joinDate     || '',
     trainingType: s.trainingType || 'Daily',
     feePlan:      s.feePlan      || 'monthly',
@@ -952,7 +956,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
         </div>
         <div>
           <label className="label">Paid Till</label>
-          <input className="input" type="date" value={form.paidTill} onChange={e => set('paidTill', e.target.value)} />
+          <input className="input" type="month" value={form.paidTill} onChange={e => set('paidTill', e.target.value)} />
           {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
         </div>
       </div>
