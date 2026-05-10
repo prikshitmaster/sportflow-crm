@@ -438,8 +438,8 @@ export function AppProvider({ children }) {
         const joinDateStr = s.joinDate || created.join_date || new Date().toISOString().split('T')[0]
         const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, created.fees, s.feePlan || 'monthly')
         const pt = new Date(paidTill + 'T00:00:00')
-        const payCount = await db.fetchPaymentCount()
-        const invoiceId = `INV-${pt.getFullYear()}-${String(payCount + 1).padStart(3, '0')}`
+        const invNum = await db.fetchNextInvoiceNum()
+        const invoiceId = `INV-${pt.getFullYear()}-${String(invNum).padStart(3, '0')}`
         const payRow = {
           studentId: created.id, student: created.name,
           amount, month: label, date: startDate,
@@ -643,8 +643,8 @@ export function AppProvider({ children }) {
           }`
 
       const payDate   = baseDate.toISOString().split('T')[0]
-      const invNum    = String(payments.length + 1).padStart(3, '0')
-      const invoiceId = `INV-${baseDate.getFullYear()}-${invNum}`
+      const nextNum   = await db.fetchNextInvoiceNum()
+      const invoiceId = `INV-${baseDate.getFullYear()}-${String(nextNum).padStart(3, '0')}`
 
       const paymentRow = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate }
       await db.insertPayment(paymentRow, invoiceId)

@@ -472,6 +472,20 @@ export async function fetchPaymentCount() {
   return count || 0
 }
 
+export async function fetchNextInvoiceNum() {
+  const { data } = await supabase.from('payments').select('id')
+  if (!data || data.length === 0) return 1
+  let maxNum = 0
+  for (const row of data) {
+    const match = row.id?.match(/INV-\d{4}-(\d+)/)
+    if (match) {
+      const n = parseInt(match[1], 10)
+      if (n > maxNum) maxNum = n
+    }
+  }
+  return maxNum + 1
+}
+
 export async function createStudentAccount(s) {
   const { data, error } = await supabase
     .from('students')
