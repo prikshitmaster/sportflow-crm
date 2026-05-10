@@ -18,15 +18,17 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 
 const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-// Returns { monthsCovered, label, amount } for a historical payment
-function calcHistoricalPayment(joinDate, paidTill, fees) {
-  const start = new Date((joinDate || paidTill) + 'T00:00:00')
-  const end   = new Date(paidTill + 'T00:00:00')
+const PLAN_MOS = { monthly: 1, quarterly: 3, yearly: 12 }
+// For non-monthly plans, fees IS the flat rate — no multiplication
+function calcHistoricalPayment(joinDate, paidTill, fees, feePlan = 'monthly') {
+  const start  = new Date((joinDate || paidTill) + 'T00:00:00')
+  const end    = new Date(paidTill + 'T00:00:00')
   const months = Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1)
   const label  = months === 1
     ? `${MO[end.getMonth()]} ${end.getFullYear()}`
     : `${MO[start.getMonth()]}${start.getFullYear() !== end.getFullYear() ? ` ${start.getFullYear()}` : ''}–${MO[end.getMonth()]} ${end.getFullYear()}`
-  return { monthsCovered: months, label, amount: fees * months }
+  const amount = feePlan === 'monthly' ? fees * months : fees
+  return { monthsCovered: months, label, amount }
 }
 import { supabase } from '../lib/supabase'
 import * as db from '../lib/db'
@@ -404,13 +406,14 @@ export function AppProvider({ children }) {
         lastBatchName:  null,
         suspendedSince: null,
         trainingType:   created.training_type || 'Daily',
+        feePlan:        created.fee_plan || 'monthly',
       }
       setStudents(prev => [...prev, mapped])
 
       // Auto-create a historical payment record if student was added with paid_till + fees
       if (paidTill && created.fees > 0) {
         const paymentDate = created.join_date || new Date().toISOString().split('T')[0]
-        const { monthsCovered, label, amount } = calcHistoricalPayment(paymentDate, paidTill, created.fees)
+        const { monthsCovered, label, amount } = calcHistoricalPayment(paymentDate, paidTill, created.fees, s.feePlan || 'monthly')
         const pt = new Date(paidTill + 'T00:00:00')
         const payCount = await db.fetchPaymentCount()
         const invoiceId = `INV-${pt.getFullYear()}-${String(payCount + 1).padStart(3, '0')}`
@@ -459,6 +462,7 @@ export function AppProvider({ children }) {
         paidTill:     updated.paid_till,
         joinDate:     updated.join_date,
         trainingType: updated.training_type || 'Daily',
+        feePlan:      updated.fee_plan || 'monthly',
       } : x))
 
       // Keep batch enrolled counts in sync when batch assignment changes
@@ -475,11 +479,11 @@ export function AppProvider({ children }) {
       // Auto-create a payment record if paidTill was just set and no payment exists for that period
       if (paidTill && updated.fees > 0) {
         const paymentDate = updated.join_date || new Date().toISOString().split('T')[0]
-        const { monthsCovered, label, amount } = calcHistoricalPayment(paymentDate, paidTill, updated.fees)
-        const alreadyHas = payments.some(p =>
+        const { monthsCovered, label, amount } = calcHistoricalPayment(paymentDate, paidTill, updated.fees, s.feePlan || 'monthly')
+        const existing = payments.find(p =>
           p.studentId === id && p.month === label && (p.status === 'Paid' || p.status === 'Pending')
         )
-        if (!alreadyHas) {
+        if (!existing) {
           const pt = new Date(paidTill + 'T00:00:00')
           const payCount = await db.fetchPaymentCount()
           const invoiceId = `INV-${pt.getFullYear()}-${String(payCount + 1).padStart(3, '0')}`
@@ -490,6 +494,10 @@ export function AppProvider({ children }) {
           }
           await db.insertPayment(payRow, invoiceId)
           setPayments(prev => [{ ...payRow, id: invoiceId, paymentType: 'monthly', discountPct: 0 }, ...prev])
+        } else if (existing.amount !== amount) {
+          // Fee was corrected — update the existing payment record
+          await db.updatePaymentAmount(existing.id, amount, monthsCovered)
+          setPayments(prev => prev.map(p => p.id === existing.id ? { ...p, amount, monthsCovered } : p))
         }
       }
 
