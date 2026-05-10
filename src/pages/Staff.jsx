@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { UserCog, Plus, Phone, IndianRupee, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor } from 'lucide-react'
+import { UserCog, Plus, Phone, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
@@ -18,7 +18,6 @@ export default function Staff() {
 
   const pendingLeaves = (leaveRequests || []).filter(r => r.status === 'Pending').length
 
-  const totalSalary   = staff.reduce((s, m) => s + m.salary, 0)
   const avgAttendance = staff.length ? Math.round(staff.reduce((s, m) => s + m.attendance, 0) / staff.length) : 0
 
   return (
@@ -87,7 +86,7 @@ export default function Staff() {
       {/* Staff list — hidden when on leaves/access tab */}
       {activeTab === 'staff' && (
       <>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="card p-4 text-center">
           <p className="text-2xl font-black text-gray-900">{staff.length}</p>
           <p className="text-xs text-gray-500 mt-1">Total Staff</p>
@@ -99,10 +98,6 @@ export default function Staff() {
         <div className="card p-4 text-center">
           <p className="text-2xl font-black text-emerald-600">{avgAttendance}%</p>
           <p className="text-xs text-gray-500 mt-1">Avg Attendance</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-purple-600">₹{(totalSalary / 1000).toFixed(0)}k</p>
-          <p className="text-xs text-gray-500 mt-1">Monthly Payroll</p>
         </div>
       </div>
 
@@ -139,10 +134,6 @@ export default function Staff() {
                     </div>
                   </div>
                 )}
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <IndianRupee size={13} className="text-gray-400 flex-shrink-0" />
-                  ₹{s.salary.toLocaleString('en-IN')} / month
-                </div>
                 {assignedBatches.length > 0 && (
                   <div className="flex items-center gap-2">
                     <Layers size={13} className="text-gray-400 flex-shrink-0" />
@@ -377,7 +368,7 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign }
               <p className="text-gray-400 text-xs mt-0.5">{s.phone}</p>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3 mt-5">
+          <div className="grid grid-cols-2 gap-3 mt-5">
             <div className="bg-white/10 rounded-xl p-3 text-center">
               <p className="text-lg font-black text-white">{assignedBatches.length}</p>
               <p className="text-[10px] text-gray-400">Batches</p>
@@ -385,10 +376,6 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign }
             <div className="bg-white/10 rounded-xl p-3 text-center">
               <p className="text-lg font-black text-white">{s.attendance}%</p>
               <p className="text-[10px] text-gray-400">Attendance</p>
-            </div>
-            <div className="bg-white/10 rounded-xl p-3 text-center">
-              <p className="text-lg font-black text-white">₹{(s.salary / 1000).toFixed(0)}k</p>
-              <p className="text-[10px] text-gray-400">Salary</p>
             </div>
           </div>
         </div>
@@ -468,8 +455,6 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign }
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Details</p>
             <div className="space-y-2.5">
               {[
-                ['Join Date', s.joinDate ? new Date(s.joinDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'],
-                ['Monthly Salary', `₹${s.salary.toLocaleString('en-IN')}`],
                 ['Role', s.role],
               ].map(([label, value]) => (
                 <div key={label} className="flex justify-between border-b border-gray-50 pb-2 last:border-0 last:pb-0">
@@ -1072,8 +1057,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const [photoPreview, setPhotoPreview] = useState(null)
   const [photoFile,    setPhotoFile]    = useState(null)
   const [form, setForm] = useState({
-    name: '', role: ROLES[1], phone: '', sports: [], salary: 25000,
-    joinDate: new Date().toISOString().split('T')[0], status: 'Active',
+    name: '', role: ROLES[1], phone: '', sports: [], status: 'Active',
   })
   const [giveAccess,  setGiveAccess]  = useState(false)
   const [portalType,  setPortalType]  = useState('field')  // 'field' | 'office'
@@ -1208,16 +1192,6 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
               <div>
                 <label className="label">Phone</label>
                 <input className="input" placeholder="Mobile number" value={form.phone} onChange={e => set('phone', e.target.value)} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Monthly Salary (₹)</label>
-                <input className="input" type="number" value={form.salary} onChange={e => set('salary', Number(e.target.value))} />
-              </div>
-              <div>
-                <label className="label">Join Date</label>
-                <input className="input" type="date" value={form.joinDate} onChange={e => set('joinDate', e.target.value)} />
               </div>
             </div>
             <div>

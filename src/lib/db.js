@@ -607,6 +607,29 @@ export async function updateBatchCoach(batchId, coachName) {
   if (error) throw error
 }
 
+export async function updateBatch(batchId, b) {
+  const { data, error } = await supabase
+    .from('batches')
+    .update({
+      name:       b.name,
+      time:       b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
+      sports:     b.sports   || [],
+      coach:      b.coach,
+      capacity:   Number(b.capacity),
+      days:       b.days     || [],
+      start_time: b.startTime || null,
+      end_time:   b.endTime   || null,
+      age_min:    Number(b.ageMin) || 0,
+      age_max:    Number(b.ageMax) || 99,
+      ground:     b.ground || null,
+    })
+    .eq('id', batchId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function fetchEvents() {
   const { data, error } = await supabase
     .from('events')

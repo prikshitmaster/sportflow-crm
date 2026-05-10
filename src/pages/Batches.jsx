@@ -1,14 +1,15 @@
 import { useState, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight } from 'lucide-react'
+import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 
 const COLORS = ['bg-brand-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600']
 
 export default function Batches() {
-  const { batches, addBatch, staff, students, updateBatchCoach, branches } = useApp()
+  const { batches, addBatch, updateBatch, staff, students, updateBatchCoach, branches } = useApp()
   const [showModal, setShowModal] = useState(false)
+  const [editingBatch, setEditingBatch] = useState(null)
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [activeBranch, setActiveBranch] = useState('All')
 
@@ -36,6 +37,18 @@ export default function Batches() {
   const handleAdd = async (b) => {
     await addBatch(b)
     setShowModal(false)
+  }
+
+  const handleEdit = async (b) => {
+    const updated = await updateBatch(editingBatch.id, b)
+    if (updated) {
+      setSelectedBatch(prev => prev && prev.id === editingBatch.id
+        ? { ...prev, ...updated, sports: updated.sports || [], days: updated.days || [],
+            startTime: updated.start_time, endTime: updated.end_time,
+            ageMin: updated.age_min, ageMax: updated.age_max, ground: updated.ground || null }
+        : prev)
+    }
+    setEditingBatch(null)
   }
 
   return (
@@ -136,12 +149,22 @@ export default function Batches() {
 
       {showModal && <AddBatchModal onClose={() => setShowModal(false)} onSave={handleAdd} staff={staff} />}
 
+      {editingBatch && (
+        <AddBatchModal
+          onClose={() => setEditingBatch(null)}
+          onSave={handleEdit}
+          staff={staff}
+          initialData={editingBatch}
+        />
+      )}
+
       {selectedBatch && (
         <BatchDetailPanel
           batch={selectedBatch}
           students={students}
           staff={staff}
           onClose={() => setSelectedBatch(null)}
+          onEdit={() => { setEditingBatch(selectedBatch); setSelectedBatch(null) }}
           onAssignCoach={async (id, name) => {
             await updateBatchCoach(id, name)
             setSelectedBatch(prev => ({ ...prev, coach: name }))
@@ -221,10 +244,19 @@ function BatchCard({ b, idx, onSelect }) {
 
 const ALL_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
-function AddBatchModal({ onClose, onSave, staff }) {
+function AddBatchModal({ onClose, onSave, staff, initialData }) {
+  const isEdit = !!initialData
   const [form, setForm] = useState({
-    name: '', startTime: '', endTime: '', sports: [], coach: staff[0]?.name || '',
-    capacity: 20, days: [], ageMin: 0, ageMax: 99, ground: '',
+    name:      initialData?.name      || '',
+    startTime: initialData?.startTime || '',
+    endTime:   initialData?.endTime   || '',
+    sports:    initialData?.sports    || [],
+    coach:     initialData?.coach     || staff[0]?.name || '',
+    capacity:  initialData?.capacity  || 20,
+    days:      initialData?.days      || [],
+    ageMin:    initialData?.ageMin    ?? 0,
+    ageMax:    initialData?.ageMax    ?? 99,
+    ground:    initialData?.ground    || '',
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -239,7 +271,7 @@ function AddBatchModal({ onClose, onSave, staff }) {
   }))
 
   return (
-    <Modal title="Create New Batch" onClose={onClose}>
+    <Modal title={isEdit ? `Edit Batch — ${initialData.name}` : 'Create New Batch'} onClose={onClose}>
       <div className="space-y-4">
         <div>
           <label className="label">Batch Name *</label>
@@ -305,13 +337,15 @@ function AddBatchModal({ onClose, onSave, staff }) {
       </div>
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={() => onSave(form)}>Create Batch</button>
+        <button className="btn-primary" onClick={() => onSave(form)}>
+          {isEdit ? 'Save Changes' : 'Create Batch'}
+        </button>
       </div>
     </Modal>
   )
 }
 
-function BatchDetailPanel({ batch: b, students, staff, onClose, onAssignCoach }) {
+function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onAssignCoach }) {
   const enrolled = students.filter(s => s.status === 'Active' && s.batch === b.name)
   const [editCoach, setEditCoach] = useState(false)
   const [newCoach, setNewCoach] = useState(b.coach || '')
@@ -334,6 +368,9 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onAssignCoach })
           <div className="flex items-start justify-between mb-4">
             <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition">
               <X size={16} className="text-white" />
+            </button>
+            <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition text-white text-xs font-semibold">
+              <Pencil size={12} /> Edit Batch
             </button>
           </div>
           <h2 className="text-2xl font-black text-white">{b.name}</h2>

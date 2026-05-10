@@ -464,6 +464,25 @@ export function AppProvider({ children }) {
     }
   }
 
+  const updateBatch = async (batchId, b) => {
+    try {
+      const updated = await db.updateBatch(batchId, b)
+      setBatches(prev => prev.map(existing => existing.id === batchId ? {
+        ...existing,
+        name: updated.name, time: updated.time,
+        sports: updated.sports || [], coach: updated.coach,
+        capacity: updated.capacity,
+        days: updated.days || [], startTime: updated.start_time,
+        endTime: updated.end_time, ageMin: updated.age_min, ageMax: updated.age_max,
+        ground: updated.ground || null,
+      } : existing))
+      showToast('Batch updated')
+      return updated
+    } catch (err) {
+      showToast(err.message || 'Failed to update batch', 'error')
+    }
+  }
+
   // ── Events ────────────────────────────────────────────
 
   const addEvent = async (e) => {
@@ -741,7 +760,7 @@ export function AppProvider({ children }) {
       students, addStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments, addPayment, markPaymentPaid,
       trials, addTrial, updateTrialStatus,
-      batches, setBatches, addBatch, updateBatchCoach,
+      batches, setBatches, addBatch, updateBatchCoach, updateBatch,
       events, addEvent, updateEventStatus, removeEvent,
       staff, addStaffMember,
       branches, addBranch, removeBranch,
