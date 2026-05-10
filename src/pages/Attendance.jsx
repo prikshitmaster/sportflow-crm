@@ -98,7 +98,7 @@ export default function Attendance() {
     : activeStudents
   // Suspended students shown read-only so coach knows they're out
   const suspendedDisplayed = selectedBatch
-    ? students.filter(s => s.status === 'Suspended' && s.lastBatchName === selectedBatch)
+    ? students.filter(s => s.status === 'Suspended' && (s.batch === selectedBatch || s.lastBatchName === selectedBatch))
     : students.filter(s => s.status === 'Suspended')
 
   const loadMonth = useCallback(async () => {

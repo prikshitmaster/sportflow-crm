@@ -51,6 +51,14 @@ export default function StaffAttendance() {
     )
   }, [students, selectedBatch])
 
+  // Suspended students who were in this batch — shown read-only
+  const suspendedInBatch = useMemo(() => {
+    if (!selectedBatch) return []
+    return students.filter(
+      s => s.status === 'Suspended' && (s.batchId === selectedBatch.id || s.batch === selectedBatch.name)
+    )
+  }, [students, selectedBatch])
+
   // Filter students by search
   const visible = useMemo(() => {
     const q = search.toLowerCase()
@@ -123,9 +131,9 @@ export default function StaffAttendance() {
         ) : (
           <div className="space-y-3">
             {myBatches.map(b => {
-              const count = students.filter(
-                s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name)
-              ).length
+              const activeCount    = students.filter(s => s.status === 'Active'    && (s.batchId === b.id || s.batch === b.name)).length
+              const suspendedCount = students.filter(s => s.status === 'Suspended' && (s.batchId === b.id || s.batch === b.name)).length
+              const count = activeCount
               // Is this batch scheduled today?
               const runsToday = !b.days || b.days.length === 0 ||
                 b.days.some(d => d.toLowerCase().startsWith(dayShort.toLowerCase()))
@@ -150,7 +158,7 @@ export default function StaffAttendance() {
                     </div>
                     <div className="flex items-center gap-3 text-xs text-gray-400">
                       {b.startTime && <span className="flex items-center gap-1"><Clock size={10} />{b.startTime}</span>}
-                      <span className="flex items-center gap-1"><Users size={10} />{count} students</span>
+                      <span className="flex items-center gap-1"><Users size={10} />{count} students{suspendedCount > 0 ? ` · ${suspendedCount} suspended` : ''}</span>
                       {alreadyMarked > 0 && (
                         <span className="text-emerald-600 font-semibold">{alreadyMarked} marked</span>
                       )}
@@ -217,7 +225,7 @@ export default function StaffAttendance() {
 
         {/* Student list */}
         <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
-          {visible.length === 0 ? (
+          {visible.length === 0 && suspendedInBatch.length === 0 ? (
             <div className="py-12 text-center text-sm text-gray-400">No students found</div>
           ) : visible.map(s => {
             const status = marks[s.id] || ''
@@ -259,6 +267,27 @@ export default function StaffAttendance() {
               </div>
             )
           })}
+
+          {/* Suspended students — read-only info */}
+          {suspendedInBatch.length > 0 && (
+            <>
+              <div className="px-4 py-2 bg-red-50 border-y border-red-100">
+                <p className="text-[10px] font-semibold text-red-400 uppercase tracking-wide">Suspended ({suspendedInBatch.length})</p>
+              </div>
+              {suspendedInBatch.map(s => (
+                <div key={`susp-${s.id}`} className="flex items-center gap-3 px-4 py-3 opacity-50">
+                  <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center text-sm font-black text-red-400 flex-shrink-0">
+                    {s.name[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-500 truncate">{s.name}</p>
+                    {s.parentPhone && <p className="text-xs text-gray-400 truncate">{s.parent} · {s.parentPhone}</p>}
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-500">Suspended</span>
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         {/* Sticky save button */}

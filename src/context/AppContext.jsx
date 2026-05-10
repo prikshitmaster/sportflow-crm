@@ -112,12 +112,12 @@ export function AppProvider({ children }) {
           )
           if (toSuspend.length > 0) {
             await Promise.all(toSuspend.map(async (student) => {
-              await db.suspendStudent(student.id, student.batchId, student.batch)
+              await db.suspendStudent(student.id)
               if (student.batchId) await db.updateBatchEnrolled(student.batchId, -1)
             }))
             setStudents(prev => prev.map(x => {
               if (!toSuspend.find(sus => sus.id === x.id)) return x
-              return { ...x, status: 'Suspended', lastBatchId: x.batchId, lastBatchName: x.batch, batchId: null, batch: null, suspendedSince: todayStr }
+              return { ...x, status: 'Suspended', suspendedSince: todayStr }
             }))
             setBatches(prev => prev.map(batch => {
               const count = toSuspend.filter(x => x.batchId === batch.id).length
@@ -446,12 +446,10 @@ export function AppProvider({ children }) {
 
   const reactivateStudent = async (student) => {
     try {
-      const batchId   = student.lastBatchId
-      const batchName = student.lastBatchName
-      await db.reactivateStudent(student.id, batchId, batchName)
-      if (batchId) {
-        await db.updateBatchEnrolled(batchId, 1)
-        setBatches(prev => prev.map(b => b.id === batchId
+      await db.reactivateStudent(student.id)
+      if (student.batchId) {
+        await db.updateBatchEnrolled(student.batchId, 1)
+        setBatches(prev => prev.map(b => b.id === student.batchId
           ? { ...b, enrolled: (b.enrolled || 0) + 1 }
           : b
         ))
@@ -459,11 +457,7 @@ export function AppProvider({ children }) {
       setStudents(prev => prev.map(s => s.id === student.id ? {
         ...s,
         status:         'Active',
-        batchId,
-        batch:          batchName || '',
         suspendedSince: null,
-        lastBatchId:    null,
-        lastBatchName:  null,
       } : s))
       showToast(`${student.name} reactivated`)
     } catch (err) {
@@ -474,7 +468,8 @@ export function AppProvider({ children }) {
   const deleteStudent = async (student) => {
     try {
       await db.deleteStudent(student.id)
-      if (student.batchId) {
+      // Only decrement if Active — suspend already decremented it
+      if (student.status !== 'Suspended' && student.batchId) {
         await db.updateBatchEnrolled(student.batchId, -1)
         setBatches(prev => prev.map(b => b.id === student.batchId
           ? { ...b, enrolled: Math.max(0, (b.enrolled || 0) - 1) }
@@ -491,7 +486,7 @@ export function AppProvider({ children }) {
 
   const suspendStudent = async (student) => {
     try {
-      await db.suspendStudent(student.id, student.batchId, student.batch)
+      await db.suspendStudent(student.id)
       if (student.batchId) {
         await db.updateBatchEnrolled(student.batchId, -1)
         setBatches(prev => prev.map(b => b.id === student.batchId
@@ -503,10 +498,6 @@ export function AppProvider({ children }) {
       setStudents(prev => prev.map(s => s.id === student.id ? {
         ...s,
         status:         'Suspended',
-        lastBatchId:    student.batchId,
-        lastBatchName:  student.batch,
-        batchId:        null,
-        batch:          null,
         suspendedSince: today,
       } : s))
       showToast(`${student.name} suspended`)
@@ -573,14 +564,14 @@ export function AppProvider({ children }) {
 
       if (student) {
         if (student.status === 'Suspended') {
-          const batchId   = p.batchId   || student.lastBatchId
-          const batchName = p.batchName || student.lastBatchName
+          const batchId   = p.batchId   || student.batchId
+          const batchName = p.batchName || student.batch
           await db.activateStudentWithBatch(student.id, batchId, batchName, paidTill, p.baseAmount)
           if (batchId) await db.updateBatchEnrolled(batchId, 1)
           setStudents(prev => prev.map(s => s.id === student.id ? {
             ...s, status: 'Active', batchId, batch: batchName,
             paidTill, fees: p.baseAmount || s.fees, feeAmount: p.baseAmount || s.fees,
-            suspendedSince: null, lastBatchId: null, lastBatchName: null,
+            suspendedSince: null,
           } : s))
           showToast(`${student.name} reactivated → ${batchName || 'no batch'}`, 'success')
         } else {

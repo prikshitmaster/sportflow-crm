@@ -172,21 +172,35 @@ export default function Students() {
                       </td>
                       <td className="px-4 py-3 font-semibold text-gray-900">₹{(s.fees || 0).toLocaleString('en-IN')}</td>
                       <td className="px-4 py-3">
-                        {s.paidTill && s.paidTill >= firstOfMonth ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {s.paidTill && s.paidTill >= firstOfMonth ? (
+                            <button
+                              className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                              onClick={() => reactivateStudent(s)}
+                            >
+                              Reactivate
+                            </button>
+                          ) : (
+                            <button
+                              className="btn-primary text-xs py-1.5 px-3"
+                              onClick={() => { setPayStudent(s); setShowPayModal(true) }}
+                            >
+                              Record Payment
+                            </button>
+                          )}
                           <button
-                            className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
-                            onClick={() => reactivateStudent(s)}
+                            className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition flex items-center gap-1"
+                            onClick={() => setEditStudent(s)}
                           >
-                            Reactivate
+                            <Pencil size={11} /> Edit
                           </button>
-                        ) : (
                           <button
-                            className="btn-primary text-xs py-1.5 px-3"
-                            onClick={() => { setPayStudent(s); setShowPayModal(true) }}
+                            className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-red-100 text-red-600 hover:bg-red-200 transition"
+                            onClick={() => setDeleteTarget(s)}
                           >
-                            Record Payment
+                            Delete
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -508,6 +522,7 @@ function AddStudentModal({ onClose, onSave }) {
         <div>
           <label className="label">Join Date <span className="text-gray-400 font-normal">(optional — defaults to today)</span></label>
           <input className="input" type="date" value={form.joinDate}
+            max={new Date().toISOString().split('T')[0]}
             onChange={e => set('joinDate', e.target.value)} />
         </div>
         <div>
@@ -796,7 +811,9 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
         </div>
         <div>
           <label className="label">Join Date</label>
-          <input className="input" type="date" value={form.joinDate} onChange={e => set('joinDate', e.target.value)} />
+          <input className="input" type="date" value={form.joinDate}
+            max={new Date().toISOString().split('T')[0]}
+            onChange={e => set('joinDate', e.target.value)} />
         </div>
         <div>
           <label className="label">Paid Till <span className="text-gray-400 font-normal">(month)</span></label>

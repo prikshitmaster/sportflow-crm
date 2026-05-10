@@ -63,18 +63,10 @@ export async function deleteStudent(id) {
   if (error) throw error
 }
 
-export async function suspendStudent(id, batchId, batchName) {
-  const today = new Date().toISOString().split('T')[0]
+export async function suspendStudent(id) {
   const { error } = await supabase
     .from('students')
-    .update({
-      status:          'Suspended',
-      last_batch_id:   batchId   || null,
-      last_batch_name: batchName || null,
-      batch_id:        null,
-      batch:           '',
-      suspended_since: today,
-    })
+    .update({ status: 'Suspended' })
     .eq('id', id)
   if (error) throw error
 }
@@ -163,27 +155,17 @@ export async function updateStudentPaidTill(id, paidTill, fees) {
   if (error) throw error
 }
 
-export async function reactivateStudent(id, batchId, batchName) {
-  const { error } = await supabase.from('students').update({
-    status:          'Active',
-    batch_id:        batchId   || null,
-    batch:           batchName || '',
-    suspended_since: null,
-    last_batch_id:   null,
-    last_batch_name: null,
-  }).eq('id', id)
+export async function reactivateStudent(id) {
+  const { error } = await supabase.from('students').update({ status: 'Active' }).eq('id', id)
   if (error) throw error
 }
 
 export async function activateStudentWithBatch(id, batchId, batchName, paidTill, fees) {
   const updates = {
-    status:          'Active',
-    batch_id:        batchId   || null,
-    batch:           batchName || null,
-    paid_till:       paidTill,
-    suspended_since: null,
-    last_batch_id:   null,
-    last_batch_name: null,
+    status:    'Active',
+    batch_id:  batchId   || null,
+    batch:     batchName || null,
+    paid_till: paidTill,
   }
   if (fees) { updates.fees = fees; updates.fee_amount = fees }
   const { error } = await supabase.from('students').update(updates).eq('id', id)
