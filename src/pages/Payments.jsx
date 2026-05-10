@@ -14,13 +14,17 @@ const STATUS_MAP = {
 export default function Payments() {
   const { payments, students, batches, addPayment, markPaymentPaid } = useApp()
 
-  const [search,       setSearch]       = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
-  const [sportFilter,  setSportFilter]  = useState('All')
-  const [batchFilter,  setBatchFilter]  = useState('All')
-  const [showModal,    setShowModal]    = useState(false)
+  const [search,          setSearch]          = useState('')
+  const [statusFilter,    setStatusFilter]    = useState('All')
+  const [sportFilter,     setSportFilter]     = useState('All')
+  const [batchFilter,     setBatchFilter]     = useState('All')
+  const [showModal,       setShowModal]       = useState(false)
+  const [payForStudent,   setPayForStudent]   = useState(null)
 
-  // Build studentId → { sport, batch } lookup for filter joins
+  const now          = new Date()
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+
+  // Build studentId → student lookup for filter joins
   const studentMap = useMemo(() => {
     const m = {}
     students.forEach(s => { m[s.id] = s })
@@ -31,19 +35,47 @@ export default function Payments() {
     [...new Set(students.map(s => s.sport).filter(Boolean))].sort()
   , [students])
 
-  const filtered = payments.filter(p => {
-    const q    = search.toLowerCase()
-    const matchQ = !q || (p.student || '').toLowerCase().includes(q) || (p.id || '').toLowerCase().includes(q)
-    const matchS = statusFilter === 'All' || p.status === statusFilter
-    const stu  = studentMap[p.studentId]
+  // Virtual overdue rows: active students with an expired paid_till and no pending payment already recorded
+  const overdueRows = useMemo(() => {
+    const studentsWithPendingRecord = new Set(
+      payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => p.studentId)
+    )
+    return students
+      .filter(s =>
+        s.status === 'Active' &&
+        s.paidTill &&
+        s.paidTill < firstOfMonth &&
+        !studentsWithPendingRecord.has(s.id)
+      )
+      .map(s => ({
+        id:        `DUE-${s.id}`,
+        studentId: s.id,
+        student:   s.name,
+        amount:    s.fees || 0,
+        month:     `Due — paid till ${new Date(s.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`,
+        date:      null,
+        status:    'Overdue',
+        mode:      null,
+        isVirtual: true,
+      }))
+  }, [students, payments, firstOfMonth])
+
+  const allRecords = useMemo(() => [...overdueRows, ...payments], [overdueRows, payments])
+
+  const filtered = allRecords.filter(p => {
+    const q       = search.toLowerCase()
+    const matchQ  = !q || (p.student || '').toLowerCase().includes(q) || (p.id || '').toLowerCase().includes(q)
+    const matchS  = statusFilter === 'All' || p.status === statusFilter
+    const stu     = studentMap[p.studentId]
     const matchSport = sportFilter === 'All' || stu?.sport === sportFilter
     const matchBatch = batchFilter === 'All' || stu?.batch === batchFilter
     return matchQ && matchS && matchSport && matchBatch
   })
 
-  const paid    = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + (p.amount ?? 0), 0)
-  const pending = payments.filter(p => p.status === 'Pending').reduce((s, p) => s + (p.amount ?? 0), 0)
-  const overdue = payments.filter(p => p.status === 'Overdue').reduce((s, p) => s + (p.amount ?? 0), 0)
+  const paid          = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + (p.amount ?? 0), 0)
+  const pending       = payments.filter(p => p.status === 'Pending').reduce((s, p) => s + (p.amount ?? 0), 0)
+  const overdueAmt    = [...payments.filter(p => p.status === 'Overdue'), ...overdueRows].reduce((s, p) => s + (p.amount ?? 0), 0)
+  const overdueCount  = payments.filter(p => p.status === 'Overdue').length + overdueRows.length
 
   return (
     <div className="space-y-5 max-w-[1400px]">
@@ -62,7 +94,7 @@ export default function Payments() {
       <div className="grid grid-cols-3 gap-4">
         <SummaryCard label="Collected" value={`₹${paid.toLocaleString('en-IN')}`} count={payments.filter(p=>p.status==='Paid').length} color="emerald" />
         <SummaryCard label="Pending" value={`₹${pending.toLocaleString('en-IN')}`} count={payments.filter(p=>p.status==='Pending').length} color="amber" />
-        <SummaryCard label="Overdue" value={`₹${overdue.toLocaleString('en-IN')}`} count={payments.filter(p=>p.status==='Overdue').length} color="red" />
+        <SummaryCard label="Overdue" value={`₹${overdueAmt.toLocaleString('en-IN')}`} count={overdueCount} color="red" />
       </div>
 
       {/* Revenue chart */}
@@ -134,10 +166,10 @@ export default function Payments() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.map(p => {
-                const sm = STATUS_MAP[p.status]
+                const sm = STATUS_MAP[p.status] || STATUS_MAP.Overdue
                 return (
-                  <tr key={p.id} className="hover:bg-gray-50/60 transition">
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.id}</td>
+                  <tr key={p.id} className={`hover:bg-gray-50/60 transition ${p.isVirtual ? 'bg-red-50/30' : ''}`}>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.isVirtual ? '—' : p.id}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900">{p.student}</td>
                     <td className="px-4 py-3 text-gray-600">{p.month}</td>
                     <td className="px-4 py-3 font-bold text-gray-900">₹{(p.amount ?? 0).toLocaleString('en-IN')}</td>
@@ -147,7 +179,14 @@ export default function Payments() {
                       <span className={`badge ${sm.cls}`}>{p.status}</span>
                     </td>
                     <td className="px-4 py-3">
-                      {p.status !== 'Paid' ? (
+                      {p.isVirtual ? (
+                        <button
+                          className="text-xs text-red-600 font-semibold hover:underline"
+                          onClick={() => setPayForStudent(studentMap[p.studentId])}
+                        >
+                          Record Payment
+                        </button>
+                      ) : p.status !== 'Paid' ? (
                         <button
                           className="text-xs text-brand-600 font-semibold hover:underline"
                           onClick={() => markPaymentPaid(p.id, 'UPI')}
@@ -174,6 +213,15 @@ export default function Payments() {
           onSave={async (data) => { await addPayment(data); setShowModal(false) }}
           students={students}
           batches={batches}
+        />
+      )}
+      {payForStudent && (
+        <RecordPaymentModal
+          onClose={() => setPayForStudent(null)}
+          onSave={async (data) => { await addPayment(data); setPayForStudent(null) }}
+          students={students}
+          batches={batches}
+          initialStudentId={payForStudent.id}
         />
       )}
     </div>
