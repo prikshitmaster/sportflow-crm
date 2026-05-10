@@ -3,7 +3,6 @@ import { useApp } from '../context/AppContext'
 import { CreditCard, Plus, Search, Download, CheckCircle, Clock, AlertCircle, X } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { revenueData } from '../data/mockData'
 
 const STATUS_MAP = {
   Paid:    { cls: 'badge-green',  icon: CheckCircle, iconCls: 'text-emerald-500' },
@@ -34,6 +33,23 @@ export default function Payments() {
   const sportOptions = useMemo(() =>
     [...new Set(students.map(s => s.sport).filter(Boolean))].sort()
   , [students])
+
+  // Build last 8 months of real collected revenue from actual Paid payments
+  const revenueData = useMemo(() => {
+    const months = []
+    for (let i = 7; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const label = d.toLocaleDateString('en-IN', { month: 'short' })
+      months.push({ key, month: label, revenue: 0 })
+    }
+    payments.filter(p => p.status === 'Paid' && p.date).forEach(p => {
+      const key = p.date.slice(0, 7)
+      const m = months.find(m => m.key === key)
+      if (m) m.revenue += p.amount ?? 0
+    })
+    return months
+  }, [payments])
 
   // Virtual overdue rows: active students with an expired paid_till and no pending payment already recorded
   const overdueRows = useMemo(() => {
@@ -108,7 +124,6 @@ export default function Payments() {
             <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`} />
             <Tooltip formatter={(v) => [`₹${v.toLocaleString('en-IN')}`, '']} contentStyle={{ borderRadius: 8, border: 'none', fontSize: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
             <Bar dataKey="revenue" fill="#2563eb" radius={[4,4,0,0]} />
-            <Bar dataKey="target" fill="#e5e7eb" radius={[4,4,0,0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
