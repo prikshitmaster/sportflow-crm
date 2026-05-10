@@ -72,7 +72,7 @@ export async function suspendStudent(id, batchId, batchName) {
       last_batch_id:   batchId   || null,
       last_batch_name: batchName || null,
       batch_id:        null,
-      batch:           null,
+      batch:           '',
       suspended_since: today,
     })
     .eq('id', id)
@@ -95,7 +95,7 @@ export async function updateStudent(id, s) {
     parent_phone: s.parentPhone  || '',
     age:          Number(s.age)  || null,
     sport:        s.sport        || '',
-    batch:        s.batchName    || null,
+    batch:        s.batchName    || '',
     batch_id:     s.batchId      || null,
     fees:         Number(s.fees) || 0,
     fee_amount:   Number(s.fees) || 0,

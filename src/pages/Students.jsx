@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { SPORTS, BATCH_NAMES } from '../data/mockData'
 import {
@@ -30,6 +30,14 @@ export default function Students() {
   const [suspBatchFilter, setSuspBatchFilter] = useState('All')
   const [editStudent,     setEditStudent]     = useState(null)
   const [deleteTarget,    setDeleteTarget]    = useState(null)
+
+  // Close row menu on any outside click (avoids fixed overlay blocking scroll)
+  useEffect(() => {
+    if (!openMenu) return
+    const close = () => setOpenMenu(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [openMenu])
 
   const now          = new Date()
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
@@ -431,7 +439,6 @@ export default function Students() {
           onReset={async (s) => { const c = await resetStudentPasswordAdmin(s.id); setResetResult({ id: s.id, studentCode: s.studentCode, joinCode: c }); setProfile(null) }}
         />
       )}
-      {openMenu && <div className="fixed inset-0 z-0" onClick={() => setOpenMenu(null)} />}
     </div>
   )
 }
