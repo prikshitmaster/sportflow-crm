@@ -17,6 +17,7 @@ export default function Payments() {
   const [statusFilter,    setStatusFilter]    = useState('All')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
+  const [monthFilter,     setMonthFilter]     = useState('')
   const [showModal,       setShowModal]       = useState(false)
   const [payForStudent,   setPayForStudent]   = useState(null)
 
@@ -86,7 +87,8 @@ export default function Payments() {
     const stu     = studentMap[p.studentId]
     const matchSport = sportFilter === 'All' || stu?.sport === sportFilter
     const matchBatch = batchFilter === 'All' || stu?.batch === batchFilter
-    return matchQ && matchS && matchSport && matchBatch
+    const matchMonth = !monthFilter || (p.date && p.date.slice(0, 7) === monthFilter)
+    return matchQ && matchS && matchSport && matchBatch && matchMonth
   })
 
   const paid          = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + (p.amount ?? 0), 0)
@@ -148,7 +150,7 @@ export default function Payments() {
             </button>
           ))}
         </div>
-        {/* Row 2: Sport + Batch dropdowns */}
+        {/* Row 2: Sport + Batch + Month dropdowns */}
         <div className="flex flex-wrap gap-3 items-center">
           <select className="input w-auto" value={sportFilter}
             onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
@@ -159,6 +161,19 @@ export default function Payments() {
             <option value="All">All Batches</option>
             {batches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
           </select>
+          <div className="flex items-center gap-2">
+            <input type="month" className="input w-auto"
+              value={monthFilter}
+              onChange={e => setMonthFilter(e.target.value)}
+              title="Filter by payment month"
+            />
+            {monthFilter && (
+              <button onClick={() => setMonthFilter('')}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition font-medium">
+                <X size={12} />
+              </button>
+            )}
+          </div>
           {(sportFilter !== 'All' || batchFilter !== 'All') && (
             <button onClick={() => { setSportFilter('All'); setBatchFilter('All') }}
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition font-medium">
@@ -270,9 +285,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     batchName:   initStudent.batch || initStudent.lastBatchName || '',
     mode:        'UPI',
   })
-  const [loading,       setLoading]       = useState(false)
-  const [studentSearch, setStudentSearch] = useState('')
-  const [amountOverride, setAmountOverride] = useState(null) // null = use calculation
+  const [loading,        setLoading]       = useState(false)
+  const [studentSearch,  setStudentSearch] = useState('')
+  const [amountOverride, setAmountOverride] = useState(null)
+  const [paymentDate,    setPaymentDate]   = useState(new Date().toISOString().split('T')[0])
 
   const months      = form.paymentType === 'quarterly' ? 3 : form.paymentType === 'yearly' ? 12 : 1
   // For quarterly/yearly the entered amount IS the flat total — no multiplication
@@ -309,7 +325,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     if (!form.studentId || finalAmount <= 0) return
     setLoading(true)
     try {
-      await onSave({ ...form, amount: finalAmount })
+      await onSave({ ...form, amount: finalAmount, paymentDate })
     } finally {
       setLoading(false)
     }
@@ -425,12 +441,21 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
           </select>
         </div>
 
-        {/* Mode */}
-        <div>
-          <label className="label">Payment Mode</label>
-          <select className="input" value={form.mode} onChange={e => setForm(f => ({ ...f, mode: e.target.value }))}>
-            {['UPI', 'Cash', 'Bank Transfer', 'Cheque', 'Card'].map(m => <option key={m}>{m}</option>)}
-          </select>
+        {/* Payment Date + Mode */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Payment Date</label>
+            <input className="input" type="date"
+              value={paymentDate}
+              max={new Date().toISOString().split('T')[0]}
+              onChange={e => setPaymentDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Payment Mode</label>
+            <select className="input" value={form.mode} onChange={e => setForm(f => ({ ...f, mode: e.target.value }))}>
+              {['UPI', 'Cash', 'Bank Transfer', 'Cheque', 'Card'].map(m => <option key={m}>{m}</option>)}
+            </select>
+          </div>
         </div>
 
       </div>

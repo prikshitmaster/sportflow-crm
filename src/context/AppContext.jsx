@@ -603,25 +603,27 @@ export function AppProvider({ children }) {
 
   const addPayment = async (p) => {
     try {
-      const now      = new Date()
-      const months   = p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1
-      const paidTill = new Date(now.getFullYear(), now.getMonth() + months, 0)
+      // Use selected payment date (from modal) or today
+      const baseDate  = p.paymentDate ? new Date(p.paymentDate + 'T00:00:00') : new Date()
+      const months    = p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1
+      const paidTill  = new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0)
         .toISOString().split('T')[0]
 
       const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      const endDate   = new Date(now.getFullYear(), now.getMonth() + months, 0)
+      const endDate    = new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0)
       const monthLabel = months === 1
-        ? `${MONTHS[now.getMonth()]} ${now.getFullYear()}`
-        : `${MONTHS[now.getMonth()]}–${MONTHS[endDate.getMonth()]} ${
-            now.getFullYear() === endDate.getFullYear()
-              ? now.getFullYear()
-              : `${now.getFullYear()}/${String(endDate.getFullYear()).slice(2)}`
+        ? `${MONTHS[baseDate.getMonth()]} ${baseDate.getFullYear()}`
+        : `${MONTHS[baseDate.getMonth()]}–${MONTHS[endDate.getMonth()]} ${
+            baseDate.getFullYear() === endDate.getFullYear()
+              ? baseDate.getFullYear()
+              : `${baseDate.getFullYear()}/${String(endDate.getFullYear()).slice(2)}`
           }`
 
+      const payDate   = baseDate.toISOString().split('T')[0]
       const invNum    = String(payments.length + 1).padStart(3, '0')
-      const invoiceId = `INV-${now.getFullYear()}-${invNum}`
+      const invoiceId = `INV-${baseDate.getFullYear()}-${invNum}`
 
-      const paymentRow = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount }
+      const paymentRow = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate }
       await db.insertPayment(paymentRow, invoiceId)
 
       const student = students.find(s => s.id === Number(p.studentId))
@@ -649,7 +651,7 @@ export function AppProvider({ children }) {
 
       setPayments(prev => [{
         ...paymentRow, id: invoiceId,
-        date: now.toISOString().split('T')[0], status: 'Paid', month: monthLabel,
+        date: payDate, status: 'Paid', month: monthLabel,
       }, ...prev])
       showToast('Payment recorded')
     } catch (err) {

@@ -144,7 +144,7 @@ export async function insertPayment(p, invoiceId) {
       student:        p.student,
       amount:         Number(p.amount),
       month:          p.month,
-      date:           new Date().toISOString().split('T')[0],
+      date:           p.date || new Date().toISOString().split('T')[0],
       status:         'Paid',
       mode:           p.mode,
       payment_type:   p.paymentType  || 'monthly',
