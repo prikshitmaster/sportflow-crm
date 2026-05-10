@@ -56,6 +56,22 @@ export async function insertStudent(s) {
   return { ...s, id: data.id }
 }
 
+export async function suspendStudent(id, batchId, batchName) {
+  const today = new Date().toISOString().split('T')[0]
+  const { error } = await supabase
+    .from('students')
+    .update({
+      status:          'Suspended',
+      last_batch_id:   batchId   || null,
+      last_batch_name: batchName || null,
+      batch_id:        null,
+      batch:           null,
+      suspended_since: today,
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function updateStudentStatus(id, status) {
   const { error } = await supabase
     .from('students')

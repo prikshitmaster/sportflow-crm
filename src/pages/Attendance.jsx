@@ -92,10 +92,14 @@ export default function Attendance() {
   const isFutureMonth  = year > todayYear || (year === todayYear && month > todayMonth)
   const isFuture       = (d) => isFutureMonth || (isCurrentMonth && d > todayDay)
 
-  const activeStudents = students.filter(s => s.status === 'Active')
-  const displayed      = selectedBatch
+  const activeStudents     = students.filter(s => s.status === 'Active')
+  const displayed          = selectedBatch
     ? activeStudents.filter(s => s.batch === selectedBatch)
     : activeStudents
+  // Suspended students shown read-only so coach knows they're out
+  const suspendedDisplayed = selectedBatch
+    ? students.filter(s => s.status === 'Suspended' && s.lastBatchName === selectedBatch)
+    : students.filter(s => s.status === 'Suspended')
 
   const loadMonth = useCallback(async () => {
     setLoading(true)
@@ -403,6 +407,21 @@ export default function Attendance() {
                 </button>
               )
             })}
+            {suspendedDisplayed.map(s => (
+              <div key={`susp-${s.id}`} className="w-full flex items-center gap-3 px-4 py-3.5 bg-red-50/40 opacity-60">
+                <span className="text-xs text-gray-300 w-5 flex-shrink-0">—</span>
+                <div className="w-9 h-9 bg-red-100 rounded-full flex items-center justify-center text-sm font-bold text-red-400 flex-shrink-0">
+                  {s.name[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-500 text-sm truncate">{s.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{s.sport} · {s.lastBatchName}</p>
+                </div>
+                <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold border border-red-200 text-red-500 bg-red-50">
+                  Suspended
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -465,6 +484,25 @@ export default function Attendance() {
                         </td>
                       )
                     })}
+                  </tr>
+                ))}
+                {suspendedDisplayed.map(s => (
+                  <tr key={`susp-${s.id}`} className="bg-red-50/30 opacity-50">
+                    <td className="sticky left-0 bg-red-50/30 z-10 text-center px-2 py-2.5 text-gray-300 border-r border-gray-100">—</td>
+                    <td className="sticky left-8 bg-red-50/30 z-10 px-3 py-2.5 border-r border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 bg-red-100 rounded-full flex items-center justify-center text-[10px] font-bold text-red-400 flex-shrink-0">{s.name[0]}</div>
+                        <div>
+                          <span className="font-semibold text-gray-500 whitespace-nowrap text-xs">{s.name}</span>
+                          <span className="ml-2 text-[10px] font-bold text-red-500 bg-red-100 px-1.5 py-0.5 rounded-full">Suspended</span>
+                        </div>
+                      </div>
+                    </td>
+                    {days.map(d => (
+                      <td key={d} className="py-2 text-center">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-red-100 text-red-200 text-[10px]">✕</span>
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

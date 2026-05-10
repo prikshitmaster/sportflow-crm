@@ -413,6 +413,32 @@ export function AppProvider({ children }) {
     }
   }
 
+  const suspendStudent = async (student) => {
+    try {
+      await db.suspendStudent(student.id, student.batchId, student.batch)
+      if (student.batchId) {
+        await db.updateBatchEnrolled(student.batchId, -1)
+        setBatches(prev => prev.map(b => b.id === student.batchId
+          ? { ...b, enrolled: Math.max(0, (b.enrolled || 0) - 1) }
+          : b
+        ))
+      }
+      const today = new Date().toISOString().split('T')[0]
+      setStudents(prev => prev.map(s => s.id === student.id ? {
+        ...s,
+        status:         'Suspended',
+        lastBatchId:    student.batchId,
+        lastBatchName:  student.batch,
+        batchId:        null,
+        batch:          null,
+        suspendedSince: today,
+      } : s))
+      showToast(`${student.name} suspended`)
+    } catch (err) {
+      showToast(err.message || 'Suspend failed', 'error')
+    }
+  }
+
   const updateStudentStatus = async (id, status) => {
     try {
       await db.updateStudentStatus(id, status)
@@ -856,7 +882,7 @@ export function AppProvider({ children }) {
       // leave
       leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // data
-      students, addStudent, updateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
+      students, addStudent, updateStudent, suspendStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments, addPayment, markPaymentPaid,
       trials, addTrial, updateTrialStatus,
       batches, setBatches, addBatch, updateBatchCoach, updateBatch,

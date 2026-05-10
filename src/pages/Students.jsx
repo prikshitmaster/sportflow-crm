@@ -4,7 +4,7 @@ import { SPORTS, BATCH_NAMES } from '../data/mockData'
 import {
   Search, Plus, MoreVertical, UserCheck, UserX, X, Users as UsersIcon,
   Copy, KeyRound, CheckCheck, RefreshCw, Phone, Calendar, IndianRupee,
-  ShieldCheck, Award, ChevronRight, Pencil,
+  ShieldCheck, Award, ChevronRight, Pencil, Ban,
 } from 'lucide-react'
 import { RecordPaymentModal } from './Payments'
 
@@ -14,7 +14,7 @@ const accountBadge = {
 }
 
 export default function Students() {
-  const { students, addStudent, updateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
+  const { students, addStudent, updateStudent, suspendStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
@@ -325,6 +325,14 @@ export default function Students() {
                         >
                           <Pencil size={14} /> Edit Student
                         </button>
+                        {s.status === 'Active' && (
+                          <button
+                            className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                            onClick={() => { suspendStudent(s); setOpenMenu(null) }}
+                          >
+                            <Ban size={14} /> Suspend
+                          </button>
+                        )}
                         <button
                           className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
                           onClick={() => {
