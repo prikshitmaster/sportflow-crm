@@ -643,7 +643,7 @@ export function AppProvider({ children }) {
     try {
       const created = await db.insertBatchV2({ ...b, academyId: user?.academyId })
       setBatches(prev => [...prev, {
-        id: created.id, name: created.name, time: created.time,
+        id: created.id, name: created.name, code: created.code || null, time: created.time,
         sports: created.sports || [], coach: created.coach,
         capacity: created.capacity, enrolled: created.enrolled, waitlist: created.waitlist,
         days: created.days || [], startTime: created.start_time,
@@ -671,7 +671,7 @@ export function AppProvider({ children }) {
       const updated = await db.updateBatch(batchId, b)
       setBatches(prev => prev.map(existing => existing.id === batchId ? {
         ...existing,
-        name: updated.name, time: updated.time,
+        name: updated.name, code: updated.code || null, time: updated.time,
         sports: updated.sports || [], coach: updated.coach,
         capacity: updated.capacity,
         days: updated.days || [], startTime: updated.start_time,

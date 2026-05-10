@@ -414,7 +414,7 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign }
                 >
                   <option value="">— Select batch —</option>
                   {unassignedBatches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.time})</option>
+                    <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''} · {b.time}</option>
                   ))}
                 </select>
                 <button

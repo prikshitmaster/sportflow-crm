@@ -278,6 +278,7 @@ export async function fetchBatches(academyId) {
   return data.map(row => ({
     id:        row.id,
     name:      row.name,
+    code:      row.code      || null,
     time:      row.time,
     sports:    row.sports    || [],
     coach:     row.coach,
@@ -688,6 +689,7 @@ export async function insertBatchV2(b) {
     .from('batches')
     .insert({
       name:       b.name,
+      code:       b.code || null,
       time:       b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
       sports:     b.sports   || [],
       coach:      b.coach,
@@ -757,6 +759,7 @@ export async function updateBatch(batchId, b) {
     .from('batches')
     .update({
       name:       b.name,
+      code:       b.code || null,
       time:       b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
       sports:     b.sports   || [],
       coach:      b.coach,

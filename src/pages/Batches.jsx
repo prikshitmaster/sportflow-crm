@@ -185,6 +185,9 @@ function BatchCard({ b, idx, onSelect }) {
           <div className={`inline-flex items-center gap-1.5 text-xs font-bold text-white px-2.5 py-1 rounded-full mb-2 ${COLORS[idx % COLORS.length]}`}>
             <Layers size={11} /> {b.name}
           </div>
+          {b.code && (
+            <div className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mb-1 inline-block">{b.code}</div>
+          )}
           <div className="flex items-center gap-1.5 text-gray-500 text-xs">
             <Clock size={12} /> {b.time}
           </div>
@@ -248,6 +251,7 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
   const isEdit = !!initialData
   const [form, setForm] = useState({
     name:      initialData?.name      || '',
+    code:      initialData?.code      || '',
     startTime: initialData?.startTime || '',
     endTime:   initialData?.endTime   || '',
     sports:    initialData?.sports    || [],
@@ -273,9 +277,16 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
   return (
     <Modal title={isEdit ? `Edit Batch — ${initialData.name}` : 'Create New Batch'} onClose={onClose}>
       <div className="space-y-4">
-        <div>
-          <label className="label">Batch Name *</label>
-          <input className="input" placeholder="e.g. Morning C" value={form.name} onChange={e => set('name', e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Batch Name *</label>
+            <input className="input" placeholder="e.g. Morning Cricket U20" value={form.name} onChange={e => set('name', e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Batch Code <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input className="input font-mono" placeholder="e.g. u20-eve" value={form.code}
+              onChange={e => set('code', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} />
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -373,7 +384,10 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onAssign
               <Pencil size={12} /> Edit Batch
             </button>
           </div>
-          <h2 className="text-2xl font-black text-white">{b.name}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-black text-white">{b.name}</h2>
+            {b.code && <span className="font-mono text-xs text-brand-300 bg-white/10 px-2 py-0.5 rounded">{b.code}</span>}
+          </div>
           <p className="text-brand-200 text-sm">{b.time}</p>
           {b.ground && (
             <p className="text-brand-300 text-xs mt-0.5 flex items-center gap-1">

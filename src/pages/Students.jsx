@@ -237,7 +237,7 @@ export default function Students() {
         </select>
         <select className="input w-auto" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
           <option value="All">All Batches</option>
-          {batches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+          {batches.map(b => <option key={b.id} value={b.name}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
         </select>
         <select className="input w-auto" value={accFilter} onChange={e => setAccFilter(e.target.value)}>
           <option value="All">All Accounts</option>
@@ -569,7 +569,7 @@ function AddStudentModal({ onClose, onSave }) {
           <label className="label">Batch <span className="text-gray-400 font-normal">(optional)</span></label>
           <select className="input" value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— No Batch —</option>
-            {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {batches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
         </div>
         <div>
@@ -913,7 +913,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <label className="label">Batch</label>
           <select className="input" value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— No Batch —</option>
-            {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {batches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
         </div>
         <div>

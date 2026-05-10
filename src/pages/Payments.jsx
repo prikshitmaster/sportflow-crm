@@ -196,7 +196,7 @@ export default function Payments() {
           </select>
           <select className="input w-auto" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
             <option value="All">All Batches</option>
-            {batches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+            {batches.map(b => <option key={b.id} value={b.name}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
           {(sportFilter !== 'All' || batchFilter !== 'All') && (
             <button onClick={() => { setSportFilter('All'); setBatchFilter('All') }}
@@ -489,7 +489,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
             <option value="">— No batch —</option>
             {batches.map(b => (
               <option key={b.id} value={b.id}>
-                {b.name} · {b.capacity - b.enrolled} seats left
+                {b.name}{b.code ? ` (${b.code})` : ''} · {b.capacity - b.enrolled} seats left
               </option>
             ))}
           </select>
