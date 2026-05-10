@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { CreditCard, Plus, Search, Download, CheckCircle, Clock, AlertCircle, X } from 'lucide-react'
+import { CreditCard, Plus, Search, Download, CheckCircle, Clock, AlertCircle, X, Pencil } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
@@ -11,7 +11,8 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, addPayment, markPaymentPaid } = useApp()
+  const { payments, students, batches, addPayment, markPaymentPaid, updatePaymentDate } = useApp()
+  const [editingDate, setEditingDate] = useState(null) // paymentId being edited
 
   const [search,          setSearch]          = useState('')
   const [statusFilter,    setStatusFilter]    = useState('All')
@@ -208,7 +209,37 @@ export default function Payments() {
                     <td className="px-4 py-3 text-gray-600">{p.month}</td>
                     <td className="px-4 py-3 font-bold text-gray-900">₹{(p.amount ?? 0).toLocaleString('en-IN')}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{p.mode || '—'}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{p.date || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">
+                      {!p.isVirtual && editingDate === p.id ? (
+                        <input
+                          type="date"
+                          className="input py-0.5 px-1.5 text-xs w-36"
+                          defaultValue={p.date || ''}
+                          max={new Date().toISOString().split('T')[0]}
+                          autoFocus
+                          onBlur={async (e) => {
+                            if (e.target.value && e.target.value !== p.date) {
+                              await updatePaymentDate(p.id, e.target.value)
+                            }
+                            setEditingDate(null)
+                          }}
+                          onKeyDown={e => { if (e.key === 'Escape') setEditingDate(null) }}
+                        />
+                      ) : (
+                        <span className="flex items-center gap-1 group/date">
+                          {p.date || '—'}
+                          {!p.isVirtual && (
+                            <button
+                              onClick={() => setEditingDate(p.id)}
+                              className="opacity-0 group-hover/date:opacity-100 transition p-0.5 rounded hover:bg-gray-100"
+                              title="Edit date"
+                            >
+                              <Pencil size={10} className="text-gray-400" />
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`badge ${sm.cls}`}>{p.status}</span>
                     </td>

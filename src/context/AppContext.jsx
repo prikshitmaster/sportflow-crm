@@ -659,6 +659,15 @@ export function AppProvider({ children }) {
     }
   }
 
+  const updatePaymentDate = async (id, date) => {
+    try {
+      await db.updatePaymentDate(id, date)
+      setPayments(prev => prev.map(p => p.id === id ? { ...p, date } : p))
+    } catch (err) {
+      showToast(err.message || 'Update failed', 'error')
+    }
+  }
+
   const markPaymentPaid = async (id, mode = 'UPI') => {
     try {
       await db.updatePaymentStatus(id, 'Paid', mode)
@@ -1016,7 +1025,7 @@ export function AppProvider({ children }) {
       leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // data
       students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
-      payments, addPayment, markPaymentPaid,
+      payments, addPayment, markPaymentPaid, updatePaymentDate,
       trials, addTrial, updateTrialStatus,
       batches, setBatches, addBatch, updateBatchCoach, updateBatch,
       events, addEvent, updateEventStatus, removeEvent,

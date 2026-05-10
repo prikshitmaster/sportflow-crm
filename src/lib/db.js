@@ -206,6 +206,14 @@ export async function updatePaymentAmount(id, amount, monthsCovered) {
   if (error) throw error
 }
 
+export async function updatePaymentDate(id, date) {
+  const { error } = await supabase
+    .from('payments')
+    .update({ date })
+    .eq('id', id)
+  if (error) throw error
+}
+
 // ── Trials ────────────────────────────────────────────────
 export async function fetchTrials() {
   const { data, error } = await supabase
