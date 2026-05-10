@@ -4,11 +4,25 @@
 
 import { useApp } from '../../context/AppContext'
 import { useNavigate } from 'react-router-dom'
-import { CalendarCheck, Users, ChevronRight, Bell, QrCode, IndianRupee } from 'lucide-react'
+import { CalendarCheck, Users, ChevronRight, QrCode, LayoutDashboard, CreditCard, UserPlus, Layers, BarChart2, Megaphone, Trophy, UserCog, Settings } from 'lucide-react'
 import { useEffect } from 'react'
 
+const WORK_TILES = [
+  { perm: 'dashboard.view',    Icon: LayoutDashboard, label: 'Dashboard',   bg: 'bg-brand-600',   route: '/dashboard'  },
+  { perm: 'students.view',     Icon: Users,           label: 'Students',    bg: 'bg-blue-600',    route: '/students'   },
+  { perm: 'attendance.manage', Icon: CalendarCheck,   label: 'Attendance',  bg: 'bg-emerald-600', route: '/attendance' },
+  { perm: 'payments.view',     Icon: CreditCard,      label: 'Payments',    bg: 'bg-purple-600',  route: '/payments'   },
+  { perm: 'trials.manage',     Icon: UserPlus,        label: 'Trials',      bg: 'bg-orange-500',  route: '/trials'     },
+  { perm: 'batches.view',      Icon: Layers,          label: 'Batches',     bg: 'bg-teal-600',    route: '/batches'    },
+  { perm: 'reports.view',      Icon: BarChart2,       label: 'Reports',     bg: 'bg-rose-600',    route: '/reports'    },
+  { perm: 'community.manage',  Icon: Megaphone,       label: 'Community',   bg: 'bg-amber-500',   route: '/community'  },
+  { perm: 'events.manage',     Icon: Trophy,          label: 'Events',      bg: 'bg-indigo-600',  route: '/events'     },
+  { perm: 'staff.manage',      Icon: UserCog,         label: 'Staff',       bg: 'bg-gray-700',    route: '/coaches'    },
+  { perm: 'settings.manage',   Icon: Settings,        label: 'Settings',    bg: 'bg-gray-600',    route: '/settings'   },
+]
+
 export default function StaffDashboard() {
-  const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, staff } = useApp()
+  const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, staff, hasPermission } = useApp()
   const navigate = useNavigate()
 
   const isOffice = user?.accessRole && !['coach', 'staff'].includes(user?.accessRole)
@@ -57,8 +71,8 @@ export default function StaffDashboard() {
 
   // ── Office staff home ─────────────────────────────────────
   if (isOffice) {
-    const myRecord = staff.find(s => s.name?.toLowerCase() === user?.name?.toLowerCase())
-    const recentNotices = (announcements || []).slice(0, 3)
+    const recentNotices = (announcements || []).slice(0, 2)
+    const myTiles = WORK_TILES.filter(t => hasPermission(t.perm))
     return (
       <div className="px-4 pt-5 pb-4 space-y-5">
         <div>
@@ -67,26 +81,23 @@ export default function StaffDashboard() {
           <p className="text-xs text-gray-400 mt-0.5">{user?.academy} · {user?.accessRole}</p>
         </div>
 
-        {/* Clock in CTA */}
-        <button onClick={() => navigate('/staff/scan-in')}
-          className="w-full bg-brand-600 active:bg-brand-700 text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
-          <div className="text-left">
-            <p className="font-bold text-base flex items-center gap-2"><QrCode size={18} /> Clock In Today</p>
-            <p className="text-brand-200 text-xs mt-0.5">Scan the QR at the entrance</p>
-          </div>
-          <ChevronRight size={20} className="text-brand-300" />
-        </button>
-
-        {/* Salary quick view */}
-        {myRecord && (
-          <button onClick={() => navigate('/staff/me')}
-            className="w-full bg-purple-600 active:bg-purple-700 text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
-            <div className="text-left">
-              <p className="font-bold text-base flex items-center gap-2"><IndianRupee size={18} /> My Payroll</p>
-              <p className="text-purple-200 text-xs mt-0.5">₹{myRecord.salary?.toLocaleString('en-IN')} / month · view slip</p>
+        {/* Work tiles — permission-based */}
+        {myTiles.length > 0 && (
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Work</p>
+            <div className="grid grid-cols-2 gap-3">
+              {myTiles.map(({ perm, Icon, label, bg, route }) => (
+                <button
+                  key={perm}
+                  onClick={() => navigate(route)}
+                  className={`${bg} text-white rounded-2xl p-4 text-left active:opacity-80 transition`}
+                >
+                  <Icon size={20} className="mb-2 opacity-80" />
+                  <p className="font-bold text-sm">{label}</p>
+                </button>
+              ))}
             </div>
-            <ChevronRight size={20} className="text-purple-300" />
-          </button>
+          </div>
         )}
 
         {/* Recent notices */}
@@ -100,17 +111,14 @@ export default function StaffDashboard() {
               {recentNotices.map(a => (
                 <div key={a.id} className="bg-white rounded-2xl border border-gray-100 p-3.5">
                   <p className="text-sm font-bold text-gray-900 truncate">{a.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{a.message}</p>
-                  <p className="text-[10px] text-gray-400 mt-1.5">
-                    {a.created_at ? new Date(a.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : ''}
-                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{a.body}</p>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Leave & me */}
+        {/* Profile & Leave */}
         <button onClick={() => navigate('/staff/me')}
           className="w-full bg-white rounded-2xl border border-gray-100 px-5 py-4 flex items-center justify-between active:bg-gray-50">
           <div className="flex items-center gap-3">
@@ -119,7 +127,7 @@ export default function StaffDashboard() {
             </div>
             <div className="text-left">
               <p className="text-sm font-bold text-gray-900">My Profile & Leave</p>
-              <p className="text-xs text-gray-400">Schedule · Payroll · Apply leave</p>
+              <p className="text-xs text-gray-400">Apply leave · view schedule</p>
             </div>
           </div>
           <ChevronRight size={16} className="text-gray-300" />

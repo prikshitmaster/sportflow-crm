@@ -84,11 +84,12 @@ function PageLoading() {
   )
 }
 
-// Owner-only routes
+// Owner-only routes — office staff (admin/receptionist/accountant) also allowed
 function OwnerRoute({ children }) {
-  const { role, loading } = useApp()
+  const { role, loading, user } = useApp()
   if (loading) return <PageLoading />
   if (role === 'owner') return children
+  if (role === 'staff' && user && !['coach', 'staff'].includes(user.accessRole)) return children
   if (role === 'staff')   return <Navigate to="/staff/dashboard" replace />
   if (role === 'student') return <Navigate to="/student/dashboard" replace />
   return <Navigate to="/login" replace />
