@@ -569,14 +569,14 @@ function AddStudentModal({ onClose, onSave }) {
             onChange={e => set('fees', e.target.value)} />
         </div>
         <div>
-          <label className="label">Join Date <span className="text-gray-400 font-normal">(optional)</span></label>
+          <label className="label">Join Date</label>
           <input className="input" type="date" value={form.joinDate}
             max={new Date().toISOString().split('T')[0]}
             onChange={e => set('joinDate', e.target.value)} />
         </div>
         <div>
-          <label className="label">Paid Till <span className="text-gray-400 font-normal">(optional)</span></label>
-          <input className="input" type="month" value={form.paidTill}
+          <label className="label">Paid Till</label>
+          <input className="input" type="date" value={form.paidTill}
             onChange={e => set('paidTill', e.target.value)} />
         </div>
       </div>
@@ -790,7 +790,6 @@ function DeleteStudentModal({ student: s, onClose, onConfirm }) {
 }
 
 function EditStudentModal({ student: s, batches, onClose, onSave }) {
-  const paidTillMonth = s.paidTill ? s.paidTill.slice(0, 7) : ''
   const [form, setForm] = useState({
     name:         s.name         || '',
     parent:       s.parent       || '',
@@ -801,7 +800,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     batchId:      s.batchId      || '',
     batchName:    s.batch        || '',
     fees:         s.fees         || '',
-    paidTill:     paidTillMonth,
+    paidTill:     s.paidTill     || '',
     joinDate:     s.joinDate     || '',
     trainingType: s.trainingType || 'Daily',
     feePlan:      s.feePlan      || 'monthly',
@@ -895,8 +894,8 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
             onChange={e => set('joinDate', e.target.value)} />
         </div>
         <div>
-          <label className="label">Paid Till <span className="text-gray-400 font-normal">(month)</span></label>
-          <input className="input" type="month" value={form.paidTill} onChange={e => set('paidTill', e.target.value)} />
+          <label className="label">Paid Till</label>
+          <input className="input" type="date" value={form.paidTill} onChange={e => set('paidTill', e.target.value)} />
         </div>
       </div>
       <div className="flex justify-end gap-3 mt-6">

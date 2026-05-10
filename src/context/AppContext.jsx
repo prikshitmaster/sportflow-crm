@@ -374,10 +374,10 @@ export function AppProvider({ children }) {
       const count       = await db.fetchStudentCount()
       const studentCode = generateStudentCode(count)
       const joinCode    = generateJoinCode()
-      // Convert "YYYY-MM" month picker value → last day of that month
-      let paidTill = null
-      if (s.paidTill) {
-        const [yr, mo] = s.paidTill.split('-').map(Number)
+      // Accept full date YYYY-MM-DD or legacy YYYY-MM month picker
+      let paidTill = s.paidTill || null
+      if (paidTill && paidTill.length === 7) {
+        const [yr, mo] = paidTill.split('-').map(Number)
         paidTill = new Date(yr, mo, 0).toISOString().split('T')[0]
       }
       const created     = await db.createStudentAccount({ ...s, studentCode, joinCode, paidTill })
