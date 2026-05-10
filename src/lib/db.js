@@ -451,6 +451,19 @@ export async function fetchStudentCount() {
   return count || 0
 }
 
+export async function fetchNextStudentCode() {
+  const { data } = await supabase
+    .from('students')
+    .select('student_code')
+    .like('student_code', 'SA%')
+    .order('student_code', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data?.student_code) return 'SA001'
+  const num = parseInt(data.student_code.slice(2), 10) || 0
+  return 'SA' + String(num + 1).padStart(3, '0')
+}
+
 export async function fetchPaymentCount() {
   const { count, error } = await supabase
     .from('payments')

@@ -372,8 +372,7 @@ export function AppProvider({ children }) {
 
   const addStudent = async (s) => {
     try {
-      const count       = await db.fetchStudentCount()
-      const studentCode = generateStudentCode(count)
+      const studentCode = await db.fetchNextStudentCode()
       const joinCode    = generateJoinCode()
       // Accept full date YYYY-MM-DD or legacy YYYY-MM month picker
       let paidTill = s.paidTill || null
