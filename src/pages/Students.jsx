@@ -613,7 +613,6 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
             {infoRow('Parent Phone', s.parentPhone)}
             {infoRow('Join Date', s.joinDate ? new Date(s.joinDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
             {infoRow('Paid Till', s.paidTill ? new Date(s.paidTill).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
-            {infoRow('Fee Due Day', s.feeDueDay ? `${s.feeDueDay}th of month` : null)}
           </div>
 
           {/* Account Info */}

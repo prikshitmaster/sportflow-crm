@@ -463,7 +463,7 @@ export async function createStudentAccount(s) {
       join_code:      s.joinCode,
       account_status: 'pending',
       fee_amount:     Number(s.feeAmount) || Number(s.fees) || 0,
-      fee_due_day:    Number(s.feeDueDay) || 5,
+      fee_due_day:    Number(s.feeDueDay) || null,
       paid_till:      s.paidTill || null,
     })
     .select()

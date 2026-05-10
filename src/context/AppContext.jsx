@@ -108,7 +108,7 @@ export function AppProvider({ children }) {
           const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
           const todayStr     = now.toISOString().split('T')[0]
           const toSuspend    = s.filter(x =>
-            x.status === 'Active' && x.batchId && x.paidTill && x.paidTill < firstOfMonth
+            x.status === 'Active' && x.paidTill && x.paidTill < firstOfMonth
           )
           if (toSuspend.length > 0) {
             await Promise.all(toSuspend.map(async (student) => {
