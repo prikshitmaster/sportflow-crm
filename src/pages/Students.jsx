@@ -166,7 +166,7 @@ export default function Students() {
                         {s.studentCode && <p className="text-[10px] font-mono text-gray-400">{s.studentCode}</p>}
                       </td>
                       <td className="px-4 py-3"><span className="badge badge-blue">{s.sport}</span></td>
-                      <td className="px-4 py-3 text-gray-600">{s.lastBatchName || '—'}</td>
+                      <td className="px-4 py-3 text-gray-600">{s.lastBatchName || s.batch || '—'}</td>
                       <td className="px-4 py-3 text-red-600 text-xs font-medium">
                         {s.suspendedSince ? new Date(s.suspendedSince).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                       </td>

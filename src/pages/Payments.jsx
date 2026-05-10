@@ -42,21 +42,22 @@ export default function Payments() {
     )
     return students
       .filter(s =>
-        s.status === 'Active' &&
+        (s.status === 'Active' || s.status === 'Suspended') &&
         s.paidTill &&
         s.paidTill < firstOfMonth &&
         !studentsWithPendingRecord.has(s.id)
       )
       .map(s => ({
-        id:        `DUE-${s.id}`,
-        studentId: s.id,
-        student:   s.name,
-        amount:    s.fees || 0,
-        month:     `Due — paid till ${new Date(s.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`,
-        date:      null,
-        status:    'Overdue',
-        mode:      null,
-        isVirtual: true,
+        id:          `DUE-${s.id}`,
+        studentId:   s.id,
+        student:     s.name,
+        amount:      s.fees || 0,
+        month:       `Due — paid till ${new Date(s.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`,
+        date:        null,
+        status:      'Overdue',
+        mode:        null,
+        isVirtual:   true,
+        isSuspended: s.status === 'Suspended',
       }))
   }, [students, payments, firstOfMonth])
 
@@ -170,7 +171,10 @@ export default function Payments() {
                 return (
                   <tr key={p.id} className={`hover:bg-gray-50/60 transition ${p.isVirtual ? 'bg-red-50/30' : ''}`}>
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.isVirtual ? '—' : p.id}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-900">{p.student}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">
+                      {p.student}
+                      {p.isSuspended && <span className="ml-2 text-[10px] font-bold bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full">Suspended</span>}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{p.month}</td>
                     <td className="px-4 py-3 font-bold text-gray-900">₹{(p.amount ?? 0).toLocaleString('en-IN')}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{p.mode || '—'}</td>
