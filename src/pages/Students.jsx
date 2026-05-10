@@ -31,12 +31,12 @@ export default function Students() {
   const [editStudent,     setEditStudent]     = useState(null)
   const [deleteTarget,    setDeleteTarget]    = useState(null)
 
-  // Close row menu on any outside click (avoids fixed overlay blocking scroll)
+  // Close row menu on outside click — delayed so the opening click doesn't immediately close it
   useEffect(() => {
     if (!openMenu) return
     const close = () => setOpenMenu(null)
-    document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
+    const t = setTimeout(() => document.addEventListener('click', close), 0)
+    return () => { clearTimeout(t); document.removeEventListener('click', close) }
   }, [openMenu])
 
   const now          = new Date()
