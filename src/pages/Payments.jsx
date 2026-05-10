@@ -18,7 +18,7 @@ export default function Payments() {
   const [statusFilter,    setStatusFilter]    = useState('All')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
-  const [monthFilter,     setMonthFilter]     = useState('')
+  const [monthFilter,     setMonthFilter]     = useState(new Date().toISOString().slice(0, 7))
   const [showModal,       setShowModal]       = useState(false)
   const [payForStudent,   setPayForStudent]   = useState(null)
 
@@ -88,7 +88,7 @@ export default function Payments() {
     const stu     = studentMap[p.studentId]
     const matchSport = sportFilter === 'All' || stu?.sport === sportFilter
     const matchBatch = batchFilter === 'All' || stu?.batch === batchFilter
-    const matchMonth = !monthFilter || (p.date && p.date.slice(0, 7) === monthFilter)
+    const matchMonth = !monthFilter || p.isVirtual || (p.date && p.date.slice(0, 7) === monthFilter)
     return matchQ && matchS && matchSport && matchBatch && matchMonth
   })
 
@@ -99,16 +99,13 @@ export default function Payments() {
   const pendingBase = monthFilter
     ? payments.filter(p => p.status === 'Pending' && p.date?.slice(0,7) === monthFilter)
     : payments.filter(p => p.status === 'Pending')
-  const overdueBase = monthFilter
-    ? payments.filter(p => p.status === 'Overdue' && p.date?.slice(0,7) === monthFilter)
-    : [...payments.filter(p => p.status === 'Overdue'), ...overdueRows]
+  // Overdue is always all-time — not filtered by month
+  const overdueBase  = [...payments.filter(p => p.status === 'Overdue'), ...overdueRows]
 
   const paid         = paidBase.reduce((s, p) => s + (p.amount ?? 0), 0)
   const pending      = pendingBase.reduce((s, p) => s + (p.amount ?? 0), 0)
   const overdueAmt   = overdueBase.reduce((s, p) => s + (p.amount ?? 0), 0)
-  const overdueCount = monthFilter
-    ? overdueBase.length
-    : payments.filter(p => p.status === 'Overdue').length + overdueRows.length
+  const overdueCount = overdueBase.length
 
   const monthLabel = monthFilter
     ? new Date(monthFilter + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
