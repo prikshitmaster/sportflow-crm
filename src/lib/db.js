@@ -11,24 +11,27 @@ export async function fetchStudents() {
     throw error
   }
   return data.map(row => ({
-    id:            row.id,
-    name:          row.name,
-    parent:        row.parent,
-    phone:         row.phone,
-    parentPhone:   row.parent_phone,
-    age:           row.age,
-    sport:         row.sport,
-    batch:         row.batch,
-    batchId:       row.batch_id,
-    joinDate:      row.join_date,
-    status:        row.status,
-    accountStatus: row.account_status,
-    fees:          row.fees,
-    paidTill:      row.paid_till,
-    studentCode:   row.student_code,
-    joinCode:      row.join_code,
-    feeAmount:     row.fee_amount,
-    feeDueDay:     row.fee_due_day,
+    id:             row.id,
+    name:           row.name,
+    parent:         row.parent,
+    phone:          row.phone,
+    parentPhone:    row.parent_phone,
+    age:            row.age,
+    sport:          row.sport,
+    batch:          row.batch,
+    batchId:        row.batch_id,
+    joinDate:       row.join_date,
+    status:         row.status,
+    accountStatus:  row.account_status,
+    fees:           row.fees,
+    paidTill:       row.paid_till,
+    studentCode:    row.student_code,
+    joinCode:       row.join_code,
+    feeAmount:      row.fee_amount,
+    feeDueDay:      row.fee_due_day,
+    lastBatchId:    row.last_batch_id,
+    lastBatchName:  row.last_batch_name,
+    suspendedSince: row.suspended_since,
   }))
 }
 
@@ -72,14 +75,17 @@ export async function fetchPayments() {
     throw error
   }
   return data.map(row => ({
-    id:        row.id,
-    studentId: row.student_id,
-    student:   row.student,
-    amount:    row.amount,
-    month:     row.month,
-    date:      row.date,
-    status:    row.status,
-    mode:      row.mode,
+    id:            row.id,
+    studentId:     row.student_id,
+    student:       row.student,
+    amount:        row.amount,
+    month:         row.month,
+    date:          row.date,
+    status:        row.status,
+    mode:          row.mode,
+    paymentType:   row.payment_type   || 'monthly',
+    discountPct:   row.discount_pct   || 0,
+    monthsCovered: row.months_covered || 1,
   }))
 }
 
@@ -87,16 +93,50 @@ export async function insertPayment(p, invoiceId) {
   const { error } = await supabase
     .from('payments')
     .insert({
-      id:         invoiceId,
-      student_id: p.studentId || null,
-      student:    p.student,
-      amount:     Number(p.amount),
-      month:      p.month,
-      date:       new Date().toISOString().split('T')[0],
-      status:     'Paid',
-      mode:       p.mode,
+      id:             invoiceId,
+      student_id:     p.studentId    || null,
+      student:        p.student,
+      amount:         Number(p.amount),
+      month:          p.month,
+      date:           new Date().toISOString().split('T')[0],
+      status:         'Paid',
+      mode:           p.mode,
+      payment_type:   p.paymentType  || 'monthly',
+      discount_pct:   p.discountPct  || 0,
+      months_covered: p.monthsCovered || 1,
     })
   if (error) throw error
+}
+
+export async function updateStudentPaidTill(id, paidTill, fees) {
+  const updates = { paid_till: paidTill }
+  if (fees) { updates.fees = fees; updates.fee_amount = fees }
+  const { error } = await supabase.from('students').update(updates).eq('id', id)
+  if (error) throw error
+}
+
+export async function activateStudentWithBatch(id, batchId, batchName, paidTill, fees) {
+  const updates = {
+    status:          'Active',
+    batch_id:        batchId   || null,
+    batch:           batchName || null,
+    paid_till:       paidTill,
+    suspended_since: null,
+    last_batch_id:   null,
+    last_batch_name: null,
+  }
+  if (fees) { updates.fees = fees; updates.fee_amount = fees }
+  const { error } = await supabase.from('students').update(updates).eq('id', id)
+  if (error) throw error
+}
+
+export async function updateBatchEnrolled(batchId, delta) {
+  const { data, error } = await supabase
+    .from('batches').select('enrolled').eq('id', batchId).single()
+  if (error || !data) return
+  await supabase.from('batches')
+    .update({ enrolled: Math.max(0, data.enrolled + delta) })
+    .eq('id', batchId)
 }
 
 export async function updatePaymentStatus(id, status, mode) {

@@ -6,6 +6,7 @@ import {
   Copy, KeyRound, CheckCheck, RefreshCw, Phone, Calendar, IndianRupee,
   ShieldCheck, Award, ChevronRight,
 } from 'lucide-react'
+import { RecordPaymentModal } from './Payments'
 
 const accountBadge = {
   pending: 'badge-yellow',
@@ -13,18 +14,30 @@ const accountBadge = {
 }
 
 export default function Students() {
-  const { students, addStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments } = useApp()
-  const [search,       setSearch]       = useState('')
-  const [sportFilter,  setSportFilter]  = useState('All')
-  const [batchFilter,  setBatchFilter]  = useState('All')
-  const [accFilter,    setAccFilter]    = useState('All')
-  const [showModal,    setShowModal]    = useState(false)
-  const [openMenu,     setOpenMenu]     = useState(null)
-  const [copied,       setCopied]       = useState(null)
-  const [resetResult,  setResetResult]  = useState(null)
-  const [profile,      setProfile]      = useState(null)   // student being viewed
+  const { students, addStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
+  const [search,          setSearch]          = useState('')
+  const [sportFilter,     setSportFilter]     = useState('All')
+  const [batchFilter,     setBatchFilter]     = useState('All')
+  const [accFilter,       setAccFilter]       = useState('All')
+  const [showModal,       setShowModal]       = useState(false)
+  const [showPayModal,    setShowPayModal]    = useState(false)
+  const [payStudent,      setPayStudent]      = useState(null)
+  const [openMenu,        setOpenMenu]        = useState(null)
+  const [copied,          setCopied]          = useState(null)
+  const [resetResult,     setResetResult]     = useState(null)
+  const [profile,         setProfile]         = useState(null)
+  const [activeTab,       setActiveTab]       = useState('students') // 'students' | 'suspended'
+  const [suspBatchFilter, setSuspBatchFilter] = useState('All')
 
-  const filtered = students.filter(s => {
+  // Overdue check: paid_till before first of current month
+  const now           = new Date()
+  const firstOfMonth  = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+  const isOverdue = (s) => s.status === 'Active' && (!s.paidTill || s.paidTill < firstOfMonth)
+
+  const activeStudents    = students.filter(s => s.status !== 'Suspended')
+  const suspendedStudents = students.filter(s => s.status === 'Suspended')
+
+  const filtered = activeStudents.filter(s => {
     const q = search.toLowerCase()
     const matchQ = !q ||
       s.name.toLowerCase().includes(q) ||
@@ -37,8 +50,14 @@ export default function Students() {
     return matchQ && matchSport && matchBatch && matchAcc
   })
 
+  const suspBatches  = [...new Set(suspendedStudents.map(s => s.lastBatchName).filter(Boolean))]
+  const suspFiltered = suspBatchFilter === 'All'
+    ? suspendedStudents
+    : suspendedStudents.filter(s => s.lastBatchName === suspBatchFilter)
+
   const pendingCount = students.filter(s => s.accountStatus === 'pending').length
   const activeCount  = students.filter(s => s.accountStatus === 'active').length
+  const overdueCount = activeStudents.filter(isOverdue).length
 
   const copyToClipboard = async (text, studentId) => {
     await navigator.clipboard.writeText(text)
@@ -59,14 +78,111 @@ export default function Students() {
         <div>
           <h2 className="text-xl font-black text-gray-900">Students</h2>
           <p className="text-sm text-gray-500">
-            {activeCount} active · {pendingCount} pending activation · {students.length} total
+            {activeCount} active · {overdueCount > 0 && <span className="text-amber-600 font-semibold">{overdueCount} overdue · </span>}{pendingCount} pending · {students.length} total
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> Add Student
+        <div className="flex items-center gap-2">
+          {activeTab === 'students' && (
+            <button className="btn-primary" onClick={() => setShowModal(true)}>
+              <Plus size={16} /> Add Student
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2">
+        <button onClick={() => setActiveTab('students')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${activeTab === 'students' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          <UsersIcon size={14} /> Students
+          {overdueCount > 0 && <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{overdueCount}</span>}
+        </button>
+        <button onClick={() => setActiveTab('suspended')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${activeTab === 'suspended' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          Suspended
+          {suspendedStudents.length > 0 && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'suspended' ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600'}`}>{suspendedStudents.length}</span>}
         </button>
       </div>
 
+      {/* ── SUSPENDED TAB ── */}
+      {activeTab === 'suspended' && (
+        <div className="space-y-4">
+          {/* Summary */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-black text-red-600">{suspendedStudents.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Suspended</p>
+            </div>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-black text-amber-600">
+                ₹{suspendedStudents.reduce((s, x) => s + (x.fees || 0), 0).toLocaleString('en-IN')}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Monthly at Risk</p>
+            </div>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-black text-gray-600">{suspBatches.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Batches Affected</p>
+            </div>
+          </div>
+
+          {/* Batch filter + count */}
+          <div className="card p-4 flex flex-wrap gap-3 items-center">
+            <select className="input w-auto" value={suspBatchFilter} onChange={e => setSuspBatchFilter(e.target.value)}>
+              <option value="All">All Batches</option>
+              {suspBatches.map(b => <option key={b}>{b}</option>)}
+            </select>
+            <span className="text-xs text-gray-400 ml-auto">{suspFiltered.length} students</span>
+          </div>
+
+          {/* Suspended table */}
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    {['Student / ID', 'Sport', 'Last Batch', 'Suspended Since', 'Monthly Fee', 'Action'].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {suspFiltered.map(s => (
+                    <tr key={s.id} className="hover:bg-red-50/30 transition">
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-gray-900">{s.name}</p>
+                        {s.studentCode && <p className="text-[10px] font-mono text-gray-400">{s.studentCode}</p>}
+                      </td>
+                      <td className="px-4 py-3"><span className="badge badge-blue">{s.sport}</span></td>
+                      <td className="px-4 py-3 text-gray-600">{s.lastBatchName || '—'}</td>
+                      <td className="px-4 py-3 text-red-600 text-xs font-medium">
+                        {s.suspendedSince ? new Date(s.suspendedSince).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-900">₹{(s.fees || 0).toLocaleString('en-IN')}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          className="btn-primary text-xs py-1.5 px-3"
+                          onClick={() => { setPayStudent(s); setShowPayModal(true) }}
+                        >
+                          Record Payment
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {suspFiltered.length === 0 && (
+                <div className="text-center py-16 text-gray-400">
+                  <UsersIcon size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No suspended students</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── STUDENTS TAB ── */}
+      {activeTab === 'students' && (<>
       {/* Filters */}
       <div className="card p-4 flex flex-wrap gap-3 items-center">
         <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex-1 min-w-48">
@@ -158,7 +274,10 @@ export default function Students() {
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{s.batch || '—'}</td>
                   <td className="px-4 py-3 font-semibold text-gray-900">₹{(s.fees || 0).toLocaleString('en-IN')}</td>
                   <td className="px-4 py-3">
-                    <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
+                    <div className="flex flex-col gap-1">
+                      <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
+                      {isOverdue(s) && <span className="badge badge-yellow text-[10px]">Overdue</span>}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     {s.accountStatus ? (
@@ -242,11 +361,21 @@ export default function Students() {
         </div>
       </div>
 
+      </>)}
+
       {showModal && (
         <AddStudentModal
           onClose={() => setShowModal(false)}
           onSave={async (data) => { await addStudent(data); setShowModal(false) }}
+        />
+      )}
+      {showPayModal && (
+        <RecordPaymentModal
+          onClose={() => { setShowPayModal(false); setPayStudent(null) }}
+          onSave={async (data) => { await addPayment(data); setShowPayModal(false); setPayStudent(null) }}
+          students={students}
           batches={batches}
+          initialStudentId={payStudent?.id}
         />
       )}
       {profile && (
@@ -263,29 +392,17 @@ export default function Students() {
   )
 }
 
-function AddStudentModal({ onClose, onSave, batches = [] }) {
+function AddStudentModal({ onClose, onSave }) {
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '',
-    sport: SPORTS[0], batchId: '', batchName: '',
-    fees: 2500, feeAmount: 2500, feeDueDay: 5,
+    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0],
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const handleBatchChange = (batchId) => {
-    const batch = batches.find(b => String(b.id) === String(batchId))
-    set('batchId', batchId)
-    set('batchName', batch?.name || '')
-  }
-
   const handleSave = async () => {
     if (!form.name || !form.phone) return
     setLoading(true)
-    try {
-      await onSave(form)
-    } finally {
-      setLoading(false)
-    }
+    try { await onSave(form) } finally { setLoading(false) }
   }
 
   return (
@@ -293,7 +410,7 @@ function AddStudentModal({ onClose, onSave, batches = [] }) {
       <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 mb-5">
         <p className="text-xs text-blue-700">
           A <strong>Student ID</strong> and <strong>Join Code</strong> will be auto-generated.
-          Share them with the student to activate their account.
+          Assign a batch and record the first payment after adding.
         </p>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -322,32 +439,11 @@ function AddStudentModal({ onClose, onSave, batches = [] }) {
           <input className="input" type="number" placeholder="12" value={form.age}
             onChange={e => set('age', e.target.value)} />
         </div>
-        <div>
+        <div className="col-span-2">
           <label className="label">Sport</label>
           <select className="input" value={form.sport} onChange={e => set('sport', e.target.value)}>
             {SPORTS.map(s => <option key={s}>{s}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="label">Assign Batch</label>
-          <select className="input" value={form.batchId} onChange={e => handleBatchChange(e.target.value)}>
-            <option value="">— Select batch —</option>
-            {batches.map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name} {b.days?.length ? `(${b.days.join(',')})` : ''} · {b.capacity - b.enrolled} seats
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label">Monthly Fee (₹)</label>
-          <input className="input" type="number" value={form.fees}
-            onChange={e => { set('fees', Number(e.target.value)); set('feeAmount', Number(e.target.value)) }} />
-        </div>
-        <div>
-          <label className="label">Fee Due Day</label>
-          <input className="input" type="number" min="1" max="31" placeholder="5"
-            value={form.feeDueDay} onChange={e => set('feeDueDay', e.target.value)} />
         </div>
       </div>
       <div className="flex justify-end gap-3 mt-6">

@@ -13,6 +13,7 @@ const STATUS_MAP = {
 
 export default function Payments() {
   const { payments, students, batches, addPayment, markPaymentPaid } = useApp()
+
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [sportFilter,  setSportFilter]  = useState('All')
@@ -167,7 +168,14 @@ export default function Payments() {
         </div>
       </div>
 
-      {showModal && <RecordPaymentModal onClose={() => setShowModal(false)} onSave={addPayment} students={students} />}
+      {showModal && (
+        <RecordPaymentModal
+          onClose={() => setShowModal(false)}
+          onSave={async (data) => { await addPayment(data); setShowModal(false) }}
+          students={students}
+          batches={batches}
+        />
+      )}
     </div>
   )
 }
@@ -183,48 +191,163 @@ function SummaryCard({ label, value, count, color }) {
   )
 }
 
-function RecordPaymentModal({ onClose, onSave, students }) {
+export function RecordPaymentModal({ onClose, onSave, students, batches = [], initialStudentId }) {
+  const initStudent = students.find(s => s.id === initialStudentId) || students[0] || {}
   const [form, setForm] = useState({
-    studentId: students[0]?.id || '',
-    student: students[0]?.name || '',
-    amount: students[0]?.fees || 2000,
-    month: 'May 2026',
-    mode: 'UPI',
+    studentId:   initStudent.id    || '',
+    student:     initStudent.name  || '',
+    baseAmount:  initStudent.fees  || 0,
+    paymentType: 'monthly',
+    discountPct: 0,
+    batchId:     String(initStudent.batchId || initStudent.lastBatchId || ''),
+    batchName:   initStudent.batch || initStudent.lastBatchName || '',
+    mode:        'UPI',
   })
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const [loading, setLoading] = useState(false)
+
+  const months     = form.paymentType === 'quarterly' ? 3 : form.paymentType === 'yearly' ? 12 : 1
+  const subtotal   = form.baseAmount * months
+  const discountAmt = Math.round(subtotal * form.discountPct / 100)
+  const finalAmount = subtotal - discountAmt
 
   const handleStudentChange = (id) => {
-    const s = students.find(x => x.id === Number(id))
-    if (s) setForm(f => ({ ...f, studentId: s.id, student: s.name, amount: s.fees }))
+    const s = students.find(x => String(x.id) === String(id))
+    if (!s) return
+    setForm(f => ({
+      ...f,
+      studentId:  s.id,
+      student:    s.name,
+      baseAmount: s.fees || 0,
+      batchId:    String(s.batchId || s.lastBatchId || ''),
+      batchName:  s.batch || s.lastBatchName || '',
+    }))
   }
+
+  const handleBatchChange = (id) => {
+    const b = batches.find(x => String(x.id) === String(id))
+    setForm(f => ({ ...f, batchId: id, batchName: b?.name || '' }))
+  }
+
+  const handleSave = async () => {
+    if (!form.studentId || finalAmount <= 0) return
+    setLoading(true)
+    try {
+      await onSave({ ...form, amount: finalAmount })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const selectedStudent = students.find(s => String(s.id) === String(form.studentId))
+  const isSuspended = selectedStudent?.status === 'Suspended'
+
+  const PLAN_OPTS = [
+    { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
+    { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
+    { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
+  ]
 
   return (
     <Modal title="Record Payment" onClose={onClose}>
       <div className="space-y-4">
+
+        {/* Student */}
         <div>
           <label className="label">Student</label>
           <select className="input" value={form.studentId} onChange={e => handleStudentChange(e.target.value)}>
-            {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            <option value="">— Select student —</option>
+            {students.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.name}{s.status === 'Suspended' ? ' (Suspended)' : ''}
+              </option>
+            ))}
+          </select>
+          {isSuspended && (
+            <p className="text-xs text-amber-600 mt-1 font-semibold">
+              ⚠ Suspended — payment will reactivate this student.
+            </p>
+          )}
+        </div>
+
+        {/* Payment plan pills */}
+        <div>
+          <label className="label">Payment Plan</label>
+          <div className="grid grid-cols-3 gap-2">
+            {PLAN_OPTS.map(pt => (
+              <button key={pt.key} type="button"
+                onClick={() => setForm(f => ({ ...f, paymentType: pt.key }))}
+                className={`py-2.5 rounded-xl text-xs font-bold border transition ${
+                  form.paymentType === pt.key
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <div>{pt.label}</div>
+                <div className={`font-normal mt-0.5 ${form.paymentType === pt.key ? 'text-brand-200' : 'text-gray-400'}`}>{pt.sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Monthly rate + discount */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Monthly Fee (₹)</label>
+            <input className="input" type="number" min="0" value={form.baseAmount}
+              onChange={e => setForm(f => ({ ...f, baseAmount: Number(e.target.value) }))} />
+          </div>
+          <div>
+            <label className="label">Discount (%)</label>
+            <input className="input" type="number" min="0" max="100" value={form.discountPct}
+              onChange={e => setForm(f => ({ ...f, discountPct: Number(e.target.value) }))} />
+          </div>
+        </div>
+
+        {/* Amount breakdown */}
+        <div className="bg-gray-50 rounded-xl p-3.5 space-y-1.5">
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>₹{form.baseAmount.toLocaleString('en-IN')} × {months} month{months > 1 ? 's' : ''}</span>
+            <span>₹{subtotal.toLocaleString('en-IN')}</span>
+          </div>
+          {discountAmt > 0 && (
+            <div className="flex justify-between text-xs text-emerald-600 font-medium">
+              <span>Discount ({form.discountPct}%)</span>
+              <span>−₹{discountAmt.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-sm font-black text-gray-900 border-t border-gray-200 pt-2 mt-1">
+            <span>Total</span>
+            <span>₹{finalAmount.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+
+        {/* Batch */}
+        <div>
+          <label className="label">Assign Batch {isSuspended ? '— last: ' + (selectedStudent?.lastBatchName || '—') : ''}</label>
+          <select className="input" value={form.batchId} onChange={e => handleBatchChange(e.target.value)}>
+            <option value="">— No batch —</option>
+            {batches.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name} · {b.capacity - b.enrolled} seats left
+              </option>
+            ))}
           </select>
         </div>
-        <div>
-          <label className="label">Fee Month</label>
-          <input className="input" value={form.month} onChange={e => set('month', e.target.value)} placeholder="e.g. May 2026" />
-        </div>
-        <div>
-          <label className="label">Amount (₹)</label>
-          <input className="input" type="number" value={form.amount} onChange={e => set('amount', Number(e.target.value))} />
-        </div>
+
+        {/* Mode */}
         <div>
           <label className="label">Payment Mode</label>
-          <select className="input" value={form.mode} onChange={e => set('mode', e.target.value)}>
+          <select className="input" value={form.mode} onChange={e => setForm(f => ({ ...f, mode: e.target.value }))}>
             {['UPI', 'Cash', 'Bank Transfer', 'Cheque', 'Card'].map(m => <option key={m}>{m}</option>)}
           </select>
         </div>
+
       </div>
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={() => { onSave(form); onClose() }}>Record Payment</button>
+        <button className="btn-primary" onClick={handleSave} disabled={loading || finalAmount <= 0}>
+          {loading ? '…' : `Confirm · ₹${finalAmount.toLocaleString('en-IN')}`}
+        </button>
       </div>
     </Modal>
   )

@@ -330,24 +330,27 @@ export function AppProvider({ children }) {
       const joinCode    = generateJoinCode()
       const created     = await db.createStudentAccount({ ...s, studentCode, joinCode })
       const mapped = {
-        id:            created.id,
-        name:          created.name,
-        parent:        created.parent,
-        phone:         created.phone,
-        parentPhone:   created.parent_phone,
-        age:           created.age,
-        sport:         created.sport,
-        batch:         created.batch,
-        batchId:       created.batch_id,
-        joinDate:      created.join_date,
-        status:        created.status,
-        accountStatus: created.account_status,
-        fees:          created.fees,
-        paidTill:      created.paid_till,
-        studentCode:   created.student_code,
-        joinCode:      created.join_code,
-        feeAmount:     created.fee_amount,
-        feeDueDay:     created.fee_due_day,
+        id:             created.id,
+        name:           created.name,
+        parent:         created.parent,
+        phone:          created.phone,
+        parentPhone:    created.parent_phone,
+        age:            created.age,
+        sport:          created.sport,
+        batch:          created.batch,
+        batchId:        created.batch_id,
+        joinDate:       created.join_date,
+        status:         created.status,
+        accountStatus:  created.account_status,
+        fees:           created.fees,
+        paidTill:       created.paid_till,
+        studentCode:    created.student_code,
+        joinCode:       created.join_code,
+        feeAmount:      created.fee_amount,
+        feeDueDay:      created.fee_due_day,
+        lastBatchId:    null,
+        lastBatchName:  null,
+        suspendedSince: null,
       }
       setStudents(prev => [...prev, mapped])
       showToast(`Student created — Code: ${studentCode} · Join: ${joinCode}`, 'success')
@@ -391,10 +394,54 @@ export function AppProvider({ children }) {
 
   const addPayment = async (p) => {
     try {
-      const invNum   = String(payments.length + 1).padStart(3, '0')
-      const invoiceId = `INV-2026-${invNum}`
-      await db.insertPayment(p, invoiceId)
-      setPayments(prev => [{ ...p, id: invoiceId, date: new Date().toISOString().split('T')[0], status: 'Paid' }, ...prev])
+      const now      = new Date()
+      const months   = p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1
+      const paidTill = new Date(now.getFullYear(), now.getMonth() + months, 0)
+        .toISOString().split('T')[0]
+
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      const endDate   = new Date(now.getFullYear(), now.getMonth() + months, 0)
+      const monthLabel = months === 1
+        ? `${MONTHS[now.getMonth()]} ${now.getFullYear()}`
+        : `${MONTHS[now.getMonth()]}–${MONTHS[endDate.getMonth()]} ${
+            now.getFullYear() === endDate.getFullYear()
+              ? now.getFullYear()
+              : `${now.getFullYear()}/${String(endDate.getFullYear()).slice(2)}`
+          }`
+
+      const invNum    = String(payments.length + 1).padStart(3, '0')
+      const invoiceId = `INV-${now.getFullYear()}-${invNum}`
+
+      const paymentRow = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount }
+      await db.insertPayment(paymentRow, invoiceId)
+
+      const student = students.find(s => s.id === Number(p.studentId))
+
+      if (student) {
+        if (student.status === 'Suspended') {
+          const batchId   = p.batchId   || student.lastBatchId
+          const batchName = p.batchName || student.lastBatchName
+          await db.activateStudentWithBatch(student.id, batchId, batchName, paidTill, p.baseAmount)
+          if (batchId) await db.updateBatchEnrolled(batchId, 1)
+          setStudents(prev => prev.map(s => s.id === student.id ? {
+            ...s, status: 'Active', batchId, batch: batchName,
+            paidTill, fees: p.baseAmount || s.fees, feeAmount: p.baseAmount || s.fees,
+            suspendedSince: null, lastBatchId: null, lastBatchName: null,
+          } : s))
+          showToast(`${student.name} reactivated → ${batchName || 'no batch'}`, 'success')
+        } else {
+          await db.updateStudentPaidTill(student.id, paidTill, p.baseAmount)
+          setStudents(prev => prev.map(s => s.id === student.id ? {
+            ...s, paidTill,
+            fees: p.baseAmount || s.fees, feeAmount: p.baseAmount || s.fees,
+          } : s))
+        }
+      }
+
+      setPayments(prev => [{
+        ...paymentRow, id: invoiceId,
+        date: now.toISOString().split('T')[0], status: 'Paid', month: monthLabel,
+      }, ...prev])
       showToast('Payment recorded')
     } catch (err) {
       showToast(err.message || 'Payment failed', 'error')
