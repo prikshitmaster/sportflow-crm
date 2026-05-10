@@ -463,6 +463,7 @@ export default function Students() {
           onEdit={(s) => { setProfile(null); setEditStudent(s) }}
           onStatusChange={(id, status) => { updateStudentStatus(id, status); setProfile(p => ({ ...p, status })) }}
           onReset={async (s) => { const c = await resetStudentPasswordAdmin(s.id); setResetResult({ id: s.id, studentCode: s.studentCode, joinCode: c }); setProfile(null) }}
+          onSuspend={(s) => { suspendStudent(s); setProfile(null) }}
         />
       )}
     </div>
@@ -627,10 +628,14 @@ function AddStudentModal({ onClose, onSave }) {
   )
 }
 
-function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusChange, onReset }) {
+function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusChange, onReset, onSuspend }) {
   const paid    = payments.filter(p => p.status === 'Paid')
   const pending = payments.filter(p => p.status !== 'Paid')
   const totalPaid = paid.reduce((sum, p) => sum + p.amount, 0)
+
+  const now2 = new Date()
+  const fom2 = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString().split('T')[0]
+  const isProfileOverdue = s.status === 'Active' && s.paidTill && s.paidTill < fom2
 
   const infoRow = (label, value, mono = false) => (
     <div className="flex justify-between items-start gap-4 py-2.5 border-b border-gray-50 last:border-0">
@@ -662,6 +667,14 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
               >
                 {s.status === 'Active' ? 'Mark Inactive' : 'Mark Active'}
               </button>
+              {isProfileOverdue && onSuspend && (
+                <button
+                  onClick={() => { onSuspend(s); onClose() }}
+                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition"
+                >
+                  Suspend Now
+                </button>
+              )}
               {s.studentCode && (
                 <button
                   onClick={() => onReset(s)}
@@ -693,7 +706,9 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
               <p className="text-[10px] text-brand-200">Fee</p>
             </div>
             <div className="bg-white/15 rounded-xl p-3 text-center">
-              <p className={`text-lg font-black ${s.status === 'Active' ? 'text-emerald-300' : 'text-red-300'}`}>{s.status}</p>
+              <p className={`text-lg font-black ${isProfileOverdue ? 'text-amber-300' : s.status === 'Active' ? 'text-emerald-300' : 'text-red-300'}`}>
+                {isProfileOverdue ? 'Overdue' : s.status}
+              </p>
               <p className="text-[10px] text-brand-200">Status</p>
             </div>
           </div>

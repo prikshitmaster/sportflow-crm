@@ -410,6 +410,26 @@ export function AppProvider({ children }) {
         trainingType:   created.training_type || 'Daily',
         feePlan:        created.fee_plan || 'monthly',
       }
+      // Immediately suspend if added with already-expired paidTill (past 7-day grace)
+      const addNow = new Date()
+      const addFom = new Date(addNow.getFullYear(), addNow.getMonth(), 1).toISOString().split('T')[0]
+      if (addNow.getDate() > 7 && paidTill && paidTill < addFom) {
+        try {
+          await db.suspendStudent(created.id)
+          mapped.status = 'Suspended'
+          mapped.suspendedSince = addNow.toISOString().split('T')[0]
+          if (s.batchId) {
+            await db.updateBatchEnrolled(s.batchId, -1)
+            setBatches(prev => prev.map(b => b.id === s.batchId
+              ? { ...b, enrolled: Math.max(0, (b.enrolled || 0) - 1) }
+              : b
+            ))
+          }
+        } catch (suspErr) {
+          console.warn('Immediate auto-suspend on add failed:', suspErr)
+        }
+      }
+
       setStudents(prev => [...prev, mapped])
 
       // Auto-create a historical payment record if student was added with paid_till + fees
