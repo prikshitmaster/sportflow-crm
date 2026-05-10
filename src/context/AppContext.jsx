@@ -466,6 +466,33 @@ export function AppProvider({ children }) {
         }))
       }
 
+      // Auto-create a payment record if paidTill was just set and no payment exists for that month
+      if (paidTill && updated.fees > 0) {
+        const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        const pt = new Date(paidTill + 'T00:00:00')
+        const monthLabel = `${MONTHS[pt.getMonth()]} ${pt.getFullYear()}`
+        const alreadyHas = payments.some(p =>
+          p.studentId === id && p.month === monthLabel && (p.status === 'Paid' || p.status === 'Pending')
+        )
+        if (!alreadyHas) {
+          const paymentDate = updated.join_date || new Date().toISOString().split('T')[0]
+          const payCount = await db.fetchPaymentCount()
+          const invoiceId = `INV-${pt.getFullYear()}-${String(payCount + 1).padStart(3, '0')}`
+          const payRow = {
+            studentId: id,
+            student:   updated.name,
+            amount:    updated.fees,
+            month:     monthLabel,
+            date:      paymentDate,
+            status:    'Paid',
+            mode:      'Cash',
+            monthsCovered: 1,
+          }
+          await db.insertPayment(payRow, invoiceId)
+          setPayments(prev => [{ ...payRow, id: invoiceId, paymentType: 'monthly', discountPct: 0 }, ...prev])
+        }
+      }
+
       showToast('Student updated')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
