@@ -369,12 +369,16 @@ export function AppProvider({ children }) {
 
   const updateStudent = async (id, s) => {
     try {
-      // Convert "YYYY-MM" month picker → last day of month
       let paidTill = s.paidTill || null
       if (paidTill && paidTill.length === 7) {
         const [yr, mo] = paidTill.split('-').map(Number)
         paidTill = new Date(yr, mo, 0).toISOString().split('T')[0]
       }
+
+      const oldStudent = students.find(x => x.id === id)
+      const oldBatchId = oldStudent?.batchId ? Number(oldStudent.batchId) : null
+      const newBatchId = s.batchId          ? Number(s.batchId)          : null
+
       const updated = await db.updateStudent(id, { ...s, paidTill })
       setStudents(prev => prev.map(x => x.id === id ? {
         ...x,
@@ -390,6 +394,18 @@ export function AppProvider({ children }) {
         feeAmount:   updated.fee_amount,
         paidTill:    updated.paid_till,
       } : x))
+
+      // Keep batch enrolled counts in sync when batch assignment changes
+      if (oldBatchId !== newBatchId) {
+        if (oldBatchId) await db.updateBatchEnrolled(oldBatchId, -1)
+        if (newBatchId) await db.updateBatchEnrolled(newBatchId,  1)
+        setBatches(prev => prev.map(b => {
+          if (b.id === oldBatchId) return { ...b, enrolled: Math.max(0, (b.enrolled || 0) - 1) }
+          if (b.id === newBatchId) return { ...b, enrolled: (b.enrolled || 0) + 1 }
+          return b
+        }))
+      }
+
       showToast('Student updated')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
