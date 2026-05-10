@@ -480,7 +480,7 @@ function AddStudentModal({ onClose, onSave }) {
   }
 
   const handleSave = async () => {
-    if (!form.name || !form.phone) return
+    if (!form.name || !form.phone || !form.fees) return
     setLoading(true)
     try { await onSave(form) } finally { setLoading(false) }
   }
@@ -533,7 +533,7 @@ function AddStudentModal({ onClose, onSave }) {
           </select>
         </div>
         <div>
-          <label className="label">Monthly Fee (₹)</label>
+          <label className="label">Monthly Fee (₹) *</label>
           <input className="input" type="number" placeholder="e.g. 2000" value={form.fees}
             onChange={e => set('fees', e.target.value)} />
         </div>
