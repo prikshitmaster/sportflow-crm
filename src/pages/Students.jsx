@@ -402,6 +402,7 @@ export default function Students() {
           student={profile}
           payments={payments.filter(p => p.studentId === profile.id)}
           onClose={() => setProfile(null)}
+          onEdit={(s) => { setProfile(null); setEditStudent(s) }}
           onStatusChange={(id, status) => { updateStudentStatus(id, status); setProfile(p => ({ ...p, status })) }}
           onReset={async (s) => { const c = await resetStudentPasswordAdmin(s.id); setResetResult({ id: s.id, studentCode: s.studentCode, joinCode: c }); setProfile(null) }}
         />
@@ -486,7 +487,7 @@ function AddStudentModal({ onClose, onSave }) {
   )
 }
 
-function StudentProfileModal({ student: s, payments, onClose, onStatusChange, onReset }) {
+function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusChange, onReset }) {
   const paid    = payments.filter(p => p.status === 'Paid')
   const pending = payments.filter(p => p.status !== 'Paid')
   const totalPaid = paid.reduce((sum, p) => sum + p.amount, 0)
@@ -509,6 +510,12 @@ function StudentProfileModal({ student: s, payments, onClose, onStatusChange, on
               <X size={16} className="text-white" />
             </button>
             <div className="flex gap-2">
+              <button
+                onClick={() => onEdit(s)}
+                className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-brand-700 hover:bg-brand-50 transition"
+              >
+                Edit
+              </button>
               <button
                 onClick={() => onStatusChange(s.id, s.status === 'Active' ? 'Inactive' : 'Active')}
                 className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white/15 hover:bg-white/25 text-white transition"
