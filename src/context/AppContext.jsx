@@ -444,6 +444,24 @@ export function AppProvider({ children }) {
     }
   }
 
+  const deleteStudent = async (student) => {
+    try {
+      await db.deleteStudent(student.id)
+      if (student.batchId) {
+        await db.updateBatchEnrolled(student.batchId, -1)
+        setBatches(prev => prev.map(b => b.id === student.batchId
+          ? { ...b, enrolled: Math.max(0, (b.enrolled || 0) - 1) }
+          : b
+        ))
+      }
+      setStudents(prev => prev.filter(s => s.id !== student.id))
+      setPayments(prev => prev.filter(p => p.studentId !== student.id))
+      showToast(`${student.name} deleted`)
+    } catch (err) {
+      showToast(err.message || 'Delete failed', 'error')
+    }
+  }
+
   const suspendStudent = async (student) => {
     try {
       await db.suspendStudent(student.id, student.batchId, student.batch)
@@ -913,7 +931,7 @@ export function AppProvider({ children }) {
       // leave
       leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // data
-      students, addStudent, updateStudent, suspendStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
+      students, addStudent, updateStudent, deleteStudent, suspendStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments, addPayment, markPaymentPaid,
       trials, addTrial, updateTrialStatus,
       batches, setBatches, addBatch, updateBatchCoach, updateBatch,

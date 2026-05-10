@@ -56,6 +56,13 @@ export async function insertStudent(s) {
   return { ...s, id: data.id }
 }
 
+export async function deleteStudent(id) {
+  await supabase.from('payments').delete().eq('student_id', id)
+  await supabase.from('student_sessions').delete().eq('student_id', id)
+  const { error } = await supabase.from('students').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function suspendStudent(id, batchId, batchName) {
   const today = new Date().toISOString().split('T')[0]
   const { error } = await supabase

@@ -4,7 +4,7 @@ import { SPORTS, BATCH_NAMES } from '../data/mockData'
 import {
   Search, Plus, MoreVertical, UserCheck, UserX, X, Users as UsersIcon,
   Copy, KeyRound, CheckCheck, RefreshCw, Phone, Calendar, IndianRupee,
-  ShieldCheck, Award, ChevronRight, Pencil, Ban,
+  ShieldCheck, Award, ChevronRight, Pencil, Ban, Trash2,
 } from 'lucide-react'
 import { RecordPaymentModal } from './Payments'
 
@@ -14,7 +14,7 @@ const accountBadge = {
 }
 
 export default function Students() {
-  const { students, addStudent, updateStudent, suspendStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
@@ -29,6 +29,7 @@ export default function Students() {
   const [activeTab,       setActiveTab]       = useState('students') // 'students' | 'suspended'
   const [suspBatchFilter, setSuspBatchFilter] = useState('All')
   const [editStudent,     setEditStudent]     = useState(null)
+  const [deleteTarget,    setDeleteTarget]    = useState(null)
 
   const now          = new Date()
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
@@ -364,6 +365,14 @@ export default function Students() {
                             <Copy size={14} /> Copy Student ID
                           </button>
                         )}
+                        <div className="border-t border-gray-100 mt-1 pt-1">
+                          <button
+                            className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                            onClick={() => { setDeleteTarget(s); setOpenMenu(null) }}
+                          >
+                            <Trash2 size={14} /> Delete Student
+                          </button>
+                        </div>
                       </div>
                     )}
                   </td>
@@ -386,6 +395,13 @@ export default function Students() {
         <AddStudentModal
           onClose={() => setShowModal(false)}
           onSave={async (data) => { await addStudent(data); setShowModal(false) }}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteStudentModal
+          student={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={async () => { await deleteStudent(deleteTarget); setDeleteTarget(null) }}
         />
       )}
       {editStudent && (
@@ -629,6 +645,68 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
         </div>
       </div>
     </div>
+  )
+}
+
+function DeleteStudentModal({ student: s, onClose, onConfirm }) {
+  const [step, setStep] = useState(1)
+  const [loading, setLoading] = useState(false)
+
+  const handleFinalDelete = async () => {
+    setLoading(true)
+    try { await onConfirm() } finally { setLoading(false) }
+  }
+
+  return (
+    <Modal title="Delete Student" onClose={onClose}>
+      <div className="text-center space-y-4">
+        <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+          <Trash2 size={24} className="text-red-600" />
+        </div>
+
+        {step === 1 ? (
+          <>
+            <div>
+              <p className="font-bold text-gray-900 text-lg">{s.name}</p>
+              <p className="text-sm text-gray-500 mt-1">
+                This will permanently delete the student and all their payment records. This cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-center mt-6">
+              <button className="btn-secondary px-6" onClick={onClose}>Cancel</button>
+              <button
+                className="px-6 py-2.5 rounded-xl text-sm font-bold bg-red-100 text-red-700 hover:bg-red-200 transition"
+                onClick={() => setStep(2)}
+              >
+                Delete Student
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-sm font-bold text-red-800">Are you absolutely sure?</p>
+              <p className="text-xs text-red-600 mt-1">
+                <strong>{s.name}</strong> and all their data will be gone forever.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-center mt-2">
+              <button className="btn-secondary px-6" onClick={onClose}>Cancel</button>
+              <button
+                className="px-6 py-2.5 rounded-xl text-sm font-bold bg-red-600 text-white hover:bg-red-700 transition flex items-center gap-2"
+                onClick={handleFinalDelete}
+                disabled={loading}
+              >
+                {loading
+                  ? <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                  : <><Trash2 size={14} /> Yes, permanently delete</>
+                }
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }
 
