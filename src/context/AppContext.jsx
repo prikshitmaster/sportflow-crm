@@ -143,7 +143,8 @@ export function AppProvider({ children }) {
           }
         }
       } catch (suspendErr) {
-        console.warn('Auto-suspend skipped:', suspendErr.message)
+        console.error('Auto-suspend failed:', suspendErr)
+        showToast(`Auto-suspend error: ${suspendErr.message}`, 'error')
       }
 
       const today = now.toISOString().split('T')[0]
