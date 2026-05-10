@@ -4,7 +4,7 @@ import { SPORTS, BATCH_NAMES } from '../data/mockData'
 import {
   Search, Plus, MoreVertical, UserCheck, UserX, X, Users as UsersIcon,
   Copy, KeyRound, CheckCheck, RefreshCw, Phone, Calendar, IndianRupee,
-  ShieldCheck, Award, ChevronRight,
+  ShieldCheck, Award, ChevronRight, Pencil,
 } from 'lucide-react'
 import { RecordPaymentModal } from './Payments'
 
@@ -14,7 +14,7 @@ const accountBadge = {
 }
 
 export default function Students() {
-  const { students, addStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
+  const { students, addStudent, updateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
@@ -28,6 +28,7 @@ export default function Students() {
   const [profile,         setProfile]         = useState(null)
   const [activeTab,       setActiveTab]       = useState('students') // 'students' | 'suspended'
   const [suspBatchFilter, setSuspBatchFilter] = useState('All')
+  const [editStudent,     setEditStudent]     = useState(null)
 
   const now          = new Date()
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
@@ -319,6 +320,12 @@ export default function Students() {
                     {openMenu === s.id && (
                       <div className="absolute right-4 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-10 py-1 w-48">
                         <button
+                          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-brand-700 hover:bg-brand-50"
+                          onClick={() => { setEditStudent(s); setOpenMenu(null) }}
+                        >
+                          <Pencil size={14} /> Edit Student
+                        </button>
+                        <button
                           className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
                           onClick={() => {
                             updateStudentStatus(s.id, s.status === 'Active' ? 'Inactive' : 'Active')
@@ -371,6 +378,14 @@ export default function Students() {
         <AddStudentModal
           onClose={() => setShowModal(false)}
           onSave={async (data) => { await addStudent(data); setShowModal(false) }}
+        />
+      )}
+      {editStudent && (
+        <EditStudentModal
+          student={editStudent}
+          batches={batches}
+          onClose={() => setEditStudent(null)}
+          onSave={async (data) => { await updateStudent(editStudent.id, data); setEditStudent(null) }}
         />
       )}
       {showPayModal && (
@@ -595,6 +610,94 @@ function StudentProfileModal({ student: s, payments, onClose, onStatusChange, on
         </div>
       </div>
     </div>
+  )
+}
+
+function EditStudentModal({ student: s, batches, onClose, onSave }) {
+  const paidTillMonth = s.paidTill ? s.paidTill.slice(0, 7) : ''
+  const [form, setForm] = useState({
+    name:       s.name        || '',
+    parent:     s.parent      || '',
+    phone:      s.phone       || '',
+    parentPhone: s.parentPhone || '',
+    age:        s.age         || '',
+    sport:      s.sport       || SPORTS[0],
+    batchId:    s.batchId     || '',
+    batchName:  s.batch       || '',
+    fees:       s.fees        || '',
+    paidTill:   paidTillMonth,
+  })
+  const [loading, setLoading] = useState(false)
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleBatch = (batchId) => {
+    const b = batches.find(x => x.id === Number(batchId))
+    setForm(f => ({ ...f, batchId: batchId ? Number(batchId) : '', batchName: b?.name || '' }))
+  }
+
+  const handleSave = async () => {
+    if (!form.name || !form.phone) return
+    setLoading(true)
+    try { await onSave(form) } finally { setLoading(false) }
+  }
+
+  return (
+    <Modal title="Edit Student" onClose={onClose}>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <label className="label">Student Name *</label>
+          <input className="input" value={form.name} onChange={e => set('name', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Parent Name</label>
+          <input className="input" value={form.parent} onChange={e => set('parent', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Student Phone *</label>
+          <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Parent Phone</label>
+          <input className="input" value={form.parentPhone} onChange={e => set('parentPhone', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Age (years)</label>
+          <input className="input" type="number" value={form.age} onChange={e => set('age', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Sport</label>
+          <select className="input" value={form.sport} onChange={e => set('sport', e.target.value)}>
+            {SPORTS.map(sp => <option key={sp}>{sp}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Batch</label>
+          <select className="input" value={form.batchId} onChange={e => handleBatch(e.target.value)}>
+            <option value="">— No Batch —</option>
+            {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Monthly Fee (₹)</label>
+          <input className="input" type="number" value={form.fees} onChange={e => set('fees', e.target.value)} />
+        </div>
+        <div className="col-span-2">
+          <label className="label">Paid Till <span className="text-gray-400 font-normal">(month)</span></label>
+          <input className="input" type="month" value={form.paidTill} onChange={e => set('paidTill', e.target.value)} />
+        </div>
+      </div>
+      <div className="flex justify-end gap-3 mt-6">
+        <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn-primary" onClick={handleSave} disabled={loading}>
+          {loading ? (
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+          ) : 'Save Changes'}
+        </button>
+      </div>
+    </Modal>
   )
 }
 

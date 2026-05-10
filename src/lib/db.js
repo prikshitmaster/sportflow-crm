@@ -64,6 +64,30 @@ export async function updateStudentStatus(id, status) {
   if (error) throw error
 }
 
+export async function updateStudent(id, s) {
+  const fields = {
+    name:         s.name,
+    parent:       s.parent       || '',
+    phone:        s.phone        || '',
+    parent_phone: s.parentPhone  || '',
+    age:          Number(s.age)  || null,
+    sport:        s.sport        || '',
+    batch:        s.batchName    || null,
+    batch_id:     s.batchId      || null,
+    fees:         Number(s.fees) || 0,
+    fee_amount:   Number(s.fees) || 0,
+    paid_till:    s.paidTill     || null,
+  }
+  const { data, error } = await supabase
+    .from('students')
+    .update(fields)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 // ── Payments ──────────────────────────────────────────────
 export async function fetchPayments() {
   const { data, error } = await supabase

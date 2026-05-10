@@ -367,6 +367,36 @@ export function AppProvider({ children }) {
     }
   }
 
+  const updateStudent = async (id, s) => {
+    try {
+      // Convert "YYYY-MM" month picker → last day of month
+      let paidTill = s.paidTill || null
+      if (paidTill && paidTill.length === 7) {
+        const [yr, mo] = paidTill.split('-').map(Number)
+        paidTill = new Date(yr, mo, 0).toISOString().split('T')[0]
+      }
+      const updated = await db.updateStudent(id, { ...s, paidTill })
+      setStudents(prev => prev.map(x => x.id === id ? {
+        ...x,
+        name:        updated.name,
+        parent:      updated.parent,
+        phone:       updated.phone,
+        parentPhone: updated.parent_phone,
+        age:         updated.age,
+        sport:       updated.sport,
+        batch:       updated.batch,
+        batchId:     updated.batch_id,
+        fees:        updated.fees,
+        feeAmount:   updated.fee_amount,
+        paidTill:    updated.paid_till,
+      } : x))
+      showToast('Student updated')
+    } catch (err) {
+      showToast(err.message || 'Update failed', 'error')
+      throw err
+    }
+  }
+
   const updateStudentStatus = async (id, status) => {
     try {
       await db.updateStudentStatus(id, status)
@@ -810,7 +840,7 @@ export function AppProvider({ children }) {
       // leave
       leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // data
-      students, addStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
+      students, addStudent, updateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments, addPayment, markPaymentPaid,
       trials, addTrial, updateTrialStatus,
       batches, setBatches, addBatch, updateBatchCoach, updateBatch,
