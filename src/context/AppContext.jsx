@@ -16,6 +16,18 @@
 // ============================================================
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+
+const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+// Returns { monthsCovered, label, amount } for a historical payment
+function calcHistoricalPayment(joinDate, paidTill, fees) {
+  const start = new Date((joinDate || paidTill) + 'T00:00:00')
+  const end   = new Date(paidTill + 'T00:00:00')
+  const months = Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1)
+  const label  = months === 1
+    ? `${MO[end.getMonth()]} ${end.getFullYear()}`
+    : `${MO[start.getMonth()]}${start.getFullYear() !== end.getFullYear() ? ` ${start.getFullYear()}` : ''}–${MO[end.getMonth()]} ${end.getFullYear()}`
+  return { monthsCovered: months, label, amount: fees * months }
+}
 import { supabase } from '../lib/supabase'
 import * as db from '../lib/db'
 import {
@@ -396,26 +408,18 @@ export function AppProvider({ children }) {
 
       // Auto-create a historical payment record if student was added with paid_till + fees
       if (paidTill && created.fees > 0) {
-        const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-        const pt = new Date(paidTill + 'T00:00:00')
-        const monthLabel = `${MONTHS[pt.getMonth()]} ${pt.getFullYear()}`
         const paymentDate = created.join_date || new Date().toISOString().split('T')[0]
+        const { monthsCovered, label, amount } = calcHistoricalPayment(paymentDate, paidTill, created.fees)
+        const pt = new Date(paidTill + 'T00:00:00')
         const payCount = await db.fetchPaymentCount()
         const invoiceId = `INV-${pt.getFullYear()}-${String(payCount + 1).padStart(3, '0')}`
         const payRow = {
-          studentId: created.id,
-          student:   created.name,
-          amount:    created.fees,
-          month:     monthLabel,
-          date:      paymentDate,
-          status:    'Paid',
-          mode:      'Cash',
-          monthsCovered: 1,
+          studentId: created.id, student: created.name,
+          amount, month: label, date: paymentDate,
+          status: 'Paid', mode: 'Cash', monthsCovered,
         }
         await db.insertPayment(payRow, invoiceId)
-        setPayments(prev => [{
-          ...payRow, id: invoiceId, paymentType: 'monthly', discountPct: 0,
-        }, ...prev])
+        setPayments(prev => [{ ...payRow, id: invoiceId, paymentType: 'monthly', discountPct: 0 }, ...prev])
       }
 
       showToast(`Student created — Code: ${studentCode} · Join: ${joinCode}`, 'success')
@@ -466,27 +470,21 @@ export function AppProvider({ children }) {
         }))
       }
 
-      // Auto-create a payment record if paidTill was just set and no payment exists for that month
+      // Auto-create a payment record if paidTill was just set and no payment exists for that period
       if (paidTill && updated.fees > 0) {
-        const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-        const pt = new Date(paidTill + 'T00:00:00')
-        const monthLabel = `${MONTHS[pt.getMonth()]} ${pt.getFullYear()}`
+        const paymentDate = updated.join_date || new Date().toISOString().split('T')[0]
+        const { monthsCovered, label, amount } = calcHistoricalPayment(paymentDate, paidTill, updated.fees)
         const alreadyHas = payments.some(p =>
-          p.studentId === id && p.month === monthLabel && (p.status === 'Paid' || p.status === 'Pending')
+          p.studentId === id && p.month === label && (p.status === 'Paid' || p.status === 'Pending')
         )
         if (!alreadyHas) {
-          const paymentDate = updated.join_date || new Date().toISOString().split('T')[0]
+          const pt = new Date(paidTill + 'T00:00:00')
           const payCount = await db.fetchPaymentCount()
           const invoiceId = `INV-${pt.getFullYear()}-${String(payCount + 1).padStart(3, '0')}`
           const payRow = {
-            studentId: id,
-            student:   updated.name,
-            amount:    updated.fees,
-            month:     monthLabel,
-            date:      paymentDate,
-            status:    'Paid',
-            mode:      'Cash',
-            monthsCovered: 1,
+            studentId: id, student: updated.name,
+            amount, month: label, date: paymentDate,
+            status: 'Paid', mode: 'Cash', monthsCovered,
           }
           await db.insertPayment(payRow, invoiceId)
           setPayments(prev => [{ ...payRow, id: invoiceId, paymentType: 'monthly', discountPct: 0 }, ...prev])
