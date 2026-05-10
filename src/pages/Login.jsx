@@ -88,6 +88,16 @@ export default function Login() {
               Create your account
             </Link>
           </p>
+
+          <div className="flex items-center justify-center gap-4 mt-4">
+            <Link to="/staff-login" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
+              Staff login
+            </Link>
+            <span className="text-gray-200">·</span>
+            <Link to="/student-login" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
+              Student login
+            </Link>
+          </div>
         </div>
       </div>
 
