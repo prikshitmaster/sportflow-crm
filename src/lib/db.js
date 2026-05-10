@@ -163,6 +163,18 @@ export async function updateStudentPaidTill(id, paidTill, fees) {
   if (error) throw error
 }
 
+export async function reactivateStudent(id, batchId, batchName) {
+  const { error } = await supabase.from('students').update({
+    status:          'Active',
+    batch_id:        batchId   || null,
+    batch:           batchName || '',
+    suspended_since: null,
+    last_batch_id:   null,
+    last_batch_name: null,
+  }).eq('id', id)
+  if (error) throw error
+}
+
 export async function activateStudentWithBatch(id, batchId, batchName, paidTill, fees) {
   const updates = {
     status:          'Active',

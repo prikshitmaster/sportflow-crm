@@ -14,7 +14,7 @@ const accountBadge = {
 }
 
 export default function Students() {
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
@@ -172,12 +172,21 @@ export default function Students() {
                       </td>
                       <td className="px-4 py-3 font-semibold text-gray-900">₹{(s.fees || 0).toLocaleString('en-IN')}</td>
                       <td className="px-4 py-3">
-                        <button
-                          className="btn-primary text-xs py-1.5 px-3"
-                          onClick={() => { setPayStudent(s); setShowPayModal(true) }}
-                        >
-                          Record Payment
-                        </button>
+                        {s.paidTill && s.paidTill >= firstOfMonth ? (
+                          <button
+                            className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                            onClick={() => reactivateStudent(s)}
+                          >
+                            Reactivate
+                          </button>
+                        ) : (
+                          <button
+                            className="btn-primary text-xs py-1.5 px-3"
+                            onClick={() => { setPayStudent(s); setShowPayModal(true) }}
+                          >
+                            Record Payment
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

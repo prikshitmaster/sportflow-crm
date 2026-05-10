@@ -444,6 +444,33 @@ export function AppProvider({ children }) {
     }
   }
 
+  const reactivateStudent = async (student) => {
+    try {
+      const batchId   = student.lastBatchId
+      const batchName = student.lastBatchName
+      await db.reactivateStudent(student.id, batchId, batchName)
+      if (batchId) {
+        await db.updateBatchEnrolled(batchId, 1)
+        setBatches(prev => prev.map(b => b.id === batchId
+          ? { ...b, enrolled: (b.enrolled || 0) + 1 }
+          : b
+        ))
+      }
+      setStudents(prev => prev.map(s => s.id === student.id ? {
+        ...s,
+        status:         'Active',
+        batchId,
+        batch:          batchName || '',
+        suspendedSince: null,
+        lastBatchId:    null,
+        lastBatchName:  null,
+      } : s))
+      showToast(`${student.name} reactivated`)
+    } catch (err) {
+      showToast(err.message || 'Reactivate failed', 'error')
+    }
+  }
+
   const deleteStudent = async (student) => {
     try {
       await db.deleteStudent(student.id)
@@ -931,7 +958,7 @@ export function AppProvider({ children }) {
       // leave
       leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // data
-      students, addStudent, updateStudent, deleteStudent, suspendStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
+      students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments, addPayment, markPaymentPaid,
       trials, addTrial, updateTrialStatus,
       batches, setBatches, addBatch, updateBatchCoach, updateBatch,
