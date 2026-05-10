@@ -1,11 +1,10 @@
 import { supabase } from './supabase'
 
 // ── Students ──────────────────────────────────────────────
-export async function fetchStudents() {
-  const { data, error } = await supabase
-    .from('students')
-    .select('*')
-    .order('name')
+export async function fetchStudents(academyId) {
+  let query = supabase.from('students').select('*').order('name')
+  if (academyId) query = query.eq('academy_id', academyId)
+  const { data, error } = await query
   if (error) {
     if (error.code === '42P01') return []
     throw error
@@ -111,11 +110,10 @@ export async function updateStudent(id, s) {
 }
 
 // ── Payments ──────────────────────────────────────────────
-export async function fetchPayments() {
-  const { data, error } = await supabase
-    .from('payments')
-    .select('*')
-    .order('created_at', { ascending: false })
+export async function fetchPayments(academyId) {
+  let query = supabase.from('payments').select('*').order('created_at', { ascending: false })
+  if (academyId) query = query.eq('academy_id', academyId)
+  const { data, error } = await query
   if (error) {
     if (error.code === '42P01') return []
     throw error
@@ -150,6 +148,7 @@ export async function insertPayment(p, invoiceId) {
       payment_type:   p.paymentType  || 'monthly',
       discount_pct:   p.discountPct  || 0,
       months_covered: p.monthsCovered || 1,
+      academy_id:     p.academyId    || null,
     })
   if (error) throw error
 }
@@ -215,11 +214,10 @@ export async function updatePaymentDate(id, date) {
 }
 
 // ── Trials ────────────────────────────────────────────────
-export async function fetchTrials() {
-  const { data, error } = await supabase
-    .from('trials')
-    .select('*')
-    .order('trial_date', { ascending: false })
+export async function fetchTrials(academyId) {
+  let query = supabase.from('trials').select('*').order('trial_date', { ascending: false })
+  if (academyId) query = query.eq('academy_id', academyId)
+  const { data, error } = await query
   if (error) {
     if (error.code === '42P01') return []
     throw error
@@ -251,6 +249,7 @@ export async function insertTrial(t) {
       status:     t.status || 'Scheduled',
       converted:  false,
       follow_up:  t.followUp || null,
+      academy_id: t.academyId || null,
     })
     .select()
     .single()
@@ -268,11 +267,10 @@ export async function updateTrial(id, updates) {
 }
 
 // ── Batches ───────────────────────────────────────────────
-export async function fetchBatches() {
-  const { data, error } = await supabase
-    .from('batches')
-    .select('*')
-    .order('id')
+export async function fetchBatches(academyId) {
+  let query = supabase.from('batches').select('*').order('id')
+  if (academyId) query = query.eq('academy_id', academyId)
+  const { data, error } = await query
   if (error) {
     if (error.code === '42P01') return []
     throw error
@@ -314,11 +312,10 @@ export async function insertBatch(b) {
 }
 
 // ── Staff ─────────────────────────────────────────────────
-export async function fetchStaff() {
-  const { data, error } = await supabase
-    .from('staff')
-    .select('*')
-    .order('name')
+export async function fetchStaff(academyId) {
+  let query = supabase.from('staff').select('*').order('name')
+  if (academyId) query = query.eq('academy_id', academyId)
+  const { data, error } = await query
   if (error) {
     if (error.code === '42P01') return []
     throw error
@@ -350,15 +347,16 @@ export async function insertStaff(s) {
   const { data, error } = await supabase
     .from('staff')
     .insert({
-      name:      s.name,
-      role:      s.role,
-      phone:     s.phone,
-      sports:    s.sports || [],
-      salary:    Number(s.salary),
-      join_date: s.joinDate,
-      status:    s.status || 'Active',
+      name:       s.name,
+      role:       s.role,
+      phone:      s.phone,
+      sports:     s.sports || [],
+      salary:     Number(s.salary),
+      join_date:  s.joinDate,
+      status:     s.status || 'Active',
       attendance: 100,
-      photo_url:  s.photoUrl || null,
+      photo_url:  s.photoUrl  || null,
+      academy_id: s.academyId || null,
     })
     .select()
     .single()
@@ -509,6 +507,7 @@ export async function createStudentAccount(s) {
       paid_till:      s.paidTill || null,
       training_type:  s.trainingType || 'Daily',
       fee_plan:       s.feePlan      || 'monthly',
+      academy_id:     s.academyId    || null,
     })
     .select()
     .single()
@@ -701,6 +700,7 @@ export async function insertBatchV2(b) {
       age_min:    Number(b.ageMin) || 0,
       age_max:    Number(b.ageMax) || 99,
       ground:     b.ground || null,
+      academy_id: b.academyId || null,
     })
     .select()
     .single()
@@ -709,11 +709,10 @@ export async function insertBatchV2(b) {
 }
 
 // ── Announcements ─────────────────────────────────────────
-export async function fetchAnnouncements() {
-  const { data, error } = await supabase
-    .from('announcements')
-    .select('*')
-    .order('date', { ascending: false })
+export async function fetchAnnouncements(academyId) {
+  let query = supabase.from('announcements').select('*').order('date', { ascending: false })
+  if (academyId) query = query.eq('academy_id', academyId)
+  const { data, error } = await query
   if (error) {
     if (error.code === '42P01') return []
     throw error
@@ -732,11 +731,12 @@ export async function insertAnnouncement(a) {
   const { data, error } = await supabase
     .from('announcements')
     .insert({
-      title:  a.title,
-      body:   a.body,
-      type:   a.type,
-      author: a.author || 'Admin',
-      date:   new Date().toISOString().split('T')[0],
+      title:      a.title,
+      body:       a.body,
+      type:       a.type,
+      author:     a.author || 'Admin',
+      date:       new Date().toISOString().split('T')[0],
+      academy_id: a.academyId || null,
     })
     .select()
     .single()
@@ -775,11 +775,10 @@ export async function updateBatch(batchId, b) {
   return data
 }
 
-export async function fetchEvents() {
-  const { data, error } = await supabase
-    .from('events')
-    .select('*')
-    .order('date', { ascending: true })
+export async function fetchEvents(academyId) {
+  let query = supabase.from('events').select('*').order('date', { ascending: true })
+  if (academyId) query = query.eq('academy_id', academyId)
+  const { data, error } = await query
   if (error) {
     if (error.code === '42P01') return []  // table doesn't exist yet
     throw error
@@ -799,6 +798,7 @@ export async function insertEvent(e) {
       venue:       e.venue || null,
       description: e.description || null,
       status:      e.status || 'Upcoming',
+      academy_id:  e.academyId || null,
     })
     .select()
     .single()

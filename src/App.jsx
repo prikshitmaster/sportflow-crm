@@ -1,18 +1,9 @@
-// ── Route guards ──────────────────────────────────────────
-// OwnerRoute  → only role='owner' may enter
-// StaffRoute  → only role='staff' may enter (staff has its own portal)
-// StudentRoute → only role='student' may enter
-// PublicRoute → redirects logged-in users to their home
-
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Component } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import Layout from './components/Layout'
-import StudentLayout from './components/StudentLayout'
-import StaffLayout from './components/StaffLayout'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
-import Activate from './pages/Activate'
 import Dashboard from './pages/Dashboard'
 import Students from './pages/Students'
 import Attendance from './pages/Attendance'
@@ -25,22 +16,8 @@ import Community from './pages/Community'
 import Settings from './pages/Settings'
 import AdminQR from './pages/AdminQR'
 import Events from './pages/Events'
-import StudentDashboard from './pages/student/StudentDashboard'
-import StudentScan from './pages/student/StudentScan'
-import StudentAttendance from './pages/student/StudentAttendance'
-import StudentPayments from './pages/student/StudentPayments'
-import StudentAnnouncements from './pages/student/StudentAnnouncements'
-import StaffDashboard   from './pages/staff/StaffDashboard'
-import StaffAttendance  from './pages/staff/StaffAttendance'
-import StaffRoster      from './pages/staff/StaffRoster'
-import StaffMe          from './pages/staff/StaffMe'
-import StaffProfile     from './pages/staff/StaffProfile'
-import StaffScanIn      from './pages/staff/StaffScanIn'
-import StaffNotices     from './pages/staff/StaffNotices'
 import StaffAttendanceQR from './pages/StaffAttendanceQR'
-import Invite           from './pages/Invite'
 
-// ── Error boundary — catches render crashes (shows error msg instead of blank) ──
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(err) { return { error: err } }
@@ -68,8 +45,6 @@ class ErrorBoundary extends Component {
   }
 }
 
-// ── Route guard helpers ───────────────────────────────────
-
 function PageLoading() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -84,59 +59,27 @@ function PageLoading() {
   )
 }
 
-// Owner-only routes — office staff (admin/receptionist/accountant) also allowed
 function OwnerRoute({ children }) {
-  const { role, loading, user } = useApp()
+  const { role, loading } = useApp()
   if (loading) return <PageLoading />
   if (role === 'owner') return children
-  if (role === 'staff' && user && !['coach', 'staff'].includes(user.accessRole)) return children
-  if (role === 'staff')   return <Navigate to="/staff/dashboard" replace />
-  if (role === 'student') return <Navigate to="/student/dashboard" replace />
   return <Navigate to="/login" replace />
 }
 
-// Staff-only routes
-function StaffRoute({ children }) {
-  const { role, loading } = useApp()
-  if (loading) return <PageLoading />
-  if (role === 'staff')   return children
-  if (role === 'owner')   return <Navigate to="/dashboard" replace />
-  if (role === 'student') return <Navigate to="/student/dashboard" replace />
-  return <Navigate to="/login" replace />
-}
-
-// Student-only routes
-function StudentRoute({ children }) {
-  const { role, loading } = useApp()
-  if (loading) return <PageLoading />
-  if (role === 'student') return children
-  if (role === 'owner')   return <Navigate to="/dashboard" replace />
-  if (role === 'staff')   return <Navigate to="/staff/dashboard" replace />
-  return <Navigate to="/login" replace />
-}
-
-// Public (login / signup) — redirect if already logged in
 function PublicRoute({ children }) {
   const { role, loading } = useApp()
   if (loading) return <PageLoading />
   if (role === 'owner') return <Navigate to="/dashboard" replace />
-  if (role === 'staff')   return <Navigate to="/staff/dashboard" replace />
-  if (role === 'student') return <Navigate to="/student/dashboard" replace />
   return children
 }
 
-// ── Route tree ────────────────────────────────────────────
 function AppRoutes() {
   return (
     <Routes>
-      {/* Public */}
-      <Route path="/"        element={<Navigate to="/login" replace />} />
-      <Route path="/login"   element={<PublicRoute><Login /></PublicRoute>} />
-      <Route path="/signup"  element={<PublicRoute><Signup /></PublicRoute>} />
-      <Route path="/activate" element={<Activate />} />
-      <Route path="/invite/:token" element={<Invite />} />
+      <Route path="/"       element={<Navigate to="/login" replace />} />
+      <Route path="/login"  element={<PublicRoute><Login /></PublicRoute>} />
+      <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
 
-      {/* Owner portal — full admin dashboard */}
       <Route path="/" element={<OwnerRoute><Layout /></OwnerRoute>}>
         <Route path="dashboard"  element={<Dashboard />} />
         <Route path="students"   element={<Students />} />
@@ -151,30 +94,6 @@ function AppRoutes() {
         <Route path="gate-qr"    element={<AdminQR />} />
         <Route path="staff-qr"   element={<StaffAttendanceQR />} />
         <Route path="events"     element={<Events />} />
-      </Route>
-
-      {/* Staff portal — full coach flow */}
-      <Route path="/staff" element={<StaffRoute><StaffLayout /></StaffRoute>}>
-        <Route index             element={<Navigate to="/staff/dashboard" replace />} />
-        <Route path="dashboard"  element={<StaffDashboard />} />
-        <Route path="attendance" element={<StaffAttendance />} />
-        <Route path="roster"     element={<StaffRoster />} />
-        <Route path="me"         element={<StaffMe />} />
-        <Route path="profile"    element={<StaffProfile />} />
-        {/* Community still reuses the owner page */}
-        <Route path="community"  element={<Community />} />
-        <Route path="scan-in"    element={<StaffScanIn />} />
-        <Route path="notices"    element={<StaffNotices />} />
-      </Route>
-
-      {/* Student portal */}
-      <Route path="/student" element={<StudentRoute><StudentLayout /></StudentRoute>}>
-        <Route index                    element={<Navigate to="/student/dashboard" replace />} />
-        <Route path="dashboard"         element={<StudentDashboard />} />
-        <Route path="scan"              element={<StudentScan />} />
-        <Route path="attendance"        element={<StudentAttendance />} />
-        <Route path="payments"          element={<StudentPayments />} />
-        <Route path="announcements"     element={<StudentAnnouncements />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />
