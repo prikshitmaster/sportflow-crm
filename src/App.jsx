@@ -21,6 +21,7 @@ import Settings from './pages/Settings'
 import AdminQR from './pages/AdminQR'
 import Events from './pages/Events'
 import StaffAttendanceQR from './pages/StaffAttendanceQR'
+import Invite from './pages/Invite'
 
 // Staff pages
 import StaffLogin from './pages/StaffLogin'
@@ -156,6 +157,9 @@ function AppRoutes() {
         <Route path="notices"     element={<StudentAnnouncements />} />
         <Route path="scan"        element={<StudentScan />} />
       </Route>
+
+      {/* Invite — public, no auth required */}
+      <Route path="/invite/:token" element={<Invite />} />
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

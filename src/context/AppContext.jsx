@@ -55,6 +55,7 @@ export function AppProvider({ children }) {
   const [announcements,  setAnnouncements]  = useState([])
   const [events,         setEvents]         = useState([])
   const [branches,       setBranches]       = useState([])
+  const [leaveRequests,  setLeaveRequests]  = useState([])
   const [toast,          setToast]          = useState(null)
   const [dataLoading,    setDataLoading]    = useState(false)
 
@@ -233,7 +234,7 @@ export function AppProvider({ children }) {
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
     setBatches([]);  setStaff([]);   setAnnouncements([])
-    setAttendanceData({}); setEvents([])
+    setAttendanceData({}); setEvents([]); setLeaveRequests([])
   }
 
   const logoutAdmin = logoutOwner
@@ -261,7 +262,7 @@ export function AppProvider({ children }) {
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
     setBatches([]);  setStaff([]);   setAnnouncements([])
-    setAttendanceData({}); setEvents([])
+    setAttendanceData({}); setEvents([]); setLeaveRequests([])
   }
 
   // ── Student Auth ──────────────────────────────────────
@@ -808,6 +809,41 @@ export function AppProvider({ children }) {
     }
   }
 
+  // ── Leave Requests ────────────────────────────────────
+
+  const submitLeave = async (startDate, endDate, reason) => {
+    if (!user?.id) return
+    try {
+      const created = await db.createLeaveRequest(user.id, user.name, startDate, endDate, reason)
+      setLeaveRequests(prev => [created, ...prev])
+      showToast('Leave request submitted')
+      return created
+    } catch (err) {
+      showToast(err.message || 'Failed to submit leave', 'error')
+      throw err
+    }
+  }
+
+  const loadLeaveRequests = async () => {
+    if (!user?.id) return
+    try {
+      const data = role === 'owner'
+        ? await db.fetchLeaveRequests()
+        : await db.fetchMyLeaveRequests(user.id)
+      setLeaveRequests(data)
+    } catch { /* silent */ }
+  }
+
+  const updateLeave = async (id, status) => {
+    try {
+      await db.updateLeaveStatus(id, status)
+      setLeaveRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))
+      showToast(`Leave ${status.toLowerCase()}`)
+    } catch (err) {
+      showToast(err.message || 'Failed', 'error')
+    }
+  }
+
   // ── Announcements ─────────────────────────────────────
 
   const addAnnouncement = async (a) => {
@@ -845,6 +881,7 @@ export function AppProvider({ children }) {
       branches, addBranch, removeBranch,
       attendanceData, loadAttendanceForDate, saveAttendance,
       announcements, addAnnouncement,
+      leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // staff portal management
       inviteStaff, updateStaffAccess, revokeStaffAccess,
       toast, showToast,

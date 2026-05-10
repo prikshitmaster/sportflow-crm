@@ -351,7 +351,7 @@ export async function insertStaff(s) {
       role:       s.role,
       phone:      s.phone,
       sports:     s.sports || [],
-      salary:     Number(s.salary),
+      salary:     Number(s.salary) || 0,
       join_date:  s.joinDate,
       status:     s.status || 'Active',
       attendance: 100,
