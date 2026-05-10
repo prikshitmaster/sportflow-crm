@@ -5,7 +5,11 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import * as db from '../lib/db'
-import { generateJoinCode, generateAcademyCode } from '../lib/auth'
+import {
+  generateJoinCode, generateAcademyCode,
+  hashPassword, generateToken,
+  getStudentSession, setStudentSession, clearStudentSession,
+} from '../lib/auth'
 import { ALL_PERMISSIONS, ROLE_PRESETS } from '../lib/permissions'
 
 const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -37,6 +41,9 @@ export function AppProvider({ children }) {
   const [features,    setFeatures]    = useState({})
   const [permissions, setPermissions] = useState([])
   const [loading,     setLoading]     = useState(true)
+
+  // ── Student portal state (custom auth) ───────────────
+  const [studentUser, setStudentUser] = useState(null)
 
   // ── Data state ─────────────────────────────────────────
   const [students,       setStudents]       = useState([])
@@ -156,6 +163,18 @@ export function AppProvider({ children }) {
             return
           }
         }
+        // 2. Check student session (custom localStorage token)
+        const stuSess = getStudentSession()
+        if (stuSess?.token) {
+          const student = await db.validateStudentSession(stuSess.token)
+          if (student) {
+            setStudentUser(student)
+            setRole('student')
+            setLoading(false)
+            return
+          }
+          clearStudentSession()
+        }
       } catch (err) {
         console.error('Session restore failed:', err)
       }
@@ -218,6 +237,60 @@ export function AppProvider({ children }) {
   }
 
   const logoutAdmin = logoutOwner
+
+  // ── Staff Auth ────────────────────────────────────────
+
+  const loginStaff = async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw error
+    const profile = await db.fetchProfile(data.user.id)
+    if (!profile) throw new Error('Staff profile not found. Please contact your academy owner.')
+    if (profile.role === 'owner') throw new Error('This is an owner account. Use the Owner login.')
+    const academy   = await db.fetchAcademy(profile.academy_id)
+    const flags     = await db.fetchFeatureFlags(profile.academy_id)
+    const permsData = await db.fetchUserPermissions(data.user.id)
+    const perms     = permsData?.permissions || ROLE_PRESETS[permsData?.access_role] || []
+    setUser({ id: profile.id, name: profile.name, email, academy: academy.name, academyId: academy.id, role: profile.role, accessRole: permsData?.access_role || 'staff' })
+    setFeatures(flags)
+    setPermissions(perms)
+    setRole('staff')
+  }
+
+  const logoutStaff = async () => {
+    await supabase.auth.signOut().catch(() => {})
+    setRole(null); setUser(null); setFeatures({}); setPermissions([])
+    setStudents([]); setPayments([]); setTrials([])
+    setBatches([]);  setStaff([]);   setAnnouncements([])
+    setAttendanceData({}); setEvents([])
+  }
+
+  // ── Student Auth ──────────────────────────────────────
+
+  const loginStudent = async (studentCode, password) => {
+    const hash    = await hashPassword(password)
+    const student = await db.loginStudentAccount(studentCode, hash)
+    const token   = generateToken()
+    const expiry  = await db.createStudentSession(student.id, token)
+    setStudentSession(token, expiry, {
+      id: student.id, studentCode: student.student_code, name: student.name,
+    })
+    setStudentUser(student)
+    setRole('student')
+    return student
+  }
+
+  const logoutStudent = async () => {
+    const sess = getStudentSession()
+    if (sess?.token) await db.deleteStudentSession(sess.token).catch(() => {})
+    clearStudentSession()
+    setRole(null)
+    setStudentUser(null)
+  }
+
+  const activateStudent = async (studentCode, joinCode, password) => {
+    const hash = await hashPassword(password)
+    return db.activateStudentAccount(studentCode, joinCode, hash)
+  }
 
   // ── Feature flag toggle ───────────────────────────────
   const toggleFeature = async (feature, enabled) => {
@@ -753,11 +826,15 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       // auth
-      isAuthenticated, role, user, loading, dataLoading,
+      isAuthenticated, role, user, studentUser, loading, dataLoading,
       features, isFeatureOn, toggleFeature,
       permissions, hasPermission,
       // owner auth
       signupOwner, loginOwner, logoutOwner, logoutAdmin,
+      // staff auth
+      loginStaff, logoutStaff,
+      // student auth
+      loginStudent, logoutStudent, activateStudent,
       // data
       students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments, addPayment, markPaymentPaid, updatePaymentDate,

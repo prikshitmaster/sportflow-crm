@@ -2,6 +2,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Component } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import Layout from './components/Layout'
+import StaffLayout from './components/StaffLayout'
+import StudentLayout from './components/StudentLayout'
+
+// Owner pages
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
@@ -17,6 +21,24 @@ import Settings from './pages/Settings'
 import AdminQR from './pages/AdminQR'
 import Events from './pages/Events'
 import StaffAttendanceQR from './pages/StaffAttendanceQR'
+
+// Staff pages
+import StaffLogin from './pages/StaffLogin'
+import StaffDashboard from './pages/staff/StaffDashboard'
+import StaffMe from './pages/staff/StaffMe'
+import StaffRoster from './pages/staff/StaffRoster'
+import StaffNotices from './pages/staff/StaffNotices'
+import StaffAttendance from './pages/staff/StaffAttendance'
+import StaffScanIn from './pages/staff/StaffScanIn'
+
+// Student pages
+import StudentLogin from './pages/StudentLogin'
+import Activate from './pages/Activate'
+import StudentDashboard from './pages/student/StudentDashboard'
+import StudentAttendance from './pages/student/StudentAttendance'
+import StudentPayments from './pages/student/StudentPayments'
+import StudentAnnouncements from './pages/student/StudentAnnouncements'
+import StudentScan from './pages/student/StudentScan'
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
@@ -66,20 +88,37 @@ function OwnerRoute({ children }) {
   return <Navigate to="/login" replace />
 }
 
+function StaffRoute({ children }) {
+  const { role, loading } = useApp()
+  if (loading) return <PageLoading />
+  if (role === 'staff') return children
+  return <Navigate to="/staff-login" replace />
+}
+
+function StudentRoute({ children }) {
+  const { role, loading } = useApp()
+  if (loading) return <PageLoading />
+  if (role === 'student') return children
+  return <Navigate to="/student-login" replace />
+}
+
 function PublicRoute({ children }) {
   const { role, loading } = useApp()
   if (loading) return <PageLoading />
-  if (role === 'owner') return <Navigate to="/dashboard" replace />
+  if (role === 'owner')   return <Navigate to="/dashboard" replace />
+  if (role === 'staff')   return <Navigate to="/staff/home" replace />
+  if (role === 'student') return <Navigate to="/student/dashboard" replace />
   return children
 }
 
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/"       element={<Navigate to="/login" replace />} />
+      <Route path="/" element={<Navigate to="/login" replace />} />
+
+      {/* Owner */}
       <Route path="/login"  element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
-
       <Route path="/" element={<OwnerRoute><Layout /></OwnerRoute>}>
         <Route path="dashboard"  element={<Dashboard />} />
         <Route path="students"   element={<Students />} />
@@ -94,6 +133,28 @@ function AppRoutes() {
         <Route path="gate-qr"    element={<AdminQR />} />
         <Route path="staff-qr"   element={<StaffAttendanceQR />} />
         <Route path="events"     element={<Events />} />
+      </Route>
+
+      {/* Staff */}
+      <Route path="/staff-login" element={<PublicRoute><StaffLogin /></PublicRoute>} />
+      <Route path="/staff" element={<StaffRoute><StaffLayout /></StaffRoute>}>
+        <Route path="home"       element={<StaffDashboard />} />
+        <Route path="me"         element={<StaffMe />} />
+        <Route path="roster"     element={<StaffRoster />} />
+        <Route path="notices"    element={<StaffNotices />} />
+        <Route path="attendance" element={<StaffAttendance />} />
+        <Route path="scan-in"    element={<StaffScanIn />} />
+      </Route>
+
+      {/* Student */}
+      <Route path="/student-login" element={<PublicRoute><StudentLogin /></PublicRoute>} />
+      <Route path="/activate"      element={<Activate />} />
+      <Route path="/student" element={<StudentRoute><StudentLayout /></StudentRoute>}>
+        <Route path="dashboard"   element={<StudentDashboard />} />
+        <Route path="attendance"  element={<StudentAttendance />} />
+        <Route path="payments"    element={<StudentPayments />} />
+        <Route path="notices"     element={<StudentAnnouncements />} />
+        <Route path="scan"        element={<StudentScan />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />
