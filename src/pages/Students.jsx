@@ -313,8 +313,8 @@ export default function Students() {
                   </td>
                   <td className="px-4 py-3 relative">
                     <button
-                      className="p-1.5 rounded-lg hover:bg-gray-100 transition"
-                      onClick={() => setOpenMenu(openMenu === s.id ? null : s.id)}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 transition relative z-10"
+                      onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === s.id ? null : s.id) }}
                     >
                       <MoreVertical size={15} className="text-gray-500" />
                     </button>
