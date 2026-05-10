@@ -468,7 +468,7 @@ export default function Students() {
 
 function AddStudentModal({ onClose, onSave }) {
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '',
+    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '', fees: '',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -520,7 +520,12 @@ function AddStudentModal({ onClose, onSave }) {
           </select>
         </div>
         <div>
-          <label className="label">Join Date <span className="text-gray-400 font-normal">(optional — defaults to today)</span></label>
+          <label className="label">Monthly Fee (₹)</label>
+          <input className="input" type="number" placeholder="e.g. 2000" value={form.fees}
+            onChange={e => set('fees', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Join Date <span className="text-gray-400 font-normal">(optional)</span></label>
           <input className="input" type="date" value={form.joinDate}
             max={new Date().toISOString().split('T')[0]}
             onChange={e => set('joinDate', e.target.value)} />
