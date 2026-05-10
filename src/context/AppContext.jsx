@@ -403,6 +403,7 @@ export function AppProvider({ children }) {
         lastBatchId:    null,
         lastBatchName:  null,
         suspendedSince: null,
+        trainingType:   created.training_type || 'Daily',
       }
       setStudents(prev => [...prev, mapped])
 
@@ -454,9 +455,10 @@ export function AppProvider({ children }) {
         batch:       updated.batch,
         batchId:     updated.batch_id,
         fees:        updated.fees,
-        feeAmount:   updated.fee_amount,
-        paidTill:    updated.paid_till,
-        joinDate:    updated.join_date,
+        feeAmount:    updated.fee_amount,
+        paidTill:     updated.paid_till,
+        joinDate:     updated.join_date,
+        trainingType: updated.training_type || 'Daily',
       } : x))
 
       // Keep batch enrolled counts in sync when batch assignment changes

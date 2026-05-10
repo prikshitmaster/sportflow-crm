@@ -270,16 +270,24 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     batchName:   initStudent.batch || initStudent.lastBatchName || '',
     mode:        'UPI',
   })
-  const [loading, setLoading] = useState(false)
+  const [loading,       setLoading]       = useState(false)
+  const [studentSearch, setStudentSearch] = useState('')
+  const [amountOverride, setAmountOverride] = useState(null) // null = use calculation
 
-  const months     = form.paymentType === 'quarterly' ? 3 : form.paymentType === 'yearly' ? 12 : 1
-  const subtotal   = form.baseAmount * months
+  const months      = form.paymentType === 'quarterly' ? 3 : form.paymentType === 'yearly' ? 12 : 1
+  const subtotal    = form.baseAmount * months
   const discountAmt = Math.round(subtotal * form.discountPct / 100)
-  const finalAmount = subtotal - discountAmt
+  const calcAmount  = subtotal - discountAmt
+  const finalAmount = amountOverride !== null ? amountOverride : calcAmount
+
+  const filteredStudents = studentSearch
+    ? students.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()))
+    : students
 
   const handleStudentChange = (id) => {
     const s = students.find(x => String(x.id) === String(id))
     if (!s) return
+    setAmountOverride(null)
     setForm(f => ({
       ...f,
       studentId:  s.id,
@@ -321,11 +329,17 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
         {/* Student */}
         <div>
           <label className="label">Student</label>
+          <input
+            className="input mb-1.5"
+            placeholder="Search by name…"
+            value={studentSearch}
+            onChange={e => setStudentSearch(e.target.value)}
+          />
           <select className="input" value={form.studentId} onChange={e => handleStudentChange(e.target.value)}>
             <option value="">— Select student —</option>
-            {students.map(s => (
+            {filteredStudents.map(s => (
               <option key={s.id} value={s.id}>
-                {s.name}{s.status === 'Suspended' ? ' (Suspended)' : ''}
+                {s.name}{s.status === 'Suspended' ? ' (Suspended)' : ''}{s.trainingType === 'Alternate' ? ' · Alt' : ''}
               </option>
             ))}
           </select>
@@ -342,7 +356,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
           <div className="grid grid-cols-3 gap-2">
             {PLAN_OPTS.map(pt => (
               <button key={pt.key} type="button"
-                onClick={() => setForm(f => ({ ...f, paymentType: pt.key }))}
+                onClick={() => { setAmountOverride(null); setForm(f => ({ ...f, paymentType: pt.key })) }}
                 className={`py-2.5 rounded-xl text-xs font-bold border transition ${
                   form.paymentType === pt.key
                     ? 'bg-brand-600 text-white border-brand-600'
@@ -361,7 +375,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
           <div>
             <label className="label">Monthly Fee (₹)</label>
             <input className="input" type="number" min="0" value={form.baseAmount}
-              onChange={e => setForm(f => ({ ...f, baseAmount: Number(e.target.value) }))} />
+              onChange={e => { setAmountOverride(null); setForm(f => ({ ...f, baseAmount: Number(e.target.value) })) }} />
           </div>
           <div>
             <label className="label">Discount (%)</label>
@@ -374,7 +388,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
         <div className="bg-gray-50 rounded-xl p-3.5 space-y-1.5">
           <div className="flex justify-between text-xs text-gray-500">
             <span>₹{form.baseAmount.toLocaleString('en-IN')} × {months} month{months > 1 ? 's' : ''}</span>
-            <span>₹{subtotal.toLocaleString('en-IN')}</span>
+            <span>₹{calcAmount.toLocaleString('en-IN')}</span>
           </div>
           {discountAmt > 0 && (
             <div className="flex justify-between text-xs text-emerald-600 font-medium">
@@ -382,9 +396,14 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
               <span>−₹{discountAmt.toLocaleString('en-IN')}</span>
             </div>
           )}
-          <div className="flex justify-between text-sm font-black text-gray-900 border-t border-gray-200 pt-2 mt-1">
-            <span>Total</span>
-            <span>₹{finalAmount.toLocaleString('en-IN')}</span>
+          <div className="flex justify-between items-center text-sm font-black text-gray-900 border-t border-gray-200 pt-2 mt-1">
+            <span>Total <span className="text-[10px] font-normal text-gray-400">(editable)</span></span>
+            <input
+              type="number" min="0"
+              className="w-32 text-right font-black text-gray-900 bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-brand-400"
+              value={finalAmount}
+              onChange={e => setAmountOverride(Number(e.target.value))}
+            />
           </div>
         </div>
 

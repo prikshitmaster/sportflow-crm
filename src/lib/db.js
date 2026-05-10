@@ -32,6 +32,7 @@ export async function fetchStudents() {
     lastBatchId:    row.last_batch_id,
     lastBatchName:  row.last_batch_name,
     suspendedSince: row.suspended_since,
+    trainingType:   row.training_type || 'Daily',
   }))
 }
 
@@ -91,10 +92,11 @@ export async function updateStudent(id, s) {
     sport:        s.sport        || '',
     batch:        s.batchName    || '',
     batch_id:     s.batchId      || null,
-    fees:         Number(s.fees) || 0,
-    fee_amount:   Number(s.fees) || 0,
-    paid_till:    s.paidTill     || null,
-    join_date:    s.joinDate     || null,
+    fees:          Number(s.fees) || 0,
+    fee_amount:    Number(s.fees) || 0,
+    paid_till:     s.paidTill     || null,
+    join_date:     s.joinDate     || null,
+    training_type: s.trainingType || 'Daily',
   }
   const { data, error } = await supabase
     .from('students')
@@ -460,6 +462,7 @@ export async function createStudentAccount(s) {
       fee_amount:     Number(s.feeAmount) || Number(s.fees) || 0,
       fee_due_day:    Number(s.feeDueDay) || null,
       paid_till:      s.paidTill || null,
+      training_type:  s.trainingType || 'Daily',
     })
     .select()
     .single()

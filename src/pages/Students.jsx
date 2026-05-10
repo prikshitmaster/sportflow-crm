@@ -305,7 +305,10 @@ export default function Students() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{s.age} yrs</td>
                   <td className="px-4 py-3">
-                    <span className="badge badge-blue">{s.sport}</span>
+                    <div className="flex flex-col gap-1">
+                      <span className="badge badge-blue">{s.sport}</span>
+                      <span className={`badge text-[10px] ${s.trainingType === 'Alternate' ? 'badge-purple' : 'badge-gray'}`}>{s.trainingType || 'Daily'}</span>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{s.batch || '—'}</td>
                   <td className="px-4 py-3 font-semibold text-gray-900">₹{(s.fees || 0).toLocaleString('en-IN')}</td>
@@ -469,7 +472,7 @@ export default function Students() {
 function AddStudentModal({ onClose, onSave }) {
   const { batches } = useApp()
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '',
+    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '', trainingType: 'Daily',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -531,6 +534,18 @@ function AddStudentModal({ onClose, onSave }) {
             <option value="">— No Batch —</option>
             {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="label">Training Type</label>
+          <div className="flex gap-2">
+            {['Daily','Alternate'].map(t => (
+              <button key={t} type="button"
+                onClick={() => set('trainingType', t)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold border transition ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
         <div>
           <label className="label">Monthly Fee (₹) *</label>
@@ -761,17 +776,18 @@ function DeleteStudentModal({ student: s, onClose, onConfirm }) {
 function EditStudentModal({ student: s, batches, onClose, onSave }) {
   const paidTillMonth = s.paidTill ? s.paidTill.slice(0, 7) : ''
   const [form, setForm] = useState({
-    name:        s.name        || '',
-    parent:      s.parent      || '',
-    phone:       s.phone       || '',
-    parentPhone: s.parentPhone || '',
-    age:         s.age         || '',
-    sport:       s.sport       || SPORTS[0],
-    batchId:     s.batchId     || '',
-    batchName:   s.batch       || '',
-    fees:        s.fees        || '',
-    paidTill:    paidTillMonth,
-    joinDate:    s.joinDate    || '',
+    name:         s.name         || '',
+    parent:       s.parent       || '',
+    phone:        s.phone        || '',
+    parentPhone:  s.parentPhone  || '',
+    age:          s.age          || '',
+    sport:        s.sport        || SPORTS[0],
+    batchId:      s.batchId      || '',
+    batchName:    s.batch        || '',
+    fees:         s.fees         || '',
+    paidTill:     paidTillMonth,
+    joinDate:     s.joinDate     || '',
+    trainingType: s.trainingType || 'Daily',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -826,6 +842,18 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
         <div>
           <label className="label">Monthly Fee (₹)</label>
           <input className="input" type="number" value={form.fees} onChange={e => set('fees', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Training Type</label>
+          <div className="flex gap-2">
+            {['Daily','Alternate'].map(t => (
+              <button key={t} type="button"
+                onClick={() => set('trainingType', t)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold border transition ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
         <div>
           <label className="label">Join Date</label>
