@@ -93,6 +93,7 @@ export async function updateStudent(id, s) {
     fees:         Number(s.fees) || 0,
     fee_amount:   Number(s.fees) || 0,
     paid_till:    s.paidTill     || null,
+    join_date:    s.joinDate     || null,
   }
   const { data, error } = await supabase
     .from('students')
@@ -436,7 +437,7 @@ export async function createStudentAccount(s) {
       sport:          s.sport || '',
       batch:          s.batchName || '',
       batch_id:       s.batchId   || null,
-      join_date:      new Date().toISOString().split('T')[0],
+      join_date:      s.joinDate || new Date().toISOString().split('T')[0],
       status:         'Active',
       fees:           Number(s.fees) || 0,
       student_code:   s.studentCode,

@@ -422,7 +422,7 @@ export default function Students() {
 
 function AddStudentModal({ onClose, onSave }) {
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '',
+    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -473,11 +473,15 @@ function AddStudentModal({ onClose, onSave }) {
             {SPORTS.map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
-        <div className="col-span-2">
-          <label className="label">Paid Till <span className="text-gray-400 font-normal">(optional — for existing students who already paid)</span></label>
+        <div>
+          <label className="label">Join Date <span className="text-gray-400 font-normal">(optional — defaults to today)</span></label>
+          <input className="input" type="date" value={form.joinDate}
+            onChange={e => set('joinDate', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Paid Till <span className="text-gray-400 font-normal">(optional)</span></label>
           <input className="input" type="month" value={form.paidTill}
             onChange={e => set('paidTill', e.target.value)} />
-          <p className="text-xs text-gray-400 mt-1">Leave blank if fees haven't been paid yet.</p>
         </div>
       </div>
       <div className="flex justify-end gap-3 mt-6">
@@ -631,16 +635,17 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
 function EditStudentModal({ student: s, batches, onClose, onSave }) {
   const paidTillMonth = s.paidTill ? s.paidTill.slice(0, 7) : ''
   const [form, setForm] = useState({
-    name:       s.name        || '',
-    parent:     s.parent      || '',
-    phone:      s.phone       || '',
+    name:        s.name        || '',
+    parent:      s.parent      || '',
+    phone:       s.phone       || '',
     parentPhone: s.parentPhone || '',
-    age:        s.age         || '',
-    sport:      s.sport       || SPORTS[0],
-    batchId:    s.batchId     || '',
-    batchName:  s.batch       || '',
-    fees:       s.fees        || '',
-    paidTill:   paidTillMonth,
+    age:         s.age         || '',
+    sport:       s.sport       || SPORTS[0],
+    batchId:     s.batchId     || '',
+    batchName:   s.batch       || '',
+    fees:        s.fees        || '',
+    paidTill:    paidTillMonth,
+    joinDate:    s.joinDate    || '',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -696,7 +701,11 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <label className="label">Monthly Fee (₹)</label>
           <input className="input" type="number" value={form.fees} onChange={e => set('fees', e.target.value)} />
         </div>
-        <div className="col-span-2">
+        <div>
+          <label className="label">Join Date</label>
+          <input className="input" type="date" value={form.joinDate} onChange={e => set('joinDate', e.target.value)} />
+        </div>
+        <div>
           <label className="label">Paid Till <span className="text-gray-400 font-normal">(month)</span></label>
           <input className="input" type="month" value={form.paidTill} onChange={e => set('paidTill', e.target.value)} />
         </div>

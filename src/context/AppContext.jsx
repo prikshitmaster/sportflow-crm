@@ -423,6 +423,7 @@ export function AppProvider({ children }) {
         fees:        updated.fees,
         feeAmount:   updated.fee_amount,
         paidTill:    updated.paid_till,
+        joinDate:    updated.join_date,
       } : x))
 
       // Keep batch enrolled counts in sync when batch assignment changes
