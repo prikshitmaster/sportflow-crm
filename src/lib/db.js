@@ -189,6 +189,11 @@ export async function updateBatchEnrolled(batchId, delta) {
     .eq('id', batchId)
 }
 
+export async function deletePayment(id) {
+  const { error } = await supabase.from('payments').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function updatePaymentStatus(id, status, mode) {
   const { error } = await supabase
     .from('payments')

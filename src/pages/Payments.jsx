@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { CreditCard, Plus, Search, Download, CheckCircle, Clock, AlertCircle, X, Pencil } from 'lucide-react'
+import { CreditCard, Plus, Search, Download, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2 } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
@@ -11,7 +11,7 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, addPayment, markPaymentPaid, updatePaymentDate } = useApp()
+  const { payments, students, batches, addPayment, markPaymentPaid, removePayment, updatePaymentDate } = useApp()
   const [editingDate, setEditingDate] = useState(null) // paymentId being edited
 
   const [search,          setSearch]          = useState('')
@@ -223,7 +223,7 @@ export default function Payments() {
               {filtered.map(p => {
                 const sm = STATUS_MAP[p.status] || STATUS_MAP.Overdue
                 return (
-                  <tr key={p.id} className={`hover:bg-gray-50/60 transition ${p.isVirtual ? 'bg-red-50/30' : ''}`}>
+                  <tr key={p.id} className={`group hover:bg-gray-50/60 transition ${p.isVirtual ? 'bg-red-50/30' : ''}`}>
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.isVirtual ? '—' : p.id}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900">
                       {p.student}
@@ -282,9 +282,21 @@ export default function Payments() {
                           Mark Paid
                         </button>
                       ) : (
-                        <button className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
-                          <Download size={12} /> Receipt
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                            <Download size={12} /> Receipt
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Delete ${p.id} for ${p.student}?\n\nThis will revert their paid_till to the previous payment.`))
+                                removePayment(p)
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500"
+                            title="Delete payment"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>

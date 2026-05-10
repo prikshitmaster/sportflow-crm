@@ -603,6 +603,33 @@ export function AppProvider({ children }) {
     }
   }
 
+  const removePayment = async (payment) => {
+    try {
+      await db.deletePayment(payment.id)
+      const remaining = payments.filter(p => p.id !== payment.id)
+      setPayments(remaining)
+
+      // Revert student's paid_till to their previous payment
+      const student = students.find(s => s.id === Number(payment.studentId))
+      if (student) {
+        const prevPaid = remaining
+          .filter(p => String(p.studentId) === String(payment.studentId) && p.status === 'Paid' && p.date)
+          .sort((a, b) => new Date(b.date) - new Date(a.date))[0]
+        let newPaidTill = null
+        if (prevPaid) {
+          const d = new Date(prevPaid.date + 'T00:00:00')
+          const m = prevPaid.monthsCovered || 1
+          newPaidTill = new Date(d.getFullYear(), d.getMonth() + m, 0).toISOString().split('T')[0]
+        }
+        await db.updateStudentPaidTill(student.id, newPaidTill, null)
+        setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
+      }
+      showToast('Payment deleted')
+    } catch (err) {
+      showToast(err.message || 'Delete failed', 'error')
+    }
+  }
+
   const markPaymentPaid = async (id, mode = 'UPI') => {
     try {
       await db.updatePaymentStatus(id, 'Paid', mode)
@@ -873,7 +900,7 @@ export function AppProvider({ children }) {
       loginStudent, logoutStudent, activateStudent,
       // data
       students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
-      payments, addPayment, markPaymentPaid, updatePaymentDate,
+      payments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
       trials, addTrial, updateTrialStatus,
       batches, setBatches, addBatch, updateBatchCoach, updateBatch,
       events, addEvent, updateEventStatus, removeEvent,
