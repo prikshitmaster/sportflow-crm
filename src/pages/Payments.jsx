@@ -343,12 +343,21 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
   const [studentSearch,  setStudentSearch] = useState('')
   const [amountOverride, setAmountOverride] = useState(null)
   const [paymentDate,    setPaymentDate]   = useState(new Date().toISOString().split('T')[0])
+  const [customMonths,   setCustomMonths]  = useState(2)
+  const [lateFee,        setLateFee]       = useState(0)
+  const [showLateFee,    setShowLateFee]   = useState(false)
 
-  const months      = form.paymentType === 'quarterly' ? 3 : form.paymentType === 'yearly' ? 12 : 1
-  // For quarterly/yearly the entered amount IS the flat total — no multiplication
-  const subtotal    = form.paymentType === 'monthly' ? form.baseAmount : form.baseAmount
-  const discountAmt = Math.round(form.baseAmount * form.discountPct / 100)
-  const calcAmount  = form.baseAmount - discountAmt
+  const months = form.paymentType === 'quarterly' ? 3
+               : form.paymentType === 'yearly'    ? 12
+               : form.paymentType === 'custom'    ? customMonths
+               : 1
+  // monthly & custom: fee × months; quarterly/yearly: entered amount is the flat total
+  const subtotal    = (form.paymentType === 'monthly' || form.paymentType === 'custom')
+    ? form.baseAmount * months
+    : form.baseAmount
+  const discountAmt = Math.round(subtotal * form.discountPct / 100)
+  const lateFeeAmt  = Number(lateFee) || 0
+  const calcAmount  = subtotal - discountAmt + lateFeeAmt
   const finalAmount = amountOverride !== null ? amountOverride : calcAmount
 
   const filteredStudents = studentSearch
@@ -379,7 +388,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     if (!form.studentId || finalAmount <= 0) return
     setLoading(true)
     try {
-      await onSave({ ...form, amount: finalAmount, paymentDate })
+      await onSave({ ...form, amount: finalAmount, monthsCovered: months, lateFee: lateFeeAmt, paymentDate })
     } finally {
       setLoading(false)
     }
@@ -392,7 +401,15 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
     { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
     { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
+    { key: 'custom',    label: 'Custom',    sub: 'any months' },
   ]
+
+  const feeLabel = {
+    monthly:   'Monthly Fee (₹)',
+    quarterly: 'Quarterly Fee (₹)',
+    yearly:    'Yearly Fee (₹)',
+    custom:    'Monthly Fee (₹)',
+  }[form.paymentType] || 'Fee (₹)'
 
   return (
     <Modal title="Record Payment" onClose={onClose}>
@@ -425,7 +442,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
         {/* Payment plan pills */}
         <div>
           <label className="label">Payment Plan</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {PLAN_OPTS.map(pt => (
               <button key={pt.key} type="button"
                 onClick={() => { setAmountOverride(null); setForm(f => ({ ...f, paymentType: pt.key })) }}
@@ -440,12 +457,23 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
               </button>
             ))}
           </div>
+          {form.paymentType === 'custom' && (
+            <div className="mt-2 flex items-center gap-2">
+              <label className="text-xs text-gray-500 whitespace-nowrap">Number of months:</label>
+              <input
+                className="input w-24 text-center font-bold"
+                type="number" min="1" max="36"
+                value={customMonths}
+                onChange={e => { setCustomMonths(Math.max(1, Number(e.target.value))); setAmountOverride(null) }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Fee amount + discount */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">{{ monthly: 'Monthly Fee (₹)', quarterly: 'Quarterly Fee (₹)', yearly: 'Yearly Fee (₹)' }[form.paymentType] || 'Fee (₹)'}</label>
+            <label className="label">{feeLabel}</label>
             <input className="input" type="number" min="0" value={form.baseAmount}
               onChange={e => { setAmountOverride(null); setForm(f => ({ ...f, baseAmount: Number(e.target.value) })) }} />
           </div>
@@ -456,15 +484,44 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
           </div>
         </div>
 
+        {/* Late fee */}
+        {!showLateFee ? (
+          <button type="button" onClick={() => setShowLateFee(true)}
+            className="text-xs text-brand-600 font-semibold hover:underline">
+            + Add Late Fee
+          </button>
+        ) : (
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <label className="label">Late Fee (₹)</label>
+              <input className="input" type="number" min="0" value={lateFee}
+                onChange={e => { setLateFee(Number(e.target.value)); setAmountOverride(null) }} />
+            </div>
+            <button type="button"
+              onClick={() => { setShowLateFee(false); setLateFee(0); setAmountOverride(null) }}
+              className="mb-1 p-2 text-gray-400 hover:text-red-500 transition">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {/* Amount breakdown */}
         <div className="bg-gray-50 rounded-xl p-3.5 space-y-1.5">
           <div className="flex justify-between text-xs text-gray-500">
             {form.paymentType === 'monthly'
               ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × 1 month</span>
-              : <span>₹{form.baseAmount.toLocaleString('en-IN')} ({form.paymentType} flat rate · {months} months)</span>
+              : form.paymentType === 'custom'
+              ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × {customMonths} months</span>
+              : <span>₹{form.baseAmount.toLocaleString('en-IN')} ({form.paymentType} flat · {months} months)</span>
             }
-            <span>₹{form.baseAmount.toLocaleString('en-IN')}</span>
+            <span>₹{subtotal.toLocaleString('en-IN')}</span>
           </div>
+          {lateFeeAmt > 0 && (
+            <div className="flex justify-between text-xs text-amber-600 font-medium">
+              <span>Late Fee</span>
+              <span>+₹{lateFeeAmt.toLocaleString('en-IN')}</span>
+            </div>
+          )}
           {discountAmt > 0 && (
             <div className="flex justify-between text-xs text-emerald-600 font-medium">
               <span>Discount ({form.discountPct}%)</span>

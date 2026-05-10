@@ -545,7 +545,7 @@ export function AppProvider({ children }) {
   const addPayment = async (p) => {
     try {
       const baseDate  = p.paymentDate ? new Date(p.paymentDate + 'T00:00:00') : new Date()
-      const months    = p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1
+      const months    = p.monthsCovered || (p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1)
       const paidTill  = new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0)
         .toISOString().split('T')[0]
       const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
