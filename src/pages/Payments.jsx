@@ -92,10 +92,27 @@ export default function Payments() {
     return matchQ && matchS && matchSport && matchBatch && matchMonth
   })
 
-  const paid          = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + (p.amount ?? 0), 0)
-  const pending       = payments.filter(p => p.status === 'Pending').reduce((s, p) => s + (p.amount ?? 0), 0)
-  const overdueAmt    = [...payments.filter(p => p.status === 'Overdue'), ...overdueRows].reduce((s, p) => s + (p.amount ?? 0), 0)
-  const overdueCount  = payments.filter(p => p.status === 'Overdue').length + overdueRows.length
+  // Summary cards — filter by selected month when active
+  const paidBase    = monthFilter
+    ? payments.filter(p => p.status === 'Paid'    && p.date?.slice(0,7) === monthFilter)
+    : payments.filter(p => p.status === 'Paid')
+  const pendingBase = monthFilter
+    ? payments.filter(p => p.status === 'Pending' && p.date?.slice(0,7) === monthFilter)
+    : payments.filter(p => p.status === 'Pending')
+  const overdueBase = monthFilter
+    ? payments.filter(p => p.status === 'Overdue' && p.date?.slice(0,7) === monthFilter)
+    : [...payments.filter(p => p.status === 'Overdue'), ...overdueRows]
+
+  const paid         = paidBase.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const pending      = pendingBase.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const overdueAmt   = overdueBase.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const overdueCount = monthFilter
+    ? overdueBase.length
+    : payments.filter(p => p.status === 'Overdue').length + overdueRows.length
+
+  const monthLabel = monthFilter
+    ? new Date(monthFilter + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    : null
 
   return (
     <div className="space-y-5 max-w-[1400px]">
@@ -111,10 +128,20 @@ export default function Payments() {
       </div>
 
       {/* Summary cards */}
+      {monthLabel && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-brand-600 bg-brand-50 border border-brand-100 px-3 py-1 rounded-full">
+            Showing: {monthLabel}
+          </span>
+          <button onClick={() => setMonthFilter('')} className="text-xs text-gray-400 hover:text-red-500 flex items-center gap-1 transition">
+            <X size={12} /> Clear
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-4">
-        <SummaryCard label="Collected" value={`₹${paid.toLocaleString('en-IN')}`} count={payments.filter(p=>p.status==='Paid').length} color="emerald" />
-        <SummaryCard label="Pending" value={`₹${pending.toLocaleString('en-IN')}`} count={payments.filter(p=>p.status==='Pending').length} color="amber" />
-        <SummaryCard label="Overdue" value={`₹${overdueAmt.toLocaleString('en-IN')}`} count={overdueCount} color="red" />
+        <SummaryCard label="Collected" value={`₹${paid.toLocaleString('en-IN')}`} count={paidBase.length} color="emerald" period={monthLabel} />
+        <SummaryCard label="Pending"   value={`₹${pending.toLocaleString('en-IN')}`} count={pendingBase.length} color="amber" period={monthLabel} />
+        <SummaryCard label="Overdue"   value={`₹${overdueAmt.toLocaleString('en-IN')}`} count={overdueCount} color="red" period={monthLabel} />
       </div>
 
       {/* Revenue chart */}
@@ -133,7 +160,7 @@ export default function Payments() {
 
       {/* Filters */}
       <div className="card p-4 space-y-3">
-        {/* Row 1: search + status pills */}
+        {/* Row 1: search + month picker + status pills */}
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex-1 min-w-48">
             <Search size={14} className="text-gray-400 flex-shrink-0" />
@@ -144,6 +171,18 @@ export default function Payments() {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
+          <div className="flex items-center gap-1.5">
+            <input type="month" className="input w-auto text-xs"
+              value={monthFilter}
+              onChange={e => setMonthFilter(e.target.value)}
+              title="Filter by month"
+            />
+            {monthFilter && (
+              <button onClick={() => setMonthFilter('')} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition">
+                <X size={12} />
+              </button>
+            )}
+          </div>
           {['All','Paid','Pending','Overdue'].map(s => (
             <button key={s} onClick={() => setStatusFilter(s)}
               className={`px-4 py-2 rounded-lg text-xs font-semibold border transition ${statusFilter===s ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
@@ -151,7 +190,7 @@ export default function Payments() {
             </button>
           ))}
         </div>
-        {/* Row 2: Sport + Batch + Month dropdowns */}
+        {/* Row 2: Sport + Batch dropdowns */}
         <div className="flex flex-wrap gap-3 items-center">
           <select className="input w-auto" value={sportFilter}
             onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
@@ -162,19 +201,6 @@ export default function Payments() {
             <option value="All">All Batches</option>
             {batches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
           </select>
-          <div className="flex items-center gap-2">
-            <input type="month" className="input w-auto"
-              value={monthFilter}
-              onChange={e => setMonthFilter(e.target.value)}
-              title="Filter by payment month"
-            />
-            {monthFilter && (
-              <button onClick={() => setMonthFilter('')}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition font-medium">
-                <X size={12} />
-              </button>
-            )}
-          </div>
           {(sportFilter !== 'All' || batchFilter !== 'All') && (
             <button onClick={() => { setSportFilter('All'); setBatchFilter('All') }}
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition font-medium">
@@ -293,13 +319,13 @@ export default function Payments() {
   )
 }
 
-function SummaryCard({ label, value, count, color }) {
+function SummaryCard({ label, value, count, color, period }) {
   const c = { emerald: 'text-emerald-600 bg-emerald-50', amber: 'text-amber-600 bg-amber-50', red: 'text-red-600 bg-red-50' }[color]
   return (
     <div className="card p-5">
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{label}</p>
       <p className={`text-2xl font-black ${c.split(' ')[0]}`}>{value}</p>
-      <p className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'payment' : 'payments'}</p>
+      <p className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'payment' : 'payments'}{period ? ` · ${period}` : ''}</p>
     </div>
   )
 }
