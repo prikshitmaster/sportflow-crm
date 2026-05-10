@@ -365,6 +365,10 @@ export function AppProvider({ children }) {
         paidTill = new Date(yr, mo, 0).toISOString().split('T')[0]
       }
       const created     = await db.createStudentAccount({ ...s, studentCode, joinCode, paidTill })
+      if (s.batchId) {
+        await db.updateBatchEnrolled(s.batchId, 1)
+        setBatches(prev => prev.map(b => b.id === s.batchId ? { ...b, enrolled: (b.enrolled || 0) + 1 } : b))
+      }
       const mapped = {
         id:             created.id,
         name:           created.name,

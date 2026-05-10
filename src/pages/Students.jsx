@@ -467,11 +467,17 @@ export default function Students() {
 }
 
 function AddStudentModal({ onClose, onSave }) {
+  const { batches } = useApp()
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '', fees: '',
+    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleBatch = (id) => {
+    const b = batches.find(b => String(b.id) === id)
+    setForm(f => ({ ...f, batchId: id ? Number(id) : '', batchName: b ? b.name : '' }))
+  }
 
   const handleSave = async () => {
     if (!form.name || !form.phone) return
@@ -513,10 +519,17 @@ function AddStudentModal({ onClose, onSave }) {
           <input className="input" type="number" placeholder="12" value={form.age}
             onChange={e => set('age', e.target.value)} />
         </div>
-        <div className="col-span-2">
+        <div>
           <label className="label">Sport</label>
           <select className="input" value={form.sport} onChange={e => set('sport', e.target.value)}>
             {SPORTS.map(s => <option key={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Batch <span className="text-gray-400 font-normal">(optional)</span></label>
+          <select className="input" value={form.batchId} onChange={e => handleBatch(e.target.value)}>
+            <option value="">— No Batch —</option>
+            {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>
         <div>
