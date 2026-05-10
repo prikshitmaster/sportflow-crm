@@ -29,10 +29,12 @@ export default function Students() {
   const [activeTab,       setActiveTab]       = useState('students') // 'students' | 'suspended'
   const [suspBatchFilter, setSuspBatchFilter] = useState('All')
 
-  // Overdue check: paid_till before first of current month
-  const now           = new Date()
-  const firstOfMonth  = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-  const isOverdue = (s) => s.status === 'Active' && (!s.paidTill || s.paidTill < firstOfMonth)
+  const now          = new Date()
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+  // Has paid_till set AND it has expired → show Overdue badge, will be auto-suspended
+  const isOverdue   = (s) => s.status === 'Active' && s.paidTill && s.paidTill < firstOfMonth
+  // Has a batch but no paid_till (historical import) → show "No Payment" badge, never auto-suspended
+  const isNoPayment = (s) => s.status === 'Active' && s.batchId && !s.paidTill
 
   const activeStudents    = students.filter(s => s.status !== 'Suspended')
   const suspendedStudents = students.filter(s => s.status === 'Suspended')
@@ -55,9 +57,10 @@ export default function Students() {
     ? suspendedStudents
     : suspendedStudents.filter(s => s.lastBatchName === suspBatchFilter)
 
-  const pendingCount = students.filter(s => s.accountStatus === 'pending').length
-  const activeCount  = students.filter(s => s.accountStatus === 'active').length
-  const overdueCount = activeStudents.filter(isOverdue).length
+  const pendingCount   = students.filter(s => s.accountStatus === 'pending').length
+  const activeCount    = students.filter(s => s.accountStatus === 'active').length
+  const overdueCount   = activeStudents.filter(isOverdue).length
+  const noPaymentCount = activeStudents.filter(isNoPayment).length
 
   const copyToClipboard = async (text, studentId) => {
     await navigator.clipboard.writeText(text)
@@ -78,7 +81,7 @@ export default function Students() {
         <div>
           <h2 className="text-xl font-black text-gray-900">Students</h2>
           <p className="text-sm text-gray-500">
-            {activeCount} active · {overdueCount > 0 && <span className="text-amber-600 font-semibold">{overdueCount} overdue · </span>}{pendingCount} pending · {students.length} total
+            {activeCount} active · {overdueCount > 0 && <span className="text-amber-600 font-semibold">{overdueCount} overdue · </span>}{noPaymentCount > 0 && <span className="text-gray-400 font-semibold">{noPaymentCount} no payment · </span>}{pendingCount} pending · {students.length} total
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -276,7 +279,8 @@ export default function Students() {
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">
                       <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
-                      {isOverdue(s) && <span className="badge badge-yellow text-[10px]">Overdue</span>}
+                      {isOverdue(s)   && <span className="badge badge-yellow text-[10px]">Overdue</span>}
+                      {isNoPayment(s) && <span className="badge badge-gray   text-[10px]">No Payment</span>}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -394,7 +398,7 @@ export default function Students() {
 
 function AddStudentModal({ onClose, onSave }) {
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0],
+    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -444,6 +448,12 @@ function AddStudentModal({ onClose, onSave }) {
           <select className="input" value={form.sport} onChange={e => set('sport', e.target.value)}>
             {SPORTS.map(s => <option key={s}>{s}</option>)}
           </select>
+        </div>
+        <div className="col-span-2">
+          <label className="label">Paid Till <span className="text-gray-400 font-normal">(optional — for existing students who already paid)</span></label>
+          <input className="input" type="month" value={form.paidTill}
+            onChange={e => set('paidTill', e.target.value)} />
+          <p className="text-xs text-gray-400 mt-1">Leave blank if fees haven't been paid yet.</p>
         </div>
       </div>
       <div className="flex justify-end gap-3 mt-6">

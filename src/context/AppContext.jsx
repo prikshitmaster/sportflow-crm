@@ -328,7 +328,13 @@ export function AppProvider({ children }) {
       const count       = await db.fetchStudentCount()
       const studentCode = generateStudentCode(count)
       const joinCode    = generateJoinCode()
-      const created     = await db.createStudentAccount({ ...s, studentCode, joinCode })
+      // Convert "YYYY-MM" month picker value → last day of that month
+      let paidTill = null
+      if (s.paidTill) {
+        const [yr, mo] = s.paidTill.split('-').map(Number)
+        paidTill = new Date(yr, mo, 0).toISOString().split('T')[0]
+      }
+      const created     = await db.createStudentAccount({ ...s, studentCode, joinCode, paidTill })
       const mapped = {
         id:             created.id,
         name:           created.name,
@@ -343,7 +349,7 @@ export function AppProvider({ children }) {
         status:         created.status,
         accountStatus:  created.account_status,
         fees:           created.fees,
-        paidTill:       created.paid_till,
+        paidTill:       created.paid_till || paidTill,
         studentCode:    created.student_code,
         joinCode:       created.join_code,
         feeAmount:      created.fee_amount,

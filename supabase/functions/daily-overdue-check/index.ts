@@ -23,12 +23,15 @@ Deno.serve(async () => {
   const todayStr = today.toISOString().split('T')[0]
 
   // Find Active students with a batch assigned whose paid_till is before this month
+  // Only suspend students who have a paid_till set AND it has expired.
+  // Students with null paid_till are legacy/historical imports — skip them.
   const { data: overdueStudents, error: fetchErr } = await supabase
     .from('students')
     .select('id, batch_id, batch, fees')
     .eq('status', 'Active')
     .not('batch_id', 'is', null)
-    .or(`paid_till.is.null,paid_till.lt.${firstOfMonth}`)
+    .not('paid_till', 'is', null)
+    .lt('paid_till', firstOfMonth)
 
   if (fetchErr) {
     return new Response(
