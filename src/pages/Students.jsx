@@ -153,7 +153,7 @@ export default function Students() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    {['Student / ID', 'Sport', 'Last Batch', 'Suspended Since', 'Monthly Fee', 'Action'].map(h => (
+                    {['Student / ID', 'Sport', 'Last Batch', 'Suspended Since', 'Fee', 'Action'].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -278,7 +278,7 @@ export default function Students() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                {['Student / ID', 'Parent / Phone', 'Age', 'Sport', 'Batch', 'Monthly Fee', 'Status', 'Account', ''].map(h => (
+                {['Student / ID', 'Parent / Phone', 'Age', 'Sport', 'Batch', 'Fee', 'Status', 'Account', ''].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -658,7 +658,7 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
             </div>
             <div className="bg-white/15 rounded-xl p-3 text-center">
               <p className="text-lg font-black text-white">₹{(s.fees || 0).toLocaleString('en-IN')}</p>
-              <p className="text-[10px] text-brand-200">Monthly Fee</p>
+              <p className="text-[10px] text-brand-200">Fee</p>
             </div>
             <div className="bg-white/15 rounded-xl p-3 text-center">
               <p className={`text-lg font-black ${s.status === 'Active' ? 'text-emerald-300' : 'text-red-300'}`}>{s.status}</p>
