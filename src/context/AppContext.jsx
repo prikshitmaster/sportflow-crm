@@ -100,7 +100,33 @@ export function AppProvider({ children }) {
       setStudents(s); setPayments(p); setTrials(t)
       setBatches(b);  setStaff(st);   setAnnouncements(a)
       setEvents(ev)
-      const today = new Date().toISOString().split('T')[0]
+
+      // Auto-suspend overdue students after the 7-day grace period
+      const now = new Date()
+      if (now.getDate() > 7) {
+        const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+        const todayStr     = now.toISOString().split('T')[0]
+        const toSuspend    = s.filter(x =>
+          x.status === 'Active' && x.batchId && x.paidTill && x.paidTill < firstOfMonth
+        )
+        if (toSuspend.length > 0) {
+          await Promise.all(toSuspend.map(async (student) => {
+            await db.suspendStudent(student.id, student.batchId, student.batch)
+            if (student.batchId) await db.updateBatchEnrolled(student.batchId, -1)
+          }))
+          setStudents(prev => prev.map(x => {
+            if (!toSuspend.find(sus => sus.id === x.id)) return x
+            return { ...x, status: 'Suspended', lastBatchId: x.batchId, lastBatchName: x.batch, batchId: null, batch: null, suspendedSince: todayStr }
+          }))
+          setBatches(prev => prev.map(batch => {
+            const count = toSuspend.filter(x => x.batchId === batch.id).length
+            return count > 0 ? { ...batch, enrolled: Math.max(0, (batch.enrolled || 0) - count) } : batch
+          }))
+          showToast(`${toSuspend.length} student${toSuspend.length > 1 ? 's' : ''} auto-suspended for overdue fees`, 'info')
+        }
+      }
+
+      const today = now.toISOString().split('T')[0]
       const att = await db.fetchAttendanceForDate(today)
       setAttendanceData({ [today]: att })
     } catch (err) {
