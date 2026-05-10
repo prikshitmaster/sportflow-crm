@@ -469,6 +469,27 @@ export default function Students() {
   )
 }
 
+const MO_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const PLAN_MOS_MAP = { monthly: 1, quarterly: 3, yearly: 12 }
+
+function calcPaidTill(joinDate, feePlan) {
+  if (!joinDate) return ''
+  const [yr, mo] = joinDate.split('-').map(Number) // mo is 1-indexed
+  const planMonths = PLAN_MOS_MAP[feePlan] || 1
+  return new Date(yr, mo - 1 + planMonths, 0).toISOString().split('T')[0]
+}
+
+function coveragePreview(joinDate, paidTill) {
+  if (!joinDate || !paidTill) return null
+  const start = new Date(joinDate + 'T00:00:00')
+  const end   = new Date(paidTill + 'T00:00:00')
+  const months = Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1)
+  const label = months === 1
+    ? `${MO_NAMES[end.getMonth()]} ${end.getFullYear()}`
+    : `${MO_NAMES[start.getMonth()]}${start.getFullYear() !== end.getFullYear() ? ` ${start.getFullYear()}` : ''}–${MO_NAMES[end.getMonth()]} ${end.getFullYear()}`
+  return `${label} · ${months} month${months > 1 ? 's' : ''}`
+}
+
 function AddStudentModal({ onClose, onSave }) {
   const { batches } = useApp()
   const [form, setForm] = useState({
@@ -482,11 +503,21 @@ function AddStudentModal({ onClose, onSave }) {
     setForm(f => ({ ...f, batchId: id ? Number(id) : '', batchName: b ? b.name : '' }))
   }
 
+  const handleJoinDate = (date) => {
+    setForm(f => ({ ...f, joinDate: date, paidTill: calcPaidTill(date, f.feePlan) }))
+  }
+
+  const handleFeePlan = (plan) => {
+    setForm(f => ({ ...f, feePlan: plan, paidTill: calcPaidTill(f.joinDate, plan) }))
+  }
+
   const handleSave = async () => {
     if (!form.name || !form.phone || !form.fees) return
     setLoading(true)
     try { await onSave(form) } finally { setLoading(false) }
   }
+
+  const preview = coveragePreview(form.joinDate, form.paidTill)
 
   return (
     <Modal title="Add New Student" onClose={onClose}>
@@ -555,7 +586,7 @@ function AddStudentModal({ onClose, onSave }) {
               { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
               { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
             ].map(p => (
-              <button key={p.key} type="button" onClick={() => set('feePlan', p.key)}
+              <button key={p.key} type="button" onClick={() => handleFeePlan(p.key)}
                 className={`py-2.5 rounded-xl text-xs font-bold border transition ${form.feePlan === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 <div>{p.label}</div>
                 <div className={`font-normal mt-0.5 ${form.feePlan === p.key ? 'text-brand-200' : 'text-gray-400'}`}>{p.sub}</div>
@@ -572,12 +603,13 @@ function AddStudentModal({ onClose, onSave }) {
           <label className="label">Join Date</label>
           <input className="input" type="date" value={form.joinDate}
             max={new Date().toISOString().split('T')[0]}
-            onChange={e => set('joinDate', e.target.value)} />
+            onChange={e => handleJoinDate(e.target.value)} />
         </div>
         <div>
           <label className="label">Paid Till</label>
           <input className="input" type="date" value={form.paidTill}
             onChange={e => set('paidTill', e.target.value)} />
+          {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
         </div>
       </div>
       <div className="flex justify-end gap-3 mt-6">
@@ -813,11 +845,21 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     setForm(f => ({ ...f, batchId: batchId ? Number(batchId) : '', batchName: b?.name || '' }))
   }
 
+  const handleJoinDate = (date) => {
+    setForm(f => ({ ...f, joinDate: date, paidTill: calcPaidTill(date, f.feePlan) }))
+  }
+
+  const handleFeePlan = (plan) => {
+    setForm(f => ({ ...f, feePlan: plan, paidTill: calcPaidTill(f.joinDate, plan) }))
+  }
+
   const handleSave = async () => {
     if (!form.name || !form.phone) return
     setLoading(true)
     try { await onSave(form) } finally { setLoading(false) }
   }
+
+  const preview = coveragePreview(form.joinDate, form.paidTill)
 
   return (
     <Modal title="Edit Student" onClose={onClose}>
@@ -879,7 +921,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
               { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
               { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
             ].map(p => (
-              <button key={p.key} type="button" onClick={() => set('feePlan', p.key)}
+              <button key={p.key} type="button" onClick={() => handleFeePlan(p.key)}
                 className={`py-2.5 rounded-xl text-xs font-bold border transition ${form.feePlan === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 <div>{p.label}</div>
                 <div className={`font-normal mt-0.5 ${form.feePlan === p.key ? 'text-brand-200' : 'text-gray-400'}`}>{p.sub}</div>
@@ -891,11 +933,12 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <label className="label">Join Date</label>
           <input className="input" type="date" value={form.joinDate}
             max={new Date().toISOString().split('T')[0]}
-            onChange={e => set('joinDate', e.target.value)} />
+            onChange={e => handleJoinDate(e.target.value)} />
         </div>
         <div>
           <label className="label">Paid Till</label>
           <input className="input" type="date" value={form.paidTill} onChange={e => set('paidTill', e.target.value)} />
+          {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
         </div>
       </div>
       <div className="flex justify-end gap-3 mt-6">
