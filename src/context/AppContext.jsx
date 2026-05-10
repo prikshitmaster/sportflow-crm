@@ -393,6 +393,31 @@ export function AppProvider({ children }) {
         suspendedSince: null,
       }
       setStudents(prev => [...prev, mapped])
+
+      // Auto-create a historical payment record if student was added with paid_till + fees
+      if (paidTill && created.fees > 0) {
+        const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        const pt = new Date(paidTill + 'T00:00:00')
+        const monthLabel = `${MONTHS[pt.getMonth()]} ${pt.getFullYear()}`
+        const paymentDate = created.join_date || new Date().toISOString().split('T')[0]
+        const payCount = await db.fetchPaymentCount()
+        const invoiceId = `INV-${pt.getFullYear()}-${String(payCount + 1).padStart(3, '0')}`
+        const payRow = {
+          studentId: created.id,
+          student:   created.name,
+          amount:    created.fees,
+          month:     monthLabel,
+          date:      paymentDate,
+          status:    'Paid',
+          mode:      'Cash',
+          monthsCovered: 1,
+        }
+        await db.insertPayment(payRow, invoiceId)
+        setPayments(prev => [{
+          ...payRow, id: invoiceId, paymentType: 'monthly', discountPct: 0,
+        }, ...prev])
+      }
+
       showToast(`Student created — Code: ${studentCode} · Join: ${joinCode}`, 'success')
       return mapped
     } catch (err) {

@@ -431,6 +431,14 @@ export async function fetchStudentCount() {
   return count || 0
 }
 
+export async function fetchPaymentCount() {
+  const { count, error } = await supabase
+    .from('payments')
+    .select('id', { count: 'exact', head: true })
+  if (error) throw error
+  return count || 0
+}
+
 export async function createStudentAccount(s) {
   const { data, error } = await supabase
     .from('students')
