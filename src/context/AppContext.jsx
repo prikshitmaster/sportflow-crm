@@ -117,15 +117,17 @@ export function AppProvider({ children }) {
       setBatches(b);  setStaff(st);   setAnnouncements(a)
       setEvents(ev)
 
-      // Auto-suspend overdue students after the 7-day grace period
+      // Auto-suspend overdue students after 3-day grace period
       const now = new Date()
       try {
-        if (now.getDate() > 7) {
-          const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-          const todayStr     = now.toISOString().split('T')[0]
-          const toSuspend    = s.filter(x =>
-            x.status === 'Active' && x.paidTill && x.paidTill < firstOfMonth
-          )
+        {
+          const todayStr  = now.toISOString().split('T')[0]
+          const toSuspend = s.filter(x => {
+            if (x.status !== 'Active' || !x.paidTill) return false
+            const diffMs   = now - new Date(x.paidTill + 'T00:00:00')
+            const diffDays = Math.floor(diffMs / 86400000)
+            return diffDays >= 3
+          })
           if (toSuspend.length > 0) {
             await Promise.all(toSuspend.map(async (student) => {
               await db.suspendStudent(student.id)
@@ -410,10 +412,10 @@ export function AppProvider({ children }) {
         trainingType:   created.training_type || 'Daily',
         feePlan:        created.fee_plan || 'monthly',
       }
-      // Immediately suspend if added with already-expired paidTill (past 7-day grace)
-      const addNow = new Date()
-      const addFom = new Date(addNow.getFullYear(), addNow.getMonth(), 1).toISOString().split('T')[0]
-      if (addNow.getDate() > 7 && paidTill && paidTill < addFom) {
+      // Immediately suspend if added with paidTill already 3+ days expired
+      const addNow   = new Date()
+      const addDiff  = paidTill ? Math.floor((addNow - new Date(paidTill + 'T00:00:00')) / 86400000) : 0
+      if (addDiff >= 3) {
         try {
           await db.suspendStudent(created.id)
           mapped.status = 'Suspended'

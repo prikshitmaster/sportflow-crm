@@ -39,10 +39,11 @@ export default function Students() {
     return () => { clearTimeout(t); document.removeEventListener('click', close) }
   }, [openMenu])
 
-  const now          = new Date()
+  const now     = new Date()
+  const today   = now.toISOString().split('T')[0]
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-  // Has paid_till set AND it has expired → show Overdue badge, will be auto-suspended
-  const isOverdue   = (s) => s.status === 'Active' && s.paidTill && s.paidTill < firstOfMonth
+  // Show Overdue immediately when paidTill < today
+  const isOverdue   = (s) => s.status === 'Active' && s.paidTill && s.paidTill < today
   // Has a batch but no paid_till (historical import) → show "No Payment" badge, never auto-suspended
   const isNoPayment = (s) => s.status === 'Active' && s.batchId && !s.paidTill
 
@@ -173,7 +174,7 @@ export default function Students() {
                       <td className="px-4 py-3 font-semibold text-gray-900">₹{(s.fees || 0).toLocaleString('en-IN')}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {s.paidTill && s.paidTill >= firstOfMonth ? (
+                          {s.paidTill && s.paidTill >= today ? (
                             <button
                               className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
                               onClick={() => reactivateStudent(s)}
@@ -633,9 +634,8 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
   const pending = payments.filter(p => p.status !== 'Paid')
   const totalPaid = paid.reduce((sum, p) => sum + p.amount, 0)
 
-  const now2 = new Date()
-  const fom2 = new Date(now2.getFullYear(), now2.getMonth(), 1).toISOString().split('T')[0]
-  const isProfileOverdue = s.status === 'Active' && s.paidTill && s.paidTill < fom2
+  const today2 = new Date().toISOString().split('T')[0]
+  const isProfileOverdue = s.status === 'Active' && s.paidTill && s.paidTill < today2
 
   const infoRow = (label, value, mono = false) => (
     <div className="flex justify-between items-start gap-4 py-2.5 border-b border-gray-50 last:border-0">
