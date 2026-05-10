@@ -27,8 +27,10 @@ function calcHistoricalPayment(joinDate, paidTill, fees, feePlan = 'monthly') {
   const label  = months === 1
     ? `${MO[end.getMonth()]} ${end.getFullYear()}`
     : `${MO[start.getMonth()]}${start.getFullYear() !== end.getFullYear() ? ` ${start.getFullYear()}` : ''}–${MO[end.getMonth()]} ${end.getFullYear()}`
-  const amount = feePlan === 'monthly' ? fees * months : fees
-  return { monthsCovered: months, label, amount }
+  const amount    = feePlan === 'monthly' ? fees * months : fees
+  // First day of the start month — used as the payment date so chart shows correct month
+  const startDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`
+  return { monthsCovered: months, label, amount, startDate }
 }
 import { supabase } from '../lib/supabase'
 import * as db from '../lib/db'
@@ -412,14 +414,15 @@ export function AppProvider({ children }) {
 
       // Auto-create a historical payment record if student was added with paid_till + fees
       if (paidTill && created.fees > 0) {
-        const paymentDate = created.join_date || new Date().toISOString().split('T')[0]
-        const { monthsCovered, label, amount } = calcHistoricalPayment(paymentDate, paidTill, created.fees, s.feePlan || 'monthly')
+        // Use form joinDate directly (avoids DB round-trip timezone issues)
+        const joinDateStr = s.joinDate || created.join_date || new Date().toISOString().split('T')[0]
+        const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, created.fees, s.feePlan || 'monthly')
         const pt = new Date(paidTill + 'T00:00:00')
         const payCount = await db.fetchPaymentCount()
         const invoiceId = `INV-${pt.getFullYear()}-${String(payCount + 1).padStart(3, '0')}`
         const payRow = {
           studentId: created.id, student: created.name,
-          amount, month: label, date: paymentDate,
+          amount, month: label, date: startDate,
           status: 'Paid', mode: 'Cash', monthsCovered,
         }
         await db.insertPayment(payRow, invoiceId)
@@ -478,8 +481,8 @@ export function AppProvider({ children }) {
 
       // Auto-create a payment record if paidTill was just set and no payment exists for that period
       if (paidTill && updated.fees > 0) {
-        const paymentDate = updated.join_date || new Date().toISOString().split('T')[0]
-        const { monthsCovered, label, amount } = calcHistoricalPayment(paymentDate, paidTill, updated.fees, s.feePlan || 'monthly')
+        const joinDateStr = s.joinDate || updated.join_date || new Date().toISOString().split('T')[0]
+        const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, updated.fees, s.feePlan || 'monthly')
         const existing = payments.find(p =>
           p.studentId === id && p.month === label && (p.status === 'Paid' || p.status === 'Pending')
         )
@@ -489,7 +492,7 @@ export function AppProvider({ children }) {
           const invoiceId = `INV-${pt.getFullYear()}-${String(payCount + 1).padStart(3, '0')}`
           const payRow = {
             studentId: id, student: updated.name,
-            amount, month: label, date: paymentDate,
+            amount, month: label, date: startDate,
             status: 'Paid', mode: 'Cash', monthsCovered,
           }
           await db.insertPayment(payRow, invoiceId)
