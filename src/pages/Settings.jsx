@@ -138,75 +138,164 @@ function AcademyTab({ user, onSave, saved }) {
   )
 }
 
-const PLAN_LABEL = { daily: 'Daily', alternate: 'Alternate Day', monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly' }
-const PLAN_COLOR = { daily: 'bg-purple-100 text-purple-700', alternate: 'bg-blue-100 text-blue-700', monthly: 'bg-emerald-100 text-emerald-700', quarterly: 'bg-amber-100 text-amber-700', yearly: 'bg-rose-100 text-rose-700' }
+const TT_COLOR = { daily: 'bg-purple-100 text-purple-700', alternate: 'bg-blue-100 text-blue-700' }
+const TT_LABEL = { daily: 'Daily', alternate: 'Alternate Day' }
+
+const BLANK_PLAN = { name: '', trainingType: 'daily', monthlyFee: 0, quarterlyFee: 0, yearlyFee: 0 }
 
 function FeePlansTab({ onSave, saved }) {
-  const { suspendAfterDays, updateSuspendAfterDays, allBatches, updateBatchFee } = useApp()
-  const [editing, setEditing] = useState({}) // batchId → { fee, plan }
+  const { suspendAfterDays, updateSuspendAfterDays, allBatches, feePlans, addFeePlan, editFeePlan, removeFeePlan } = useApp()
+  const [adding,  setAdding]  = useState({})   // batchId → form state
+  const [editing, setEditing] = useState({})   // planId  → form state
   const [dueDay,  setDueDay]  = useState('10')
   const [lateFee, setLateFee] = useState('200')
 
-  const startEdit = (b) => setEditing(prev => ({
-    ...prev,
-    [b.id]: { fee: b.defaultFee || 0, plan: b.defaultPlan || 'monthly' }
-  }))
-  const cancelEdit = (id) => setEditing(prev => { const n = { ...prev }; delete n[id]; return n })
-  const saveEdit = async (b) => {
-    const e = editing[b.id]
-    if (!e) return
-    await updateBatchFee(b.id, e.fee, e.plan)
-    cancelEdit(b.id)
+  const startAdd  = (batchId) => setAdding(prev => ({ ...prev, [batchId]: { ...BLANK_PLAN } }))
+  const cancelAdd = (batchId) => setAdding(prev => { const n = { ...prev }; delete n[batchId]; return n })
+  const saveAdd   = async (batchId) => {
+    const f = adding[batchId]
+    if (!f?.name.trim()) return
+    await addFeePlan({ ...f, batchId })
+    cancelAdd(batchId)
   }
+
+  const startEdit  = (p) => setEditing(prev => ({ ...prev, [p.id]: { name: p.name, trainingType: p.trainingType, monthlyFee: p.monthlyFee, quarterlyFee: p.quarterlyFee, yearlyFee: p.yearlyFee } }))
+  const cancelEdit = (id) => setEditing(prev => { const n = { ...prev }; delete n[id]; return n })
+  const saveEdit   = async (id) => { await editFeePlan(id, editing[id]); cancelEdit(id) }
+
+  const setAddField  = (batchId, k, v) => setAdding(prev => ({ ...prev, [batchId]: { ...prev[batchId], [k]: v } }))
+  const setEditField = (id, k, v)      => setEditing(prev => ({ ...prev, [id]: { ...prev[id], [k]: v } }))
 
   return (
     <div>
-      <SectionHeader title="Fee Plans" desc="Set default fee and training type per batch. Auto-fills when adding students." />
+      <SectionHeader title="Fee Plans" desc="Create plans per batch — each plan has Daily or Alternate training with monthly, quarterly and yearly rates." />
 
       {allBatches.length === 0 ? (
-        <p className="text-sm text-gray-400 mb-6">No batches yet — create batches first to set their default fees.</p>
+        <p className="text-sm text-gray-400 mb-6">No batches yet — create batches first.</p>
       ) : (
-        <div className="space-y-2 mb-6">
+        <div className="space-y-5 mb-6">
           {allBatches.map(b => {
-            const e = editing[b.id]
+            const batchPlans = feePlans.filter(p => p.batchId === b.id)
+            const addForm    = adding[b.id]
             return (
-              <div key={b.id} className="p-3 bg-gray-50 rounded-xl">
-                {e ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-gray-800">{b.name}</p>
+              <div key={b.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                {/* Batch header */}
+                <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                  <p className="text-sm font-bold text-gray-800">{b.name}</p>
+                  {!addForm && (
+                    <button onClick={() => startAdd(b.id)}
+                      className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
+                      + Add Plan
+                    </button>
+                  )}
+                </div>
+
+                {/* Existing plans */}
+                <div className="divide-y divide-gray-50">
+                  {batchPlans.map(p => {
+                    const ef = editing[p.id]
+                    return (
+                      <div key={p.id} className="px-4 py-3">
+                        {ef ? (
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="label text-[11px]">Plan Name</label>
+                                <input className="input py-1.5 text-sm" value={ef.name}
+                                  onChange={e => setEditField(p.id, 'name', e.target.value)} />
+                              </div>
+                              <div>
+                                <label className="label text-[11px]">Training Type</label>
+                                <div className="flex gap-2 mt-1">
+                                  {['daily','alternate'].map(t => (
+                                    <button key={t} type="button" onClick={() => setEditField(p.id, 'trainingType', t)}
+                                      className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition ${ef.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+                                      {TT_LABEL[t]}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              {[['monthlyFee','Monthly'],['quarterlyFee','Quarterly'],['yearlyFee','Yearly']].map(([k, lbl]) => (
+                                <div key={k}>
+                                  <label className="label text-[11px]">{lbl} (₹)</label>
+                                  <input className="input py-1.5 text-sm" type="number" min={0}
+                                    value={ef[k]} onChange={e => setEditField(p.id, k, Number(e.target.value))} />
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex gap-2">
+                              <button className="btn-primary text-xs py-1.5 px-3" onClick={() => saveEdit(p.id)}>Save</button>
+                              <button className="btn-secondary text-xs py-1.5 px-3" onClick={() => cancelEdit(p.id)}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${TT_COLOR[p.trainingType] || TT_COLOR.daily}`}>
+                                  {TT_LABEL[p.trainingType] || p.trainingType}
+                                </span>
+                                <span className="text-sm font-semibold text-gray-800">{p.name}</span>
+                              </div>
+                              <div className="flex gap-3 text-xs text-gray-500">
+                                <span>Monthly: <strong className="text-gray-800">₹{p.monthlyFee.toLocaleString('en-IN')}</strong></span>
+                                <span>Quarterly: <strong className="text-gray-800">₹{p.quarterlyFee.toLocaleString('en-IN')}</strong></span>
+                                <span>Yearly: <strong className="text-gray-800">₹{p.yearlyFee.toLocaleString('en-IN')}</strong></span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <button onClick={() => startEdit(p)} className="text-xs text-brand-600 font-semibold hover:underline">Edit</button>
+                              <button onClick={() => { if (window.confirm(`Delete "${p.name}"?`)) removeFeePlan(p.id) }}
+                                className="text-xs text-red-400 hover:text-red-600 font-semibold hover:underline">Delete</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {batchPlans.length === 0 && !addForm && (
+                    <p className="px-4 py-3 text-xs text-gray-400">No plans yet — click Add Plan to create one.</p>
+                  )}
+                </div>
+
+                {/* Add plan form */}
+                {addForm && (
+                  <div className="px-4 py-3 bg-brand-50/40 border-t border-brand-100 space-y-2">
+                    <p className="text-xs font-bold text-brand-700">New Plan</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="label text-[11px]">Fee (₹/month)</label>
-                        <input className="input py-1.5 text-sm" type="number" min={0}
-                          value={e.fee} onChange={ev => setEditing(prev => ({ ...prev, [b.id]: { ...prev[b.id], fee: Number(ev.target.value) } }))} />
+                        <label className="label text-[11px]">Plan Name *</label>
+                        <input className="input py-1.5 text-sm" placeholder="e.g. Daily Plan"
+                          value={addForm.name} onChange={e => setAddField(b.id, 'name', e.target.value)} />
                       </div>
                       <div>
                         <label className="label text-[11px]">Training Type</label>
-                        <select className="input py-1.5 text-sm" value={e.plan}
-                          onChange={ev => setEditing(prev => ({ ...prev, [b.id]: { ...prev[b.id], plan: ev.target.value } }))}>
-                          {Object.entries(PLAN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                        </select>
+                        <div className="flex gap-2 mt-1">
+                          {['daily','alternate'].map(t => (
+                            <button key={t} type="button" onClick={() => setAddField(b.id, 'trainingType', t)}
+                              className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition ${addForm.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+                              {TT_LABEL[t]}
+                            </button>
+                          ))}
+                        </div>
                       </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[['monthlyFee','Monthly'],['quarterlyFee','Quarterly'],['yearlyFee','Yearly']].map(([k, lbl]) => (
+                        <div key={k}>
+                          <label className="label text-[11px]">{lbl} (₹)</label>
+                          <input className="input py-1.5 text-sm" type="number" min={0}
+                            value={addForm[k]} onChange={e => setAddField(b.id, k, Number(e.target.value))} />
+                        </div>
+                      ))}
                     </div>
                     <div className="flex gap-2">
-                      <button className="btn-primary text-xs py-1.5 px-3" onClick={() => saveEdit(b)}>Save</button>
-                      <button className="btn-secondary text-xs py-1.5 px-3" onClick={() => cancelEdit(b.id)}>Cancel</button>
+                      <button className="btn-primary text-xs py-1.5 px-3" onClick={() => saveAdd(b.id)}>Add Plan</button>
+                      <button className="btn-secondary text-xs py-1.5 px-3" onClick={() => cancelAdd(b.id)}>Cancel</button>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800">{b.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${PLAN_COLOR[b.defaultPlan] || PLAN_COLOR.monthly}`}>
-                          {PLAN_LABEL[b.defaultPlan] || 'Monthly'}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {b.defaultFee ? `₹${b.defaultFee.toLocaleString('en-IN')}/month` : 'No fee set'}
-                        </span>
-                      </div>
-                    </div>
-                    <button onClick={() => startEdit(b)} className="text-xs text-brand-600 font-semibold hover:underline">Edit</button>
                   </div>
                 )}
               </div>

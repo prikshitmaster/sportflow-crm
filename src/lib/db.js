@@ -758,6 +758,64 @@ export async function insertAnnouncement(a) {
   return { ...a, id: data.id, date: data.date }
 }
 
+// ── Fee Plans ─────────────────────────────────────────────
+export async function fetchFeePlans(academyId) {
+  let query = supabase.from('fee_plans').select('*').order('batch_id').order('id')
+  if (academyId) query = query.eq('academy_id', academyId)
+  const { data, error } = await query
+  if (error) {
+    if (error.code === '42P01') return []
+    throw error
+  }
+  return data.map(row => ({
+    id:           row.id,
+    batchId:      row.batch_id,
+    name:         row.name,
+    trainingType: row.training_type,
+    monthlyFee:   row.monthly_fee   || 0,
+    quarterlyFee: row.quarterly_fee || 0,
+    yearlyFee:    row.yearly_fee    || 0,
+    academyId:    row.academy_id,
+  }))
+}
+
+export async function insertFeePlan(p) {
+  const { data, error } = await supabase
+    .from('fee_plans')
+    .insert({
+      academy_id:    p.academyId    || null,
+      batch_id:      p.batchId,
+      name:          p.name,
+      training_type: p.trainingType || 'daily',
+      monthly_fee:   Number(p.monthlyFee)   || 0,
+      quarterly_fee: Number(p.quarterlyFee) || 0,
+      yearly_fee:    Number(p.yearlyFee)    || 0,
+    })
+    .select().single()
+  if (error) throw error
+  return { id: data.id, batchId: data.batch_id, name: data.name, trainingType: data.training_type,
+    monthlyFee: data.monthly_fee || 0, quarterlyFee: data.quarterly_fee || 0, yearlyFee: data.yearly_fee || 0, academyId: data.academy_id }
+}
+
+export async function updateFeePlan(id, p) {
+  const { error } = await supabase
+    .from('fee_plans')
+    .update({
+      name:          p.name,
+      training_type: p.trainingType || 'daily',
+      monthly_fee:   Number(p.monthlyFee)   || 0,
+      quarterly_fee: Number(p.quarterlyFee) || 0,
+      yearly_fee:    Number(p.yearlyFee)    || 0,
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteFeePlan(id) {
+  const { error } = await supabase.from('fee_plans').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function updateBatchFee(batchId, defaultFee, defaultPlan) {
   const { error } = await supabase
     .from('batches')

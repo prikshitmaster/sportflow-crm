@@ -76,6 +76,7 @@ export function AppProvider({ children }) {
   const [attendanceData, setAttendanceData] = useState({})
   const [announcements,  setAnnouncements]  = useState([])
   const [events,         setEvents]         = useState([])
+  const [feePlans,       setFeePlans]       = useState([])
   const [branches,       setBranches]       = useState([])
   const [leaveRequests,  setLeaveRequests]  = useState([])
   const [toast,          setToast]          = useState(null)
@@ -100,7 +101,7 @@ export function AppProvider({ children }) {
     if (!academyId) return
     setDataLoading(true)
     try {
-      const [s, p, t, b, st, a, ev] = await Promise.all([
+      const [s, p, t, b, st, a, ev, fp] = await Promise.all([
         db.fetchStudents(academyId),
         db.fetchPayments(academyId),
         db.fetchTrials(academyId),
@@ -108,10 +109,11 @@ export function AppProvider({ children }) {
         db.fetchStaff(academyId),
         db.fetchAnnouncements(academyId),
         db.fetchEvents(academyId),
+        db.fetchFeePlans(academyId),
       ])
       setStudents(s); setPayments(p); setTrials(t)
       setBatches(b);  setStaff(st);   setAnnouncements(a)
-      setEvents(ev)
+      setEvents(ev);  setFeePlans(fp)
 
       // Auto-suspend overdue students after configurable grace period
       const now = new Date()
@@ -712,6 +714,31 @@ export function AppProvider({ children }) {
     }
   }
 
+  const addFeePlan = async (plan) => {
+    try {
+      const created = await db.insertFeePlan({ ...plan, academyId: user?.academyId })
+      setFeePlans(prev => [...prev, created])
+      showToast('Plan created')
+      return created
+    } catch (err) { showToast(err.message || 'Failed', 'error'); throw err }
+  }
+
+  const editFeePlan = async (id, plan) => {
+    try {
+      await db.updateFeePlan(id, plan)
+      setFeePlans(prev => prev.map(p => p.id === id ? { ...p, ...plan } : p))
+      showToast('Plan updated')
+    } catch (err) { showToast(err.message || 'Failed', 'error') }
+  }
+
+  const removeFeePlan = async (id) => {
+    try {
+      await db.deleteFeePlan(id)
+      setFeePlans(prev => prev.filter(p => p.id !== id))
+      showToast('Plan deleted')
+    } catch (err) { showToast(err.message || 'Failed', 'error') }
+  }
+
   const updateBatchFee = async (batchId, defaultFee, defaultPlan) => {
     try {
       await db.updateBatchFee(batchId, defaultFee, defaultPlan)
@@ -981,6 +1008,7 @@ export function AppProvider({ children }) {
       payments: filteredPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
       trials: filteredTrials, addTrial, updateTrialStatus,
       batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee,
+      feePlans, addFeePlan, editFeePlan, removeFeePlan,
       events, addEvent, updateEventStatus, removeEvent,
       staff: filteredStaff, addStaffMember,
       branches, addBranch, removeBranch,

@@ -521,12 +521,12 @@ const FEE_PLAN_OPTIONS = [
 const FEE_LABEL = { monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *', custom: 'Plan Fee (₹) *' }
 
 function AddStudentModal({ onClose, onSave }) {
-  const { batches, selectedSport } = useApp()
+  const { batches, selectedSport, feePlans } = useApp()
   const defaultSport = selectedSport && selectedSport !== 'All' ? selectedSport : SPORTS[0]
   const [form, setForm] = useState({
     name: '', parent: '', phone: '', parentPhone: '', dob: '', sport: defaultSport,
     paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '',
-    trainingType: 'Daily', feePlan: 'monthly',
+    trainingType: 'Daily', feePlan: 'monthly', feePlanId: '',
   })
   const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
@@ -534,12 +534,27 @@ function AddStudentModal({ onClose, onSave }) {
 
   const handleBatch = (id) => {
     const b = batches.find(b => String(b.id) === id)
+    const batchPlans = feePlans.filter(p => p.batchId === Number(id))
     setForm(f => ({
       ...f,
-      batchId:   id ? Number(id) : '',
-      batchName: b ? b.name : '',
-      ...(b?.defaultFee  ? { fees: b.defaultFee }    : {}),
-      ...(b?.defaultPlan ? { feePlan: b.defaultPlan } : {}),
+      batchId:    id ? Number(id) : '',
+      batchName:  b ? b.name : '',
+      feePlanId:  '',
+      // fall back to batch defaults only if no named plans exist
+      ...(batchPlans.length === 0 && b?.defaultFee  ? { fees: b.defaultFee }    : {}),
+      ...(batchPlans.length === 0 && b?.defaultPlan ? { feePlan: b.defaultPlan } : {}),
+    }))
+  }
+
+  const handleFeePlanPick = (planId) => {
+    const plan = feePlans.find(p => p.id === Number(planId))
+    if (!plan) { setForm(f => ({ ...f, feePlanId: '' })); return }
+    const feeMap = { monthly: plan.monthlyFee, quarterly: plan.quarterlyFee, yearly: plan.yearlyFee }
+    setForm(f => ({
+      ...f,
+      feePlanId:   plan.id,
+      trainingType: plan.trainingType === 'alternate' ? 'Alternate' : 'Daily',
+      fees:         feeMap[f.feePlan] || plan.monthlyFee || '',
     }))
   }
 
@@ -551,10 +566,15 @@ function AddStudentModal({ onClose, onSave }) {
   }
 
   const handleFeePlan = (plan) => {
-    setForm(f => ({
-      ...f, feePlan: plan,
-      paidTill: plan !== 'custom' ? calcPaidTill(f.joinDate, plan) : '',
-    }))
+    setForm(f => {
+      const selectedPlan = f.feePlanId ? feePlans.find(p => p.id === Number(f.feePlanId)) : null
+      const feeMap = selectedPlan ? { monthly: selectedPlan.monthlyFee, quarterly: selectedPlan.quarterlyFee, yearly: selectedPlan.yearlyFee } : null
+      return {
+        ...f, feePlan: plan,
+        paidTill: plan !== 'custom' ? calcPaidTill(f.joinDate, plan) : '',
+        ...(feeMap && feeMap[plan] ? { fees: feeMap[plan] } : {}),
+      }
+    })
   }
 
   const validate = () => {
@@ -649,7 +669,7 @@ function AddStudentModal({ onClose, onSave }) {
         </div>
 
         {/* Batch */}
-        <div>
+        <div className={form.batchId && feePlans.some(p => p.batchId === Number(form.batchId)) ? '' : ''}>
           <label className="label">Batch *</label>
           <select className={`input ${errors.batchId ? 'border-red-400' : ''}`} value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— Select Batch —</option>
@@ -658,19 +678,43 @@ function AddStudentModal({ onClose, onSave }) {
           {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
         </div>
 
-        {/* Training Type */}
-        <div>
-          <label className="label">Training Type</label>
-          <div className="flex gap-2">
-            {['Daily','Alternate'].map(t => (
-              <button key={t} type="button"
-                onClick={() => set('trainingType', t)}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold border transition ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                {t}
-              </button>
-            ))}
+        {/* Fee Plan picker — shown only when batch has named plans */}
+        {form.batchId && feePlans.some(p => p.batchId === Number(form.batchId)) ? (
+          <div>
+            <label className="label">Fee Plan</label>
+            <select className="input" value={form.feePlanId} onChange={e => handleFeePlanPick(e.target.value)}>
+              <option value="">— Select Plan —</option>
+              {feePlans.filter(p => p.batchId === Number(form.batchId)).map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.trainingType === 'alternate' ? 'Alternate' : 'Daily'})
+                </option>
+              ))}
+            </select>
+            {form.feePlanId && (
+              <div className="flex gap-3 mt-1.5 text-[11px] text-gray-500">
+                {(() => { const pl = feePlans.find(p => p.id === Number(form.feePlanId)); return pl ? (<>
+                  <span>Monthly: <strong>₹{pl.monthlyFee.toLocaleString('en-IN')}</strong></span>
+                  <span>Quarterly: <strong>₹{pl.quarterlyFee.toLocaleString('en-IN')}</strong></span>
+                  <span>Yearly: <strong>₹{pl.yearlyFee.toLocaleString('en-IN')}</strong></span>
+                </>) : null })()}
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          /* Training Type — manual fallback when no named plans */
+          <div>
+            <label className="label">Training Type</label>
+            <div className="flex gap-2">
+              {['Daily','Alternate'].map(t => (
+                <button key={t} type="button"
+                  onClick={() => set('trainingType', t)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold border transition ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Fee Plan */}
         <div className="col-span-2">
