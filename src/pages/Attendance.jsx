@@ -66,7 +66,7 @@ async function exportToExcel({ students, fromDate, toDate, showToast }) {
 }
 
 export default function Attendance() {
-  const { students, batches, showToast } = useApp()
+  const { students, batches, showToast, selectedSport } = useApp()
   const now        = new Date()
   const todayDay   = now.getDate()
   const todayMonth = now.getMonth()
@@ -201,8 +201,8 @@ export default function Attendance() {
         </button>
       </div>
 
-      {/* ── Branch pills (Level 1) ───────────────────────── */}
-      <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+      {/* ── Branch pills (Level 1) — only shown in All Sports mode ── */}
+      {selectedSport === 'All' && <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
         {branchList.map(br => (
           <button
             key={br}
@@ -216,7 +216,7 @@ export default function Attendance() {
             {br === 'All' ? 'All Branches' : br}
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* ── Batch pills (Level 2) ────────────────────────── */}
       <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
@@ -230,7 +230,7 @@ export default function Attendance() {
           }`}
         >
           <span className="text-xs font-bold whitespace-nowrap">
-            All {selectedBranch !== 'All' ? selectedBranch : 'Batches'}
+            All {selectedSport !== 'All' ? selectedSport : selectedBranch !== 'All' ? selectedBranch : 'Batches'}
           </span>
           <span className={`text-[11px] font-black px-1.5 py-0.5 rounded-full ${
             !selectedBatch ? 'bg-brand-200 text-brand-800' : 'bg-gray-100 text-gray-600'

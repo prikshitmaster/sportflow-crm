@@ -1,6 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { Building, Bell, MessageCircle, Shield, CreditCard, Check, ToggleLeft, Key } from 'lucide-react'
+import {
+  Building, Bell, MessageCircle, Shield, CreditCard, Check, ToggleLeft, Key,
+  Database, Upload, FileJson, AlertTriangle, Loader2, CheckCircle2, X,
+} from 'lucide-react'
+import { parseImportFile, importSportData } from '../lib/exportImport'
 
 const tabs = [
   { id: 'academy',       label: 'Academy Profile', icon: Building },
@@ -9,10 +13,11 @@ const tabs = [
   { id: 'notifications', label: 'Notifications',    icon: Bell },
   { id: 'whatsapp',      label: 'WhatsApp',         icon: MessageCircle },
   { id: 'security',      label: 'Security',         icon: Shield },
+  { id: 'data',          label: 'Data',             icon: Database },
 ]
 
 export default function Settings() {
-  const { user, showToast } = useApp()
+  const { user, showToast, allStudents } = useApp()
   const [activeTab, setActiveTab] = useState('academy')
   const [saved, setSaved] = useState(false)
 
@@ -52,6 +57,7 @@ export default function Settings() {
           {activeTab === 'notifications' && <NotificationsTab onSave={handleSave} saved={saved} />}
           {activeTab === 'whatsapp'      && <WhatsAppTab onSave={handleSave} saved={saved} />}
           {activeTab === 'security'      && <SecurityTab onSave={handleSave} saved={saved} />}
+          {activeTab === 'data'          && <DataTab user={user} allStudents={allStudents} showToast={showToast} />}
         </div>
       </div>
     </div>
@@ -350,6 +356,191 @@ function SecurityTab({ onSave, saved }) {
         </div>
       </div>
       <SaveButton onSave={onSave} saved={saved} />
+    </div>
+  )
+}
+
+// ── Data Tab — Import sport backup ────────────────────────
+function DataTab({ user, allStudents, showToast }) {
+  const fileRef = useRef(null)
+  const [preview,    setPreview]    = useState(null)   // parsed JSON data
+  const [importing,  setImporting]  = useState(false)
+  const [results,    setResults]    = useState(null)   // import results
+  const [dragOver,   setDragOver]   = useState(false)
+
+  const handleFile = async (file) => {
+    if (!file) return
+    try {
+      const data = await parseImportFile(file)
+      setPreview(data)
+      setResults(null)
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file?.name.endsWith('.json')) handleFile(file)
+    else showToast('Please drop a JSON backup file', 'error')
+  }
+
+  const handleImport = async () => {
+    if (!preview) return
+    setImporting(true)
+    try {
+      const existingCodes = new Set(allStudents.map(s => s.student_code).filter(Boolean))
+      const res = await importSportData(preview, user?.academy_id || null, existingCodes)
+      setResults(res)
+      setPreview(null)
+      if (res.errors.length === 0) {
+        showToast(`Import done — ${res.created} students added`, 'success')
+      } else {
+        showToast(`Import finished with ${res.errors.length} error(s)`, 'info')
+      }
+    } catch (err) {
+      showToast(`Import failed: ${err.message}`, 'error')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const reset = () => { setPreview(null); setResults(null) }
+
+  return (
+    <div>
+      <SectionHeader
+        title="Data Import"
+        desc="Restore a sport backup file (.json) exported from this or another SportFlow academy."
+      />
+
+      {/* Results panel */}
+      {results && (
+        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-emerald-600" />
+              <p className="text-sm font-bold text-emerald-800">Import Complete</p>
+            </div>
+            <button onClick={reset} className="text-gray-400 hover:text-gray-600">
+              <X size={14} />
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <div className="bg-white rounded-lg p-3 text-center">
+              <p className="text-lg font-black text-emerald-700">{results.created}</p>
+              <p className="text-[11px] text-gray-500">Students added</p>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center">
+              <p className="text-lg font-black text-gray-500">{results.skipped}</p>
+              <p className="text-[11px] text-gray-500">Skipped (exists)</p>
+            </div>
+            <div className="bg-white rounded-lg p-3 text-center">
+              <p className={`text-lg font-black ${results.errors.length ? 'text-red-600' : 'text-gray-400'}`}>
+                {results.errors.length}
+              </p>
+              <p className="text-[11px] text-gray-500">Errors</p>
+            </div>
+          </div>
+          {results.errors.length > 0 && (
+            <div className="bg-red-50 border border-red-100 rounded-lg p-3">
+              <p className="text-[11px] font-bold text-red-700 mb-1">Errors</p>
+              {results.errors.map((e, i) => (
+                <p key={i} className="text-[11px] text-red-600">{e}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Drop zone */}
+      {!preview && !results && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => fileRef.current?.click()}
+          className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition ${
+            dragOver
+              ? 'border-brand-400 bg-brand-50'
+              : 'border-gray-200 hover:border-brand-300 hover:bg-brand-50/40'
+          }`}
+        >
+          <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <Upload size={22} className="text-gray-400" />
+          </div>
+          <p className="text-sm font-bold text-gray-700 mb-1">Drop backup file here</p>
+          <p className="text-xs text-gray-400">JSON backup exported from SportFlow (.json)</p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files[0])}
+          />
+        </div>
+      )}
+
+      {/* Preview panel */}
+      {preview && (
+        <div className="border border-brand-200 bg-brand-50/30 rounded-2xl p-5">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FileJson size={18} className="text-brand-600" />
+              <div>
+                <p className="text-sm font-black text-gray-900">{preview.sport} Backup</p>
+                <p className="text-[11px] text-gray-500">
+                  Exported {new Date(preview.exported_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </p>
+              </div>
+            </div>
+            <button onClick={reset} className="text-gray-400 hover:text-gray-600 p-1">
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            {[
+              { label: 'Students',  value: preview.students?.length  || 0 },
+              { label: 'Payments',  value: preview.payments?.length  || 0 },
+              { label: 'Batches',   value: preview.batches?.length   || 0 },
+              { label: 'Trials',    value: preview.trials?.length    || 0 },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-white rounded-xl p-3 text-center border border-gray-100">
+                <p className="text-lg font-black text-gray-900">{value}</p>
+                <p className="text-[11px] text-gray-500">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-5">
+            <AlertTriangle size={14} className="text-amber-500 mt-0.5 shrink-0" />
+            <p className="text-[11px] text-amber-700 leading-snug">
+              Students with codes that already exist will be skipped. All other data will be imported fresh.
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleImport}
+              disabled={importing}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-sm font-bold rounded-xl transition"
+            >
+              {importing
+                ? <><Loader2 size={14} className="animate-spin" /> Importing…</>
+                : `Import ${preview.sport} Data`}
+            </button>
+            <button
+              onClick={reset}
+              className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold rounded-xl transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

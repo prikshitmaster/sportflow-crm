@@ -1,24 +1,28 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { Zap, LogOut, Trophy, Users, UserCog, Layers, Plus, Sparkles, X, Check, Trash2 } from 'lucide-react'
+import {
+  Zap, LogOut, Trophy, Users, UserCog, Layers, Plus, Sparkles,
+  X, Check, Trash2, Download, AlertTriangle, Loader2, IndianRupee,
+} from 'lucide-react'
+import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImport'
 
 export default function SportSelect() {
   const navigate = useNavigate()
   const {
-    user, branches, allStudents, allStaff, allBatches,
+    user, branches, allStudents, allStaff, allBatches, allPayments,
     setSelectedSport, logoutOwner, dataLoading,
     addBranch, removeBranch, showToast,
   } = useApp()
 
-  const [adding,    setAdding]    = useState(false)
-  const [newSport,  setNewSport]  = useState('')
-  const [removing,  setRemoving]  = useState(null) // sport name pending confirm
+  const [adding,       setAdding]       = useState(false)
+  const [newSport,     setNewSport]     = useState('')
+  const [removing,     setRemoving]     = useState(null)   // sport name entering delete flow
+  const [exportingFor, setExportingFor] = useState(null)   // sport name currently exporting
   const inputRef = useRef(null)
 
   useEffect(() => { if (adding) inputRef.current?.focus() }, [adding])
 
-  // Sport list: prefer owner-managed branches; fall back to unique sports on students
   const sportList = useMemo(() => {
     if (branches && branches.length > 0) return branches
     const set = new Set()
@@ -26,18 +30,40 @@ export default function SportSelect() {
     return Array.from(set).sort()
   }, [branches, allStudents])
 
-  // Counts per sport
+  // Per-sport stats
   const counts = useMemo(() => {
+    const today = new Date()
+    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+      .toISOString().split('T')[0]
+
     const map = {}
     sportList.forEach(sport => {
+      const sportStudents = allStudents.filter(s => s.sport === sport)
+      const activeStudents = sportStudents.filter(s => s.status === 'Active')
+      const overdue = activeStudents.filter(
+        s => s.paid_till && s.paid_till < firstOfMonth
+      ).length
+
+      // Monthly revenue: payments for this sport in current month
+      const monthKey = today.toISOString().slice(0, 7)
+      const monthlyRevenue = allPayments
+        .filter(p => {
+          const student = allStudents.find(s => s.id === p.student_id)
+          return student?.sport === sport && p.month?.startsWith(monthKey)
+        })
+        .reduce((sum, p) => sum + (p.amount || 0), 0)
+
       map[sport] = {
-        students: allStudents.filter(s => s.sport === sport).length,
-        staff:    allStaff.filter(s => s.sports?.includes(sport)).length,
-        batches:  allBatches.filter(b => b.sports?.includes(sport)).length,
+        students:  sportStudents.length,
+        active:    activeStudents.length,
+        staff:     allStaff.filter(s => s.sports?.includes(sport)).length,
+        batches:   allBatches.filter(b => b.sports?.includes(sport)).length,
+        overdue,
+        monthlyRevenue,
       }
     })
     return map
-  }, [sportList, allStudents, allStaff, allBatches])
+  }, [sportList, allStudents, allStaff, allBatches, allPayments])
 
   const totalCounts = useMemo(() => ({
     students: allStudents.length,
@@ -61,6 +87,20 @@ export default function SportSelect() {
     showToast(`${v} added`, 'success')
     setNewSport('')
     setAdding(false)
+  }
+
+  const handleDownloadBackup = async (sport) => {
+    setExportingFor(sport)
+    try {
+      const data = await exportSportData(sport)
+      downloadJSON(data)
+      downloadExcel(data)
+      showToast(`Backup downloaded for ${sport}`, 'success')
+    } catch (err) {
+      showToast(`Export failed: ${err.message}`, 'error')
+    } finally {
+      setExportingFor(null)
+    }
   }
 
   const handleRemoveSport = async (sport) => {
@@ -105,7 +145,7 @@ export default function SportSelect() {
             Hi {user?.name?.split(' ')[0] || 'there'} — pick a sport
           </h1>
           <p className="text-gray-500 text-sm">
-            Choose which sport you want to manage today. Students, staff, batches and payments will all be scoped to your selection.
+            Students, staff, batches and payments will all be scoped to your selection.
           </p>
         </div>
 
@@ -145,33 +185,17 @@ export default function SportSelect() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {sportList.map(sport => {
-              const c = counts[sport]
-              const isConfirmingRemove = removing === sport
+              const c = counts[sport] || {}
+              const isConfirming = removing === sport
+              const isExporting  = exportingFor === sport
+
               return (
                 <div
                   key={sport}
-                  className="group relative bg-white border border-gray-100 hover:border-brand-300 hover:shadow-md rounded-2xl p-5 transition"
+                  className="group relative bg-white border border-gray-100 hover:border-brand-200 hover:shadow-md rounded-2xl p-5 transition"
                 >
-                  {/* Remove button (top-right) */}
-                  {isConfirmingRemove ? (
-                    <div className="absolute top-3 right-3 flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg px-2 py-1">
-                      <span className="text-[10px] font-bold text-red-700">Remove?</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleRemoveSport(sport) }}
-                        className="p-1 rounded text-red-600 hover:bg-red-100 transition"
-                        title="Confirm remove"
-                      >
-                        <Check size={12} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setRemoving(null) }}
-                        className="p-1 rounded text-gray-500 hover:bg-gray-100 transition"
-                        title="Cancel"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ) : (
+                  {/* Trash icon — appears on hover when not in delete flow */}
+                  {!isConfirming && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setRemoving(sport) }}
                       className="absolute top-3 right-3 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
@@ -181,28 +205,98 @@ export default function SportSelect() {
                     </button>
                   )}
 
+                  {/* Delete confirmation overlay */}
+                  {isConfirming && (
+                    <div className="absolute inset-0 bg-white rounded-2xl border-2 border-red-200 p-4 flex flex-col z-10">
+                      <div className="flex items-start gap-2 mb-2">
+                        <AlertTriangle size={15} className="text-red-500 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-sm font-black text-gray-900 leading-tight">Remove {sport}?</p>
+                          <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">
+                            {c.students > 0 || c.batches > 0
+                              ? `${c.students} student${c.students !== 1 ? 's' : ''} and ${c.batches} batch${c.batches !== 1 ? 'es' : ''} will only appear under "All Sports". Data is not deleted.`
+                              : 'No students or batches assigned. Safe to remove.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex-1 flex flex-col gap-2 justify-end">
+                        {/* Primary: Download backup */}
+                        <button
+                          disabled={isExporting}
+                          onClick={(e) => { e.stopPropagation(); handleDownloadBackup(sport) }}
+                          className="w-full flex items-center justify-center gap-2 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-xs font-bold rounded-lg transition"
+                        >
+                          {isExporting
+                            ? <><Loader2 size={12} className="animate-spin" /> Exporting…</>
+                            : <><Download size={12} /> Download Backup</>}
+                        </button>
+
+                        <div className="flex gap-2">
+                          {/* Secondary: Delete without backup */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleRemoveSport(sport) }}
+                            className="flex-1 flex items-center justify-center gap-1 py-1.5 border border-red-200 hover:bg-red-50 text-red-600 text-[11px] font-bold rounded-lg transition"
+                          >
+                            <Trash2 size={11} /> Remove
+                          </button>
+                          {/* Cancel */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setRemoving(null) }}
+                            className="flex-1 flex items-center justify-center py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[11px] font-bold rounded-lg transition"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Clickable card content */}
                   <button
                     onClick={() => pickSport(sport)}
-                    disabled={isConfirmingRemove}
-                    className="w-full text-left disabled:opacity-50"
+                    disabled={isConfirming}
+                    className="w-full text-left disabled:pointer-events-none"
                   >
-                    <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-start justify-between mb-3">
                       <div className="w-11 h-11 bg-brand-50 rounded-xl flex items-center justify-center group-hover:bg-brand-100 transition">
                         <Trophy size={20} className="text-brand-600" />
                       </div>
-                      {!isConfirmingRemove && (
-                        <span className="text-[10px] font-bold text-gray-400 group-hover:text-brand-600 uppercase tracking-wider transition mt-1.5">
-                          Open →
-                        </span>
-                      )}
+                      <div className="flex flex-col items-end gap-1">
+                        {c.overdue > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                            <AlertTriangle size={9} /> {c.overdue} overdue
+                          </span>
+                        )}
+                        {!isConfirming && (
+                          <span className="text-[10px] font-bold text-gray-400 group-hover:text-brand-600 uppercase tracking-wider transition">
+                            Open →
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-lg font-black text-gray-900 mb-3">{sport}</p>
+
+                    <p className="text-lg font-black text-gray-900 mb-1">{sport}</p>
+
+                    {/* Monthly revenue */}
+                    {c.monthlyRevenue > 0 && (
+                      <p className="flex items-center gap-0.5 text-[11px] text-emerald-600 font-bold mb-3">
+                        <IndianRupee size={10} />
+                        {c.monthlyRevenue.toLocaleString('en-IN')} this month
+                      </p>
+                    )}
+
                     <div className="grid grid-cols-3 gap-2 pt-3 border-t border-gray-100">
                       <div>
                         <div className="flex items-center gap-1 text-gray-400 text-[10px] mb-0.5">
                           <Users size={10} /> Students
                         </div>
-                        <p className="text-sm font-black text-gray-900">{c.students}</p>
+                        <p className="text-sm font-black text-gray-900">
+                          {c.active}
+                          {c.students > c.active && (
+                            <span className="text-[10px] text-gray-400 font-normal">/{c.students}</span>
+                          )}
+                        </p>
                       </div>
                       <div>
                         <div className="flex items-center gap-1 text-gray-400 text-[10px] mb-0.5">
@@ -222,7 +316,7 @@ export default function SportSelect() {
               )
             })}
 
-            {/* + Add Sport card — always last */}
+            {/* + Add Sport card */}
             {adding ? (
               <div className="bg-white border-2 border-brand-300 rounded-2xl p-5 flex flex-col">
                 <div className="flex items-start justify-between mb-4">

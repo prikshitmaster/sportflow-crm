@@ -14,7 +14,7 @@ const accountBadge = {
 }
 
 export default function Students() {
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment, selectedSport } = useApp()
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
@@ -231,10 +231,12 @@ export default function Students() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <select className="input w-auto" value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
-          <option value="All">All Sports</option>
-          {SPORTS.map(s => <option key={s}>{s}</option>)}
-        </select>
+        {selectedSport === 'All' && (
+          <select className="input w-auto" value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
+            <option value="All">All Sports</option>
+            {SPORTS.map(s => <option key={s}>{s}</option>)}
+          </select>
+        )}
         <select className="input w-auto" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
           <option value="All">All Batches</option>
           {batches.map(b => <option key={b.id} value={b.name}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
@@ -497,9 +499,10 @@ function coveragePreview(joinDate, paidTill) {
 }
 
 function AddStudentModal({ onClose, onSave }) {
-  const { batches } = useApp()
+  const { batches, selectedSport } = useApp()
+  const defaultSport = selectedSport && selectedSport !== 'All' ? selectedSport : SPORTS[0]
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: SPORTS[0], paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '', trainingType: 'Daily', feePlan: 'monthly',
+    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: defaultSport, paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '', trainingType: 'Daily', feePlan: 'monthly',
   })
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))

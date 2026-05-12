@@ -11,7 +11,7 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, addPayment, markPaymentPaid, removePayment, updatePaymentDate } = useApp()
+  const { payments, students, batches, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport } = useApp()
   const [editingDate, setEditingDate] = useState(null) // paymentId being edited
 
   const [search,          setSearch]          = useState('')
@@ -189,16 +189,18 @@ export default function Payments() {
         </div>
         {/* Row 2: Sport + Batch dropdowns */}
         <div className="flex flex-wrap gap-3 items-center">
-          <select className="input w-auto" value={sportFilter}
-            onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
-            <option value="All">All Sports</option>
-            {sportOptions.map(s => <option key={s}>{s}</option>)}
-          </select>
+          {selectedSport === 'All' && (
+            <select className="input w-auto" value={sportFilter}
+              onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
+              <option value="All">All Sports</option>
+              {sportOptions.map(s => <option key={s}>{s}</option>)}
+            </select>
+          )}
           <select className="input w-auto" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
             <option value="All">All Batches</option>
             {batches.map(b => <option key={b.id} value={b.name}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
-          {(sportFilter !== 'All' || batchFilter !== 'All') && (
+          {(batchFilter !== 'All' || (selectedSport === 'All' && sportFilter !== 'All')) && (
             <button onClick={() => { setSportFilter('All'); setBatchFilter('All') }}
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition font-medium">
               <X size={12} /> Clear filters

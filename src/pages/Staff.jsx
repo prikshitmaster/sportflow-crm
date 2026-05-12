@@ -1053,11 +1053,13 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
 }
 
 function AddStaffModal({ onClose, onSave, demoMode }) {
+  const { selectedSport } = useApp()
   const fileRef = useRef(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [photoFile,    setPhotoFile]    = useState(null)
+  const defaultSports = selectedSport && selectedSport !== 'All' ? [selectedSport] : []
   const [form, setForm] = useState({
-    name: '', role: ROLES[1], phone: '', sports: [], status: 'Active',
+    name: '', role: ROLES[1], phone: '', sports: defaultSports, status: 'Active',
   })
   const [giveAccess,  setGiveAccess]  = useState(false)
   const [portalType,  setPortalType]  = useState('field')  // 'field' | 'office'

@@ -395,8 +395,10 @@ function DatePicker({ label, value, onChange, chips, showCustom, setShowCustom }
 }
 
 function AddTrialModal({ onClose, onSave }) {
+  const { selectedSport } = useApp()
+  const defaultSport = selectedSport && selectedSport !== 'All' ? selectedSport : SPORTS[0]
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', sport: SPORTS[0],
+    name: '', parent: '', phone: '', sport: defaultSport,
     trialDate: today(),
     source: SOURCES[0], status: 'Scheduled', followUp: '',
   })

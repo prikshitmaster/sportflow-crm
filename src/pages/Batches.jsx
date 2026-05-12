@@ -248,13 +248,15 @@ function BatchCard({ b, idx, onSelect }) {
 const ALL_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
 function AddBatchModal({ onClose, onSave, staff, initialData }) {
+  const { selectedSport } = useApp()
   const isEdit = !!initialData
+  const defaultSports = initialData?.sports ?? (selectedSport && selectedSport !== 'All' ? [selectedSport] : [])
   const [form, setForm] = useState({
     name:      initialData?.name      || '',
     code:      initialData?.code      || '',
     startTime: initialData?.startTime || '',
     endTime:   initialData?.endTime   || '',
-    sports:    initialData?.sports    || [],
+    sports:    defaultSports,
     coach:     initialData?.coach     || staff[0]?.name || '',
     capacity:  initialData?.capacity  || 20,
     days:      initialData?.days      || [],
