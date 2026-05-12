@@ -306,7 +306,7 @@ export default function Students() {
                     <p className="text-gray-700 font-medium">{s.parent}</p>
                     <p className="text-gray-400 text-xs">{s.phone}</p>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{s.age} yrs</td>
+                  <td className="px-4 py-3 text-gray-600">{s.dob ? calcAge(s.dob) : s.age} yrs</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">
                       <span className="badge badge-blue">{s.sport}</span>
@@ -477,6 +477,16 @@ const MO_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','N
 const PLAN_MOS_MAP = { monthly: 1, quarterly: 3, yearly: 12 }
 
 // Returns YYYY-MM for standard plans, '' for custom
+function calcAge(dob) {
+  if (!dob) return null
+  const today = new Date()
+  const birth = new Date(dob + 'T00:00:00')
+  let age = today.getFullYear() - birth.getFullYear()
+  const m = today.getMonth() - birth.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+  return age >= 0 ? age : null
+}
+
 function calcPaidTill(joinDate, feePlan) {
   if (!joinDate || feePlan === 'custom') return ''
   const [yr, mo] = joinDate.split('-').map(Number)
@@ -514,7 +524,7 @@ function AddStudentModal({ onClose, onSave }) {
   const { batches, selectedSport } = useApp()
   const defaultSport = selectedSport && selectedSport !== 'All' ? selectedSport : SPORTS[0]
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: defaultSport,
+    name: '', parent: '', phone: '', parentPhone: '', dob: '', sport: defaultSport,
     paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '',
     trainingType: 'Daily', feePlan: 'monthly',
   })
@@ -545,7 +555,7 @@ function AddStudentModal({ onClose, onSave }) {
     const e = {}
     if (!form.name.trim())                    e.name   = 'Required'
     if (!/^\d{10}$/.test(form.phone))         e.phone  = 'Enter 10-digit number'
-    if (!form.age || Number(form.age) <= 0)   e.age    = 'Required'
+    if (!form.dob)                            e.dob    = 'Required'
     if (!form.fees || Number(form.fees) <= 0) e.fees   = 'Required'
     if (!form.batchId)                        e.batchId = 'Select a batch'
     setErrors(e)
@@ -555,7 +565,7 @@ function AddStudentModal({ onClose, onSave }) {
   const handleSave = async () => {
     if (!validate()) return
     setLoading(true)
-    try { await onSave(form) } finally { setLoading(false) }
+    try { await onSave({ ...form, age: calcAge(form.dob) }) } finally { setLoading(false) }
   }
 
   const preview = coveragePreview(form.joinDate, form.paidTill)
@@ -584,12 +594,21 @@ function AddStudentModal({ onClose, onSave }) {
             onChange={e => set('parent', e.target.value)} />
         </div>
 
-        {/* Age */}
+        {/* Date of Birth */}
         <div>
-          <label className="label">Age (years) *</label>
-          <input className={`input ${errors.age ? 'border-red-400' : ''}`} type="number" min="1" max="99" placeholder="e.g. 14" value={form.age}
-            onChange={e => set('age', e.target.value)} />
-          {errors.age && <p className="text-[11px] text-red-500 mt-1">{errors.age}</p>}
+          <label className="label">Date of Birth *</label>
+          <div className="relative">
+            <input className={`input ${errors.dob ? 'border-red-400' : ''}`} type="date"
+              max={new Date().toISOString().split('T')[0]}
+              value={form.dob}
+              onChange={e => set('dob', e.target.value)} />
+            {form.dob && calcAge(form.dob) !== null && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full pointer-events-none">
+                {calcAge(form.dob)} yrs
+              </span>
+            )}
+          </div>
+          {errors.dob && <p className="text-[11px] text-red-500 mt-1">{errors.dob}</p>}
         </div>
 
         {/* Student Phone */}
@@ -797,7 +816,7 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
           {/* Quick stats */}
           <div className="grid grid-cols-3 gap-3 mt-5">
             <div className="bg-white/15 rounded-xl p-3 text-center">
-              <p className="text-lg font-black text-white">{s.age || '—'}</p>
+              <p className="text-lg font-black text-white">{s.dob ? calcAge(s.dob) : (s.age || '—')}</p>
               <p className="text-[10px] text-brand-200">Age</p>
             </div>
             <div className="bg-white/15 rounded-xl p-3 text-center">
@@ -950,7 +969,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     parent:       s.parent       || '',
     phone:        (s.phone || '').replace(/^\+91/, '').replace(/\D/g, '').slice(0, 10),
     parentPhone:  (s.parentPhone || '').replace(/^\+91/, '').replace(/\D/g, '').slice(0, 10),
-    age:          s.age          || '',
+    dob:          s.dob          || '',
     sport:        s.sport        || SPORTS[0],
     batchId:      s.batchId      || '',
     batchName:    s.batch        || '',
@@ -985,9 +1004,9 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
 
   const validate = () => {
     const e = {}
-    if (!form.name.trim())                    e.name  = 'Required'
-    if (!/^\d{10}$/.test(form.phone))         e.phone = 'Enter 10-digit number'
-    if (!form.age || Number(form.age) <= 0)   e.age   = 'Required'
+    if (!form.name.trim())            e.name  = 'Required'
+    if (!/^\d{10}$/.test(form.phone)) e.phone = 'Enter 10-digit number'
+    if (!form.dob)                    e.dob   = 'Required'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -995,7 +1014,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
   const handleSave = async () => {
     if (!validate()) return
     setLoading(true)
-    try { await onSave(form) } finally { setLoading(false) }
+    try { await onSave({ ...form, age: calcAge(form.dob) }) } finally { setLoading(false) }
   }
 
   const preview = coveragePreview(form.joinDate, form.paidTill)
@@ -1014,10 +1033,19 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <input className="input" value={form.parent} onChange={e => set('parent', e.target.value)} />
         </div>
         <div>
-          <label className="label">Age (years) *</label>
-          <input className={`input ${errors.age ? 'border-red-400' : ''}`} type="number" min="1" max="99" value={form.age}
-            onChange={e => set('age', e.target.value)} />
-          {errors.age && <p className="text-[11px] text-red-500 mt-1">{errors.age}</p>}
+          <label className="label">Date of Birth *</label>
+          <div className="relative">
+            <input className={`input ${errors.dob ? 'border-red-400' : ''}`} type="date"
+              max={new Date().toISOString().split('T')[0]}
+              value={form.dob}
+              onChange={e => set('dob', e.target.value)} />
+            {form.dob && calcAge(form.dob) !== null && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full pointer-events-none">
+                {calcAge(form.dob)} yrs
+              </span>
+            )}
+          </div>
+          {errors.dob && <p className="text-[11px] text-red-500 mt-1">{errors.dob}</p>}
         </div>
         <div>
           <label className="label">Student Phone *</label>
