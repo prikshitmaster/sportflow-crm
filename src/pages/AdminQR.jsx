@@ -86,7 +86,7 @@ export default function AdminQR() {
                 bgColor="#ffffff"
                 fgColor="#111827"
                 level="H"
-                includeMargin={false}
+                includeMargin={true}
               />
             </div>
           ) : (

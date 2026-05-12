@@ -22,6 +22,7 @@ import AdminQR from './pages/AdminQR'
 import Events from './pages/Events'
 import StaffAttendanceQR from './pages/StaffAttendanceQR'
 import Invite from './pages/Invite'
+import SportSelect from './pages/SportSelect'
 
 // Staff pages
 import StaffLogin from './pages/StaffLogin'
@@ -83,10 +84,18 @@ function PageLoading() {
 }
 
 function OwnerRoute({ children }) {
+  const { role, loading, selectedSport } = useApp()
+  if (loading) return <PageLoading />
+  if (role !== 'owner') return <Navigate to="/login" replace />
+  if (!selectedSport) return <Navigate to="/sport-select" replace />
+  return children
+}
+
+function SportSelectRoute({ children }) {
   const { role, loading } = useApp()
   if (loading) return <PageLoading />
-  if (role === 'owner') return children
-  return <Navigate to="/login" replace />
+  if (role !== 'owner') return <Navigate to="/login" replace />
+  return children
 }
 
 function StaffRoute({ children }) {
@@ -120,6 +129,7 @@ function AppRoutes() {
       {/* Owner */}
       <Route path="/login"  element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
+      <Route path="/sport-select" element={<SportSelectRoute><SportSelect /></SportSelectRoute>} />
       <Route path="/" element={<OwnerRoute><Layout /></OwnerRoute>}>
         <Route path="dashboard"  element={<Dashboard />} />
         <Route path="students"   element={<Students />} />

@@ -434,7 +434,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
             className="input mb-1.5"
             placeholder="Search by name…"
             value={studentSearch}
-            onChange={e => setStudentSearch(e.target.value)}
+            onChange={e => {
+              setStudentSearch(e.target.value)
+              setAmountOverride(null)
+              setForm(f => ({ ...f, studentId: '', student: '', baseAmount: 0 }))
+            }}
           />
           <select className="input" value={form.studentId} onChange={e => handleStudentChange(e.target.value)}>
             <option value="">— Select student —</option>

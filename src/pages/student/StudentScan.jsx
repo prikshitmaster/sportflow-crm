@@ -13,11 +13,12 @@ export default function StudentScan() {
   const [phase, setPhase] = useState('ready')
   const [errMsg, setErrMsg] = useState('')
 
-  const videoRef   = useRef(null)
-  const canvasRef  = useRef(null)
-  const streamRef  = useRef(null)
-  const rafRef     = useRef(null)
-  const doneRef    = useRef(false)
+  const videoRef    = useRef(null)
+  const canvasRef   = useRef(null)
+  const streamRef   = useRef(null)
+  const rafRef      = useRef(null)
+  const doneRef     = useRef(false)
+  const detectorRef = useRef(null)
 
   // Auto-navigate to attendance 2s after success or already
   useEffect(() => {
@@ -46,8 +47,10 @@ export default function StudentScan() {
         audio: false,
       })
       streamRef.current = stream
-      // videoRef is rendered now because phase === 'scanning'
-      // wait one tick for React to paint
+      if ('BarcodeDetector' in window) {
+        try { detectorRef.current = new window.BarcodeDetector({ formats: ['qr_code'] }) } catch {}
+      }
+      // wait one tick for React to paint the <video> element
       await new Promise(r => setTimeout(r, 80))
       if (!videoRef.current) return
       videoRef.current.srcObject = stream
@@ -75,20 +78,19 @@ export default function StudentScan() {
 
     let qrValue = null
 
-    // Try native BarcodeDetector first (Chrome Android, Edge)
-    if ('BarcodeDetector' in window) {
+    // Try native BarcodeDetector first (Chrome Android, Edge) — use video directly, faster
+    if (detectorRef.current) {
       try {
-        const detector = new window.BarcodeDetector({ formats: ['qr_code'] })
-        const codes = await detector.detect(canvas)
+        const codes = await detectorRef.current.detect(video)
         if (codes.length > 0) qrValue = codes[0].rawValue
       } catch (_) {}
     }
 
-    // Fallback: jsQR
+    // Fallback: jsQR — attemptBoth tries normal + inverted orientations
     if (!qrValue) {
       try {
         const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' })
+        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' })
         if (code) qrValue = code.data
       } catch (_) {}
     }

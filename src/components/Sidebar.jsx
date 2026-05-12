@@ -7,7 +7,7 @@ import { useApp } from '../context/AppContext'
 import {
   LayoutDashboard, Users, CalendarCheck, CreditCard, UserPlus,
   Layers, UserCog, BarChart3, Megaphone, Settings, LogOut,
-  Zap, ChevronLeft, QrCode, Trophy,
+  Zap, ChevronLeft, QrCode, Trophy, RefreshCw,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -28,7 +28,7 @@ const nav = [
 ]
 
 export default function Sidebar({ collapsed, setCollapsed }) {
-  const { user, role, isFeatureOn, hasPermission, logoutOwner } = useApp()
+  const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport } = useApp()
   const navigate = useNavigate()
 
   // Owner sees all feature-enabled items; admin sees only items they have permission for
@@ -70,6 +70,36 @@ export default function Sidebar({ collapsed, setCollapsed }) {
             {user.role === 'owner' ? 'Owner' : user.role}
           </span>
         </div>
+      )}
+
+      {/* Current sport context (owner only) */}
+      {role === 'owner' && selectedSport && (
+        collapsed ? (
+          <button
+            onClick={() => navigate('/sport-select')}
+            className="mx-2 my-2 p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition flex items-center justify-center"
+            title={`${selectedSport} — click to switch`}
+          >
+            <Trophy size={16} className="text-brand-400" />
+          </button>
+        ) : (
+          <div className="px-4 py-3 border-b border-gray-800">
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider font-bold mb-1">Viewing</p>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Trophy size={14} className="text-brand-400 flex-shrink-0" />
+                <p className="text-sm font-bold text-white truncate">{selectedSport}</p>
+              </div>
+              <button
+                onClick={() => navigate('/sport-select')}
+                className="flex items-center gap-1 text-[10px] font-bold text-brand-400 hover:text-brand-300 transition px-2 py-1 rounded-md hover:bg-gray-800"
+                title="Switch sport"
+              >
+                <RefreshCw size={10} /> Switch
+              </button>
+            </div>
+          </div>
+        )
       )}
 
       {/* Nav */}

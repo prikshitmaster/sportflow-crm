@@ -1,9 +1,9 @@
 import { useApp } from '../context/AppContext'
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Users, CreditCard, TrendingUp, UserPlus, ChevronRight,
   AlertCircle, CalendarDays, CheckCircle, XCircle, UserCog,
-  BarChart3, Layers, Pencil, X, Plus, Check,
+  BarChart3, Layers,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -12,66 +12,59 @@ export default function Dashboard() {
     students, payments, trials, batches, staff,
     user, role, hasPermission, dataLoading, attendanceData,
     leaveRequests, loadLeaveRequests, updateLeave,
-    branches, addBranch, removeBranch,
+    selectedSport,
   } = useApp()
 
-  const [sport,      setSport]      = useState('All')
-  const [editBranch, setEditBranch] = useState(false)
-  const [newBranch,  setNewBranch]  = useState('')
-  const inputRef = useRef(null)
-
   useEffect(() => { loadLeaveRequests?.() }, [])
-  useEffect(() => { if (editBranch) inputRef.current?.focus() }, [editBranch])
 
   // ── All hooks must run before any early return ────────────
 
-  // Sport filter list — use managed branches list; fall back to student sports if empty
-  const sportList = useMemo(() => {
-    if (branches.length > 0) return branches
-    const set = new Set()
-    students.forEach(s => s.sport && set.add(s.sport))
-    return Array.from(set).sort()
-  }, [branches, students])
-
-  // Filtered data
-  const filteredStudents = useMemo(() =>
-    sport === 'All' ? students : students.filter(s => s.sport === sport)
-  , [students, sport])
-
   const activeStudents = useMemo(() =>
-    filteredStudents.filter(s => s.status === 'Active')
-  , [filteredStudents])
+    students.filter(s => s.status === 'Active')
+  , [students])
 
-  const studentSportMap = useMemo(() => {
-    const m = {}
-    students.forEach(s => { m[s.id] = s.sport })
-    return m
-  }, [students])
-
-  const filteredPayments = useMemo(() =>
-    sport === 'All' ? payments : payments.filter(p => studentSportMap[p.studentId] === sport)
-  , [payments, sport, studentSportMap])
-
-  const filteredStaff = useMemo(() =>
-    sport === 'All'
-      ? staff.filter(s => s.status === 'Active')
-      : staff.filter(s => s.status === 'Active' && s.sports?.includes(sport))
-  , [staff, sport])
-
-  const filteredBatches = useMemo(() =>
-    sport === 'All' ? batches : batches.filter(b => b.sports?.includes(sport))
-  , [batches, sport])
+  const activeStaff = useMemo(() =>
+    staff.filter(s => s.status === 'Active')
+  , [staff])
 
   // Derived values (not hooks — safe to compute after all hooks)
-  const collectedAmt  = filteredPayments.filter(p => p.status === 'Paid').reduce((s, p) => s + (p.amount ?? 0), 0)
-  const overdueList   = filteredPayments.filter(p => p.status === 'Overdue')
-  const pendingList   = filteredPayments.filter(p => p.status === 'Pending')
-  const overdueAmt    = overdueList.reduce((s, p) => s + (p.amount ?? 0), 0)
-  const expectedAmt   = activeStudents.reduce((s, st) => s + (st.fees || 0), 0)
-  const collectPct    = expectedAmt > 0 ? Math.round((collectedAmt / expectedAmt) * 100) : 0
+  const now          = new Date()
+  const currentMonth = now.toISOString().slice(0, 7)
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+  const todayStr     = now.toISOString().split('T')[0]
+  const todayAtt     = attendanceData[todayStr] || {}
 
-  const todayStr    = new Date().toISOString().split('T')[0]
-  const todayAtt    = attendanceData[todayStr] || {}
+  // Current month paid only
+  const collectedAmt = payments
+    .filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth)
+    .reduce((s, p) => s + (p.amount ?? 0), 0)
+
+  // Virtual overdue: students whose paid_till expired with no existing payment record
+  const studentsWithRecord = new Set(
+    payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => String(p.studentId))
+  )
+  const virtualOverdue = students
+    .filter(s =>
+      (s.status === 'Active' || s.status === 'Suspended') &&
+      s.paidTill &&
+      s.paidTill < firstOfMonth &&
+      !studentsWithRecord.has(String(s.id))
+    )
+    .map(s => ({
+      id:        `DUE-${s.id}`,
+      studentId: s.id,
+      student:   s.name,
+      amount:    s.fees || 0,
+      month:     `Due — paid till ${new Date(s.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`,
+      status:    'Overdue',
+      isVirtual: true,
+    }))
+
+  const overdueList  = [...payments.filter(p => p.status === 'Overdue'), ...virtualOverdue]
+  const pendingList  = payments.filter(p => p.status === 'Pending')
+  const overdueAmt   = overdueList.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const expectedAmt  = activeStudents.reduce((s, st) => s + (st.fees || 0), 0)
+  const collectPct   = expectedAmt > 0 ? Math.round((collectedAmt / expectedAmt) * 100) : 0
 
   const batchStats = (b) => {
     const bs = activeStudents.filter(s => s.batch === b.name || s.batchId === b.id)
@@ -147,87 +140,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Branch / Sport filter tabs ───────────────────────── */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {/* All Branches pill */}
-        <button
-          onClick={() => setSport('All')}
-          className={`flex-shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition ${
-            sport === 'All' ? 'bg-gray-900 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-          }`}
-        >
-          All Branches
-        </button>
-
-        {sportList.map(s => (
-          <div key={s} className="relative flex-shrink-0 group">
-            <button
-              onClick={() => !editBranch && setSport(s)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition ${
-                sport === s && !editBranch
-                  ? 'bg-gray-900 text-white shadow-sm'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              } ${editBranch ? 'pr-7' : ''}`}
-            >
-              {s}
-            </button>
-            {editBranch && (
-              <button
-                onClick={() => { removeBranch(s); if (sport === s) setSport('All') }}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition"
-              >
-                <X size={9} strokeWidth={3} />
-              </button>
-            )}
-          </div>
-        ))}
-
-        {/* Edit / Add controls — owner only */}
-        {role === 'owner' && (
-          editBranch ? (
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <input
-                ref={inputRef}
-                value={newBranch}
-                onChange={e => setNewBranch(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && newBranch.trim()) { addBranch(newBranch); setNewBranch('') }
-                  if (e.key === 'Escape') setEditBranch(false)
-                }}
-                placeholder="New branch…"
-                className="px-3 py-2 rounded-xl text-xs border border-gray-300 bg-white w-28 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <button
-                onClick={() => { if (newBranch.trim()) { addBranch(newBranch); setNewBranch('') } }}
-                className="w-7 h-7 bg-brand-600 hover:bg-brand-700 text-white rounded-lg flex items-center justify-center transition flex-shrink-0"
-              >
-                <Plus size={13} />
-              </button>
-              <button
-                onClick={() => { setEditBranch(false); setNewBranch('') }}
-                className="w-7 h-7 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center transition flex-shrink-0"
-              >
-                <Check size={13} />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setEditBranch(true)}
-              className="flex-shrink-0 w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
-              title="Manage branches"
-            >
-              <Pencil size={13} className="text-gray-500" />
-            </button>
-          )
-        )}
-      </div>
-
       {/* ── KPI cards ────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           label="Active Students"
           value={activeStudents.length}
-          sub={`${filteredStudents.length - activeStudents.length} inactive`}
+          sub={`${students.length - activeStudents.length} inactive`}
           icon={Users}
           color="blue"
         />
@@ -246,8 +164,8 @@ export default function Dashboard() {
           color="red"
         />
         <KpiCard
-          label={sport === 'All' ? 'Active Staff' : `${sport} Coaches`}
-          value={filteredStaff.length}
+          label={selectedSport === 'All' ? 'Active Staff' : `${selectedSport} Coaches`}
+          value={activeStaff.length}
           sub={`of ${staff.length} total staff`}
           icon={UserCog}
           color="purple"
@@ -266,7 +184,7 @@ export default function Dashboard() {
               <div>
                 <h3 className="font-bold text-gray-900">Fee Collection</h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {sport === 'All' ? 'All branches' : sport} · {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
+                  {selectedSport === 'All' ? 'All sports' : selectedSport} · {new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
                 </p>
               </div>
               <Link to="/reports" className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
@@ -341,20 +259,20 @@ export default function Dashboard() {
           )}
 
           {/* Today's batches */}
-          {filteredBatches.length > 0 && (
+          {batches.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-gray-900 flex items-center gap-2">
                   <Layers size={15} className="text-brand-600" />
                   Today's Batches
-                  {sport !== 'All' && <span className="text-xs text-gray-400 font-normal">· {sport}</span>}
+                  {selectedSport !== 'All' && <span className="text-xs text-gray-400 font-normal">· {selectedSport}</span>}
                 </h3>
                 <Link to="/batches" className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
                   Manage <ChevronRight size={12} />
                 </Link>
               </div>
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                {filteredBatches.map(b => {
+                {batches.map(b => {
                   const { count, present, pct, marked } = batchStats(b)
                   return (
                     <div key={b.id} className="card p-4">
@@ -441,7 +359,7 @@ export default function Dashboard() {
               <AlertRow
                 icon={Users}
                 color="text-brand-600" bg="bg-brand-50"
-                text={`${activeStudents.length} active student${activeStudents.length !== 1 ? 's' : ''}${sport !== 'All' ? ` in ${sport}` : ''}`}
+                text={`${activeStudents.length} active student${activeStudents.length !== 1 ? 's' : ''}${selectedSport !== 'All' ? ` in ${selectedSport}` : ''}`}
                 to="/students"
               />
               <AlertRow
@@ -454,16 +372,16 @@ export default function Dashboard() {
           </div>
 
           {/* Staff overview */}
-          {filteredStaff.length > 0 && (
+          {activeStaff.length > 0 && (
             <div className="card p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-gray-900">
-                  {sport === 'All' ? 'Staff' : `${sport} Staff`}
+                  {selectedSport === 'All' ? 'Staff' : `${selectedSport} Staff`}
                 </h3>
                 <Link to="/coaches" className="text-xs text-brand-600 font-semibold hover:underline">Manage</Link>
               </div>
               <div className="space-y-2.5">
-                {filteredStaff.slice(0, 5).map(s => (
+                {activeStaff.slice(0, 5).map(s => (
                   <div key={s.id} className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-brand-100 rounded-xl flex items-center justify-center text-xs font-black text-brand-700 flex-shrink-0">
                       {s.name[0]}
@@ -475,8 +393,8 @@ export default function Dashboard() {
                     <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.status === 'Active' ? 'bg-emerald-500' : 'bg-gray-300'}`} />
                   </div>
                 ))}
-                {filteredStaff.length > 5 && (
-                  <p className="text-xs text-gray-400 text-center">+{filteredStaff.length - 5} more</p>
+                {activeStaff.length > 5 && (
+                  <p className="text-xs text-gray-400 text-center">+{activeStaff.length - 5} more</p>
                 )}
               </div>
             </div>

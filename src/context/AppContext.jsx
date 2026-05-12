@@ -2,7 +2,7 @@
 // AppContext — owner-only production auth & global state
 // ============================================================
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import * as db from '../lib/db'
 import {
@@ -11,6 +11,8 @@ import {
   getStudentSession, setStudentSession, clearStudentSession,
 } from '../lib/auth'
 import { ALL_PERMISSIONS, ROLE_PRESETS } from '../lib/permissions'
+
+const SPORT_KEY = 'sf_selected_sport'
 
 const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -44,6 +46,18 @@ export function AppProvider({ children }) {
 
   // ── Student portal state (custom auth) ───────────────
   const [studentUser, setStudentUser] = useState(null)
+
+  // ── Sport scoping (owner only) ────────────────────────
+  const [selectedSport, setSelectedSportState] = useState(() => {
+    try { return localStorage.getItem(SPORT_KEY) || null } catch { return null }
+  })
+  const setSelectedSport = useCallback((sport) => {
+    setSelectedSportState(sport)
+    try {
+      if (sport) localStorage.setItem(SPORT_KEY, sport)
+      else       localStorage.removeItem(SPORT_KEY)
+    } catch {}
+  }, [])
 
   // ── Data state ─────────────────────────────────────────
   const [students,       setStudents]       = useState([])
@@ -210,6 +224,7 @@ export function AppProvider({ children }) {
       const flags = await db.fetchFeatureFlags(academy.id)
       setUser({ id: data.user.id, name, email, academy: academyName, academyId: academy.id, joinCode, role: 'owner' })
       setFeatures(flags)
+      setSelectedSport(null)
       setRole('owner')
       return { needsEmailConfirmation: false }
     }
@@ -226,6 +241,7 @@ export function AppProvider({ children }) {
     const flags   = await db.fetchFeatureFlags(profile.academy_id)
     setUser({ id: profile.id, name: profile.name, email, academy: academy.name, academyId: academy.id, joinCode: academy.join_code, role: 'owner' })
     setFeatures(flags)
+    setSelectedSport(null)
     setRole('owner')
   }
 
@@ -235,6 +251,7 @@ export function AppProvider({ children }) {
     setStudents([]); setPayments([]); setTrials([])
     setBatches([]);  setStaff([]);   setAnnouncements([])
     setAttendanceData({}); setEvents([]); setLeaveRequests([])
+    setSelectedSport(null)
   }
 
   const logoutAdmin = logoutOwner
@@ -886,6 +903,37 @@ export function AppProvider({ children }) {
 
   const isAuthenticated = role !== null
 
+  // ── Sport-scoped filtered views ───────────────────────
+  // When selectedSport is null or 'All', pages get the full raw data (no filtering)
+  // When set to a specific sport, pages see only that sport's slice
+  const isAllSports = !selectedSport || selectedSport === 'All'
+
+  const filteredStudents = useMemo(() =>
+    isAllSports ? students : students.filter(s => s.sport === selectedSport)
+  , [students, selectedSport, isAllSports])
+
+  const filteredBatches = useMemo(() =>
+    isAllSports ? batches : batches.filter(b => b.sports?.includes(selectedSport))
+  , [batches, selectedSport, isAllSports])
+
+  // Coaches with sports[] filtered by selectedSport;
+  // Non-coach staff (empty sports[]) are kept visible everywhere — they're not sport-bound
+  const filteredStaff = useMemo(() =>
+    isAllSports
+      ? staff
+      : staff.filter(s => !s.sports?.length || s.sports.includes(selectedSport))
+  , [staff, selectedSport, isAllSports])
+
+  const filteredPayments = useMemo(() => {
+    if (isAllSports) return payments
+    const sportStudentIds = new Set(students.filter(s => s.sport === selectedSport).map(s => s.id))
+    return payments.filter(p => sportStudentIds.has(p.studentId))
+  }, [payments, students, selectedSport, isAllSports])
+
+  const filteredTrials = useMemo(() =>
+    isAllSports ? trials : trials.filter(t => t.sport === selectedSport)
+  , [trials, selectedSport, isAllSports])
+
   return (
     <AppContext.Provider value={{
       // auth
@@ -898,13 +946,18 @@ export function AppProvider({ children }) {
       loginStaff, logoutStaff,
       // student auth
       loginStudent, logoutStudent, activateStudent,
-      // data
-      students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
-      payments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
-      trials, addTrial, updateTrialStatus,
-      batches, setBatches, addBatch, updateBatchCoach, updateBatch,
+      // sport scoping
+      selectedSport, setSelectedSport, isAllSports,
+      // raw data (for SportSelect page and any page needing unfiltered data)
+      allStudents: students, allStaff: staff, allBatches: batches,
+      allPayments: payments, allTrials: trials,
+      // data — auto-filtered by selectedSport
+      students: filteredStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
+      payments: filteredPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
+      trials: filteredTrials, addTrial, updateTrialStatus,
+      batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch,
       events, addEvent, updateEventStatus, removeEvent,
-      staff, addStaffMember,
+      staff: filteredStaff, addStaffMember,
       branches, addBranch, removeBranch,
       attendanceData, loadAttendanceForDate, saveAttendance,
       announcements, addAnnouncement,
