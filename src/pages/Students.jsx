@@ -476,34 +476,49 @@ export default function Students() {
 const MO_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const PLAN_MOS_MAP = { monthly: 1, quarterly: 3, yearly: 12 }
 
-// Returns YYYY-MM — the last month covered by the fee plan
+// Returns YYYY-MM for standard plans, '' for custom
 function calcPaidTill(joinDate, feePlan) {
-  if (!joinDate) return ''
-  const [yr, mo] = joinDate.split('-').map(Number) // mo is 1-indexed
+  if (!joinDate || feePlan === 'custom') return ''
+  const [yr, mo] = joinDate.split('-').map(Number)
   const planMonths = PLAN_MOS_MAP[feePlan] || 1
   const endDate = new Date(yr, mo - 1 + planMonths - 1, 1)
   return `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`
 }
 
-// paidTill is YYYY-MM; joinDate is YYYY-MM-DD
+// paidTill: YYYY-MM (standard plans) or YYYY-MM-DD (custom)
 function coveragePreview(joinDate, paidTill) {
   if (!joinDate || !paidTill) return null
-  const startMo = Number(joinDate.split('-')[1])
+  const startMo = Number(joinDate.split('-')[1]) - 1
   const startYr = Number(joinDate.split('-')[0])
-  const [endYr, endMo] = paidTill.split('-').map(Number)
+  // Handle both YYYY-MM and YYYY-MM-DD
+  const isFullDate = paidTill.length === 10
+  const endYr  = Number(paidTill.slice(0, 4))
+  const endMo  = Number(paidTill.slice(5, 7)) - 1
   const months = Math.max(1, (endYr - startYr) * 12 + (endMo - startMo) + 1)
-  const label = months === 1
-    ? `${MO_NAMES[endMo - 1]} ${endYr}`
-    : `${MO_NAMES[startMo - 1]}${startYr !== endYr ? ` ${startYr}` : ''}–${MO_NAMES[endMo - 1]} ${endYr}`
+  const dayStr = isFullDate ? ` ${Number(paidTill.slice(8, 10))}` : ''
+  const label  = months === 1
+    ? `${MO_NAMES[endMo]}${dayStr} ${endYr}`
+    : `${MO_NAMES[startMo]}${startYr !== endYr ? ` ${startYr}` : ''}–${MO_NAMES[endMo]}${dayStr} ${endYr}`
   return `${label} · ${months} month${months > 1 ? 's' : ''}`
 }
+
+const FEE_PLAN_OPTIONS = [
+  { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
+  { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
+  { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
+  { key: 'custom',    label: 'Custom',    sub: 'pick dates' },
+]
+const FEE_LABEL = { monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *', custom: 'Plan Fee (₹) *' }
 
 function AddStudentModal({ onClose, onSave }) {
   const { batches, selectedSport } = useApp()
   const defaultSport = selectedSport && selectedSport !== 'All' ? selectedSport : SPORTS[0]
   const [form, setForm] = useState({
-    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: defaultSport, paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '', trainingType: 'Daily', feePlan: 'monthly',
+    name: '', parent: '', phone: '', parentPhone: '', age: '', sport: defaultSport,
+    paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '',
+    trainingType: 'Daily', feePlan: 'monthly',
   })
+  const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -513,15 +528,32 @@ function AddStudentModal({ onClose, onSave }) {
   }
 
   const handleJoinDate = (date) => {
-    setForm(f => ({ ...f, joinDate: date, paidTill: calcPaidTill(date, f.feePlan) }))
+    setForm(f => ({
+      ...f, joinDate: date,
+      paidTill: f.feePlan !== 'custom' ? calcPaidTill(date, f.feePlan) : f.paidTill,
+    }))
   }
 
   const handleFeePlan = (plan) => {
-    setForm(f => ({ ...f, feePlan: plan, paidTill: calcPaidTill(f.joinDate, plan) }))
+    setForm(f => ({
+      ...f, feePlan: plan,
+      paidTill: plan !== 'custom' ? calcPaidTill(f.joinDate, plan) : '',
+    }))
+  }
+
+  const validate = () => {
+    const e = {}
+    if (!form.name.trim())                    e.name   = 'Required'
+    if (!/^\d{10}$/.test(form.phone))         e.phone  = 'Enter 10-digit number'
+    if (!form.age || Number(form.age) <= 0)   e.age    = 'Required'
+    if (!form.fees || Number(form.fees) <= 0) e.fees   = 'Required'
+    if (!form.batchId)                        e.batchId = 'Select a batch'
+    setErrors(e)
+    return Object.keys(e).length === 0
   }
 
   const handleSave = async () => {
-    if (!form.name || !form.phone || !form.fees) return
+    if (!validate()) return
     setLoading(true)
     try { await onSave(form) } finally { setLoading(false) }
   }
@@ -537,44 +569,71 @@ function AddStudentModal({ onClose, onSave }) {
         </p>
       </div>
       <div className="grid grid-cols-2 gap-4">
+        {/* Name */}
         <div className="col-span-2">
           <label className="label">Student Name *</label>
-          <input className="input" placeholder="Full name" value={form.name}
+          <input className={`input ${errors.name ? 'border-red-400' : ''}`} placeholder="Full name" value={form.name}
             onChange={e => set('name', e.target.value)} />
+          {errors.name && <p className="text-[11px] text-red-500 mt-1">{errors.name}</p>}
         </div>
+
+        {/* Parent */}
         <div>
           <label className="label">Parent Name</label>
           <input className="input" placeholder="Father / Mother name" value={form.parent}
             onChange={e => set('parent', e.target.value)} />
         </div>
+
+        {/* Age */}
+        <div>
+          <label className="label">Age (years) *</label>
+          <input className={`input ${errors.age ? 'border-red-400' : ''}`} type="number" min="1" max="99" placeholder="e.g. 14" value={form.age}
+            onChange={e => set('age', e.target.value)} />
+          {errors.age && <p className="text-[11px] text-red-500 mt-1">{errors.age}</p>}
+        </div>
+
+        {/* Student Phone */}
         <div>
           <label className="label">Student Phone *</label>
-          <input className="input" placeholder="10-digit mobile" value={form.phone}
-            onChange={e => set('phone', e.target.value)} />
+          <div className="flex">
+            <span className="flex items-center px-3 bg-gray-100 border border-gray-200 border-r-0 rounded-l-lg text-sm font-semibold text-gray-600 whitespace-nowrap">+91</span>
+            <input
+              className={`input rounded-l-none flex-1 ${errors.phone ? 'border-red-400' : ''}`}
+              placeholder="10-digit number"
+              maxLength={10}
+              value={form.phone}
+              onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+            />
+          </div>
+          {errors.phone && <p className="text-[11px] text-red-500 mt-1">{errors.phone}</p>}
         </div>
+
+        {/* Parent Phone */}
         <div>
           <label className="label">Parent Phone</label>
-          <input className="input" placeholder="Parent mobile" value={form.parentPhone}
-            onChange={e => set('parentPhone', e.target.value)} />
+          <div className="flex">
+            <span className="flex items-center px-3 bg-gray-100 border border-gray-200 border-r-0 rounded-l-lg text-sm font-semibold text-gray-600 whitespace-nowrap">+91</span>
+            <input
+              className="input rounded-l-none flex-1"
+              placeholder="10-digit number"
+              maxLength={10}
+              value={form.parentPhone}
+              onChange={e => set('parentPhone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+            />
+          </div>
         </div>
+
+        {/* Batch */}
         <div>
-          <label className="label">Age (years)</label>
-          <input className="input" type="number" placeholder="12" value={form.age}
-            onChange={e => set('age', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Sport</label>
-          <select className="input" value={form.sport} onChange={e => set('sport', e.target.value)}>
-            {SPORTS.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">Batch <span className="text-gray-400 font-normal">(optional)</span></label>
-          <select className="input" value={form.batchId} onChange={e => handleBatch(e.target.value)}>
-            <option value="">— No Batch —</option>
+          <label className="label">Batch *</label>
+          <select className={`input ${errors.batchId ? 'border-red-400' : ''}`} value={form.batchId} onChange={e => handleBatch(e.target.value)}>
+            <option value="">— Select Batch —</option>
             {batches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
+          {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
         </div>
+
+        {/* Training Type */}
         <div>
           <label className="label">Training Type</label>
           <div className="flex gap-2">
@@ -587,14 +646,12 @@ function AddStudentModal({ onClose, onSave }) {
             ))}
           </div>
         </div>
+
+        {/* Fee Plan */}
         <div className="col-span-2">
           <label className="label">Fee Plan</label>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
-              { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
-              { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
-            ].map(p => (
+          <div className="grid grid-cols-4 gap-2">
+            {FEE_PLAN_OPTIONS.map(p => (
               <button key={p.key} type="button" onClick={() => handleFeePlan(p.key)}
                 className={`py-2.5 rounded-xl text-xs font-bold border transition ${form.feePlan === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 <div>{p.label}</div>
@@ -603,24 +660,59 @@ function AddStudentModal({ onClose, onSave }) {
             ))}
           </div>
         </div>
+
+        {/* Fee amount */}
         <div>
-          <label className="label">{{ monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *' }[form.feePlan] || 'Fee (₹) *'}</label>
-          <input className="input" type="number" placeholder="e.g. 2000" value={form.fees}
+          <label className="label">{FEE_LABEL[form.feePlan] || 'Fee (₹) *'}</label>
+          <input className={`input ${errors.fees ? 'border-red-400' : ''}`} type="number" placeholder="e.g. 2000" value={form.fees}
             onChange={e => set('fees', e.target.value)} />
+          {errors.fees && <p className="text-[11px] text-red-500 mt-1">{errors.fees}</p>}
         </div>
-        <div>
-          <label className="label">Join Date</label>
-          <input className="input" type="date" value={form.joinDate}
-            max={new Date().toISOString().split('T')[0]}
-            onChange={e => handleJoinDate(e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Paid Till</label>
-          <input className="input" type="month" value={form.paidTill}
-            onChange={e => set('paidTill', e.target.value)} />
-          {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
-        </div>
+
+        {/* Join Date (non-custom) */}
+        {form.feePlan !== 'custom' && (
+          <div>
+            <label className="label">Join Date</label>
+            <input className="input" type="date" value={form.joinDate}
+              max={new Date().toISOString().split('T')[0]}
+              onChange={e => handleJoinDate(e.target.value)} />
+          </div>
+        )}
+
+        {/* Paid Till (non-custom) — month picker */}
+        {form.feePlan !== 'custom' && (
+          <div className="col-span-2">
+            <label className="label">Paid Till</label>
+            <input className="input" type="month" value={form.paidTill}
+              onChange={e => set('paidTill', e.target.value)} />
+            {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
+          </div>
+        )}
+
+        {/* Custom plan: date range */}
+        {form.feePlan === 'custom' && (
+          <div className="col-span-2 bg-brand-50 border border-brand-100 rounded-xl p-4 grid grid-cols-2 gap-4">
+            <div>
+              <label className="label text-brand-700">Join / Start Date</label>
+              <input className="input" type="date"
+                max={new Date().toISOString().split('T')[0]}
+                value={form.joinDate}
+                onChange={e => set('joinDate', e.target.value)} />
+            </div>
+            <div>
+              <label className="label text-brand-700">Paid Till (End Date)</label>
+              <input className="input" type="date"
+                min={form.joinDate || undefined}
+                value={form.paidTill}
+                onChange={e => set('paidTill', e.target.value)} />
+            </div>
+            {preview && (
+              <p className="col-span-2 text-xs text-brand-600 font-semibold -mt-2">Covers: {preview}</p>
+            )}
+          </div>
+        )}
       </div>
+
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
         <button className="btn-primary" onClick={handleSave} disabled={loading}>
@@ -844,21 +936,31 @@ function DeleteStudentModal({ student: s, onClose, onConfirm }) {
 }
 
 function EditStudentModal({ student: s, batches, onClose, onSave }) {
+  // Normalize paidTill to match the input type:
+  // custom → YYYY-MM-DD (pad if YYYY-MM), standard → YYYY-MM (truncate if YYYY-MM-DD)
+  const isCustom = s.feePlan === 'custom'
+  const normPaidTill = s.paidTill
+    ? (isCustom
+        ? (s.paidTill.length === 7 ? s.paidTill + '-01' : s.paidTill.slice(0, 10))
+        : s.paidTill.slice(0, 7))
+    : ''
+
   const [form, setForm] = useState({
     name:         s.name         || '',
     parent:       s.parent       || '',
-    phone:        s.phone        || '',
-    parentPhone:  s.parentPhone  || '',
+    phone:        (s.phone || '').replace(/^\+91/, '').replace(/\D/g, '').slice(0, 10),
+    parentPhone:  (s.parentPhone || '').replace(/^\+91/, '').replace(/\D/g, '').slice(0, 10),
     age:          s.age          || '',
     sport:        s.sport        || SPORTS[0],
     batchId:      s.batchId      || '',
     batchName:    s.batch        || '',
     fees:         s.fees         || '',
-    paidTill:     s.paidTill ? s.paidTill.slice(0, 7) : '',
+    paidTill:     normPaidTill,
     joinDate:     s.joinDate     || '',
     trainingType: s.trainingType || 'Daily',
     feePlan:      s.feePlan      || 'monthly',
   })
+  const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -868,15 +970,30 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
   }
 
   const handleJoinDate = (date) => {
-    setForm(f => ({ ...f, joinDate: date, paidTill: calcPaidTill(date, f.feePlan) }))
+    setForm(f => ({
+      ...f, joinDate: date,
+      paidTill: f.feePlan !== 'custom' ? calcPaidTill(date, f.feePlan) : f.paidTill,
+    }))
   }
 
   const handleFeePlan = (plan) => {
-    setForm(f => ({ ...f, feePlan: plan, paidTill: calcPaidTill(f.joinDate, plan) }))
+    setForm(f => ({
+      ...f, feePlan: plan,
+      paidTill: plan !== 'custom' ? calcPaidTill(f.joinDate, plan) : f.paidTill,
+    }))
+  }
+
+  const validate = () => {
+    const e = {}
+    if (!form.name.trim())                    e.name  = 'Required'
+    if (!/^\d{10}$/.test(form.phone))         e.phone = 'Enter 10-digit number'
+    if (!form.age || Number(form.age) <= 0)   e.age   = 'Required'
+    setErrors(e)
+    return Object.keys(e).length === 0
   }
 
   const handleSave = async () => {
-    if (!form.name || !form.phone) return
+    if (!validate()) return
     setLoading(true)
     try { await onSave(form) } finally { setLoading(false) }
   }
@@ -888,29 +1005,46 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
           <label className="label">Student Name *</label>
-          <input className="input" value={form.name} onChange={e => set('name', e.target.value)} />
+          <input className={`input ${errors.name ? 'border-red-400' : ''}`} value={form.name}
+            onChange={e => set('name', e.target.value)} />
+          {errors.name && <p className="text-[11px] text-red-500 mt-1">{errors.name}</p>}
         </div>
         <div>
           <label className="label">Parent Name</label>
           <input className="input" value={form.parent} onChange={e => set('parent', e.target.value)} />
         </div>
         <div>
+          <label className="label">Age (years) *</label>
+          <input className={`input ${errors.age ? 'border-red-400' : ''}`} type="number" min="1" max="99" value={form.age}
+            onChange={e => set('age', e.target.value)} />
+          {errors.age && <p className="text-[11px] text-red-500 mt-1">{errors.age}</p>}
+        </div>
+        <div>
           <label className="label">Student Phone *</label>
-          <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} />
+          <div className="flex">
+            <span className="flex items-center px-3 bg-gray-100 border border-gray-200 border-r-0 rounded-l-lg text-sm font-semibold text-gray-600 whitespace-nowrap">+91</span>
+            <input
+              className={`input rounded-l-none flex-1 ${errors.phone ? 'border-red-400' : ''}`}
+              placeholder="10-digit number"
+              maxLength={10}
+              value={form.phone}
+              onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+            />
+          </div>
+          {errors.phone && <p className="text-[11px] text-red-500 mt-1">{errors.phone}</p>}
         </div>
         <div>
           <label className="label">Parent Phone</label>
-          <input className="input" value={form.parentPhone} onChange={e => set('parentPhone', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Age (years)</label>
-          <input className="input" type="number" value={form.age} onChange={e => set('age', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Sport</label>
-          <select className="input" value={form.sport} onChange={e => set('sport', e.target.value)}>
-            {SPORTS.map(sp => <option key={sp}>{sp}</option>)}
-          </select>
+          <div className="flex">
+            <span className="flex items-center px-3 bg-gray-100 border border-gray-200 border-r-0 rounded-l-lg text-sm font-semibold text-gray-600 whitespace-nowrap">+91</span>
+            <input
+              className="input rounded-l-none flex-1"
+              placeholder="10-digit number"
+              maxLength={10}
+              value={form.parentPhone}
+              onChange={e => set('parentPhone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+            />
+          </div>
         </div>
         <div>
           <label className="label">Batch</label>
@@ -920,7 +1054,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           </select>
         </div>
         <div>
-          <label className="label">{{ monthly: 'Monthly Fee (₹)', quarterly: 'Quarterly Fee (₹)', yearly: 'Yearly Fee (₹)' }[form.feePlan] || 'Fee (₹)'}</label>
+          <label className="label">{FEE_LABEL[form.feePlan] || 'Fee (₹)'}</label>
           <input className="input" type="number" value={form.fees} onChange={e => set('fees', e.target.value)} />
         </div>
         <div>
@@ -937,12 +1071,8 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
         </div>
         <div className="col-span-2">
           <label className="label">Fee Plan</label>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
-              { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
-              { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
-            ].map(p => (
+          <div className="grid grid-cols-4 gap-2">
+            {FEE_PLAN_OPTIONS.map(p => (
               <button key={p.key} type="button" onClick={() => handleFeePlan(p.key)}
                 className={`py-2.5 rounded-xl text-xs font-bold border transition ${form.feePlan === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 <div>{p.label}</div>
@@ -951,17 +1081,43 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
             ))}
           </div>
         </div>
-        <div>
-          <label className="label">Join Date</label>
-          <input className="input" type="date" value={form.joinDate}
-            max={new Date().toISOString().split('T')[0]}
-            onChange={e => handleJoinDate(e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Paid Till</label>
-          <input className="input" type="month" value={form.paidTill} onChange={e => set('paidTill', e.target.value)} />
-          {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
-        </div>
+
+        {form.feePlan !== 'custom' && (<>
+          <div>
+            <label className="label">Join Date</label>
+            <input className="input" type="date" value={form.joinDate}
+              max={new Date().toISOString().split('T')[0]}
+              onChange={e => handleJoinDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Paid Till</label>
+            <input className="input" type="month" value={form.paidTill}
+              onChange={e => set('paidTill', e.target.value)} />
+            {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
+          </div>
+        </>)}
+
+        {form.feePlan === 'custom' && (
+          <div className="col-span-2 bg-brand-50 border border-brand-100 rounded-xl p-4 grid grid-cols-2 gap-4">
+            <div>
+              <label className="label text-brand-700">Join / Start Date</label>
+              <input className="input" type="date"
+                max={new Date().toISOString().split('T')[0]}
+                value={form.joinDate}
+                onChange={e => set('joinDate', e.target.value)} />
+            </div>
+            <div>
+              <label className="label text-brand-700">Paid Till (End Date)</label>
+              <input className="input" type="date"
+                min={form.joinDate || undefined}
+                value={form.paidTill}
+                onChange={e => set('paidTill', e.target.value)} />
+            </div>
+            {preview && (
+              <p className="col-span-2 text-xs text-brand-600 font-semibold -mt-2">Covers: {preview}</p>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>

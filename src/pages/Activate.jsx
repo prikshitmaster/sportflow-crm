@@ -181,7 +181,7 @@ export default function Activate() {
                 <p className="text-brand-600 font-semibold mb-6">Welcome, {studentName}!</p>
               )}
               <button
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/student-login')}
                 className="w-full btn-primary justify-center py-3"
               >
                 Go to Login <ArrowRight size={16} />
@@ -193,7 +193,7 @@ export default function Activate() {
         {step < 3 && (
           <p className="text-xs text-gray-400 text-center mt-5">
             Already activated?{' '}
-            <Link to="/login" className="text-brand-600 font-semibold hover:underline">Sign in</Link>
+            <Link to="/student-login" className="text-brand-600 font-semibold hover:underline">Sign in</Link>
           </p>
         )}
       </div>

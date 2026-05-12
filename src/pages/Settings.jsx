@@ -139,6 +139,7 @@ function AcademyTab({ user, onSave, saved }) {
 }
 
 function FeePlansTab({ onSave, saved }) {
+  const { suspendAfterDays, updateSuspendAfterDays } = useApp()
   const [plans] = useState([
     { name: 'Cricket / Football', amount: 2500 },
     { name: 'Dance / Martial Arts', amount: 2200 },
@@ -177,6 +178,32 @@ function FeePlansTab({ onSave, saved }) {
           <input className="input" type="number" value={lateFee} onChange={e => setLateFee(e.target.value)} />
         </div>
       </div>
+
+      {/* Auto-suspend grace period */}
+      <div className="mt-6 pt-5 border-t border-gray-100">
+        <label className="label">Auto-Suspend After (days overdue)</label>
+        <p className="text-xs text-gray-400 mb-3">Students are automatically suspended this many days after their Paid Till date passes.</p>
+        <div className="flex flex-wrap gap-2">
+          {[1, 3, 5, 7, 10, 15, 30].map(n => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => updateSuspendAfterDays(n)}
+              className={`px-4 py-2 rounded-xl text-sm font-bold border transition ${
+                suspendAfterDays === n
+                  ? 'bg-brand-600 text-white border-brand-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {n} day{n !== 1 ? 's' : ''}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-brand-600 font-semibold mt-2">
+          Currently: suspend after <strong>{suspendAfterDays} day{suspendAfterDays !== 1 ? 's' : ''}</strong>
+        </p>
+      </div>
+
       <SaveButton onSave={onSave} saved={saved} />
     </div>
   )

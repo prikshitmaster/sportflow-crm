@@ -12,7 +12,9 @@ import {
 } from '../lib/auth'
 import { ALL_PERMISSIONS, ROLE_PRESETS } from '../lib/permissions'
 
-const SPORT_KEY = 'sf_selected_sport'
+const SPORT_KEY   = 'sf_selected_sport'
+const SUSPEND_KEY = 'sf_suspend_days'
+const getSuspendDays = () => Number(localStorage.getItem(SUSPEND_KEY) || 3)
 
 const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -57,6 +59,12 @@ export function AppProvider({ children }) {
       if (sport) localStorage.setItem(SPORT_KEY, sport)
       else       localStorage.removeItem(SPORT_KEY)
     } catch {}
+  }, [])
+
+  const [suspendAfterDays, setSuspendAfterDaysState] = useState(getSuspendDays)
+  const updateSuspendAfterDays = useCallback((n) => {
+    localStorage.setItem(SUSPEND_KEY, String(n))
+    setSuspendAfterDaysState(n)
   }, [])
 
   // ── Data state ─────────────────────────────────────────
@@ -105,15 +113,16 @@ export function AppProvider({ children }) {
       setBatches(b);  setStaff(st);   setAnnouncements(a)
       setEvents(ev)
 
-      // Auto-suspend overdue students after 3-day grace period
+      // Auto-suspend overdue students after configurable grace period
       const now = new Date()
       try {
+        const graceDays = getSuspendDays()
         const todayStr  = now.toISOString().split('T')[0]
         const toSuspend = s.filter(x => {
           if (x.status !== 'Active' || !x.paidTill) return false
           const diffMs   = now - new Date(x.paidTill + 'T00:00:00')
           const diffDays = Math.floor(diffMs / 86400000)
-          return diffDays >= 3
+          return diffDays >= graceDays
         })
         if (toSuspend.length > 0) {
           await Promise.all(toSuspend.map(async (student) => {
@@ -363,10 +372,10 @@ export function AppProvider({ children }) {
         trainingType:   created.training_type || 'Daily',
         feePlan:        created.fee_plan || 'monthly',
       }
-      // Immediately suspend if paidTill is already 3+ days expired
+      // Immediately suspend if paidTill is already past the grace period
       const addNow  = new Date()
       const addDiff = paidTill ? Math.floor((addNow - new Date(paidTill + 'T00:00:00')) / 86400000) : 0
-      if (addDiff >= 3) {
+      if (addDiff >= getSuspendDays()) {
         try {
           await db.suspendStudent(created.id)
           mapped.status = 'Suspended'
@@ -965,6 +974,7 @@ export function AppProvider({ children }) {
       // staff portal management
       inviteStaff, updateStaffAccess, revokeStaffAccess,
       toast, showToast,
+      suspendAfterDays, updateSuspendAfterDays,
     }}>
       {children}
       {toast && <Toast message={toast.message} type={toast.type} />}
