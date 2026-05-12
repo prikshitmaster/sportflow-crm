@@ -252,17 +252,19 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
   const isEdit = !!initialData
   const defaultSports = initialData?.sports ?? (selectedSport && selectedSport !== 'All' ? [selectedSport] : [])
   const [form, setForm] = useState({
-    name:      initialData?.name      || '',
-    code:      initialData?.code      || '',
-    startTime: initialData?.startTime || '',
-    endTime:   initialData?.endTime   || '',
-    sports:    defaultSports,
-    coach:     initialData?.coach     || staff[0]?.name || '',
-    capacity:  initialData?.capacity  || 20,
-    days:      initialData?.days      || [],
-    ageMin:    initialData?.ageMin    ?? 0,
-    ageMax:    initialData?.ageMax    ?? 99,
-    ground:    initialData?.ground    || '',
+    name:        initialData?.name        || '',
+    code:        initialData?.code        || '',
+    startTime:   initialData?.startTime   || '',
+    endTime:     initialData?.endTime     || '',
+    sports:      defaultSports,
+    coach:       initialData?.coach       || staff[0]?.name || '',
+    capacity:    initialData?.capacity    || 20,
+    days:        initialData?.days        || [],
+    ageMin:      initialData?.ageMin      ?? 0,
+    ageMax:      initialData?.ageMax      ?? 99,
+    ground:      initialData?.ground      || '',
+    defaultFee:  initialData?.defaultFee  || 0,
+    defaultPlan: initialData?.defaultPlan || 'monthly',
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -346,6 +348,30 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
         <div>
           <label className="label">Maximum Capacity</label>
           <input className="input" type="number" min={1} value={form.capacity} onChange={e => set('capacity', Number(e.target.value))} />
+        </div>
+
+        {/* Default Fee Plan */}
+        <div className="pt-4 border-t border-gray-100">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Default Fee Plan</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Default Fee (₹/month)</label>
+              <input className="input" type="number" min={0} placeholder="e.g. 2500"
+                value={form.defaultFee}
+                onChange={e => set('defaultFee', Number(e.target.value))} />
+              <p className="text-[11px] text-gray-400 mt-1">Auto-fills when adding a student</p>
+            </div>
+            <div>
+              <label className="label">Training Type</label>
+              <select className="input" value={form.defaultPlan} onChange={e => set('defaultPlan', e.target.value)}>
+                <option value="daily">Daily</option>
+                <option value="alternate">Alternate Day</option>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
       <div className="flex justify-end gap-3 mt-6">

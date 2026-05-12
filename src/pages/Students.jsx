@@ -534,7 +534,13 @@ function AddStudentModal({ onClose, onSave }) {
 
   const handleBatch = (id) => {
     const b = batches.find(b => String(b.id) === id)
-    setForm(f => ({ ...f, batchId: id ? Number(id) : '', batchName: b ? b.name : '' }))
+    setForm(f => ({
+      ...f,
+      batchId:   id ? Number(id) : '',
+      batchName: b ? b.name : '',
+      ...(b?.defaultFee  ? { fees: b.defaultFee }    : {}),
+      ...(b?.defaultPlan ? { feePlan: b.defaultPlan } : {}),
+    }))
   }
 
   const handleJoinDate = (date) => {

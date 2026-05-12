@@ -283,21 +283,23 @@ export async function fetchBatches(academyId) {
     throw error
   }
   return data.map(row => ({
-    id:        row.id,
-    name:      row.name,
-    code:      row.code      || null,
-    time:      row.time,
-    sports:    row.sports    || [],
-    coach:     row.coach,
-    capacity:  row.capacity,
-    enrolled:  row.enrolled,
-    waitlist:  row.waitlist,
-    days:      row.days      || [],
-    startTime: row.start_time,
-    endTime:   row.end_time,
-    ageMin:    row.age_min,
-    ageMax:    row.age_max,
-    ground:    row.ground    || null,
+    id:          row.id,
+    name:        row.name,
+    code:        row.code        || null,
+    time:        row.time,
+    sports:      row.sports      || [],
+    coach:       row.coach,
+    capacity:    row.capacity,
+    enrolled:    row.enrolled,
+    waitlist:    row.waitlist,
+    days:        row.days        || [],
+    startTime:   row.start_time,
+    endTime:     row.end_time,
+    ageMin:      row.age_min,
+    ageMax:      row.age_max,
+    ground:      row.ground      || null,
+    defaultFee:  row.default_fee  || 0,
+    defaultPlan: row.default_plan || 'monthly',
   }))
 }
 
@@ -696,21 +698,23 @@ export async function insertBatchV2(b) {
   const { data, error } = await supabase
     .from('batches')
     .insert({
-      name:       b.name,
-      code:       b.code || null,
-      time:       b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
-      sports:     b.sports   || [],
-      coach:      b.coach,
-      capacity:   Number(b.capacity),
-      enrolled:   0,
-      waitlist:   0,
-      days:       b.days     || [],
-      start_time: b.startTime || null,
-      end_time:   b.endTime   || null,
-      age_min:    Number(b.ageMin) || 0,
-      age_max:    Number(b.ageMax) || 99,
-      ground:     b.ground || null,
-      academy_id: b.academyId || null,
+      name:         b.name,
+      code:         b.code || null,
+      time:         b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
+      sports:       b.sports   || [],
+      coach:        b.coach,
+      capacity:     Number(b.capacity),
+      enrolled:     0,
+      waitlist:     0,
+      days:         b.days     || [],
+      start_time:   b.startTime || null,
+      end_time:     b.endTime   || null,
+      age_min:      Number(b.ageMin) || 0,
+      age_max:      Number(b.ageMax) || 99,
+      ground:       b.ground || null,
+      default_fee:  Number(b.defaultFee)  || 0,
+      default_plan: b.defaultPlan         || 'monthly',
+      academy_id:   b.academyId || null,
     })
     .select()
     .single()
@@ -754,6 +758,14 @@ export async function insertAnnouncement(a) {
   return { ...a, id: data.id, date: data.date }
 }
 
+export async function updateBatchFee(batchId, defaultFee, defaultPlan) {
+  const { error } = await supabase
+    .from('batches')
+    .update({ default_fee: Number(defaultFee) || 0, default_plan: defaultPlan || 'monthly' })
+    .eq('id', batchId)
+  if (error) throw error
+}
+
 export async function updateBatchCoach(batchId, coachName) {
   const { error } = await supabase
     .from('batches')
@@ -766,18 +778,20 @@ export async function updateBatch(batchId, b) {
   const { data, error } = await supabase
     .from('batches')
     .update({
-      name:       b.name,
-      code:       b.code || null,
-      time:       b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
-      sports:     b.sports   || [],
-      coach:      b.coach,
-      capacity:   Number(b.capacity),
-      days:       b.days     || [],
-      start_time: b.startTime || null,
-      end_time:   b.endTime   || null,
-      age_min:    Number(b.ageMin) || 0,
-      age_max:    Number(b.ageMax) || 99,
-      ground:     b.ground || null,
+      name:         b.name,
+      code:         b.code || null,
+      time:         b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
+      sports:       b.sports   || [],
+      coach:        b.coach,
+      capacity:     Number(b.capacity),
+      days:         b.days     || [],
+      start_time:   b.startTime || null,
+      end_time:     b.endTime   || null,
+      age_min:      Number(b.ageMin) || 0,
+      age_max:      Number(b.ageMax) || 99,
+      ground:       b.ground || null,
+      default_fee:  Number(b.defaultFee)  || 0,
+      default_plan: b.defaultPlan         || 'monthly',
     })
     .eq('id', batchId)
     .select()

@@ -704,10 +704,23 @@ export function AppProvider({ children }) {
         days: created.days || [], startTime: created.start_time,
         endTime: created.end_time, ageMin: created.age_min, ageMax: created.age_max,
         ground: created.ground || null,
+        defaultFee: created.default_fee || 0, defaultPlan: created.default_plan || 'monthly',
       }])
       showToast('Batch created')
     } catch (err) {
       showToast(err.message || 'Failed to create batch', 'error')
+    }
+  }
+
+  const updateBatchFee = async (batchId, defaultFee, defaultPlan) => {
+    try {
+      await db.updateBatchFee(batchId, defaultFee, defaultPlan)
+      setBatches(prev => prev.map(b => b.id === batchId
+        ? { ...b, defaultFee: Number(defaultFee) || 0, defaultPlan: defaultPlan || 'monthly' }
+        : b))
+      showToast('Batch fee updated')
+    } catch (err) {
+      showToast(err.message || 'Failed', 'error')
     }
   }
 
@@ -732,6 +745,7 @@ export function AppProvider({ children }) {
         days: updated.days || [], startTime: updated.start_time,
         endTime: updated.end_time, ageMin: updated.age_min, ageMax: updated.age_max,
         ground: updated.ground || null,
+        defaultFee: updated.default_fee || 0, defaultPlan: updated.default_plan || 'monthly',
       } : existing))
       showToast('Batch updated')
       return updated
@@ -966,7 +980,7 @@ export function AppProvider({ children }) {
       students: filteredStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments: filteredPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
       trials: filteredTrials, addTrial, updateTrialStatus,
-      batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch,
+      batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee,
       events, addEvent, updateEventStatus, removeEvent,
       staff: filteredStaff, addStaffMember,
       branches, addBranch, removeBranch,

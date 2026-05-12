@@ -138,35 +138,83 @@ function AcademyTab({ user, onSave, saved }) {
   )
 }
 
+const PLAN_LABEL = { daily: 'Daily', alternate: 'Alternate Day', monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly' }
+const PLAN_COLOR = { daily: 'bg-purple-100 text-purple-700', alternate: 'bg-blue-100 text-blue-700', monthly: 'bg-emerald-100 text-emerald-700', quarterly: 'bg-amber-100 text-amber-700', yearly: 'bg-rose-100 text-rose-700' }
+
 function FeePlansTab({ onSave, saved }) {
-  const { suspendAfterDays, updateSuspendAfterDays } = useApp()
-  const [plans] = useState([
-    { name: 'Cricket / Football', amount: 2500 },
-    { name: 'Dance / Martial Arts', amount: 2200 },
-    { name: 'Badminton / Basketball', amount: 1800 },
-    { name: 'Tennis', amount: 3000 },
-    { name: 'Swimming (new)', amount: 3500 },
-  ])
-  const [dueDay, setDueDay] = useState('10')
+  const { suspendAfterDays, updateSuspendAfterDays, allBatches, updateBatchFee } = useApp()
+  const [editing, setEditing] = useState({}) // batchId → { fee, plan }
+  const [dueDay,  setDueDay]  = useState('10')
   const [lateFee, setLateFee] = useState('200')
+
+  const startEdit = (b) => setEditing(prev => ({
+    ...prev,
+    [b.id]: { fee: b.defaultFee || 0, plan: b.defaultPlan || 'monthly' }
+  }))
+  const cancelEdit = (id) => setEditing(prev => { const n = { ...prev }; delete n[id]; return n })
+  const saveEdit = async (b) => {
+    const e = editing[b.id]
+    if (!e) return
+    await updateBatchFee(b.id, e.fee, e.plan)
+    cancelEdit(b.id)
+  }
 
   return (
     <div>
-      <SectionHeader title="Fee Plans" desc="Set monthly fee amounts per sport category" />
-      <div className="space-y-3 mb-6">
-        {plans.map(p => (
-          <div key={p.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-            <span className="text-sm font-medium text-gray-700">{p.name}</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">₹</span>
-              <input
-                className="w-20 input text-right py-1.5"
-                defaultValue={p.amount}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+      <SectionHeader title="Fee Plans" desc="Set default fee and training type per batch. Auto-fills when adding students." />
+
+      {allBatches.length === 0 ? (
+        <p className="text-sm text-gray-400 mb-6">No batches yet — create batches first to set their default fees.</p>
+      ) : (
+        <div className="space-y-2 mb-6">
+          {allBatches.map(b => {
+            const e = editing[b.id]
+            return (
+              <div key={b.id} className="p-3 bg-gray-50 rounded-xl">
+                {e ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-gray-800">{b.name}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="label text-[11px]">Fee (₹/month)</label>
+                        <input className="input py-1.5 text-sm" type="number" min={0}
+                          value={e.fee} onChange={ev => setEditing(prev => ({ ...prev, [b.id]: { ...prev[b.id], fee: Number(ev.target.value) } }))} />
+                      </div>
+                      <div>
+                        <label className="label text-[11px]">Training Type</label>
+                        <select className="input py-1.5 text-sm" value={e.plan}
+                          onChange={ev => setEditing(prev => ({ ...prev, [b.id]: { ...prev[b.id], plan: ev.target.value } }))}>
+                          {Object.entries(PLAN_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="btn-primary text-xs py-1.5 px-3" onClick={() => saveEdit(b)}>Save</button>
+                      <button className="btn-secondary text-xs py-1.5 px-3" onClick={() => cancelEdit(b.id)}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{b.name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${PLAN_COLOR[b.defaultPlan] || PLAN_COLOR.monthly}`}>
+                          {PLAN_LABEL[b.defaultPlan] || 'Monthly'}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {b.defaultFee ? `₹${b.defaultFee.toLocaleString('en-IN')}/month` : 'No fee set'}
+                        </span>
+                      </div>
+                    </div>
+                    <button onClick={() => startEdit(b)} className="text-xs text-brand-600 font-semibold hover:underline">Edit</button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="label">Fee Due Day (each month)</label>

@@ -422,6 +422,21 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
       })()
     : null
 
+  // Mismatch warnings
+  const PLAN_LABELS = { daily: 'Daily', alternate: 'Alternate Day', monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly', custom: 'Custom' }
+  const studentPlan = selectedStudent?.feePlan || 'monthly'
+  const planMismatch = form.studentId && selectedStudent && !isSuspended
+    && form.paymentType !== studentPlan
+    && !['custom'].includes(form.paymentType)
+    && !['custom'].includes(studentPlan)
+  // Amount looks like a different plan's multiple
+  const monthlyFee = selectedStudent?.fees || 0
+  const amountMismatch = form.studentId && form.paymentType === 'monthly' && monthlyFee > 0
+    && (finalAmount === monthlyFee * 3 || finalAmount === monthlyFee * 12)
+  const amountMismatchMsg = finalAmount === monthlyFee * 3
+    ? `Amount ₹${finalAmount.toLocaleString('en-IN')} = 3 months — did you mean Quarterly?`
+    : `Amount ₹${finalAmount.toLocaleString('en-IN')} = 12 months — did you mean Yearly?`
+
   const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const coverageBase = advanceStart ? new Date(advanceStart + 'T00:00:00') : new Date(paymentDate + 'T00:00:00')
   const coverageEnd  = new Date(coverageBase.getFullYear(), coverageBase.getMonth() + months, 0)
@@ -434,9 +449,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
       }`
 
   const PLAN_OPTS = [
-    { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
-    { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
-    { key: 'yearly',    label: 'Yearly',    sub: '12 months' },
+    { key: 'daily',     label: 'Daily',     sub: 'daily'      },
+    { key: 'alternate', label: 'Alternate', sub: 'alt. day'   },
+    { key: 'monthly',   label: 'Monthly',   sub: '1 month'    },
+    { key: 'quarterly', label: 'Quarterly', sub: '3 months'   },
+    { key: 'yearly',    label: 'Yearly',    sub: '12 months'  },
     { key: 'custom',    label: 'Custom',    sub: 'any months' },
   ]
 
@@ -483,12 +500,20 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
               {' '}· Advance payment starting <strong>{new Date(advanceStart + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</strong>
             </div>
           )}
+          {planMismatch && (
+            <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700 flex items-start gap-1.5">
+              <span className="text-base leading-none mt-0.5">⚠</span>
+              <span>
+                Student's plan is <strong>{PLAN_LABELS[studentPlan]}</strong> but you selected <strong>{PLAN_LABELS[form.paymentType]}</strong> — are you sure?
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Payment plan pills */}
         <div>
           <label className="label">Payment Plan</label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {PLAN_OPTS.map(pt => (
               <button key={pt.key} type="button"
                 onClick={() => { setAmountOverride(null); setForm(f => ({ ...f, paymentType: pt.key })) }}
@@ -589,6 +614,12 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
               onChange={e => setAmountOverride(Number(e.target.value))}
             />
           </div>
+          {amountMismatch && (
+            <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 text-xs text-amber-700">
+              <span className="text-base leading-none mt-0.5">⚠</span>
+              <span>{amountMismatchMsg}</span>
+            </div>
+          )}
         </div>
 
         {/* Batch */}
