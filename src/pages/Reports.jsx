@@ -212,7 +212,10 @@ function OverviewTab({ students, payments, trials, batches }) {
   const suspCount     = students.filter(s => s.status === 'Suspended').length
   const collected     = periodPay.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
   const prevCollected = prevPay.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
-  const outstanding   = payments.filter(p => p.status !== 'Paid').reduce((s, p) => s + p.amount, 0)
+  const firstOfMonthStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
+  const outstanding   = students
+    .filter(s => (s.status === 'Active' || s.status === 'Suspended') && s.paidTill && s.paidTill < firstOfMonthStr)
+    .reduce((sum, s) => sum + (s.fees || 0), 0)
   const convRate      = trials.length ? pct(trials.filter(t => t.converted).length, trials.length) : 0
   const forecast      = students.filter(s => s.status === 'Active').reduce((s, st) => s + (st.fees || 0), 0)
   const collRate      = pct(collected, forecast)
@@ -266,7 +269,7 @@ function OverviewTab({ students, payments, trials, batches }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Active Students"    value={activeCount}      sub={`${suspCount} suspended`}  icon={Users}       color="text-brand-700"    bg="bg-brand-50" />
         <KpiCard label={`Collected — ${MONTH_OPTS.find(m=>m.value===period)?.label}`} value={INR(collected)} sub={`${collRate}% of forecast`} icon={TrendingUp}  color="text-emerald-700" bg="bg-emerald-50" trend={collected} prevValue={prevCollected} />
-        <KpiCard label="Total Outstanding"  value={INR(outstanding)} sub="all overdue + pending"    icon={CreditCard}  color="text-red-600"     bg="bg-red-50" />
+        <KpiCard label="Total Outstanding"  value={INR(outstanding)} sub={`${overdueStudents.length} students overdue`} icon={CreditCard}  color="text-red-600"     bg="bg-red-50" />
         <KpiCard label="Monthly Forecast"   value={INR(forecast)}    sub="active students × fee"    icon={Target}      color="text-purple-700"  bg="bg-purple-50" />
       </div>
 
@@ -426,7 +429,7 @@ function FinancialTab({ payments, students }) {
           {MONTH_OPTS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
         </Sel>
         <Sel value={statusFilter} onChange={setStatusFilter} className="ml-2">
-          {['All','Paid','Pending','Overdue'].map(s => <option key={s} value={s}>{s}</option>)}
+          {['All','Paid'].map(s => <option key={s} value={s}>{s}</option>)}
         </Sel>
         <div className="relative ml-2">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
