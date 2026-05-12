@@ -353,102 +353,137 @@ function OverviewTab({ students, payments, trials, batches }) {
 // ── Financial Ledger ──────────────────────────────────────
 
 function FinancialTab({ payments, students }) {
-  const [fromMonth,   setFromMonth]   = useState(MONTH_OPTS[0].value)
-  const [toMonth,     setToMonth]     = useState(MONTH_OPTS[0].value)
-  const [statusFilter, setStatusFilter] = useState('All')
-  const [search,      setSearch]      = useState('')
+  // Receivables state
+  const [period,     setPeriod]    = useState(MONTH_OPTS[0].value)
+  const [recStatus,  setRecStatus] = useState('All')
+  const [recSearch,  setRecSearch] = useState('')
+  const [showCount,  setShowCount] = useState(25)
+  // Transactions state
+  const [showTx,     setShowTx]    = useState(false)
+  const [fromMonth,  setFromMonth] = useState(MONTH_OPTS[0].value)
+  const [toMonth,    setToMonth]   = useState(MONTH_OPTS[0].value)
+  const [txSearch,   setTxSearch]  = useState('')
 
   const studentMap = useMemo(() => {
-    const m = {}
-    students.forEach(s => { m[s.id] = s })
-    return m
+    const m = {}; students.forEach(s => { m[s.id] = s }); return m
   }, [students])
 
+  const [yr, mo] = period.split('-').map(Number)
+  const lastDayM   = new Date(yr, mo, 0).getDate()
+  const firstDayStr = `${yr}-${String(mo).padStart(2,'0')}-01`
+  const lastDayStr  = `${yr}-${String(mo).padStart(2,'0')}-${String(lastDayM).padStart(2,'0')}`
+
+  // Build accounts-receivable rows
+  const receivables = useMemo(() => {
+    return students
+      .filter(s => s.status === 'Active' || s.status === 'Suspended')
+      .map(s => {
+        const isPaid    = s.paidTill != null && s.paidTill >= lastDayStr
+        const isOverdue = s.paidTill == null || s.paidTill < firstDayStr
+        const noPayment = s.paidTill == null
+        const status    = noPayment ? 'No Payment' : isPaid ? 'Paid' : 'Overdue'
+        const monthPays = payments.filter(p => String(p.studentId) === String(s.id) && monthKey(p.date) === period)
+        const collected = monthPays.reduce((sum, p) => sum + p.amount, 0)
+        return { s, isPaid, isOverdue, status, outstanding: isPaid ? 0 : (s.fees || 0), collected }
+      })
+      .sort((a, b) => {
+        const rank = { Overdue: 0, 'No Payment': 1, Paid: 2 }
+        const rd = (rank[a.status] ?? 3) - (rank[b.status] ?? 3)
+        if (rd !== 0) return rd
+        if (a.status === 'Overdue') {
+          if (a.s.status === 'Suspended' && b.s.status !== 'Suspended') return -1
+          if (b.s.status === 'Suspended' && a.s.status !== 'Suspended') return  1
+        }
+        return a.s.name.localeCompare(b.s.name)
+      })
+  }, [students, payments, period, firstDayStr, lastDayStr])
+
+  const filteredRec = useMemo(() => receivables.filter(r => {
+    const matchS = recStatus === 'All' || r.status === recStatus
+    const q = recSearch.toLowerCase()
+    const matchQ = !q || r.s.name.toLowerCase().includes(q) || (r.s.studentCode||'').toLowerCase().includes(q) || (r.s.batch||'').toLowerCase().includes(q)
+    return matchS && matchQ
+  }), [receivables, recStatus, recSearch])
+
+  const expected     = students.filter(s => s.status === 'Active').reduce((sum, s) => sum + (s.fees || 0), 0)
+  const recCollected = payments.filter(p => monthKey(p.date) === period).reduce((sum, p) => sum + p.amount, 0)
+  const recOutstanding = receivables.filter(r => !r.isPaid).reduce((sum, r) => sum + (r.s.fees || 0), 0)
+  const rate         = pct(recCollected, expected)
+
+  const paidCount    = receivables.filter(r => r.status === 'Paid').length
+  const overdueCount = receivables.filter(r => r.status === 'Overdue').length
+
+  // Transactions
   const from = fromMonth < toMonth ? fromMonth : toMonth
   const to   = fromMonth < toMonth ? toMonth   : fromMonth
-
-  const filtered = useMemo(() => payments
-    .filter(p => {
-      const mk = monthKey(p.date)
-      const inRange = mk >= from && mk <= to
-      const matchS  = statusFilter === 'All' || p.status === statusFilter
-      const matchQ  = !search || (p.student||'').toLowerCase().includes(search.toLowerCase()) || (p.id||'').toLowerCase().includes(search.toLowerCase())
-      return inRange && matchS && matchQ
-    })
+  const txFiltered = useMemo(() => payments
+    .filter(p => { const mk = monthKey(p.date); return mk >= from && mk <= to && (!txSearch || (p.student||'').toLowerCase().includes(txSearch.toLowerCase()) || (p.id||'').toLowerCase().includes(txSearch.toLowerCase())) })
     .sort((a, b) => (b.date||'').localeCompare(a.date||''))
-  , [payments, from, to, statusFilter, search])
+  , [payments, from, to, txSearch])
 
-  const billed    = filtered.reduce((s, p) => s + p.amount, 0)
-  const collected = filtered.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
-  const outstanding = filtered.filter(p => p.status !== 'Paid').reduce((s, p) => s + p.amount, 0)
-  const rate = pct(collected, billed)
-
-  // Group by month for monthly subtotals
-  const grouped = useMemo(() => {
-    const map = {}
-    filtered.forEach(p => {
-      const mk = monthKey(p.date)
-      if (!map[mk]) map[mk] = []
-      map[mk].push(p)
-    })
-    return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]))
-  }, [filtered])
-
-  const handleExport = () => {
-    const headers = ['Date','Invoice','Student','Batch','Period','Mode','Amount','Status','Notes']
-    const rows = filtered.map(p => {
-      const stu = studentMap[p.studentId]
-      return [
-        p.date || '', p.id || '', p.student || '', stu?.batch || '',
-        p.month || '', p.mode || '', p.amount || 0, p.status || '', p.notes || '',
-      ]
-    })
-    downloadCSV(headers, rows, `financial-${from}-to-${to}.csv`)
+  const handleExportRec = () => {
+    const headers = ['Student','Student Code','Batch','Sport','Expected Fee','Collected This Month','Outstanding','Status','Paid Till']
+    downloadCSV(headers, filteredRec.map(({ s, collected, outstanding, status }) => [
+      s.name, s.studentCode||'', s.batch||'', s.sport||'', s.fees||0, collected, outstanding, status, s.paidTill||''
+    ]), `receivables-${period}.csv`)
   }
 
-  const cols = [
-    { key: 'date',    label: 'Date',        w: '100px' },
-    { key: 'inv',     label: 'Invoice',     w: '130px' },
-    { key: 'student', label: 'Student',     w: '1.5fr' },
-    { key: 'period',  label: 'Period',      w: '1fr'   },
-    { key: 'mode',    label: 'Mode',        w: '80px'  },
-    { key: 'amount',  label: 'Amount',      w: '110px', right: true },
-    { key: 'status',  label: 'Status',      w: '90px'  },
+  const handleExportTx = () => {
+    const headers = ['Date','Invoice','Student','Batch','Period','Mode','Amount','Notes']
+    downloadCSV(headers, txFiltered.map(p => {
+      const stu = studentMap[p.studentId]
+      return [p.date||'', p.id||'', p.student||'', stu?.batch||'', p.month||'', p.mode||'', p.amount||0, p.notes||'']
+    }), `transactions-${from}-to-${to}.csv`)
+  }
+
+  const recCols = [
+    { key: 'student',     label: 'Student',       w: '2fr'   },
+    { key: 'batch',       label: 'Batch',         w: '1.5fr' },
+    { key: 'expected',    label: 'Expected',      w: '110px', right: true },
+    { key: 'collected',   label: 'Collected',     w: '110px', right: true },
+    { key: 'outstanding', label: 'Outstanding',   w: '115px', right: true },
+    { key: 'paidtill',    label: 'Paid Till',     w: '110px' },
+    { key: 'status',      label: 'Status',        w: '110px' },
+  ]
+  const txCols = [
+    { key: 'date',    label: 'Date',    w: '100px' },
+    { key: 'inv',     label: 'Invoice', w: '130px' },
+    { key: 'student', label: 'Student', w: '1.5fr' },
+    { key: 'period',  label: 'Period',  w: '1fr'   },
+    { key: 'mode',    label: 'Mode',    w: '80px'  },
+    { key: 'amount',  label: 'Amount',  w: '110px', right: true },
   ]
 
   return (
     <div className="space-y-5">
-      {/* Filters */}
+
+      {/* ── Receivables filters ─────────────────────── */}
       <FilterBar>
-        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">From</span>
-        <Sel value={fromMonth} onChange={setFromMonth}>
-          {MONTH_OPTS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">Month</span>
+        <Sel value={period} onChange={v => { setPeriod(v); setShowCount(25) }}>
+          {MONTH_OPTS.slice(0, 12).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
         </Sel>
-        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">To</span>
-        <Sel value={toMonth} onChange={setToMonth}>
-          {MONTH_OPTS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+        <Sel value={recStatus} onChange={setRecStatus} className="ml-1">
+          {['All','Paid','Overdue','No Payment'].map(s => <option key={s} value={s}>{s}</option>)}
         </Sel>
-        <Sel value={statusFilter} onChange={setStatusFilter} className="ml-2">
-          {['All','Paid'].map(s => <option key={s} value={s}>{s}</option>)}
-        </Sel>
-        <div className="relative ml-2">
+        <div className="relative ml-1">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input className="text-xs bg-white border border-gray-200 rounded-lg pl-7 pr-3 py-1.5 text-gray-700 focus:outline-none focus:border-brand-400 w-44"
-            placeholder="Search student / invoice…" value={search} onChange={e => setSearch(e.target.value)} />
+            placeholder="Search student / batch…" value={recSearch} onChange={e => { setRecSearch(e.target.value); setShowCount(25) }} />
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-gray-400">{filtered.length} entries</span>
-          <ExportBtn onClick={handleExport} />
+          <span className="text-xs text-gray-400">{filteredRec.length} students</span>
+          <ExportBtn onClick={handleExportRec} />
         </div>
       </FilterBar>
 
-      {/* Summary strip */}
+      {/* ── KPI cards ───────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Total Billed',    value: INR(billed),      color: 'text-gray-900'    },
-          { label: 'Collected',       value: INR(collected),   color: 'text-emerald-700' },
-          { label: 'Outstanding',     value: INR(outstanding), color: 'text-red-600'     },
-          { label: 'Collection Rate', value: `${rate}%`,       color: rate >= 80 ? 'text-emerald-700' : rate >= 60 ? 'text-amber-600' : 'text-red-600' },
+          { label: 'Expected',        value: INR(expected),       color: 'text-gray-900'    },
+          { label: 'Collected',       value: INR(recCollected),   color: 'text-emerald-700' },
+          { label: 'Outstanding',     value: INR(recOutstanding), color: 'text-red-600'     },
+          { label: 'Collection Rate', value: `${rate}%`,          color: rate >= 80 ? 'text-emerald-700' : rate >= 60 ? 'text-amber-600' : 'text-red-600' },
         ].map(k => (
           <div key={k.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{k.label}</p>
@@ -457,62 +492,180 @@ function FinancialTab({ payments, students }) {
         ))}
       </div>
 
-      {/* Ledger */}
+      {/* ── Accounts Receivable table ───────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <TableHead cols={cols} />
+        {/* Table header bar */}
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-sm font-black text-gray-800 uppercase tracking-wide">
+              Accounts Receivable
+              <span className="ml-2 text-[11px] font-semibold text-gray-400 normal-case tracking-normal">
+                {MONTH_OPTS.find(m => m.value === period)?.label}
+              </span>
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">{receivables.length} students · {overdueCount} overdue · {paidCount} paid</p>
+          </div>
+          <div className="flex gap-4 text-xs">
+            <span className="flex items-center gap-1.5 text-emerald-600 font-semibold">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"/>
+              {paidCount} Paid
+            </span>
+            <span className="flex items-center gap-1.5 text-red-500 font-semibold">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"/>
+              {overdueCount} Overdue
+            </span>
+            <span className="flex items-center gap-1.5 text-gray-400 font-semibold">
+              <span className="w-2.5 h-2.5 rounded-full bg-gray-300 inline-block"/>
+              {receivables.filter(r => r.status === 'No Payment').length} No Record
+            </span>
+          </div>
+        </div>
 
-        {filtered.length === 0 ? (
+        <TableHead cols={recCols} />
+
+        {filteredRec.length === 0 ? (
           <div className="py-16 text-center">
             <BookOpen size={28} className="text-gray-200 mx-auto mb-2" />
-            <p className="text-sm text-gray-400">No records for this period</p>
+            <p className="text-sm text-gray-400">No students match this filter</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-50">
-            {grouped.map(([mk, rows]) => {
-              const mLabel = (() => { const [y,m] = mk.split('-'); return `${MONTHS[Number(m)-1]} ${y}` })()
-              const mTotal = rows.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
-              return (
-                <div key={mk}>
-                  {/* Month group header */}
-                  <div className="grid gap-3 px-4 py-2 bg-gray-50/80 border-y border-gray-100 text-[11px] font-bold text-gray-600 uppercase tracking-wide"
-                    style={{ gridTemplateColumns: cols.map(c => c.w || '1fr').join(' ') }}>
-                    <span className="col-span-5">{mLabel} — {rows.length} entries</span>
-                    <span className="text-right text-emerald-700 tabular-nums">{INR(mTotal)}</span>
-                    <span />
-                  </div>
-                  {rows.map((p, i) => (
-                    <div key={p.id || i}
-                      className="grid gap-3 px-4 py-3 items-center hover:bg-brand-50/30 transition text-sm"
-                      style={{ gridTemplateColumns: cols.map(c => c.w || '1fr').join(' ') }}>
-                      <span className="text-xs text-gray-500 font-mono">
-                        {p.date ? new Date(p.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'}) : '—'}
-                      </span>
-                      <span className="text-xs text-gray-400 font-mono truncate">{p.id || '—'}</span>
-                      <div className="min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">{p.student}</p>
-                        {p.notes && <p className="text-[11px] text-gray-400 truncate">{p.notes}</p>}
-                      </div>
-                      <span className="text-xs text-gray-500 truncate">{p.month || '—'}</span>
-                      <span className="text-xs text-gray-500">{p.mode || '—'}</span>
-                      <span className="font-bold text-gray-900 text-right tabular-nums">{INR(p.amount)}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center justify-center w-fit ${STATUS_CHIP[p.status] || 'bg-gray-100 text-gray-500'}`}>
-                        {p.status}
-                      </span>
+          <>
+            <div className="divide-y divide-gray-50">
+              {filteredRec.slice(0, showCount).map(({ s, isPaid, status, outstanding, collected }) => {
+                const isSusp = s.status === 'Suspended'
+                const chipCls = status === 'Paid'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : status === 'No Payment'
+                  ? 'bg-gray-100 text-gray-500 border-gray-200'
+                  : isSusp
+                  ? 'bg-red-50 text-red-600 border-red-200'
+                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                const chipLabel = status === 'Overdue' && isSusp ? 'Suspended' : status
+                return (
+                  <div key={s.id}
+                    className={`grid gap-3 px-4 py-3.5 items-center transition hover:bg-gray-50/50 ${!isPaid && isSusp ? 'bg-red-50/20' : ''}`}
+                    style={{ gridTemplateColumns: recCols.map(c => c.w || '1fr').join(' ') }}>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{s.name}</p>
+                      <p className="text-[11px] text-gray-400">{s.studentCode} · {s.sport || '—'}</p>
                     </div>
-                  ))}
-                </div>
-              )
-            })}
-          </div>
-        )}
+                    <span className="text-xs text-gray-600 truncate">{s.batch || '—'}</span>
+                    <span className="text-sm font-semibold text-gray-600 text-right tabular-nums">{INR(s.fees)}</span>
+                    <span className={`text-sm font-bold text-right tabular-nums ${collected > 0 ? 'text-emerald-700' : 'text-gray-300'}`}>
+                      {collected > 0 ? INR(collected) : '—'}
+                    </span>
+                    <span className={`text-sm font-black text-right tabular-nums ${outstanding > 0 ? 'text-red-600' : 'text-gray-300'}`}>
+                      {outstanding > 0 ? INR(outstanding) : '—'}
+                    </span>
+                    <span className="text-xs text-gray-500 font-mono">
+                      {s.paidTill
+                        ? new Date(s.paidTill+'T00:00:00').toLocaleDateString('en-IN',{month:'short',year:'numeric'})
+                        : <span className="text-gray-300">—</span>}
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border w-fit ${chipCls}`}>{chipLabel}</span>
+                  </div>
+                )
+              })}
+            </div>
 
-        {/* Grand total */}
-        <div className="grid gap-3 px-4 py-3 bg-gray-800 text-white"
-          style={{ gridTemplateColumns: cols.map(c => c.w || '1fr').join(' ') }}>
-          <span className="text-xs font-black uppercase tracking-wide col-span-5">Grand Total</span>
-          <span className="text-sm font-black text-right tabular-nums">{INR(billed)}</span>
-          <span />
-        </div>
+            {/* View more / pagination */}
+            {filteredRec.length > showCount && (
+              <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50/60">
+                <span className="text-xs text-gray-400">Showing {Math.min(showCount, filteredRec.length)} of {filteredRec.length} students</span>
+                <button onClick={() => setShowCount(c => c + 25)}
+                  className="text-xs font-bold text-brand-600 hover:text-brand-700 bg-white border border-gray-200 hover:border-brand-300 px-4 py-1.5 rounded-lg transition">
+                  View 25 more ↓
+                </button>
+              </div>
+            )}
+
+            {/* Totals footer */}
+            <div className="grid gap-3 px-4 py-3 bg-gray-800 text-white"
+              style={{ gridTemplateColumns: recCols.map(c => c.w || '1fr').join(' ') }}>
+              <span className="text-xs font-black uppercase tracking-wide col-span-2">
+                Total — {filteredRec.length} students
+              </span>
+              <span className="text-sm font-black text-right tabular-nums text-gray-300">
+                {INR(filteredRec.reduce((s, r) => s + (r.s.fees || 0), 0))}
+              </span>
+              <span className="text-sm font-black text-right tabular-nums text-emerald-400">
+                {INR(filteredRec.reduce((s, r) => s + r.collected, 0))}
+              </span>
+              <span className="text-sm font-black text-right tabular-nums text-red-300">
+                {INR(filteredRec.reduce((s, r) => s + r.outstanding, 0))}
+              </span>
+              <span /><span />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Payment Transactions (collapsible) ─────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <button className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50/40 transition"
+          onClick={() => setShowTx(v => !v)}>
+          <div className="text-left">
+            <p className="text-sm font-black text-gray-800 uppercase tracking-wide">Payment Transactions</p>
+            <p className="text-xs text-gray-400 mt-0.5">Raw cash-in records by date range</p>
+          </div>
+          <span className="text-xs font-bold text-gray-400 flex-shrink-0">{showTx ? '▲ Hide' : '▼ Show'}</span>
+        </button>
+
+        {showTx && (
+          <>
+            <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50 flex flex-wrap gap-2 items-center">
+              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">From</span>
+              <Sel value={fromMonth} onChange={setFromMonth}>
+                {MONTH_OPTS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </Sel>
+              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">To</span>
+              <Sel value={toMonth} onChange={setToMonth}>
+                {MONTH_OPTS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </Sel>
+              <div className="relative ml-1">
+                <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input className="text-xs bg-white border border-gray-200 rounded-lg pl-7 pr-3 py-1.5 text-gray-700 focus:outline-none focus:border-brand-400 w-44"
+                  placeholder="Search student / invoice…" value={txSearch} onChange={e => setTxSearch(e.target.value)} />
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-xs text-gray-400">{txFiltered.length} records</span>
+                <ExportBtn onClick={handleExportTx} />
+              </div>
+            </div>
+
+            <TableHead cols={txCols} />
+            {txFiltered.length === 0 ? (
+              <div className="py-12 text-center text-sm text-gray-400">No transactions in this range</div>
+            ) : (
+              <div className="divide-y divide-gray-50 max-h-[500px] overflow-y-auto">
+                {txFiltered.map((p, i) => (
+                  <div key={p.id || i}
+                    className="grid gap-3 px-4 py-3 items-center hover:bg-brand-50/20 transition text-sm"
+                    style={{ gridTemplateColumns: txCols.map(c => c.w || '1fr').join(' ') }}>
+                    <span className="text-xs text-gray-500 font-mono">
+                      {p.date ? new Date(p.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short'}) : '—'}
+                    </span>
+                    <span className="text-xs text-gray-400 font-mono truncate">{p.id || '—'}</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{p.student}</p>
+                      {p.notes && <p className="text-[11px] text-gray-400 truncate">{p.notes}</p>}
+                    </div>
+                    <span className="text-xs text-gray-500 truncate">{p.month || '—'}</span>
+                    <span className="text-xs text-gray-500">{p.mode || '—'}</span>
+                    <span className="font-bold text-gray-900 text-right tabular-nums">{INR(p.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="grid gap-3 px-4 py-3 bg-gray-800 text-white"
+              style={{ gridTemplateColumns: txCols.map(c => c.w || '1fr').join(' ') }}>
+              <span className="text-xs font-black uppercase tracking-wide col-span-5">Total Collected</span>
+              <span className="text-sm font-black text-right tabular-nums">
+                {INR(txFiltered.reduce((s, p) => s + p.amount, 0))}
+              </span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
