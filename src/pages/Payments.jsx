@@ -11,7 +11,7 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport } = useApp()
+  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport } = useApp()
   const [editingDate, setEditingDate] = useState(null) // paymentId being edited
 
   const [search,          setSearch]          = useState('')
@@ -315,6 +315,7 @@ export default function Payments() {
           onSave={async (data) => { await addPayment(data); setShowModal(false) }}
           students={students}
           batches={batches}
+          feePlans={feePlans}
         />
       )}
       {payForStudent && (
@@ -323,6 +324,7 @@ export default function Payments() {
           onSave={async (data) => { await addPayment(data); setPayForStudent(null) }}
           students={students}
           batches={batches}
+          feePlans={feePlans}
           initialStudentId={payForStudent.id}
         />
       )}
@@ -341,8 +343,10 @@ function SummaryCard({ label, value, count, color, period }) {
   )
 }
 
-export function RecordPaymentModal({ onClose, onSave, students, batches = [], initialStudentId }) {
-  const initStudent = students.find(s => s.id === initialStudentId) || students[0] || {}
+export function RecordPaymentModal({ onClose, onSave, students, batches = [], feePlans = [], initialStudentId }) {
+  const initStudent = initialStudentId
+    ? (students.find(s => s.id === initialStudentId) || {})
+    : {}
   const [form, setForm] = useState({
     studentId:   initStudent.id       || '',
     student:     initStudent.name     || '',
@@ -352,9 +356,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     batchId:     String(initStudent.batchId || initStudent.lastBatchId || ''),
     batchName:   initStudent.batch || initStudent.lastBatchName || '',
     mode:        'UPI',
+    notes:       '',
   })
   const [loading,        setLoading]       = useState(false)
-  const [studentSearch,  setStudentSearch] = useState('')
+  const [studentSearch,  setStudentSearch] = useState(initStudent.name || '')
+  const [showDropdown,   setShowDropdown]  = useState(false)
   const [amountOverride, setAmountOverride] = useState(null)
   const [paymentDate,    setPaymentDate]   = useState(new Date().toISOString().split('T')[0])
   const [customMonths,   setCustomMonths]  = useState(2)
@@ -378,17 +384,42 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     ? students.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()))
     : students
 
+  const getFeePlanRate = (batchId, trainingType, paymentType) => {
+    // 1. Named fee plan for batch + training type
+    const batchPlans = feePlans.filter(p => String(p.batchId) === String(batchId))
+    const plan = batchPlans.find(p => p.trainingType === trainingType) || batchPlans[0]
+    if (plan) {
+      const rate = paymentType === 'quarterly' ? plan.quarterlyFee
+                 : paymentType === 'yearly'    ? plan.yearlyFee
+                 : plan.monthlyFee
+      return { plan, rate: rate || 0, source: 'plan' }
+    }
+    // 2. Fallback: batch default fee (only meaningful for monthly; skip for quarterly/yearly)
+    const batch = batches.find(b => String(b.id) === String(batchId))
+    if (batch?.defaultFee > 0 && paymentType === 'monthly') {
+      return {
+        plan: { name: batch.name, trainingType: null, monthlyFee: batch.defaultFee, quarterlyFee: 0, yearlyFee: 0 },
+        rate: batch.defaultFee,
+        source: 'batch',
+      }
+    }
+    return null
+  }
+
   const handleStudentChange = (id) => {
     const s = students.find(x => String(x.id) === String(id))
     if (!s) return
     setAmountOverride(null)
+    const batchId = String(s.batchId || s.lastBatchId || '')
+    const paymentType = s.feePlan || 'monthly'
+    const planData = getFeePlanRate(batchId, s.trainingType, paymentType)
     setForm(f => ({
       ...f,
       studentId:   s.id,
       student:     s.name,
-      baseAmount:  s.fees || 0,
-      paymentType: s.feePlan || 'monthly',
-      batchId:     String(s.batchId || s.lastBatchId || ''),
+      baseAmount:  planData?.rate ?? s.fees ?? 0,
+      paymentType,
+      batchId,
       batchName:   s.batch || s.lastBatchName || '',
     }))
   }
@@ -412,13 +443,17 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
   const isSuspended = selectedStudent?.status === 'Suspended'
 
   // Advance payment: student is up-to-date, coverage should start after their current paidTill
-  const todayStr = new Date().toISOString().split('T')[0]
+  const _now = new Date()
+  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
   const firstOfMonth = todayStr.slice(0, 7) + '-01'
   const isUpToDate = !isSuspended && selectedStudent?.paidTill && selectedStudent.paidTill >= firstOfMonth
   const advanceStart = isUpToDate
     ? (() => {
         const [yr, mo] = selectedStudent.paidTill.split('-').map(Number)
-        return new Date(yr, mo, 1).toISOString().split('T')[0]
+        // Build string directly to avoid toISOString() UTC rollback in IST (UTC+5:30)
+        const nextMo = mo === 12 ? 1 : mo + 1
+        const nextYr = mo === 12 ? yr + 1 : yr
+        return `${nextYr}-${String(nextMo).padStart(2, '0')}-01`
       })()
     : null
 
@@ -437,8 +472,50 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     ? `Amount ₹${finalAmount.toLocaleString('en-IN')} = 3 months — did you mean Quarterly?`
     : `Amount ₹${finalAmount.toLocaleString('en-IN')} = 12 months — did you mean Yearly?`
 
+  // Fee plan for selected student's batch + training type
+  const activePlanData = form.studentId
+    ? getFeePlanRate(form.batchId, selectedStudent?.trainingType, form.paymentType)
+    : null
+
+  // Fallback reference: median fee of other students in same batch
+  const batchmateFees = form.studentId
+    ? students
+        .filter(s => {
+          if (String(s.id) === String(form.studentId)) return false
+          if ((s.fees || 0) <= 0) return false
+          // Match by batchId FK when available, else fall back to batch name string
+          if (form.batchId && String(form.batchId) !== '')
+            return String(s.batchId || s.lastBatchId || '') === String(form.batchId)
+          if (form.batchName && form.batchName !== '')
+            return (s.batch || s.lastBatchName || '') === form.batchName
+          return false
+        })
+        .map(s => s.fees)
+        .sort((a, b) => a - b)
+    : []
+  const typicalBatchFee = batchmateFees.length > 0
+    ? batchmateFees[Math.floor(batchmateFees.length / 2)]
+    : 0
+
+
+
+  const planExpectedRate = activePlanData?.rate || 0
+  const referenceRate = planExpectedRate || typicalBatchFee
+  const feePlanMismatch = !!(
+    form.studentId &&
+    referenceRate > 0 &&
+    form.baseAmount !== referenceRate &&
+    !['custom'].includes(form.paymentType) &&
+    // Only warn if entered amount is >20% off the reference
+    Math.abs(form.baseAmount - referenceRate) / referenceRate > 0.20
+  )
+
   const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const coverageBase = advanceStart ? new Date(advanceStart + 'T00:00:00') : new Date(paymentDate + 'T00:00:00')
+
+  // Duplicate guard: paidTill already covers the start of the new coverage period
+  const coverageStartStr = `${coverageBase.getFullYear()}-${String(coverageBase.getMonth() + 1).padStart(2, '0')}-01`
+  const isDuplicate = !!(form.studentId && selectedStudent?.paidTill && selectedStudent.paidTill >= coverageStartStr)
   const coverageEnd  = new Date(coverageBase.getFullYear(), coverageBase.getMonth() + months, 0)
   const coverageLabel = months === 1
     ? `${MO[coverageBase.getMonth()]} ${coverageBase.getFullYear()}`
@@ -467,26 +544,44 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
       <div className="space-y-4">
 
         {/* Student */}
-        <div>
+        <div className="relative">
           <label className="label">Student</label>
           <input
-            className="input mb-1.5"
-            placeholder="Search by name…"
+            className="input"
+            placeholder="Type to search student…"
             value={studentSearch}
+            onFocus={() => setShowDropdown(true)}
+            onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
             onChange={e => {
               setStudentSearch(e.target.value)
+              setShowDropdown(true)
               setAmountOverride(null)
               setForm(f => ({ ...f, studentId: '', student: '', baseAmount: 0 }))
             }}
           />
-          <select className="input" value={form.studentId} onChange={e => handleStudentChange(e.target.value)}>
-            <option value="">— Select student —</option>
-            {filteredStudents.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.name}{s.status === 'Suspended' ? ' (Suspended)' : ''}{s.trainingType === 'Alternate' ? ' · Alt' : ''}
-              </option>
-            ))}
-          </select>
+          {showDropdown && filteredStudents.length > 0 && (
+            <div className="absolute z-50 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto">
+              {filteredStudents.slice(0, 10).map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="w-full text-left px-3 py-2 hover:bg-brand-50 text-sm flex items-center justify-between gap-2 transition-colors first:rounded-t-xl last:rounded-b-xl"
+                  onMouseDown={() => {
+                    handleStudentChange(s.id)
+                    setStudentSearch(s.name)
+                    setShowDropdown(false)
+                  }}
+                >
+                  <span className="font-medium text-gray-800">{s.name}</span>
+                  <span className="flex items-center gap-2 text-xs text-gray-400 shrink-0">
+                    {s.status === 'Suspended' && <span className="text-amber-600 font-semibold">Suspended</span>}
+                    {s.trainingType === 'Alternate' && <span>Alt</span>}
+                    {s.batch && <span>{s.batch}</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           {isSuspended && (
             <p className="text-xs text-amber-600 mt-1 font-semibold">
               ⚠ Suspended — payment will reactivate this student.
@@ -506,6 +601,15 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
               </span>
             </div>
           )}
+          {isDuplicate && (
+            <div className="mt-2 bg-red-50 border border-red-300 rounded-lg px-3 py-2 text-xs text-red-700 flex items-start gap-1.5">
+              <span className="text-base leading-none mt-0.5">🚫</span>
+              <span>
+                <strong>Possible duplicate</strong> — {form.student} is already paid through <strong>{new Date(selectedStudent.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</strong>.
+                Add a note below if this is intentional.
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Payment plan pills */}
@@ -514,7 +618,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
           <div className="grid grid-cols-4 gap-2">
             {PLAN_OPTS.map(pt => (
               <button key={pt.key} type="button"
-                onClick={() => { setAmountOverride(null); setForm(f => ({ ...f, paymentType: pt.key })) }}
+                onClick={() => {
+                  setAmountOverride(null)
+                  const planData = getFeePlanRate(form.batchId, selectedStudent?.trainingType, pt.key)
+                  setForm(f => ({ ...f, paymentType: pt.key, baseAmount: planData?.rate ?? f.baseAmount }))
+                }}
                 className={`py-2.5 rounded-xl text-xs font-bold border transition ${
                   form.paymentType === pt.key
                     ? 'bg-brand-600 text-white border-brand-600'
@@ -539,12 +647,52 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
           )}
         </div>
 
+        {/* Fee plan / batch reference info */}
+        {(activePlanData || typicalBatchFee > 0) && (
+          <div className="bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 text-xs text-brand-700 flex items-center justify-between gap-2">
+            {activePlanData ? (
+              activePlanData.source === 'plan' ? (
+                <span>
+                  <span className="font-semibold">{activePlanData.plan.name}</span>
+                  <span className="text-brand-400 mx-1.5">·</span>
+                  {activePlanData.plan.trainingType === 'alternate' ? 'Alternate Day' : 'Daily'}
+                  <span className="text-brand-400 mx-1.5">·</span>
+                  M ₹{activePlanData.plan.monthlyFee?.toLocaleString('en-IN')}
+                  {activePlanData.plan.quarterlyFee > 0 && <> · Q ₹{activePlanData.plan.quarterlyFee?.toLocaleString('en-IN')}</>}
+                  {activePlanData.plan.yearlyFee > 0 && <> · Y ₹{activePlanData.plan.yearlyFee?.toLocaleString('en-IN')}</>}
+                </span>
+              ) : (
+                <span>Batch default: <span className="font-semibold">₹{activePlanData.plan.monthlyFee?.toLocaleString('en-IN')}/month</span></span>
+              )
+            ) : (
+              <span>
+                Other students in this batch pay <span className="font-semibold">₹{typicalBatchFee.toLocaleString('en-IN')}/month</span>
+                <span className="text-brand-400 ml-1">({batchmateFees.length} students)</span>
+              </span>
+            )}
+            <button type="button"
+              className="text-brand-600 font-bold hover:underline whitespace-nowrap"
+              onClick={() => { setAmountOverride(null); setForm(f => ({ ...f, baseAmount: referenceRate })) }}>
+              Use this rate
+            </button>
+          </div>
+        )}
+
         {/* Fee amount + discount */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">{feeLabel}</label>
-            <input className="input" type="number" min="0" value={form.baseAmount}
+            <input className={`input ${feePlanMismatch ? 'border-amber-400 focus:border-amber-400' : ''}`} type="number" min="0" value={form.baseAmount}
               onChange={e => { setAmountOverride(null); setForm(f => ({ ...f, baseAmount: Number(e.target.value) })) }} />
+            {feePlanMismatch && (
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-xs text-amber-600">⚠ Expected ₹{referenceRate.toLocaleString('en-IN')}</p>
+                <button type="button" className="text-xs text-amber-700 font-bold hover:underline"
+                  onClick={() => { setAmountOverride(null); setForm(f => ({ ...f, baseAmount: referenceRate })) }}>
+                  Fix
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <label className="label">Discount (%)</label>
@@ -613,9 +761,22 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
             />
           </div>
           {amountMismatch && (
-            <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 text-xs text-amber-700">
-              <span className="text-base leading-none mt-0.5">⚠</span>
-              <span>{amountMismatchMsg}</span>
+            <div className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
+              <div className="flex items-start gap-1.5 text-xs text-amber-700 min-w-0">
+                <span className="text-base leading-none mt-0.5 shrink-0">⚠</span>
+                <span>{amountMismatchMsg}</span>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 text-xs font-bold text-amber-800 bg-amber-200 hover:bg-amber-300 px-2.5 py-1 rounded-lg transition whitespace-nowrap"
+                onClick={() => {
+                  const newPlan = finalAmount === monthlyFee * 3 ? 'quarterly' : 'yearly'
+                  setForm(f => ({ ...f, paymentType: newPlan, baseAmount: finalAmount }))
+                  setAmountOverride(null)
+                }}
+              >
+                {finalAmount === monthlyFee * 3 ? '→ Switch to Quarterly' : '→ Switch to Yearly'}
+              </button>
             </div>
           )}
         </div>
@@ -631,6 +792,14 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label className="label">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input className="input" placeholder="e.g. cheque #1234, partial payment, sibling discount…"
+            value={form.notes}
+            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
         </div>
 
         {/* Payment Date + Mode */}
@@ -653,8 +822,12 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
       </div>
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={handleSave} disabled={loading || finalAmount <= 0}>
-          {loading ? '…' : `Confirm · ₹${finalAmount.toLocaleString('en-IN')}`}
+        <button
+          className={isDuplicate ? 'px-5 py-2.5 rounded-xl font-bold text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50' : 'btn-primary'}
+          onClick={handleSave}
+          disabled={loading || finalAmount <= 0}
+        >
+          {loading ? '…' : isDuplicate ? `Record Anyway · ₹${finalAmount.toLocaleString('en-IN')}` : `Confirm · ₹${finalAmount.toLocaleString('en-IN')}`}
         </button>
       </div>
     </Modal>

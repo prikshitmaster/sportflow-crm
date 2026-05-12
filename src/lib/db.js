@@ -132,6 +132,7 @@ export async function fetchPayments(academyId) {
     paymentType:   row.payment_type   || 'monthly',
     discountPct:   row.discount_pct   || 0,
     monthsCovered: row.months_covered || 1,
+    notes:         row.notes          || '',
   }))
 }
 
@@ -151,6 +152,7 @@ export async function insertPayment(p, invoiceId) {
       discount_pct:   p.discountPct  || 0,
       months_covered: p.monthsCovered || 1,
       academy_id:     p.academyId    || null,
+      notes:          p.notes        || null,
     })
   if (error) throw error
 }

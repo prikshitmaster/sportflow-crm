@@ -13,6 +13,45 @@ const accountBadge = {
   active:  'badge-green',
 }
 
+// Fast DOB text input: user types DDMMYYYY, auto-formats to DD/MM/YYYY
+function DobInput({ value, onChange, hasError }) {
+  const isoToDisplay = (iso) => {
+    if (!iso || iso.length < 10) return ''
+    const [y, m, d] = iso.split('-')
+    return `${d}/${m}/${y}`
+  }
+  const [display, setDisplay] = useState(() => isoToDisplay(value))
+
+  useEffect(() => { setDisplay(isoToDisplay(value)) }, [value])
+
+  const handleChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 8)
+    let fmt = digits
+    if (digits.length > 4) fmt = digits.slice(0,2) + '/' + digits.slice(2,4) + '/' + digits.slice(4)
+    else if (digits.length > 2) fmt = digits.slice(0,2) + '/' + digits.slice(2)
+    setDisplay(fmt)
+    if (digits.length === 8) {
+      const iso = `${digits.slice(4)}-${digits.slice(2,4)}-${digits.slice(0,2)}`
+      const d = new Date(iso + 'T00:00:00')
+      const year = Number(digits.slice(4))
+      if (!isNaN(d) && d <= new Date() && year >= 1930 && year <= new Date().getFullYear()) {
+        onChange(iso); return
+      }
+    }
+    if (digits.length < 8) onChange('')
+  }
+
+  return (
+    <input
+      className={`input ${hasError ? 'border-red-400' : ''}`}
+      placeholder="DD/MM/YYYY"
+      value={display}
+      onChange={handleChange}
+      maxLength={10}
+    />
+  )
+}
+
 export default function Students() {
   const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment, selectedSport } = useApp()
   const [search,          setSearch]          = useState('')
@@ -28,6 +67,8 @@ export default function Students() {
   const [profile,         setProfile]         = useState(null)
   const [activeTab,       setActiveTab]       = useState('students') // 'students' | 'suspended'
   const [suspBatchFilter, setSuspBatchFilter] = useState('All')
+  const [suspSportFilter, setSuspSportFilter] = useState('All')
+  const [suspSearch,      setSuspSearch]      = useState('')
   const [editStudent,     setEditStudent]     = useState(null)
   const [deleteTarget,    setDeleteTarget]    = useState(null)
 
@@ -63,10 +104,13 @@ export default function Students() {
     return matchQ && matchSport && matchBatch && matchAcc
   })
 
-  const suspBatches  = [...new Set(suspendedStudents.map(s => s.lastBatchName).filter(Boolean))]
-  const suspFiltered = suspBatchFilter === 'All'
-    ? suspendedStudents
-    : suspendedStudents.filter(s => s.lastBatchName === suspBatchFilter)
+  const suspBatchName  = (s) => s.lastBatchName || s.batch || ''
+  const suspBatches    = [...new Set(suspendedStudents.map(suspBatchName).filter(Boolean))].sort()
+  const suspSports     = [...new Set(suspendedStudents.map(s => s.sport).filter(Boolean))].sort()
+  const suspFiltered   = suspendedStudents
+    .filter(s => suspBatchFilter === 'All' || suspBatchName(s) === suspBatchFilter)
+    .filter(s => suspSportFilter === 'All' || s.sport === suspSportFilter)
+    .filter(s => !suspSearch || s.name.toLowerCase().includes(suspSearch.toLowerCase()) || (s.studentCode || '').toLowerCase().includes(suspSearch.toLowerCase()))
 
   const pendingCount   = students.filter(s => s.accountStatus === 'pending').length
   const activeCount    = students.filter(s => s.accountStatus === 'active').length
@@ -139,12 +183,24 @@ export default function Students() {
             </div>
           </div>
 
-          {/* Batch filter + count */}
+          {/* Filters */}
           <div className="card p-4 flex flex-wrap gap-3 items-center">
+            <input className="input w-44" placeholder="Search by name…"
+              value={suspSearch} onChange={e => setSuspSearch(e.target.value)} />
+            <select className="input w-auto" value={suspSportFilter} onChange={e => setSuspSportFilter(e.target.value)}>
+              <option value="All">All Sports</option>
+              {suspSports.map(sp => <option key={sp}>{sp}</option>)}
+            </select>
             <select className="input w-auto" value={suspBatchFilter} onChange={e => setSuspBatchFilter(e.target.value)}>
               <option value="All">All Batches</option>
               {suspBatches.map(b => <option key={b}>{b}</option>)}
             </select>
+            {(suspSearch || suspSportFilter !== 'All' || suspBatchFilter !== 'All') && (
+              <button className="text-xs text-gray-400 hover:text-red-500 transition"
+                onClick={() => { setSuspSearch(''); setSuspSportFilter('All'); setSuspBatchFilter('All') }}>
+                Clear
+              </button>
+            )}
             <span className="text-xs text-gray-400 ml-auto">{suspFiltered.length} students</span>
           </div>
 
@@ -167,7 +223,7 @@ export default function Students() {
                         {s.studentCode && <p className="text-[10px] font-mono text-gray-400">{s.studentCode}</p>}
                       </td>
                       <td className="px-4 py-3"><span className="badge badge-blue">{s.sport}</span></td>
-                      <td className="px-4 py-3 text-gray-600">{s.lastBatchName || s.batch || '—'}</td>
+                      <td className="px-4 py-3 text-gray-600">{suspBatchName(s) || '—'}</td>
                       <td className="px-4 py-3 text-red-600 text-xs font-medium">
                         {s.suspendedSince ? new Date(s.suspendedSince).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                       </td>
@@ -624,10 +680,7 @@ function AddStudentModal({ onClose, onSave }) {
         <div>
           <label className="label">Date of Birth *</label>
           <div className="relative">
-            <input className={`input ${errors.dob ? 'border-red-400' : ''}`} type="date"
-              max={new Date().toISOString().split('T')[0]}
-              value={form.dob}
-              onChange={e => set('dob', e.target.value)} />
+            <DobInput value={form.dob} onChange={v => set('dob', v)} hasError={!!errors.dob} />
             {form.dob && calcAge(form.dob) !== null && (
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full pointer-events-none">
                 {calcAge(form.dob)} yrs
@@ -690,15 +743,29 @@ function AddStudentModal({ onClose, onSave }) {
                 </option>
               ))}
             </select>
-            {form.feePlanId && (
-              <div className="flex gap-3 mt-1.5 text-[11px] text-gray-500">
-                {(() => { const pl = feePlans.find(p => p.id === Number(form.feePlanId)); return pl ? (<>
-                  <span>Monthly: <strong>₹{pl.monthlyFee.toLocaleString('en-IN')}</strong></span>
-                  <span>Quarterly: <strong>₹{pl.quarterlyFee.toLocaleString('en-IN')}</strong></span>
-                  <span>Yearly: <strong>₹{pl.yearlyFee.toLocaleString('en-IN')}</strong></span>
-                </>) : null })()}
-              </div>
-            )}
+            {form.feePlanId && (() => {
+              const pl = feePlans.find(p => p.id === Number(form.feePlanId))
+              if (!pl) return null
+              const expectedFee = { monthly: pl.monthlyFee, quarterly: pl.quarterlyFee, yearly: pl.yearlyFee }[form.feePlan] || pl.monthlyFee
+              return (
+                <div className="mt-1.5 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 text-xs text-brand-700 flex items-center justify-between gap-2">
+                  <span>
+                    <span className="font-semibold">{pl.name}</span>
+                    <span className="text-brand-400 mx-1.5">·</span>
+                    {pl.trainingType === 'alternate' ? 'Alternate Day' : 'Daily'}
+                    <span className="text-brand-400 mx-1.5">·</span>
+                    M ₹{pl.monthlyFee.toLocaleString('en-IN')}
+                    {pl.quarterlyFee > 0 && <> · Q ₹{pl.quarterlyFee.toLocaleString('en-IN')}</>}
+                    {pl.yearlyFee > 0 && <> · Y ₹{pl.yearlyFee.toLocaleString('en-IN')}</>}
+                  </span>
+                  <button type="button"
+                    className="text-brand-600 font-bold hover:underline whitespace-nowrap"
+                    onClick={() => set('fees', expectedFee)}>
+                    Use this rate
+                  </button>
+                </div>
+              )
+            })()}
           </div>
         ) : (
           /* Training Type — manual fallback when no named plans */
@@ -733,9 +800,35 @@ function AddStudentModal({ onClose, onSave }) {
         {/* Fee amount */}
         <div>
           <label className="label">{FEE_LABEL[form.feePlan] || 'Fee (₹) *'}</label>
-          <input className={`input ${errors.fees ? 'border-red-400' : ''}`} type="number" placeholder="e.g. 2000" value={form.fees}
+          <input
+            className={`input ${errors.fees ? 'border-red-400' : ''} ${
+              (() => {
+                if (!form.feePlanId) return ''
+                const pl = feePlans.find(p => p.id === Number(form.feePlanId))
+                if (!pl) return ''
+                const expected = { monthly: pl.monthlyFee, quarterly: pl.quarterlyFee, yearly: pl.yearlyFee }[form.feePlan] || pl.monthlyFee
+                return expected > 0 && Number(form.fees) !== expected ? 'border-amber-400' : ''
+              })()
+            }`}
+            type="number" placeholder="e.g. 2000" value={form.fees}
             onChange={e => set('fees', e.target.value)} />
           {errors.fees && <p className="text-[11px] text-red-500 mt-1">{errors.fees}</p>}
+          {(() => {
+            if (!form.feePlanId || !form.fees) return null
+            const pl = feePlans.find(p => p.id === Number(form.feePlanId))
+            if (!pl) return null
+            const expected = { monthly: pl.monthlyFee, quarterly: pl.quarterlyFee, yearly: pl.yearlyFee }[form.feePlan] || pl.monthlyFee
+            if (!expected || Number(form.fees) === expected) return null
+            return (
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-[11px] text-amber-600">⚠ Fee plan rate is ₹{expected.toLocaleString('en-IN')}</p>
+                <button type="button" className="text-[11px] text-amber-700 font-bold hover:underline"
+                  onClick={() => set('fees', expected)}>
+                  Fix
+                </button>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Join Date (non-custom) */}
@@ -1085,10 +1178,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
         <div>
           <label className="label">Date of Birth *</label>
           <div className="relative">
-            <input className={`input ${errors.dob ? 'border-red-400' : ''}`} type="date"
-              max={new Date().toISOString().split('T')[0]}
-              value={form.dob}
-              onChange={e => set('dob', e.target.value)} />
+            <DobInput value={form.dob} onChange={v => set('dob', v)} hasError={!!errors.dob} />
             {form.dob && calcAge(form.dob) !== null && (
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full pointer-events-none">
                 {calcAge(form.dob)} yrs
