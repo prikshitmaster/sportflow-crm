@@ -229,11 +229,11 @@ function OverviewTab({ students, payments, trials, batches }) {
     })
   }, [payments])
 
-  // Top overdue
+  // Top overdue (Active = grace period, Suspended = already auto-suspended for non-payment)
   const overdueStudents = useMemo(() => {
     const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
     return students
-      .filter(s => s.status !== 'Active' ? false : s.paidTill && s.paidTill < firstOfMonth)
+      .filter(s => (s.status === 'Active' || s.status === 'Suspended') && s.paidTill && s.paidTill < firstOfMonth)
       .sort((a, b) => (a.paidTill || '').localeCompare(b.paidTill || ''))
       .slice(0, 8)
   }, [students])
@@ -324,7 +324,10 @@ function OverviewTab({ students, payments, trials, batches }) {
               return (
                 <div key={s.id} className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-3 px-5 py-3 hover:bg-gray-50/50 items-center">
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">{s.name}</p>
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                      {s.name}
+                      {s.status === 'Suspended' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Suspended</span>}
+                    </p>
                     <p className="text-xs text-gray-400">{s.batch || '—'} · {s.studentCode}</p>
                   </div>
                   <span className="text-xs text-gray-500">Paid till <strong>{s.paidTill ? new Date(s.paidTill+'T00:00:00').toLocaleDateString('en-IN',{month:'short',year:'numeric'}) : '—'}</strong></span>
@@ -771,7 +774,7 @@ function AgeingTab({ students, payments }) {
   const ageing = useMemo(() => {
     const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
     const overdueStudents = students.filter(s =>
-      s.status === 'Active' && s.paidTill && s.paidTill < firstOfMonth &&
+      (s.status === 'Active' || s.status === 'Suspended') && s.paidTill && s.paidTill < firstOfMonth &&
       (batchFilter === 'All' || s.batch === batchFilter)
     )
     return overdueStudents.map(s => {
@@ -787,9 +790,9 @@ function AgeingTab({ students, payments }) {
   const bucketBg     = ['bg-amber-50','bg-orange-50','bg-red-50','bg-red-100']
 
   const handleExport = () => {
-    const headers = ['Student','Student Code','Batch','Sport','Paid Till','Days Overdue','Bucket','Monthly Fee']
+    const headers = ['Student','Student Code','Batch','Sport','Paid Till','Days Overdue','Bucket','Status','Monthly Fee']
     downloadCSV(headers, ageing.map(s => [
-      s.name, s.studentCode||'', s.batch||'', s.sport||'', s.paidTill||'', s.daysOverdue, s.bucket, s.fees||0
+      s.name, s.studentCode||'', s.batch||'', s.sport||'', s.paidTill||'', s.daysOverdue, s.bucket, s.status||'', s.fees||0
     ]), `ageing-report-${todayStr}.csv`)
   }
 
@@ -799,6 +802,7 @@ function AgeingTab({ students, payments }) {
     { key: 'since',   label: 'Paid Till',    w: '110px' },
     { key: 'days',    label: 'Days Overdue', w: '110px', right: true },
     { key: 'bucket',  label: 'Bucket',       w: '110px' },
+    { key: 'status',  label: 'Status',       w: '100px' },
     { key: 'fee',     label: 'Monthly Fee',  w: '110px', right: true },
   ]
 
@@ -853,6 +857,7 @@ function AgeingTab({ students, payments }) {
                 <span className="text-xs text-gray-500 font-mono">{s.paidTill ? new Date(s.paidTill+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}) : '—'}</span>
                 <span className={`text-sm font-black text-right tabular-nums ${bucketColors[s.bucketOrder]}`}>{s.daysOverdue}d</span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit ${bucketBg[s.bucketOrder]} ${bucketColors[s.bucketOrder]}`}>{s.bucket}</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit ${s.status === 'Suspended' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>{s.status === 'Suspended' ? 'Suspended' : 'Active'}</span>
                 <span className="text-sm font-bold text-gray-800 text-right tabular-nums">{INR(s.fees)}</span>
               </div>
             ))}
