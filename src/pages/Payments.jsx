@@ -449,8 +449,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
       }`
 
   const PLAN_OPTS = [
-    { key: 'daily',     label: 'Daily',     sub: 'daily'      },
-    { key: 'alternate', label: 'Alternate', sub: 'alt. day'   },
     { key: 'monthly',   label: 'Monthly',   sub: '1 month'    },
     { key: 'quarterly', label: 'Quarterly', sub: '3 months'   },
     { key: 'yearly',    label: 'Yearly',    sub: '12 months'  },
@@ -513,7 +511,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
         {/* Payment plan pills */}
         <div>
           <label className="label">Payment Plan</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {PLAN_OPTS.map(pt => (
               <button key={pt.key} type="button"
                 onClick={() => { setAmountOverride(null); setForm(f => ({ ...f, paymentType: pt.key })) }}
