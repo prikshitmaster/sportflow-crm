@@ -402,7 +402,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
     if (!form.studentId || finalAmount <= 0) return
     setLoading(true)
     try {
-      await onSave({ ...form, amount: finalAmount, monthsCovered: months, lateFee: lateFeeAmt, paymentDate })
+      await onSave({ ...form, amount: finalAmount, monthsCovered: months, lateFee: lateFeeAmt, paymentDate, advanceStart })
     } finally {
       setLoading(false)
     }
@@ -410,6 +410,28 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
 
   const selectedStudent = students.find(s => String(s.id) === String(form.studentId))
   const isSuspended = selectedStudent?.status === 'Suspended'
+
+  // Advance payment: student is up-to-date, coverage should start after their current paidTill
+  const todayStr = new Date().toISOString().split('T')[0]
+  const firstOfMonth = todayStr.slice(0, 7) + '-01'
+  const isUpToDate = !isSuspended && selectedStudent?.paidTill && selectedStudent.paidTill >= firstOfMonth
+  const advanceStart = isUpToDate
+    ? (() => {
+        const [yr, mo] = selectedStudent.paidTill.split('-').map(Number)
+        return new Date(yr, mo, 1).toISOString().split('T')[0]
+      })()
+    : null
+
+  const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const coverageBase = advanceStart ? new Date(advanceStart + 'T00:00:00') : new Date(paymentDate + 'T00:00:00')
+  const coverageEnd  = new Date(coverageBase.getFullYear(), coverageBase.getMonth() + months, 0)
+  const coverageLabel = months === 1
+    ? `${MO[coverageBase.getMonth()]} ${coverageBase.getFullYear()}`
+    : `${MO[coverageBase.getMonth()]}–${MO[coverageEnd.getMonth()]} ${
+        coverageBase.getFullYear() === coverageEnd.getFullYear()
+          ? coverageBase.getFullYear()
+          : `${coverageBase.getFullYear()}/${String(coverageEnd.getFullYear()).slice(2)}`
+      }`
 
   const PLAN_OPTS = [
     { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
@@ -454,6 +476,12 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
             <p className="text-xs text-amber-600 mt-1 font-semibold">
               ⚠ Suspended — payment will reactivate this student.
             </p>
+          )}
+          {isUpToDate && (
+            <div className="mt-2 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 text-xs text-brand-700">
+              Paid till <strong>{new Date(selectedStudent.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</strong>
+              {' '}· Advance payment starting <strong>{new Date(advanceStart + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</strong>
+            </div>
           )}
         </div>
 
@@ -525,6 +553,12 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], in
 
         {/* Amount breakdown */}
         <div className="bg-gray-50 rounded-xl p-3.5 space-y-1.5">
+          {form.studentId && (
+            <div className="flex justify-between text-xs font-semibold text-brand-600 mb-0.5">
+              <span>Coverage</span>
+              <span>{coverageLabel}</span>
+            </div>
+          )}
           <div className="flex justify-between text-xs text-gray-500">
             {form.paymentType === 'monthly'
               ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × 1 month</span>

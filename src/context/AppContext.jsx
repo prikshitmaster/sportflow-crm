@@ -570,7 +570,9 @@ export function AppProvider({ children }) {
 
   const addPayment = async (p) => {
     try {
-      const baseDate  = p.paymentDate ? new Date(p.paymentDate + 'T00:00:00') : new Date()
+      const collectionDate = p.paymentDate ? new Date(p.paymentDate + 'T00:00:00') : new Date()
+      // For advance payments, coverage starts from the month after the student's current paidTill
+      const baseDate  = p.advanceStart ? new Date(p.advanceStart + 'T00:00:00') : collectionDate
       const months    = p.monthsCovered || (p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1)
       const paidTill  = new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0)
         .toISOString().split('T')[0]
@@ -583,9 +585,9 @@ export function AppProvider({ children }) {
               ? baseDate.getFullYear()
               : `${baseDate.getFullYear()}/${String(endDate.getFullYear()).slice(2)}`
           }`
-      const payDate   = baseDate.toISOString().split('T')[0]
+      const payDate   = collectionDate.toISOString().split('T')[0]
       const nextNum   = await db.fetchNextInvoiceNum()
-      const invoiceId = `INV-${baseDate.getFullYear()}-${String(nextNum).padStart(3, '0')}`
+      const invoiceId = `INV-${collectionDate.getFullYear()}-${String(nextNum).padStart(3, '0')}`
       const paymentRow = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, academyId: user?.academyId }
       await db.insertPayment(paymentRow, invoiceId)
 
