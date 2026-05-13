@@ -383,9 +383,17 @@ export default function Dashboard() {
               <div className="space-y-2.5">
                 {activeStaff.slice(0, 5).map(s => (
                   <div key={s.id} className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-brand-100 rounded-xl flex items-center justify-center text-xs font-black text-brand-700 flex-shrink-0">
-                      {s.name[0]}
-                    </div>
+                    {s.photoUrl ? (
+                      <img src={s.photoUrl} alt={s.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
+                    ) : (
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black flex-shrink-0 ${
+                        s.staffType === 'office'
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-brand-100 text-brand-700'
+                      }`}>
+                        {s.name[0]}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900 truncate">{s.name}</p>
                       <p className="text-xs text-gray-400 truncate">{s.role}</p>

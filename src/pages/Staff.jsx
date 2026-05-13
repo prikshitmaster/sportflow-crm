@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { UserCog, Plus, Phone, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor } from 'lucide-react'
+import { UserCog, Plus, Phone, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor, FileText, ExternalLink } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
@@ -9,7 +9,7 @@ import * as db from '../lib/db'
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
 
 export default function Staff() {
-  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember } = useApp()
+  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions } = useApp()
   const [profile,    setProfile]    = useState(null)
   const [showModal,  setShowModal]  = useState(false)
   const [activeTab,  setActiveTab]  = useState('staff')  // 'staff' | 'leaves' | 'access'
@@ -63,7 +63,7 @@ export default function Staff() {
 
       {/* Leave requests panel */}
       {activeTab === 'leaves' && (
-        <LeaveRequestsPanel leaveRequests={leaveRequests || []} onUpdate={updateLeave} />
+        <LeaveRequestsPanel leaveRequests={leaveRequests || []} onUpdate={updateLeave} onDelete={deleteLeave} />
       )}
 
       {/* Access management panel */}
@@ -101,106 +101,33 @@ export default function Staff() {
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {staff.map(s => {
-          const assignedBatches = batches.filter(b => b.coach === s.name)
-          return (
-            <div key={s.id} className="card p-5 hover:shadow-md transition">
-              <div className="flex items-start gap-4 mb-4">
-                {s.photoUrl ? (
-                  <img src={s.photoUrl} alt={s.name} className="w-12 h-12 rounded-2xl object-cover flex-shrink-0" />
-                ) : (
-                  <div className="w-12 h-12 bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl flex items-center justify-center text-white text-lg font-black flex-shrink-0">
-                    {s.name[0]}
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-gray-900 truncate">{s.name}</h3>
-                  <p className="text-xs text-gray-500">{s.role}</p>
-                  <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'} mt-1`}>{s.status}</span>
-                </div>
-              </div>
-
-              <div className="space-y-2.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Phone size={13} className="text-gray-400 flex-shrink-0" />
-                  {s.phone}
-                </div>
-                {s.sports?.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <Award size={13} className="text-gray-400 flex-shrink-0" />
-                    <div className="flex flex-wrap gap-1">
-                      {s.sports.map(sp => <span key={sp} className="badge badge-blue">{sp}</span>)}
-                    </div>
-                  </div>
-                )}
-                {assignedBatches.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <Layers size={13} className="text-gray-400 flex-shrink-0" />
-                    <div className="flex flex-wrap gap-1">
-                      {assignedBatches.map(b => (
-                        <span key={b.id} className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-semibold">{b.name}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-                  <span>Monthly Attendance</span>
-                  <span className="font-bold text-gray-700">{s.attendance}%</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-1.5">
-                  <div
-                    className={`h-1.5 rounded-full ${s.attendance >= 95 ? 'bg-emerald-500' : s.attendance >= 85 ? 'bg-amber-500' : 'bg-red-500'}`}
-                    style={{ width: `${s.attendance}%` }}
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={() => setProfile(s)}
-                className="w-full mt-4 btn-secondary text-xs justify-center py-2 gap-2"
-              >
-                View Profile & Assign Batch <ChevronRight size={12} />
-              </button>
-            </div>
-          )
-        })}
-      </div>
+      <StaffSections staff={staff} batches={batches} onSelect={setProfile} onDelete={removeStaffMember} />
       </>
       )}
 
       {profile && (
         <StaffProfilePanel
-          member={profile}
+          member={staff.find(s => s.id === profile.id) || profile}
           batches={batches}
           onClose={() => setProfile(null)}
-          onAssign={async (batchId) => {
-            await updateBatchCoach(batchId, profile.name)
-          }}
-          onUnassign={async (batchId) => {
-            await updateBatchCoach(batchId, '')
-          }}
+          onAssign={async (batchId) => { await updateBatchCoach(batchId, profile.name) }}
+          onUnassign={async (batchId) => { await updateBatchCoach(batchId, '') }}
+          onDelete={removeStaffMember}
+          onEdit={editStaffMember}
+          onEditPermissions={editStaffPermissions}
         />
       )}
 
       {showModal && (
         <AddStaffModal
           onClose={() => setShowModal(false)}
-          onSave={async (form, photoFile, accessConfig) => {
+          onSave={async (form, photoFile) => {
             let photoUrl = null
             if (photoFile && !demoMode) {
               try { photoUrl = await db.uploadStaffPhoto(photoFile, form.name) } catch (_) {}
             }
-            await addStaffMember({ ...form, photoUrl })
-            if (accessConfig) {
-              const link = await inviteStaff(form.name, accessConfig.accessRole, accessConfig.permissions)
-              return link
-            }
-            setShowModal(false)
-            return null
+            const codes = await addStaffMember({ ...form, photoUrl })
+            return { activationInfo: codes }
           }}
           demoMode={demoMode}
         />
@@ -211,16 +138,204 @@ export default function Staff() {
 
 // ── Owner-side Leave Requests Panel ──────────────────────────
 
-function LeaveRequestsPanel({ leaveRequests, onUpdate }) {
-  const [loading, setLoading] = useState(null) // id of request being processed
+function StaffCard({ s, batches, onSelect, onDelete }) {
+  const assignedBatches = batches.filter(b => b.coach === s.name)
+  const isPending = s.accountStatus === 'pending'
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
-  const pending  = leaveRequests.filter(r => r.status === 'Pending')
-  const resolved = leaveRequests.filter(r => r.status !== 'Pending')
+  const handleDelete = async () => {
+    setDeleting(true)
+    try { await onDelete(s.id) } catch (_) { setDeleting(false); setConfirmDelete(false) }
+  }
+
+  return (
+    <div className="card p-5 hover:shadow-md transition relative overflow-hidden">
+      {/* 2-step delete confirm overlay */}
+      {confirmDelete && (
+        <div className="absolute inset-0 z-10 bg-white/95 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-3">
+            <Trash2 size={20} className="text-red-500" />
+          </div>
+          <p className="font-bold text-gray-900 mb-1">Delete {s.name}?</p>
+          <p className="text-xs text-gray-500 mb-5">This will permanently remove them and their sessions.</p>
+          <div className="flex gap-3 w-full">
+            <button onClick={() => setConfirmDelete(false)} className="flex-1 btn-secondary text-sm py-2.5">Cancel</button>
+            <button onClick={handleDelete} disabled={deleting}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition disabled:opacity-50">
+              {deleting ? <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> : <><Trash2 size={13}/> Delete</>}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-start gap-4 mb-4">
+        {s.photoUrl ? (
+          <img src={s.photoUrl} alt={s.name} className="w-12 h-12 rounded-2xl object-cover flex-shrink-0" />
+        ) : (
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white text-lg font-black flex-shrink-0 ${
+            s.staffType === 'office'
+              ? 'bg-gradient-to-br from-purple-500 to-purple-700'
+              : 'bg-gradient-to-br from-brand-500 to-brand-700'
+          }`}>
+            {s.name[0]}
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-gray-900 truncate">{s.name}</h3>
+          <p className="text-xs text-gray-500">{s.role}</p>
+          <div className="flex gap-1 mt-1 flex-wrap">
+            <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
+            {isPending && <span className="badge badge-yellow">Not activated</span>}
+          </div>
+        </div>
+        <button
+          onClick={() => setConfirmDelete(true)}
+          className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition flex-shrink-0"
+          title="Delete staff member"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <Phone size={13} className="text-gray-400 flex-shrink-0" />
+          {s.phone || <span className="text-gray-300 italic text-xs">No phone</span>}
+        </div>
+        {s.staffCode && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">ID:</span>
+            <span className="font-mono text-xs font-bold text-gray-700">{s.staffCode}</span>
+            {isPending && s.joinCode && (
+              <span className="font-mono text-xs font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                Code: {s.joinCode}
+              </span>
+            )}
+          </div>
+        )}
+        {s.sports?.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Award size={13} className="text-gray-400 flex-shrink-0" />
+            <div className="flex flex-wrap gap-1">
+              {s.sports.map(sp => <span key={sp} className="badge badge-blue">{sp}</span>)}
+            </div>
+          </div>
+        )}
+        {assignedBatches.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Layers size={13} className="text-gray-400 flex-shrink-0" />
+            <div className="flex flex-wrap gap-1">
+              {assignedBatches.map(b => (
+                <span key={b.id} className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-semibold">{b.name}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-gray-100">
+        <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
+          <span>Monthly Attendance</span>
+          <span className="font-bold text-gray-700">{s.attendance}%</span>
+        </div>
+        <div className="w-full bg-gray-100 rounded-full h-1.5">
+          <div
+            className={`h-1.5 rounded-full ${s.attendance >= 95 ? 'bg-emerald-500' : s.attendance >= 85 ? 'bg-amber-500' : 'bg-red-500'}`}
+            style={{ width: `${s.attendance}%` }}
+          />
+        </div>
+      </div>
+
+      <button
+        onClick={() => onSelect(s)}
+        className="w-full mt-4 btn-secondary text-xs justify-center py-2 gap-2"
+      >
+        View Profile & Assign Batch <ChevronRight size={12} />
+      </button>
+    </div>
+  )
+}
+
+function StaffSections({ staff, batches, onSelect, onDelete }) {
+  const coaches = staff.filter(s => s.staffType !== 'office')
+  const office  = staff.filter(s => s.staffType === 'office')
+
+  return (
+    <div className="space-y-6">
+      {/* Coach / Field Staff */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-sm font-bold text-brand-700 bg-brand-50 px-3 py-1 rounded-lg">
+            Coaches &amp; Field Staff
+          </span>
+          <span className="text-xs text-gray-400 font-semibold">{coaches.length}</span>
+        </div>
+        {coaches.length === 0 ? (
+          <div className="card p-6 text-center">
+            <p className="text-sm text-gray-400">No coaches added yet.</p>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {coaches.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} />)}
+          </div>
+        )}
+      </div>
+
+      {/* Office Staff */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-sm font-bold text-purple-700 bg-purple-50 px-3 py-1 rounded-lg">
+            Office Staff
+          </span>
+          <span className="text-xs text-gray-400 font-semibold">{office.length}</span>
+        </div>
+        {office.length === 0 ? (
+          <div className="card p-6 text-center">
+            <p className="text-sm text-gray-400">No office staff added yet.</p>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {office.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function LeaveRequestsPanel({ leaveRequests, onUpdate, onDelete }) {
+  const [loading,      setLoading]      = useState(null)
+  const [deleting,     setDeleting]     = useState(null)
+  const [showPast,     setShowPast]     = useState(false)
+  const today = new Date().toISOString().split('T')[0]
 
   const handle = async (id, status) => {
     setLoading(id)
     try { await onUpdate(id, status) } finally { setLoading(null) }
   }
+
+  const handleDelete = async (id) => {
+    setDeleting(id)
+    try { await onDelete(id) } finally { setDeleting(null) }
+  }
+
+  // Sort all by start_date ascending
+  const sorted = [...leaveRequests].sort((a, b) => a.start_date?.localeCompare(b.start_date))
+
+  const pending         = sorted.filter(r => r.status === 'Pending')
+  const upcomingApproved = sorted.filter(r => r.status === 'Approved' && r.start_date >= today)
+  const past            = sorted.filter(r => r.status !== 'Pending' && r.start_date < today)
+    .sort((a, b) => b.start_date?.localeCompare(a.start_date)) // past: newest first
+
+  // Group past by month label
+  const pastByMonth = past.reduce((acc, r) => {
+    const d = new Date(r.start_date + 'T00:00:00')
+    const key = d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    if (!acc[key]) acc[key] = []
+    acc[key].push(r)
+    return acc
+  }, {})
 
   if (leaveRequests.length === 0) {
     return (
@@ -234,82 +349,164 @@ function LeaveRequestsPanel({ leaveRequests, onUpdate }) {
 
   return (
     <div className="space-y-5">
-      {/* Pending */}
+
+      {/* ── Pending Approval ── */}
       {pending.length > 0 && (
-        <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
-            Pending Approval ({pending.length})
-          </p>
-          <div className="space-y-3">
-            {pending.map(r => (
-              <div key={r.id} className="card p-4 border-l-4 border-amber-400">
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div>
-                    <p className="font-bold text-gray-900 text-sm">{r.staff_name}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {fmtDate(r.start_date)} → {fmtDate(r.end_date)}
-                      {' · '}{dayCount(r.start_date, r.end_date)} day{dayCount(r.start_date, r.end_date) !== 1 ? 's' : ''}
-                    </p>
-                    <p className="text-xs text-gray-600 mt-1.5 italic">"{r.reason}"</p>
-                  </div>
-                  <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg flex-shrink-0">
-                    <Hourglass size={11} /> Pending
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handle(r.id, 'Approved')}
-                    disabled={loading === r.id}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition disabled:opacity-50"
-                  >
-                    <CheckCircle size={13} /> {loading === r.id ? '…' : 'Approve'}
-                  </button>
-                  <button
-                    onClick={() => handle(r.id, 'Rejected')}
-                    disabled={loading === r.id}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 text-xs font-bold transition disabled:opacity-50"
-                  >
-                    <XCircle size={13} /> Reject
-                  </button>
-                </div>
-              </div>
-            ))}
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Hourglass size={13} className="text-amber-500" />
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Pending Approval</p>
+            <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{pending.length}</span>
           </div>
-        </div>
+          <div className="space-y-3">
+            {pending.map(r => {
+              const days = dayCount(r.start_date, r.end_date)
+              const isUpcoming = r.start_date >= today
+              return (
+                <div key={r.id} className="card p-4 border-l-4 border-amber-400">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-bold text-gray-900 text-sm">{r.staff_name}</p>
+                        {isUpcoming
+                          ? <span className="text-[10px] bg-brand-50 text-brand-600 font-bold px-1.5 py-0.5 rounded">Upcoming</span>
+                          : <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-1.5 py-0.5 rounded">Past date</span>
+                        }
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1 font-semibold">
+                        {fmtDateFull(r.start_date)}
+                        {r.start_date !== r.end_date && <> → {fmtDateFull(r.end_date)}</>}
+                        <span className="text-gray-400 font-normal ml-1">· {days} day{days !== 1 ? 's' : ''}</span>
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1.5 italic">"{r.reason}"</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
+                        <Hourglass size={11} /> Pending
+                      </span>
+                      <button onClick={() => handleDelete(r.id)} disabled={deleting === r.id}
+                        className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition disabled:opacity-50" title="Delete request">
+                        {deleting === r.id ? '…' : <X size={13} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handle(r.id, 'Approved')} disabled={loading === r.id}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition disabled:opacity-50">
+                      <CheckCircle size={13} /> {loading === r.id ? '…' : 'Approve'}
+                    </button>
+                    <button onClick={() => handle(r.id, 'Rejected')} disabled={loading === r.id}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 text-xs font-bold transition disabled:opacity-50">
+                      <XCircle size={13} /> Reject
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
       )}
 
-      {/* Resolved */}
-      {resolved.length > 0 && (
-        <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
-            Resolved ({resolved.length})
-          </p>
-          <div className="space-y-2">
-            {resolved.map(r => (
-              <div key={r.id}
-                className={`card p-3.5 flex items-start justify-between gap-3 ${
-                  r.status === 'Approved' ? 'border-l-4 border-emerald-400' : 'border-l-4 border-red-300'
-                }`}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-gray-900 truncate">{r.staff_name}</p>
-                  <p className="text-xs text-gray-500">{fmtDate(r.start_date)} → {fmtDate(r.end_date)}</p>
-                  <p className="text-xs text-gray-400 mt-0.5 truncate italic">"{r.reason}"</p>
-                </div>
-                <span className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg flex-shrink-0 ${
-                  r.status === 'Approved'
-                    ? 'text-emerald-700 bg-emerald-50 border border-emerald-100'
-                    : 'text-red-600 bg-red-50 border border-red-100'
-                }`}>
-                  {r.status === 'Approved'
-                    ? <><CheckCircle size={11} /> Approved</>
-                    : <><XCircle size={11} /> Rejected</>
-                  }
-                </span>
-              </div>
-            ))}
+      {/* ── Upcoming Approved ── */}
+      {upcomingApproved.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarCheck size={13} className="text-emerald-600" />
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Upcoming Leaves</p>
+            <span className="bg-emerald-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">{upcomingApproved.length}</span>
           </div>
-        </div>
+          <div className="space-y-2">
+            {upcomingApproved.map(r => {
+              const days     = dayCount(r.start_date, r.end_date)
+              const daysAway = Math.ceil((new Date(r.start_date + 'T00:00:00') - new Date()) / 86400000)
+              return (
+                <div key={r.id} className="card p-3.5 border-l-4 border-emerald-400 flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-bold text-gray-900">{r.staff_name}</p>
+                      <span className="text-[10px] bg-emerald-50 text-emerald-600 font-bold px-1.5 py-0.5 rounded">
+                        {daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway} days`}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5 font-semibold">
+                      {fmtDateFull(r.start_date)}
+                      {r.start_date !== r.end_date && <> → {fmtDateFull(r.end_date)}</>}
+                      <span className="text-gray-400 font-normal ml-1">· {days} day{days !== 1 ? 's' : ''}</span>
+                    </p>
+                    <p className="text-xs text-gray-400 italic mt-0.5">"{r.reason}"</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">
+                      <CheckCircle size={11} /> Approved
+                    </span>
+                    <button onClick={() => handleDelete(r.id)} disabled={deleting === r.id}
+                      className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition disabled:opacity-50" title="Delete request">
+                      {deleting === r.id ? '…' : <X size={13} />}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Past — grouped by month ── */}
+      {past.length > 0 && (
+        <section>
+          <button
+            onClick={() => setShowPast(v => !v)}
+            className="flex items-center gap-2 mb-3 w-full text-left group"
+          >
+            <CalendarDays size={13} className="text-gray-400" />
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide flex-1">Past Leaves ({past.length})</p>
+            <ChevronDown size={14} className={`text-gray-400 transition-transform ${showPast ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showPast && (
+            <div className="space-y-5">
+              {Object.entries(pastByMonth).map(([month, requests]) => (
+                <div key={month}>
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 pl-1">{month}</p>
+                  <div className="space-y-2">
+                    {requests.map(r => {
+                      const days = dayCount(r.start_date, r.end_date)
+                      return (
+                        <div key={r.id} className={`card p-3 flex items-start justify-between gap-3 border-l-4 ${
+                          r.status === 'Approved' ? 'border-emerald-300' : 'border-red-200'
+                        }`}>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-gray-800">{r.staff_name}</p>
+                            <p className="text-xs text-gray-500">
+                              {fmtDateFull(r.start_date)}
+                              {r.start_date !== r.end_date && <> → {fmtDateFull(r.end_date)}</>}
+                              <span className="text-gray-400 ml-1">· {days} day{days !== 1 ? 's' : ''}</span>
+                            </p>
+                            <p className="text-xs text-gray-400 italic mt-0.5 truncate">"{r.reason}"</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className={`flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-lg ${
+                              r.status === 'Approved'
+                                ? 'text-emerald-700 bg-emerald-50 border border-emerald-100'
+                                : 'text-red-600 bg-red-50 border border-red-100'
+                            }`}>
+                              {r.status === 'Approved' ? <CheckCircle size={10} /> : <XCircle size={10} />}
+                              {r.status}
+                            </span>
+                            <button onClick={() => handleDelete(r.id)} disabled={deleting === r.id}
+                              className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition disabled:opacity-50" title="Delete request">
+                              {deleting === r.id ? '…' : <X size={13} />}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
     </div>
   )
@@ -320,150 +517,362 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
 
+function fmtDateFull(d) {
+  if (!d) return '—'
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
 function dayCount(start, end) {
   if (!start || !end) return 0
   const diff = (new Date(end) - new Date(start)) / 86400000
   return diff >= 0 ? diff + 1 : 0
 }
 
-function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign }) {
+function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions }) {
+  const photoRef = useRef(null)
   const assignedBatches   = batches.filter(b => b.coach === s.name)
   const unassignedBatches = batches.filter(b => b.coach !== s.name)
-  const [assigning, setAssigning] = useState(false)
+  const [panelTab,      setPanelTab]      = useState('info')   // 'info' | 'edit' | 'access'
+  const [assigning,     setAssigning]     = useState(false)
   const [selectedBatch, setSelectedBatch] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [batchSaving,   setBatchSaving]   = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting,      setDeleting]      = useState(false)
 
-  const handleAssign = async () => {
+  // Edit tab state
+  const [editName,      setEditName]      = useState(s.name)
+  const [editPhone,     setEditPhone]     = useState(s.phone || '')
+  const [editAge,       setEditAge]       = useState(s.age || '')
+  const [editPhoto,     setEditPhoto]     = useState(null)
+  const [editPreview,   setEditPreview]   = useState(null)
+  const [editSaving,    setEditSaving]    = useState(false)
+  const [editError,     setEditError]     = useState('')
+
+  // Access tab state
+  const [accRole,       setAccRole]       = useState(s.accessRole || 'coach')
+  const [accPerms,      setAccPerms]      = useState(s.permissions || [])
+  const [accSaving,     setAccSaving]     = useState(false)
+
+  const isPending   = s.accountStatus === 'pending'
+  const isField     = s.staffType !== 'office'
+  const typeLabel   = isField ? 'Coach / Field Staff' : 'Office Staff'
+  const headerColor = isField
+    ? 'bg-gradient-to-br from-gray-800 to-gray-900'
+    : 'bg-gradient-to-br from-purple-800 to-purple-900'
+
+  const handleBatchAssign = async () => {
     if (!selectedBatch) return
-    setSaving(true)
+    setBatchSaving(true)
     await onAssign(Number(selectedBatch))
-    setSaving(false)
-    setAssigning(false)
-    setSelectedBatch('')
+    setBatchSaving(false); setAssigning(false); setSelectedBatch('')
   }
 
-  const handleUnassign = async (batchId) => {
-    await onUnassign(batchId)
+  const handleDelete = async () => {
+    setDeleting(true)
+    try { await onDelete(s.id); onClose() } catch (_) { setDeleting(false); setConfirmDelete(false) }
   }
+
+  const handleEditSave = async () => {
+    if (!editName.trim()) { setEditError('Name is required'); return }
+    setEditSaving(true); setEditError('')
+    try {
+      await onEdit(s.id, { name: editName.trim(), phone: editPhone.trim(), photoFile: editPhoto, photoUrl: s.photoUrl, age: editAge ? Number(editAge) : null })
+      setEditPhoto(null); setEditPreview(null)
+    } catch (err) { setEditError(err.message || 'Failed to save') }
+    finally { setEditSaving(false) }
+  }
+
+  const handleAccSave = async () => {
+    setAccSaving(true)
+    try { await onEditPermissions(s.id, { accessRole: accRole, permissions: accPerms }) }
+    finally { setAccSaving(false) }
+  }
+
+  const togglePerm = (p) => setAccPerms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
+  const applyPreset = (role) => { setAccRole(role); setAccPerms(ROLE_PRESETS[role] || []) }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white h-full w-full max-w-md shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
+
         {/* Header */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 px-6 pt-6 pb-8">
+        <div className={`${headerColor} px-6 pt-6 pb-5`}>
           <div className="flex items-start justify-between mb-4">
             <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition">
               <X size={16} className="text-white" />
             </button>
-            <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
+            <div className="flex items-center gap-2">
+              <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
+              {isPending && <span className="badge badge-yellow">Not activated</span>}
+            </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-2xl font-black text-white">
-              {s.name[0]}
-            </div>
+            {(editPreview || s.photoUrl) ? (
+              <img src={editPreview || s.photoUrl} alt={s.name} className="w-16 h-16 rounded-2xl object-cover flex-shrink-0 border-2 border-white/20" />
+            ) : (
+              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-2xl font-black text-white flex-shrink-0">
+                {s.name[0]}
+              </div>
+            )}
             <div>
               <h2 className="text-xl font-black text-white">{s.name}</h2>
               <p className="text-gray-300 text-sm">{s.role}</p>
-              <p className="text-gray-400 text-xs mt-0.5">{s.phone}</p>
+              <p className="text-gray-400 text-xs mt-0.5">{typeLabel}</p>
+              {s.phone && <p className="text-gray-300 text-xs mt-0.5">{s.phone}</p>}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 mt-5">
-            <div className="bg-white/10 rounded-xl p-3 text-center">
+          <div className="grid grid-cols-3 gap-3 mt-4">
+            <div className="bg-white/10 rounded-xl p-2.5 text-center">
               <p className="text-lg font-black text-white">{assignedBatches.length}</p>
               <p className="text-[10px] text-gray-400">Batches</p>
             </div>
-            <div className="bg-white/10 rounded-xl p-3 text-center">
+            <div className="bg-white/10 rounded-xl p-2.5 text-center">
               <p className="text-lg font-black text-white">{s.attendance}%</p>
               <p className="text-[10px] text-gray-400">Attendance</p>
+            </div>
+            <div className="bg-white/10 rounded-xl p-2.5 text-center">
+              <p className="text-sm font-black text-white font-mono">{s.staffCode || '—'}</p>
+              <p className="text-[10px] text-gray-400">Staff ID</p>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Sports */}
-          {s.sports?.length > 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 p-4">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Sports / Expertise</p>
-              <div className="flex flex-wrap gap-2">
-                {s.sports.map(sp => <span key={sp} className="badge badge-blue">{sp}</span>)}
-              </div>
-            </div>
-          )}
+        {/* Tab bar */}
+        <div className="flex border-b border-gray-100 bg-white">
+          {[
+            { id: 'info',   label: 'Info' },
+            { id: 'edit',   label: 'Edit Profile' },
+            { id: 'access', label: 'Access' },
+          ].map(t => (
+            <button key={t.id} onClick={() => setPanelTab(t.id)}
+              className={`flex-1 py-3 text-xs font-bold transition border-b-2 ${
+                panelTab === t.id ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-          {/* Assigned Batches */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Assigned Batches</p>
-              {unassignedBatches.length > 0 && (
-                <button
-                  onClick={() => setAssigning(a => !a)}
-                  className="text-xs text-brand-600 font-semibold hover:underline"
-                >
-                  + Assign Batch
-                </button>
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+
+          {/* ── INFO TAB ── */}
+          {panelTab === 'info' && (<>
+            {isPending && s.staffCode && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Activation Pending</p>
+                <p className="text-xs text-amber-600 mb-3">Share this link so they can register their account</p>
+                <p className="text-xs font-mono text-amber-800 break-all bg-amber-100 rounded-lg px-3 py-2">
+                  {window.location.origin}/staff-activate?id={s.staffCode}&code={s.joinCode || '?'}
+                </p>
+              </div>
+            )}
+
+            {s.sports?.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Sports / Expertise</p>
+                <div className="flex flex-wrap gap-2">
+                  {s.sports.map(sp => <span key={sp} className="badge badge-blue">{sp}</span>)}
+                </div>
+              </div>
+            )}
+
+            {isField && s.licenceUrl && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-4 flex items-center gap-3">
+                <FileText size={16} className="text-emerald-600 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-gray-700">Sport Licence</p>
+                  <a href={s.licenceUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-brand-600 underline flex items-center gap-1 mt-0.5">
+                    View licence <ExternalLink size={10} />
+                  </a>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-2xl border border-gray-100 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Assigned Batches</p>
+                {unassignedBatches.length > 0 && (
+                  <button onClick={() => setAssigning(a => !a)} className="text-xs text-brand-600 font-semibold hover:underline">+ Assign</button>
+                )}
+              </div>
+              {assigning && (
+                <div className="flex gap-2 mb-3">
+                  <select className="input flex-1 text-xs" value={selectedBatch} onChange={e => setSelectedBatch(e.target.value)}>
+                    <option value="">— Select batch —</option>
+                    {unassignedBatches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''} · {b.time}</option>)}
+                  </select>
+                  <button onClick={handleBatchAssign} disabled={!selectedBatch || batchSaving} className="btn-primary text-xs px-3 py-2">
+                    {batchSaving ? '…' : 'Assign'}
+                  </button>
+                </div>
+              )}
+              {assignedBatches.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-3">No batches assigned yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {assignedBatches.map(b => (
+                    <div key={b.id} className="flex items-center justify-between bg-brand-50 rounded-xl px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-bold text-brand-700">{b.name}</p>
+                        <p className="text-xs text-brand-500">{b.time} · {b.enrolled}/{b.capacity}</p>
+                      </div>
+                      <button onClick={() => onUnassign(b.id)} className="p-1 rounded text-gray-400 hover:text-red-500 transition"><X size={13} /></button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
 
-            {assigning && (
-              <div className="flex gap-2 mb-3">
-                <select
-                  className="input flex-1 text-xs"
-                  value={selectedBatch}
-                  onChange={e => setSelectedBatch(e.target.value)}
-                >
-                  <option value="">— Select batch —</option>
-                  {unassignedBatches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''} · {b.time}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={handleAssign}
-                  disabled={!selectedBatch || saving}
-                  className="btn-primary text-xs px-3 py-2"
-                >
-                  {saving ? '…' : 'Assign'}
-                </button>
-              </div>
-            )}
-
-            {assignedBatches.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-3">No batches assigned yet</p>
-            ) : (
-              <div className="space-y-2">
-                {assignedBatches.map(b => (
-                  <div key={b.id} className="flex items-center justify-between bg-brand-50 rounded-xl px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-bold text-brand-700">{b.name}</p>
-                      <p className="text-xs text-brand-500">{b.time} · {b.enrolled}/{b.capacity} students</p>
-                    </div>
-                    <button
-                      onClick={() => handleUnassign(b.id)}
-                      className="p-1 rounded text-gray-400 hover:text-red-500 transition"
-                      title="Remove assignment"
-                    >
-                      <X size={13} />
-                    </button>
+            <div className="bg-white rounded-2xl border border-gray-100 p-4">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Details</p>
+              <div className="space-y-2.5">
+                {[
+                  ['Role',      s.role],
+                  ['Type',      typeLabel],
+                  ['Phone',     s.phone || '—'],
+                  ['Age',       s.age   || '—'],
+                  ['Staff ID',  s.staffCode || '—'],
+                  ['Join Date', s.joinDate ? new Date(s.joinDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'],
+                  ['Account',   s.accountStatus === 'active' ? 'Activated' : 'Pending activation'],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between border-b border-gray-50 pb-2 last:border-0 last:pb-0">
+                    <span className="text-xs text-gray-400">{label}</span>
+                    <span className="text-xs font-semibold text-gray-800">{value}</span>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-
-          {/* Personal Info */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Details</p>
-            <div className="space-y-2.5">
-              {[
-                ['Role', s.role],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between border-b border-gray-50 pb-2 last:border-0 last:pb-0">
-                  <span className="text-xs text-gray-400">{label}</span>
-                  <span className="text-xs font-semibold text-gray-800">{value}</span>
-                </div>
-              ))}
             </div>
-          </div>
+
+            {!confirmDelete ? (
+              <button onClick={() => setConfirmDelete(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-red-50 text-red-600 font-bold text-sm border border-red-100 hover:bg-red-100 transition">
+                <Trash2 size={15} /> Delete Staff Member
+              </button>
+            ) : (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
+                <p className="text-sm font-bold text-red-700 text-center">Delete {s.name}?</p>
+                <p className="text-xs text-red-500 text-center">This cannot be undone.</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setConfirmDelete(false)} className="flex-1 btn-secondary text-sm py-2.5">Cancel</button>
+                  <button onClick={handleDelete} disabled={deleting}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold disabled:opacity-50">
+                    {deleting ? <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> : <><Trash2 size={13}/> Yes, Delete</>}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>)}
+
+          {/* ── EDIT TAB ── */}
+          {panelTab === 'edit' && (
+            <div className="space-y-4">
+              {/* Photo */}
+              <div className="flex flex-col items-center gap-2">
+                <button type="button" onClick={() => photoRef.current?.click()}
+                  className="relative group w-20 h-20 rounded-full overflow-hidden border-2 border-dashed border-gray-300 hover:border-brand-400 transition">
+                  {(editPreview || s.photoUrl) ? (
+                    <img src={editPreview || s.photoUrl} alt="preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gray-50 flex flex-col items-center justify-center gap-1 text-gray-400">
+                      <Camera size={20} /><span className="text-[10px] font-semibold">Photo</span>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                    <Camera size={16} className="text-white" />
+                  </div>
+                </button>
+                <p className="text-[11px] text-gray-400">Click to change photo</p>
+                <input ref={photoRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) { setEditPhoto(f); setEditPreview(URL.createObjectURL(f)) } }} />
+              </div>
+
+              <div>
+                <label className="label">Full Name *</label>
+                <input className="input" value={editName} onChange={e => setEditName(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Phone</label>
+                <input className="input" value={editPhone} onChange={e => setEditPhone(e.target.value)} type="tel" />
+              </div>
+              <div>
+                <label className="label">Age</label>
+                <input className="input" value={editAge} onChange={e => setEditAge(e.target.value)} type="number" min="16" max="70" placeholder="Years" />
+              </div>
+
+              {isField && s.licenceUrl && (
+                <div className="flex items-center gap-2 text-xs text-brand-600 bg-brand-50 rounded-xl px-3 py-2.5">
+                  <FileText size={13} />
+                  <a href={s.licenceUrl} target="_blank" rel="noopener noreferrer" className="underline flex items-center gap-1">
+                    View current licence <ExternalLink size={10} />
+                  </a>
+                </div>
+              )}
+
+              {editError && <p className="text-sm text-red-600">{editError}</p>}
+
+              <button onClick={handleEditSave} disabled={editSaving}
+                className="w-full btn-primary justify-center py-3 text-sm">
+                {editSaving ? '…' : <><Check size={14} /> Save Changes</>}
+              </button>
+            </div>
+          )}
+
+          {/* ── ACCESS TAB ── */}
+          {panelTab === 'access' && (
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Role</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {ACCESS_ROLES.map(r => (
+                    <button key={r} onClick={() => applyPreset(r)}
+                      className={`py-2 px-3 rounded-xl text-xs font-bold border-2 transition ${
+                        accRole === r ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}>
+                      {ACCESS_ROLE_LABEL[r]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-400 mt-2">Selecting a role auto-fills default permissions below. You can still customize.</p>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Permissions</p>
+                <div className="space-y-3">
+                  {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => (
+                    <div key={group}>
+                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">{group}</p>
+                      <div className="space-y-1">
+                        {perms.map(p => (
+                          <label key={p} className="flex items-center gap-2.5 cursor-pointer group">
+                            <div onClick={() => togglePerm(p)}
+                              className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition ${
+                                accPerms.includes(p) ? 'bg-brand-600 border-brand-600' : 'border-gray-300 group-hover:border-brand-400'
+                              }`}>
+                              {accPerms.includes(p) && <Check size={10} className="text-white" strokeWidth={3} />}
+                            </div>
+                            <span className="text-xs text-gray-700">{PERM_LABEL[p]}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button onClick={handleAccSave} disabled={accSaving}
+                className="w-full btn-primary justify-center py-3 text-sm">
+                {accSaving ? '…' : <><Check size={14} /> Save Permissions</>}
+              </button>
+
+              {!s.accountStatus || s.accountStatus === 'pending' ? (
+                <p className="text-xs text-amber-600 text-center bg-amber-50 rounded-xl px-3 py-2">
+                  Permissions will apply once staff activates their account.
+                </p>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1059,15 +1468,19 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const [photoFile,    setPhotoFile]    = useState(null)
   const defaultSports = selectedSport && selectedSport !== 'All' ? [selectedSport] : []
   const [form, setForm] = useState({
-    name: '', role: ROLES[1], phone: '', sports: defaultSports, status: 'Active',
+    name: '', role: '', phone: '', age: '', sports: defaultSports, status: 'Active', staffType: 'coach',
   })
-  const [giveAccess,  setGiveAccess]  = useState(false)
-  const [portalType,  setPortalType]  = useState('field')  // 'field' | 'office'
-  const [accessRole,  setAccessRole]  = useState('coach')
-  const [perms,       setPerms]       = useState([])
-  const [inviteLink,  setInviteLink]  = useState(null)
-  const [copied,      setCopied]      = useState(false)
-  const [loading,     setLoading]     = useState(false)
+  const [sportInput, setSportInput] = useState('')
+  const [giveAccess,   setGiveAccess]   = useState(false)
+  const [portalType,   setPortalType]   = useState('field')  // 'field' | 'office'
+  const [accessRole,   setAccessRole]   = useState('coach')
+  const [perms,        setPerms]        = useState([])
+  const [inviteLink,   setInviteLink]   = useState(null)
+  const [activationInfo, setActivationInfo] = useState(null) // { staffCode, joinCode }
+  const [copied,       setCopied]       = useState(false)
+  const [codeCopied,   setCodeCopied]   = useState(false)
+  const [loading,      setLoading]      = useState(false)
+  const [saveError,    setSaveError]    = useState('')
 
   const FIELD_PERMS = ['attendance.manage', 'students.view', 'batches.view']
 
@@ -1103,16 +1516,28 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
 
   const handleSave = async () => {
     if (!form.name.trim()) return
+    const phoneDigits = form.phone.replace('+91', '')
+    if (phoneDigits.length !== 10) return
     setLoading(true)
+    setSaveError('')
     try {
       const accessConfig = giveAccess ? { accessRole, permissions: perms } : null
-      const link = await onSave(form, photoFile, accessConfig)
-      if (giveAccess && link) setInviteLink(link)
+      const result = await onSave(form, photoFile, accessConfig)
+      if (result?.activationInfo) setActivationInfo(result.activationInfo)
+      if (result?.inviteLink)     setInviteLink(result.inviteLink)
     } catch (err) {
-      console.error(err)
+      setSaveError(err.message || 'Failed to add staff')
     } finally {
       setLoading(false)
     }
+  }
+
+  const copyCode = () => {
+    if (!activationInfo) return
+    const link = `${window.location.origin}/staff-activate?id=${activationInfo.staffCode}&code=${activationInfo.joinCode}`
+    navigator.clipboard.writeText(link)
+    setCodeCopied(true)
+    setTimeout(() => setCodeCopied(false), 2000)
   }
 
   const copyLink = () => {
@@ -1121,8 +1546,9 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Success screen — shown after invite is generated
-  if (inviteLink) {
+  // Success screen — show activation codes (and optional invite link)
+  if (activationInfo) {
+    const regLink = `${window.location.origin}/staff-activate?id=${activationInfo.staffCode}&code=${activationInfo.joinCode}`
     return (
       <Modal title="Staff Added!" onClose={onClose}>
         <div className="text-center py-4 space-y-4">
@@ -1131,18 +1557,19 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
           </div>
           <div>
             <p className="font-bold text-gray-900">{form.name} added successfully</p>
-            <p className="text-sm text-gray-500 mt-1">Share this invite link so they can create their account</p>
+            <p className="text-sm text-gray-500 mt-1">Send this link so they can register their email and set a password</p>
           </div>
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 text-left">
-            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide mb-1">Invite Link</p>
-            <p className="text-xs text-gray-700 break-all font-mono">{inviteLink}</p>
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-left space-y-2">
+            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Registration Link</p>
+            <p className="text-xs text-gray-700 break-all font-mono leading-relaxed">{regLink}</p>
           </div>
           <button
-            onClick={copyLink}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition ${copied ? 'bg-emerald-600 text-white' : 'bg-brand-600 hover:bg-brand-700 text-white'}`}
+            onClick={copyCode}
+            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition ${codeCopied ? 'bg-emerald-600 text-white' : 'bg-brand-600 hover:bg-brand-700 text-white'}`}
           >
-            {copied ? <><Check size={14}/> Copied!</> : <><Copy size={14}/> Copy Link</>}
+            {codeCopied ? <><Check size={14}/> Copied!</> : <><Copy size={14}/> Copy Link</>}
           </button>
+          <p className="text-[11px] text-gray-400">Staff opens the link, enters their email and sets a password. They can then login at <span className="font-semibold text-gray-600">/staff-login</span></p>
           <button onClick={onClose} className="w-full btn-secondary text-sm">Done</button>
         </div>
       </Modal>
@@ -1181,31 +1608,92 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Staff Details</p>
           <div className="space-y-3">
             <div>
+              <label className="label">Staff Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'coach',  label: 'Coach / Field Staff',  color: 'brand' },
+                  { value: 'office', label: 'Office Staff',          color: 'purple' },
+                ].map(t => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => set('staffType', t.value)}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold border-2 transition text-left ${
+                      form.staffType === t.value
+                        ? t.color === 'brand'
+                          ? 'border-brand-500 bg-brand-50 text-brand-700'
+                          : 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
               <label className="label">Full Name *</label>
               <input className="input" placeholder="Staff name" value={form.name} onChange={e => set('name', e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="label">HR Role</label>
-                <select className="input" value={form.role} onChange={e => set('role', e.target.value)}>
-                  {ROLES.map(r => <option key={r}>{r}</option>)}
-                </select>
+                <input className="input" placeholder="e.g. Head Coach, Admin…" value={form.role} onChange={e => set('role', e.target.value)} />
               </div>
               <div>
-                <label className="label">Phone</label>
-                <input className="input" placeholder="Mobile number" value={form.phone} onChange={e => set('phone', e.target.value)} />
+                <label className="label">Age</label>
+                <input className="input" placeholder="Years" type="number" min="16" max="70" value={form.age} onChange={e => set('age', e.target.value)} />
               </div>
             </div>
             <div>
-              <label className="label">Sports / Expertise</label>
-              <div className="flex flex-wrap gap-2">
-                {SPORTS.map(sp => (
-                  <button key={sp} type="button" onClick={() => toggleSport(sp)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                      form.sports.includes(sp) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                    }`}>{sp}</button>
-                ))}
+              <label className="label">Phone *</label>
+              <div className="flex">
+                <span className="flex items-center px-3 bg-gray-50 border border-r-0 border-gray-200 rounded-l-xl text-sm font-semibold text-gray-500 select-none">+91</span>
+                <input
+                  className="input rounded-l-none flex-1"
+                  placeholder="9876543210"
+                  maxLength={10}
+                  inputMode="numeric"
+                  value={form.phone.startsWith('+91') ? form.phone.slice(3) : form.phone}
+                  onChange={e => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
+                    set('phone', digits ? '+91' + digits : '')
+                  }}
+                />
               </div>
+            </div>
+            <div>
+              <label className="label">Sports / Activities</label>
+              {/* Tag chips */}
+              {form.sports.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {form.sports.map(sp => (
+                    <span key={sp} className="flex items-center gap-1 bg-brand-600 text-white text-xs font-semibold px-2.5 py-1 rounded-lg">
+                      {sp}
+                      <button type="button" onClick={() => set('sports', form.sports.filter(s => s !== sp))} className="opacity-70 hover:opacity-100 ml-0.5">
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <input
+                className="input"
+                placeholder="Type a sport and press Enter (e.g. Cricket)"
+                value={sportInput}
+                onChange={e => setSportInput(e.target.value)}
+                onKeyDown={e => {
+                  if ((e.key === 'Enter' || e.key === ',') && sportInput.trim()) {
+                    e.preventDefault()
+                    const val = sportInput.trim().replace(/,$/, '')
+                    if (val && !form.sports.includes(val)) set('sports', [...form.sports, val])
+                    setSportInput('')
+                  } else if (e.key === 'Backspace' && !sportInput && form.sports.length > 0) {
+                    set('sports', form.sports.slice(0, -1))
+                  }
+                }}
+              />
+              <p className="text-[10px] text-gray-400 mt-1">Press Enter or comma to add each sport</p>
             </div>
           </div>
         </div>
@@ -1326,7 +1814,12 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
         </div>
       </div>
 
-      <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-gray-100">
+      {saveError && (
+        <div className="mt-3 px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 break-all">
+          {saveError}
+        </div>
+      )}
+      <div className="flex justify-end gap-3 mt-3 pt-4 border-t border-gray-100">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
         <button className="btn-primary" onClick={handleSave} disabled={loading || !form.name.trim()}>
           {loading ? '…' : giveAccess ? 'Add & Send Invite' : 'Add Staff Member'}

@@ -26,8 +26,10 @@ import SportSelect from './pages/SportSelect'
 
 // Staff pages
 import StaffLogin from './pages/StaffLogin'
+import StaffActivate from './pages/StaffActivate'
 import StaffDashboard from './pages/staff/StaffDashboard'
 import StaffMe from './pages/staff/StaffMe'
+import StaffProfile from './pages/staff/StaffProfile'
 import StaffRoster from './pages/staff/StaffRoster'
 import StaffNotices from './pages/staff/StaffNotices'
 import StaffAttendance from './pages/staff/StaffAttendance'
@@ -112,6 +114,25 @@ function StudentRoute({ children }) {
   return <Navigate to="/student-login" replace />
 }
 
+// Renders children only if the current staff user has the given permission.
+// Shows a locked screen otherwise — staff cannot bypass by typing the URL.
+function PermRequired({ perm, children }) {
+  const { hasPermission } = useApp()
+  if (hasPermission(perm)) return children
+  return (
+    <div className="flex flex-col items-center justify-center h-[55vh] px-6 text-center">
+      <div className="w-14 h-14 bg-red-50 rounded-full flex items-center justify-center mb-4">
+        <svg className="w-7 h-7 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      <p className="text-base font-black text-gray-900">Access Restricted</p>
+      <p className="text-sm text-gray-400 mt-1">You don't have permission to view this page.</p>
+    </div>
+  )
+}
+
 function PublicRoute({ children }) {
   const { role, loading } = useApp()
   if (loading) return <PageLoading />
@@ -147,14 +168,26 @@ function AppRoutes() {
       </Route>
 
       {/* Staff */}
-      <Route path="/staff-login" element={<PublicRoute><StaffLogin /></PublicRoute>} />
+      <Route path="/staff-login"     element={<PublicRoute><StaffLogin /></PublicRoute>} />
+      <Route path="/staff-activate"  element={<StaffActivate />} />
       <Route path="/staff" element={<StaffRoute><StaffLayout /></StaffRoute>}>
         <Route path="home"       element={<StaffDashboard />} />
+        <Route path="profile"    element={<StaffProfile />} />
         <Route path="me"         element={<StaffMe />} />
         <Route path="roster"     element={<StaffRoster />} />
         <Route path="notices"    element={<StaffNotices />} />
         <Route path="attendance" element={<StaffAttendance />} />
         <Route path="scan-in"    element={<StaffScanIn />} />
+        {/* Permission-gated admin pages rendered inside staff portal */}
+        <Route path="students"  element={<PermRequired perm="students.view">  <Students />  </PermRequired>} />
+        <Route path="payments"  element={<PermRequired perm="payments.view">  <Payments />  </PermRequired>} />
+        <Route path="trials"    element={<PermRequired perm="trials.manage">  <Trials />    </PermRequired>} />
+        <Route path="batches"   element={<PermRequired perm="batches.view">   <Batches />   </PermRequired>} />
+        <Route path="reports"   element={<PermRequired perm="reports.view">   <Reports />   </PermRequired>} />
+        <Route path="community" element={<PermRequired perm="community.manage"><Community /></PermRequired>} />
+        <Route path="events"    element={<PermRequired perm="events.manage">  <Events />    </PermRequired>} />
+        <Route path="coaches"   element={<PermRequired perm="staff.manage">   <Staff />     </PermRequired>} />
+        <Route path="settings"  element={<PermRequired perm="settings.manage"><Settings />  </PermRequired>} />
       </Route>
 
       {/* Student */}

@@ -325,25 +325,48 @@ export async function insertBatch(b) {
 
 // ── Staff ─────────────────────────────────────────────────
 export async function fetchStaff(academyId) {
-  let query = supabase.from('staff').select('*').order('name')
+  let query = supabase.from('staff')
+    .select('*, staff_auth(staff_code, join_code, status, staff_type, access_role, permissions), staff_profiles(age, licence_url)')
+    .order('name')
   if (academyId) query = query.eq('academy_id', academyId)
   const { data, error } = await query
   if (error) {
     if (error.code === '42P01') return []
     throw error
   }
-  return data.map(row => ({
-    id:         row.id,
-    name:       row.name,
-    role:       row.role,
-    phone:      row.phone,
-    sports:     row.sports || [],
-    salary:     row.salary,
-    joinDate:   row.join_date,
-    status:     row.status,
-    attendance: row.attendance,
-    photoUrl:   row.photo_url || null,
-  }))
+  return data.map(row => {
+    const auth    = Array.isArray(row.staff_auth)     ? row.staff_auth[0]     : row.staff_auth
+    const profile = Array.isArray(row.staff_profiles) ? row.staff_profiles[0] : row.staff_profiles
+    return {
+      id:            row.id,
+      name:          row.name,
+      role:          row.role,
+      phone:         row.phone,
+      sports:        row.sports || [],
+      salary:        row.salary,
+      joinDate:      row.join_date,
+      status:        row.status,
+      attendance:    row.attendance,
+      photoUrl:      row.photo_url || null,
+      userId:        row.user_id   || null,
+      staffCode:     auth?.staff_code   || null,
+      joinCode:      auth?.join_code    || null,
+      staffType:     auth?.staff_type   || 'coach',
+      accountStatus: auth?.status       || null,
+      accessRole:    auth?.access_role  || 'coach',
+      permissions:   auth?.permissions  || [],
+      age:           profile?.age          || null,
+      licenceUrl:    profile?.licence_url  || null,
+    }
+  })
+}
+
+export async function deleteStaff(id) {
+  // Clear related records first (cascade handles staff_auth + staff_sessions)
+  await supabase.from('leave_requests').delete().eq('staff_id', id).throwOnError()
+  await supabase.from('staff_attendance').delete().eq('profile_id', id)
+  const { error } = await supabase.from('staff').delete().eq('id', id)
+  if (error) throw error
 }
 
 export async function uploadStaffPhoto(file, staffName) {
@@ -373,7 +396,169 @@ export async function insertStaff(s) {
     .select()
     .single()
   if (error) throw error
+
+  if (s.staffCode) {
+    const { error: authErr } = await supabase.from('staff_auth').insert({
+      staff_id:   data.id,
+      staff_code: s.staffCode,
+      join_code:  s.joinCode,
+      status:     'pending',
+      staff_type: s.staffType || 'coach',
+    })
+    if (authErr) throw new Error('Failed to create activation record: ' + authErr.message)
+  }
+
   return { ...s, id: data.id, attendance: 100 }
+}
+
+// ── Staff Auth (custom auth — staff_auth + staff_sessions) ─
+
+export async function fetchNextStaffCode(type) {
+  const prefix = type === 'office' ? 'OF' : 'FC'
+  const { data } = await supabase
+    .from('staff_auth')
+    .select('staff_code')
+    .like('staff_code', `${prefix}%`)
+    .order('staff_code', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const num = data?.staff_code ? parseInt(data.staff_code.slice(prefix.length)) : 0
+  return `${prefix}${String(num + 1).padStart(3, '0')}`
+}
+
+export async function verifyStaffCodes(staffCode, joinCode) {
+  const { data } = await supabase
+    .from('staff_auth')
+    .select('staff_code, join_code, status')
+    .eq('staff_code', staffCode.toUpperCase())
+    .maybeSingle()
+  if (!data) throw new Error('Staff ID not found')
+  if (data.status === 'active') throw new Error('Account already activated — go to login.')
+  if (data.join_code !== joinCode.toUpperCase()) throw new Error('Incorrect Join Code')
+}
+
+export async function activateStaffAccount(staffCode, joinCode, passwordHash, { email }) {
+  const { data: auth, error } = await supabase
+    .from('staff_auth')
+    .select('id, staff_id, join_code, status, staff(*)')
+    .eq('staff_code', staffCode.toUpperCase())
+    .maybeSingle()
+  if (error || !auth) throw new Error('Staff ID not found')
+  if (auth.status === 'active') throw new Error('Account already activated')
+  if (auth.join_code !== joinCode.toUpperCase()) throw new Error('Incorrect Join Code')
+
+  const { error: authErr } = await supabase.from('staff_auth')
+    .update({ password_hash: passwordHash, status: 'active', join_code: null, email: email.toLowerCase().trim() })
+    .eq('id', auth.id)
+  if (authErr) throw new Error('Activation failed: ' + authErr.message)
+
+  const staffRow = Array.isArray(auth.staff) ? auth.staff[0] : auth.staff
+  return staffRow || {}
+}
+
+export async function loginStaffAccount(email, passwordHash) {
+  const { data, error } = await supabase
+    .from('staff_auth')
+    .select('*, staff(*)')
+    .eq('email', email.toLowerCase().trim())
+    .eq('password_hash', passwordHash)
+    .eq('status', 'active')
+    .maybeSingle()
+  if (error) throw new Error('Login error: ' + error.message)
+  if (!data) throw new Error('Invalid email or password')
+  const staff = Array.isArray(data.staff) ? data.staff[0] : data.staff
+  if (!staff) throw new Error('Staff record not found')
+  return {
+    ...staff,
+    staff_code:     data.staff_code,
+    staff_type:     data.staff_type,
+    account_status: data.status,
+    access_role:    data.access_role  || 'coach',
+    permissions:    data.permissions  || [],
+  }
+}
+
+export async function createStaffSession(staffId, token) {
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  const { error } = await supabase
+    .from('staff_sessions')
+    .insert({ staff_id: staffId, token, expires_at: expiresAt })
+  if (error) throw error
+  return expiresAt
+}
+
+export async function validateStaffSession(token) {
+  const { data, error } = await supabase
+    .from('staff_sessions')
+    .select('*, staff(*, staff_auth(staff_code, staff_type, status, access_role, permissions), staff_profiles(age, licence_url))')
+    .eq('token', token)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle()
+  if (error || !data?.staff) return null
+  const auth    = Array.isArray(data.staff.staff_auth)     ? data.staff.staff_auth[0]     : data.staff.staff_auth
+  const profile = Array.isArray(data.staff.staff_profiles) ? data.staff.staff_profiles[0] : data.staff.staff_profiles
+  return {
+    ...data.staff,
+    staff_code:     auth?.staff_code     || null,
+    staff_type:     auth?.staff_type     || 'coach',
+    account_status: auth?.status         || null,
+    access_role:    auth?.access_role    || 'coach',
+    permissions:    auth?.permissions    || [],
+    age:            profile?.age         || null,
+    licence_url:    profile?.licence_url || null,
+  }
+}
+
+export async function fetchStaffProfileExtra(staffId) {
+  const { data } = await supabase
+    .from('staff_profiles')
+    .select('age, licence_url')
+    .eq('staff_id', staffId)
+    .maybeSingle()
+  return data || {}
+}
+
+export async function deleteStaffSession(token) {
+  await supabase.from('staff_sessions').delete().eq('token', token)
+}
+
+export async function updateStaffProfile(staffId, { name, phone, photoUrl }) {
+  const fields = {}
+  if (name     !== undefined) fields.name      = name
+  if (phone    !== undefined) fields.phone     = phone
+  if (photoUrl !== undefined) fields.photo_url = photoUrl
+  const { error } = await supabase.from('staff').update(fields).eq('id', staffId)
+  if (error) throw error
+}
+
+export async function upsertStaffProfileExtra(staffId, { age, licenceUrl }) {
+  const fields = { staff_id: staffId, updated_at: new Date().toISOString() }
+  if (age        !== undefined) fields.age         = age        || null
+  if (licenceUrl !== undefined) fields.licence_url = licenceUrl || null
+  const { error } = await supabase.from('staff_profiles').upsert(fields, { onConflict: 'staff_id' })
+  if (error) throw error
+}
+
+export async function uploadStaffLicence(file, staffId) {
+  const ext  = file.name.split('.').pop()
+  const path = `licences/${staffId}_${Date.now()}.${ext}`
+  const { error } = await supabase.storage.from('staff-photos').upload(path, file, { upsert: true })
+  if (error) throw error
+  const { data } = supabase.storage.from('staff-photos').getPublicUrl(path)
+  return data.publicUrl
+}
+
+export async function updateStaffPermissions(staffId, { accessRole, permissions }) {
+  const { error } = await supabase.from('staff_auth')
+    .update({ access_role: accessRole, permissions })
+    .eq('staff_id', staffId)
+  if (error) throw error
+}
+
+export async function fetchAcademyName(academyId) {
+  if (!academyId) return null
+  const { data } = await supabase.from('academies').select('name').eq('id', academyId).maybeSingle()
+  return data?.name || null
 }
 
 // ── Attendance ────────────────────────────────────────────

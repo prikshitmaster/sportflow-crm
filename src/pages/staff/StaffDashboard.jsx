@@ -4,30 +4,28 @@
 
 import { useApp } from '../../context/AppContext'
 import { useNavigate } from 'react-router-dom'
-import { CalendarCheck, Users, ChevronRight, QrCode, LayoutDashboard, CreditCard, UserPlus, Layers, BarChart2, Megaphone, Trophy, UserCog, Settings } from 'lucide-react'
+import { CalendarCheck, Users, ChevronRight, QrCode, CreditCard, UserPlus, Layers, BarChart2, Megaphone, Trophy, UserCog, Settings } from 'lucide-react'
 import { useEffect } from 'react'
 
 const WORK_TILES = [
-  { perm: 'dashboard.view',    Icon: LayoutDashboard, label: 'Dashboard',   bg: 'bg-brand-600',   route: '/dashboard'  },
-  { perm: 'students.view',     Icon: Users,           label: 'Students',    bg: 'bg-blue-600',    route: '/students'   },
-  { perm: 'attendance.manage', Icon: CalendarCheck,   label: 'Attendance',  bg: 'bg-emerald-600', route: '/attendance' },
-  { perm: 'payments.view',     Icon: CreditCard,      label: 'Payments',    bg: 'bg-purple-600',  route: '/payments'   },
-  { perm: 'trials.manage',     Icon: UserPlus,        label: 'Trials',      bg: 'bg-orange-500',  route: '/trials'     },
-  { perm: 'batches.view',      Icon: Layers,          label: 'Batches',     bg: 'bg-teal-600',    route: '/batches'    },
-  { perm: 'reports.view',      Icon: BarChart2,       label: 'Reports',     bg: 'bg-rose-600',    route: '/reports'    },
-  { perm: 'community.manage',  Icon: Megaphone,       label: 'Community',   bg: 'bg-amber-500',   route: '/community'  },
-  { perm: 'events.manage',     Icon: Trophy,          label: 'Events',      bg: 'bg-indigo-600',  route: '/events'     },
-  { perm: 'staff.manage',      Icon: UserCog,         label: 'Staff',       bg: 'bg-gray-700',    route: '/coaches'    },
-  { perm: 'settings.manage',   Icon: Settings,        label: 'Settings',    bg: 'bg-gray-600',    route: '/settings'   },
+  { perm: 'students.view',     Icon: Users,           label: 'Students',    bg: 'bg-blue-600',    route: '/staff/students'   },
+  { perm: 'attendance.manage', Icon: CalendarCheck,   label: 'Attendance',  bg: 'bg-emerald-600', route: '/staff/attendance' },
+  { perm: 'payments.view',     Icon: CreditCard,      label: 'Payments',    bg: 'bg-purple-600',  route: '/staff/payments'   },
+  { perm: 'trials.manage',     Icon: UserPlus,        label: 'Trials',      bg: 'bg-orange-500',  route: '/staff/trials'     },
+  { perm: 'batches.view',      Icon: Layers,          label: 'Batches',     bg: 'bg-teal-600',    route: '/staff/batches'    },
+  { perm: 'reports.view',      Icon: BarChart2,       label: 'Reports',     bg: 'bg-rose-600',    route: '/staff/reports'    },
+  { perm: 'community.manage',  Icon: Megaphone,       label: 'Community',   bg: 'bg-amber-500',   route: '/staff/community'  },
+  { perm: 'events.manage',     Icon: Trophy,          label: 'Events',      bg: 'bg-indigo-600',  route: '/staff/events'     },
+  { perm: 'staff.manage',      Icon: UserCog,         label: 'Staff',       bg: 'bg-gray-700',    route: '/staff/coaches'    },
+  { perm: 'settings.manage',   Icon: Settings,        label: 'Settings',    bg: 'bg-gray-600',    route: '/staff/settings'   },
 ]
 
 export default function StaffDashboard() {
-  const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, staff, hasPermission } = useApp()
+  const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, hasPermission } = useApp()
   const navigate = useNavigate()
 
-  const isOffice = user?.accessRole && !['coach', 'staff'].includes(user?.accessRole)
+  const isCoach = !user?.accessRole || ['coach', 'staff'].includes(user?.accessRole)
 
-  // Load this coach's leave requests when dashboard mounts
   useEffect(() => { loadLeaveRequests() }, [])
 
   const today    = new Date().toISOString().split('T')[0]
@@ -35,14 +33,11 @@ export default function StaffDashboard() {
   const dayName  = new Date().toLocaleDateString('en-IN', { weekday: 'long' })
   const dateStr  = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })
 
-  // Batches assigned to this coach
   const myBatches = batches.filter(b =>
-    b.coach && user?.name &&
-    b.coach.toLowerCase() === user.name.toLowerCase()
+    b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
   )
   const displayBatches = myBatches.length > 0 ? myBatches : batches
 
-  // Students in coach's batches
   const myStudentIds = new Set(
     students
       .filter(s => s.status === 'Active' && displayBatches.some(b => b.id === s.batchId || b.name === s.batch))
@@ -50,91 +45,19 @@ export default function StaffDashboard() {
   )
   const totalStudents = myStudentIds.size
 
-  // Count batches running today (check day name against batch.days array)
-  const todayShort  = new Date().toLocaleDateString('en-IN', { weekday: 'short' }) // "Mon", "Tue" …
+  const todayShort = new Date().toLocaleDateString('en-IN', { weekday: 'short' })
   const todayBatches = displayBatches.filter(b =>
     !b.days || b.days.length === 0 ||
     b.days.some(d => d.toLowerCase().startsWith(todayShort.toLowerCase().slice(0, 2)))
   )
 
-  // Count present students today
-  const presentCount = [...myStudentIds].filter(id => todayAtt[id] === 'Present').length
-
-  // Pending leave requests for this staff
+  const presentCount  = [...myStudentIds].filter(id => todayAtt[id] === 'Present').length
   const pendingLeaves = leaveRequests.filter(r => r.status === 'Pending').length
+  const firstBatch    = todayBatches[0]
+  const batchLabel    = firstBatch ? `${firstBatch.startTime || firstBatch.time || 'Morning'} batch` : dateStr
 
-  // Get first batch time label
-  const firstBatch = todayBatches[0]
-  const batchLabel = firstBatch
-    ? `${firstBatch.startTime || firstBatch.time || 'Morning'} batch`
-    : 'Today'
-
-  // ── Office staff home ─────────────────────────────────────
-  if (isOffice) {
-    const recentNotices = (announcements || []).slice(0, 2)
-    const myTiles = WORK_TILES.filter(t => hasPermission(t.perm))
-    return (
-      <div className="px-4 pt-5 pb-4 space-y-5">
-        <div>
-          <p className="text-xs text-gray-400 font-medium">{dayName} · {dateStr}</p>
-          <h1 className="text-2xl font-black text-gray-900 mt-1">Hello, {user?.name?.split(' ')[0]} 👋</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{user?.academy} · {user?.accessRole}</p>
-        </div>
-
-        {/* Work tiles — permission-based */}
-        {myTiles.length > 0 && (
-          <div>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Work</p>
-            <div className="grid grid-cols-2 gap-3">
-              {myTiles.map(({ perm, Icon, label, bg, route }) => (
-                <button
-                  key={perm}
-                  onClick={() => navigate(route)}
-                  className={`${bg} text-white rounded-2xl p-4 text-left active:opacity-80 transition`}
-                >
-                  <Icon size={20} className="mb-2 opacity-80" />
-                  <p className="font-bold text-sm">{label}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Recent notices */}
-        {recentNotices.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Recent Notices</p>
-              <button onClick={() => navigate('/staff/notices')} className="text-xs text-brand-600 font-semibold">See all</button>
-            </div>
-            <div className="space-y-2">
-              {recentNotices.map(a => (
-                <div key={a.id} className="bg-white rounded-2xl border border-gray-100 p-3.5">
-                  <p className="text-sm font-bold text-gray-900 truncate">{a.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{a.body}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Profile & Leave */}
-        <button onClick={() => navigate('/staff/me')}
-          className="w-full bg-white rounded-2xl border border-gray-100 px-5 py-4 flex items-center justify-between active:bg-gray-50">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gray-100 rounded-xl flex items-center justify-center">
-              <Users size={18} className="text-gray-500" />
-            </div>
-            <div className="text-left">
-              <p className="text-sm font-bold text-gray-900">My Profile & Leave</p>
-              <p className="text-xs text-gray-400">Apply leave · view schedule</p>
-            </div>
-          </div>
-          <ChevronRight size={16} className="text-gray-300" />
-        </button>
-      </div>
-    )
-  }
+  // Tiles the current user can see — always permission-based regardless of role
+  const myTiles = WORK_TILES.filter(t => hasPermission(t.perm))
 
   if (dataLoading) {
     return (
@@ -150,103 +73,72 @@ export default function StaffDashboard() {
   return (
     <div className="px-4 pt-5 pb-4 space-y-5">
 
-      {/* Greeting — matches mockup */}
+      {/* Greeting */}
       <div>
-        <p className="text-xs text-gray-400 font-medium">
-          {dayName} · {batchLabel}
-        </p>
+        <p className="text-xs text-gray-400 font-medium">{dayName} · {batchLabel}</p>
         <h1 className="text-2xl font-black text-gray-900 mt-1">
-          Coach {user?.name?.split(' ')[0]} 👋
+          {isCoach ? `Coach ${user?.name?.split(' ')[0]}` : `Hello, ${user?.name?.split(' ')[0]}`} 👋
         </h1>
-        <p className="text-xs text-gray-400 mt-0.5">{user?.academy} · {dateStr}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{user?.academy} · {user?.accessRole}</p>
       </div>
 
-      {/* Session summary — "3 sessions · 24 students" */}
-      <div className="bg-gray-50 rounded-2xl px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="text-center">
-            <p className="text-xl font-black text-gray-900">{todayBatches.length}</p>
-            <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">sessions</p>
+      {/* Session summary — coaches only */}
+      {isCoach && (
+        <div className="bg-gray-50 rounded-2xl px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="text-center">
+              <p className="text-xl font-black text-gray-900">{todayBatches.length}</p>
+              <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">sessions</p>
+            </div>
+            <div className="w-px h-8 bg-gray-200" />
+            <div className="text-center">
+              <p className="text-xl font-black text-gray-900">{totalStudents}</p>
+              <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">students</p>
+            </div>
+            <div className="w-px h-8 bg-gray-200" />
+            <div className="text-center">
+              <p className="text-xl font-black text-emerald-600">{presentCount}</p>
+              <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">present</p>
+            </div>
           </div>
-          <div className="w-px h-8 bg-gray-200" />
-          <div className="text-center">
-            <p className="text-xl font-black text-gray-900">{totalStudents}</p>
-            <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">students</p>
+          {pendingLeaves > 0 && (
+            <span className="text-[10px] bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-bold">
+              {pendingLeaves} leave
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Permission-based work tiles — shown for ALL staff */}
+      {myTiles.length > 0 && (
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Work</p>
+          <div className="grid grid-cols-2 gap-3">
+            {myTiles.map(({ perm, Icon, label, bg, route }) => (
+              <button key={perm} onClick={() => navigate(route)}
+                className={`${bg} text-white rounded-2xl p-4 text-left active:opacity-80 transition`}>
+                <Icon size={20} className="mb-2 opacity-80" />
+                <p className="font-bold text-sm">{label}</p>
+              </button>
+            ))}
           </div>
-          <div className="w-px h-8 bg-gray-200" />
-          <div className="text-center">
-            <p className="text-xl font-black text-emerald-600">{presentCount}</p>
-            <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">present</p>
-          </div>
         </div>
-        {pendingLeaves > 0 && (
-          <span className="text-[10px] bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-bold">
-            {pendingLeaves} leave req
-          </span>
-        )}
-      </div>
+      )}
 
-      {/* Mark Attendance CTA — green */}
-      <button
-        onClick={() => navigate('/staff/attendance')}
-        className="w-full bg-brand-600 active:bg-brand-700 text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm"
-      >
-        <div className="text-left">
-          <p className="font-bold text-base flex items-center gap-2">
-            <CalendarCheck size={18} /> Mark Attendance
-          </p>
-          <p className="text-brand-200 text-xs mt-0.5">Pick batch → tap students → save</p>
-        </div>
-        <ChevronRight size={20} className="text-brand-300" />
-      </button>
-
-      {/* QR clock-in CTA */}
-      <button
-        onClick={() => navigate('/staff/scan-in')}
-        className="w-full bg-emerald-600 active:bg-emerald-700 text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm"
-      >
-        <div className="text-left">
-          <p className="font-bold text-base flex items-center gap-2">
-            <QrCode size={18} /> Clock In Today
-          </p>
-          <p className="text-emerald-200 text-xs mt-0.5">Scan the QR code at the entrance</p>
-        </div>
-        <ChevronRight size={20} className="text-emerald-300" />
-      </button>
-
-      {/* Staff & Leave CTA — purple */}
-      <button
-        onClick={() => navigate('/staff/me')}
-        className="w-full bg-purple-600 active:bg-purple-700 text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm"
-      >
-        <div className="text-left">
-          <p className="font-bold text-base flex items-center gap-2">
-            <Users size={18} /> Staff & Leave
-          </p>
-          <p className="text-purple-200 text-xs mt-0.5">Apply leave · schedule · payroll</p>
-        </div>
-        <ChevronRight size={20} className="text-purple-300" />
-      </button>
-
-      {/* Today's batch cards */}
-      {todayBatches.length > 0 && (
+      {/* Today's batch cards — coaches only */}
+      {isCoach && todayBatches.length > 0 && (
         <div>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Today's Sessions</p>
           <div className="space-y-2">
             {todayBatches.map(b => {
-              const bStu = students.filter(s =>
-                s.status === 'Active' && (s.batchId === b.id || s.batch === b.name)
-              )
+              const bStu     = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name))
               const bPresent = bStu.filter(s => todayAtt[s.id] === 'Present').length
               return (
-                <button key={b.id}
-                  onClick={() => navigate('/staff/attendance')}
+                <button key={b.id} onClick={() => navigate('/staff/attendance')}
                   className="w-full bg-white rounded-2xl p-4 border border-gray-100 active:bg-gray-50 text-left flex items-center justify-between">
                   <div>
                     <p className="font-bold text-gray-900 text-sm">{b.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {b.startTime || b.time || '—'} · {b.sports?.join(', ')}
-                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">{b.startTime || b.time || '—'} · {b.sports?.join(', ')}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-black text-gray-900">{bPresent}/{bStu.length}</p>
@@ -258,6 +150,49 @@ export default function StaffDashboard() {
           </div>
         </div>
       )}
+
+      {/* Recent notices — non-coaches */}
+      {!isCoach && (announcements || []).length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Recent Notices</p>
+            <button onClick={() => navigate('/staff/notices')} className="text-xs text-brand-600 font-semibold">See all</button>
+          </div>
+          <div className="space-y-2">
+            {(announcements || []).slice(0, 2).map(a => (
+              <div key={a.id} className="bg-white rounded-2xl border border-gray-100 p-3.5">
+                <p className="text-sm font-bold text-gray-900 truncate">{a.title}</p>
+                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{a.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Clock In — always */}
+      <button onClick={() => navigate('/staff/scan-in')}
+        className="w-full bg-emerald-600 active:bg-emerald-700 text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
+        <div className="text-left">
+          <p className="font-bold text-base flex items-center gap-2"><QrCode size={18} /> Clock In Today</p>
+          <p className="text-emerald-200 text-xs mt-0.5">Scan the QR code at the entrance</p>
+        </div>
+        <ChevronRight size={20} className="text-emerald-300" />
+      </button>
+
+      {/* Profile & Leave — always */}
+      <button onClick={() => navigate('/staff/me')}
+        className="w-full bg-white rounded-2xl border border-gray-100 px-5 py-4 flex items-center justify-between active:bg-gray-50">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-gray-100 rounded-xl flex items-center justify-center">
+            <Users size={18} className="text-gray-500" />
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-bold text-gray-900">My Profile & Leave</p>
+            <p className="text-xs text-gray-400">Apply leave · view schedule</p>
+          </div>
+        </div>
+        <ChevronRight size={16} className="text-gray-300" />
+      </button>
 
     </div>
   )

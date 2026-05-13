@@ -3,17 +3,17 @@ import { useApp } from '../context/AppContext'
 import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut } from 'lucide-react'
 
 const coachTabs = [
-  { to: '/staff/dashboard',  label: 'Home',    icon: Home },
+  { to: '/staff/home',       label: 'Home',    icon: Home },
   { to: '/staff/attendance', label: 'Attend',  icon: CalendarCheck },
   { to: '/staff/scan-in',    label: 'Scan In', icon: QrCode },
-  { to: '/staff/me',         label: 'Me',      icon: UserCircle },
+  { to: '/staff/profile',    label: 'Me',      icon: UserCircle },
 ]
 
 const officeTabs = [
-  { to: '/staff/dashboard',  label: 'Home',    icon: Home },
+  { to: '/staff/home',       label: 'Home',    icon: Home },
   { to: '/staff/scan-in',    label: 'Scan In', icon: QrCode },
   { to: '/staff/notices',    label: 'Notices', icon: Bell },
-  { to: '/staff/me',         label: 'Me',      icon: UserCircle },
+  { to: '/staff/profile',    label: 'Me',      icon: UserCircle },
 ]
 
 export default function StaffLayout() {

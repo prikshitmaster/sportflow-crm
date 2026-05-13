@@ -5,7 +5,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import {
-  CalendarDays, IndianRupee, LayoutGrid, ChevronDown,
+  CalendarDays, LayoutGrid, ChevronDown,
   Clock, CheckCircle, XCircle, Hourglass,
 } from 'lucide-react'
 
@@ -14,7 +14,6 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const SECTION_TABS = [
   { id: 'leave',    label: 'Apply Leave', icon: CalendarDays },
   { id: 'schedule', label: 'My Schedule', icon: LayoutGrid },
-  { id: 'payroll',  label: 'Payroll Slip', icon: IndianRupee },
 ]
 
 export default function StaffMe() {
@@ -44,7 +43,6 @@ export default function StaffMe() {
 
       {tab === 'leave'    && <LeaveSection leaveRequests={leaveRequests} submitLeave={submitLeave} userId={user?.id} userName={user?.name} />}
       {tab === 'schedule' && <ScheduleSection batches={batches} user={user} />}
-      {tab === 'payroll'  && <PayrollSection staff={staff} user={user} />}
     </div>
   )
 }
@@ -79,15 +77,20 @@ function LeaveSection({ leaveRequests, submitLeave, userId, userName }) {
     return diff >= 0 ? diff + 1 : 0
   }, [startDate, endDate])
 
+  const sorted   = [...leaveRequests].sort((a, b) => a.start_date?.localeCompare(b.start_date))
+  const upcoming = sorted.filter(r => r.start_date >= today)
+  const past     = sorted.filter(r => r.start_date < today)
+    .sort((a, b) => b.start_date?.localeCompare(a.start_date))
+
   const statusIcon = {
-    Pending:  <Hourglass  size={14} className="text-amber-500" />,
-    Approved: <CheckCircle size={14} className="text-emerald-500" />,
-    Rejected: <XCircle   size={14} className="text-red-500" />,
+    Pending:  <Hourglass  size={13} className="text-amber-500" />,
+    Approved: <CheckCircle size={13} className="text-emerald-500" />,
+    Rejected: <XCircle   size={13} className="text-red-500" />,
   }
-  const statusStyle = {
-    Pending:  'bg-amber-50 text-amber-700 border-amber-100',
-    Approved: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    Rejected: 'bg-red-50 text-red-700 border-red-100',
+  const statusColor = {
+    Pending:  'border-amber-200 bg-amber-50',
+    Approved: 'border-emerald-200 bg-emerald-50',
+    Rejected: 'border-red-200 bg-red-50',
   }
 
   return (
@@ -130,29 +133,70 @@ function LeaveSection({ leaveRequests, submitLeave, userId, userName }) {
         </form>
       </div>
 
-      {/* My leave history */}
-      {leaveRequests.length > 0 && (
+      {/* Upcoming leaves */}
+      {upcoming.length > 0 && (
         <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">My Leave History</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Upcoming Leaves</p>
           <div className="space-y-2">
-            {leaveRequests.map(r => (
-              <div key={r.id} className={`rounded-2xl border p-3.5 ${statusStyle[r.status] || 'bg-gray-50 border-gray-100'}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-900 truncate">{r.reason}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {fmtDate(r.start_date)} → {fmtDate(r.end_date)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {statusIcon[r.status]}
-                    <span className="text-xs font-bold">{r.status}</span>
+            {upcoming.map(r => {
+              const days     = calcDays(r.start_date, r.end_date)
+              const daysAway = Math.ceil((new Date(r.start_date + 'T00:00:00') - new Date()) / 86400000)
+              return (
+                <div key={r.id} className={`rounded-2xl border p-3.5 ${statusColor[r.status] || 'bg-gray-50 border-gray-100'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900 truncate">{r.reason}</p>
+                      <p className="text-xs text-gray-600 mt-0.5 font-semibold">
+                        {fmtFull(r.start_date)}{r.start_date !== r.end_date && <> → {fmtFull(r.end_date)}</>}
+                        <span className="text-gray-400 font-normal ml-1">· {days} day{days !== 1 ? 's' : ''}</span>
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {daysAway === 0 ? 'Starts today' : daysAway === 1 ? 'Starts tomorrow' : `Starts in ${daysAway} days`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {statusIcon[r.status]}
+                      <span className="text-xs font-bold text-gray-700">{r.status}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
+      )}
+
+      {/* Past leaves */}
+      {past.length > 0 && (
+        <div>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Past Leaves</p>
+          <div className="space-y-2">
+            {past.map(r => {
+              const days = calcDays(r.start_date, r.end_date)
+              return (
+                <div key={r.id} className={`rounded-2xl border p-3.5 ${statusColor[r.status] || 'bg-gray-50 border-gray-100'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900 truncate">{r.reason}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {fmtFull(r.start_date)}{r.start_date !== r.end_date && <> → {fmtFull(r.end_date)}</>}
+                        <span className="text-gray-400 ml-1">· {days} day{days !== 1 ? 's' : ''}</span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {statusIcon[r.status]}
+                      <span className="text-xs font-bold text-gray-700">{r.status}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {leaveRequests.length === 0 && (
+        <p className="text-xs text-gray-400 text-center py-4">No leave requests yet</p>
       )}
     </div>
   )
@@ -341,6 +385,17 @@ export function StaffProfile() {
 function fmtDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+function fmtFull(d) {
+  if (!d) return '—'
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+function calcDays(start, end) {
+  if (!start || !end) return 1
+  const diff = (new Date(end) - new Date(start)) / 86400000
+  return diff >= 0 ? diff + 1 : 1
 }
 
 function getSportEmoji(sport) {

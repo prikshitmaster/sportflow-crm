@@ -60,3 +60,32 @@ export function setStudentSession(token, expiresAt, studentData) {
 export function clearStudentSession() {
   localStorage.removeItem(STUDENT_KEY)
 }
+
+// ── Staff session (localStorage + DB token) ──────────────
+const STAFF_KEY = 'sf_staff'
+
+export function getStaffSession() {
+  try {
+    const raw = localStorage.getItem(STAFF_KEY)
+    if (!raw) return null
+    const s = JSON.parse(raw)
+    if (new Date(s.expiresAt) < new Date()) {
+      localStorage.removeItem(STAFF_KEY)
+      return null
+    }
+    return s
+  } catch { return null }
+}
+
+export function setStaffSession(token, expiresAt, staffData) {
+  localStorage.setItem(STAFF_KEY, JSON.stringify({ token, expiresAt, ...staffData }))
+}
+
+export function clearStaffSession() {
+  localStorage.removeItem(STAFF_KEY)
+}
+
+// ── Staff code generator ──────────────────────────────────
+export function generateStaffCode(prefix, existingCount) {
+  return prefix + String(existingCount + 1).padStart(3, '0')
+}

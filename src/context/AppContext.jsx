@@ -9,6 +9,7 @@ import {
   generateJoinCode, generateAcademyCode,
   hashPassword, generateToken,
   getStudentSession, setStudentSession, clearStudentSession,
+  getStaffSession, setStaffSession, clearStaffSession,
 } from '../lib/auth'
 import { ALL_PERMISSIONS, ROLE_PRESETS } from '../lib/permissions'
 
@@ -189,7 +190,40 @@ export function AppProvider({ children }) {
             return
           }
         }
-        // 2. Check student session (custom localStorage token)
+        // 2. Check staff session (custom localStorage token)
+        const stfSess = getStaffSession()
+        if (stfSess?.token) {
+          const member = await db.validateStaffSession(stfSess.token)
+          if (member) {
+            const academyId   = member.academy_id
+            const flags       = await db.fetchFeatureFlags(academyId)
+            const academyName = academyId ? (await db.fetchAcademyName(academyId)) || '' : ''
+            const perms       = member.permissions?.length ? member.permissions : (ROLE_PRESETS[member.access_role] || ROLE_PRESETS['coach'])
+            setUser({
+              id:         member.id,
+              name:       member.name,
+              staffCode:  member.staff_code,
+              staffType:  member.staff_type,
+              photoUrl:   member.photo_url    || null,
+              phone:      member.phone        || '',
+              age:        member.age          || null,
+              licenceUrl: member.licence_url  || null,
+              academy:    academyName,
+              academyId,
+              role:       'staff',
+              accessRole: member.access_role  || 'coach',
+            })
+            setFeatures(flags)
+            setPermissions(perms)
+            setSelectedSport(null)
+            setRole('staff')
+            setLoading(false)
+            return
+          }
+          clearStaffSession()
+        }
+
+        // 3. Check student session (custom localStorage token)
         const stuSess = getStudentSession()
         if (stuSess?.token) {
           const student = await db.validateStudentSession(stuSess.token)
@@ -270,27 +304,52 @@ export function AppProvider({ children }) {
   // ── Staff Auth ────────────────────────────────────────
 
   const loginStaff = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
-    const profile = await db.fetchProfile(data.user.id)
-    if (!profile) throw new Error('Staff profile not found. Please contact your academy owner.')
-    if (profile.role === 'owner') throw new Error('This is an owner account. Use the Owner login.')
-    const academy   = await db.fetchAcademy(profile.academy_id)
-    const flags     = await db.fetchFeatureFlags(profile.academy_id)
-    const permsData = await db.fetchUserPermissions(data.user.id)
-    const perms     = permsData?.permissions || ROLE_PRESETS[permsData?.access_role] || []
-    setUser({ id: profile.id, name: profile.name, email, academy: academy.name, academyId: academy.id, role: profile.role, accessRole: permsData?.access_role || 'staff' })
+    const hash        = await hashPassword(password)
+    const member      = await db.loginStaffAccount(email, hash)
+    const token       = generateToken()
+    const expiry      = await db.createStaffSession(member.id, token)
+    const academyId   = member.academy_id
+    const [flags, academyName, extra] = await Promise.all([
+      db.fetchFeatureFlags(academyId),
+      academyId ? db.fetchAcademyName(academyId).then(n => n || '') : Promise.resolve(''),
+      db.fetchStaffProfileExtra(member.id),
+    ])
+    const perms = member.permissions?.length ? member.permissions : (ROLE_PRESETS[member.access_role] || ROLE_PRESETS['coach'])
+    setStaffSession(token, expiry, { id: member.id, staffCode: member.staff_code, name: member.name })
+    setUser({
+      id:         member.id,
+      name:       member.name,
+      staffCode:  member.staff_code,
+      staffType:  member.staff_type,
+      photoUrl:   member.photo_url    || null,
+      phone:      member.phone        || '',
+      age:        extra.age           || null,
+      licenceUrl: extra.licence_url   || null,
+      academy:    academyName,
+      academyId,
+      role:       'staff',
+      accessRole: member.access_role  || 'coach',
+    })
     setFeatures(flags)
     setPermissions(perms)
+    setSelectedSport(null)
     setRole('staff')
   }
 
   const logoutStaff = async () => {
-    await supabase.auth.signOut().catch(() => {})
+    const sess = getStaffSession()
+    if (sess?.token) await db.deleteStaffSession(sess.token).catch(() => {})
+    clearStaffSession()
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
     setBatches([]);  setStaff([]);   setAnnouncements([])
     setAttendanceData({}); setEvents([]); setLeaveRequests([])
+  }
+
+  const activateStaff = async (staffCode, joinCode, password, profileData) => {
+    const hash   = await hashPassword(password)
+    const member = await db.activateStaffAccount(staffCode, joinCode, hash, profileData)
+    return member
   }
 
   // ── Student Auth ──────────────────────────────────────
@@ -818,13 +877,67 @@ export function AppProvider({ children }) {
   // ── Staff HR ──────────────────────────────────────────
 
   const addStaffMember = async (s) => {
+    const staffCode = await db.fetchNextStaffCode(s.staffType || 'coach')
+    const joinCode  = generateJoinCode()
+    const created   = await db.insertStaff({ ...s, academyId: user?.academyId, staffCode, joinCode })
+    setStaff(prev => [...prev, {
+      ...created,
+      photoUrl:      created.photoUrl || null,
+      userId:        null,
+      accessRole:    null,
+      permissions:   [],
+      staffCode,
+      joinCode:      null,
+      staffType:     s.staffType || 'coach',
+      accountStatus: 'pending',
+    }])
+    showToast('Staff member added')
+    return { staffCode, joinCode }
+  }
+
+  const removeStaffMember = async (id) => {
     try {
-      const created = await db.insertStaff({ ...s, academyId: user?.academyId })
-      setStaff(prev => [...prev, { ...created, photoUrl: created.photoUrl || null, userId: null, accessRole: null, permissions: [] }])
-      showToast('Staff member added')
+      await db.deleteStaff(id)
+      setStaff(prev => prev.filter(s => s.id !== id))
+      showToast('Staff member removed')
     } catch (err) {
-      showToast(err.message || 'Failed', 'error')
+      showToast(err.message || 'Failed to delete', 'error')
     }
+  }
+
+  const updateStaffProfile = async ({ name, phone, photoFile, age, licenceFile }) => {
+    const id = user?.id
+    if (!id) return
+    let photoUrl   = undefined
+    let licenceUrl = undefined
+    if (photoFile)   photoUrl   = await db.uploadStaffPhoto(photoFile, name || user.name)
+    if (licenceFile) licenceUrl = await db.uploadStaffLicence(licenceFile, id)
+    await db.updateStaffProfile(id, { name, phone, photoUrl })
+    if (age !== undefined || licenceUrl !== undefined) await db.upsertStaffProfileExtra(id, { age, licenceUrl })
+    const updates = {}
+    if (name     !== undefined) updates.name       = name
+    if (phone    !== undefined) updates.phone      = phone
+    if (photoUrl !== undefined) updates.photoUrl   = photoUrl
+    if (age      !== undefined) updates.age        = age
+    if (licenceUrl)             updates.licenceUrl = licenceUrl
+    setUser(prev => ({ ...prev, ...updates }))
+    setStaff(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
+    showToast('Profile updated')
+  }
+
+  const editStaffMember = async (id, { name, phone, photoFile, photoUrl: existingUrl, age }) => {
+    let photoUrl = existingUrl
+    if (photoFile) { try { photoUrl = await db.uploadStaffPhoto(photoFile, name) } catch (_) {} }
+    await db.updateStaffProfile(id, { name, phone, photoUrl })
+    if (age !== undefined) await db.upsertStaffProfileExtra(id, { age })
+    setStaff(prev => prev.map(s => s.id === id ? { ...s, name, phone, photoUrl: photoUrl || s.photoUrl, age } : s))
+    showToast('Staff updated')
+  }
+
+  const editStaffPermissions = async (staffId, { accessRole, permissions }) => {
+    await db.updateStaffPermissions(staffId, { accessRole, permissions })
+    setStaff(prev => prev.map(s => s.id === staffId ? { ...s, accessRole, permissions } : s))
+    showToast('Permissions updated')
   }
 
   // ── Branches ──────────────────────────────────────────
@@ -995,7 +1108,7 @@ export function AppProvider({ children }) {
       // owner auth
       signupOwner, loginOwner, logoutOwner, logoutAdmin,
       // staff auth
-      loginStaff, logoutStaff,
+      loginStaff, logoutStaff, activateStaff,
       // student auth
       loginStudent, logoutStudent, activateStudent,
       // sport scoping
@@ -1010,7 +1123,8 @@ export function AppProvider({ children }) {
       batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee,
       feePlans, addFeePlan, editFeePlan, removeFeePlan,
       events, addEvent, updateEventStatus, removeEvent,
-      staff: filteredStaff, addStaffMember,
+      staff: filteredStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,
+      updateStaffProfile,
       branches, addBranch, removeBranch,
       attendanceData, loadAttendanceForDate, saveAttendance,
       announcements, addAnnouncement,

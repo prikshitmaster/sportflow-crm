@@ -17,7 +17,7 @@ export default function StaffLogin() {
     if (!email || !password) { setError('Please fill all fields'); return }
     setLoading(true); setError('')
     try {
-      await loginStaff(email, password)
+      await loginStaff(email.trim(), password)
       navigate('/staff/home')
     } catch (err) {
       setError(err.message || 'Login failed')
@@ -37,7 +37,7 @@ export default function StaffLogin() {
           </div>
 
           <h1 className="text-2xl font-black text-gray-900 mb-1">Staff login</h1>
-          <p className="text-sm text-gray-500 mb-6">Sign in to your staff account</p>
+          <p className="text-sm text-gray-500 mb-6">Sign in with your email and password</p>
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-5">
@@ -48,8 +48,14 @@ export default function StaffLogin() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="label">Email</label>
-              <input className="input" type="email" placeholder="you@academy.in"
-                value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
+              <input
+                className="input"
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                autoComplete="email"
+              />
             </div>
             <div>
               <label className="label">Password</label>
@@ -82,17 +88,20 @@ export default function StaffLogin() {
           </form>
 
           <p className="text-xs text-gray-500 text-center mt-6">
-            Academy owner?{' '}
-            <Link to="/login" className="text-brand-600 font-semibold hover:underline">
+            First time?{' '}
+            <Link to="/staff-activate" className="text-brand-600 font-semibold hover:underline">
+              Activate your account
+            </Link>
+          </p>
+          <div className="flex items-center justify-center gap-4 mt-3">
+            <Link to="/login" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
               Owner login
             </Link>
-          </p>
-          <p className="text-xs text-gray-500 text-center mt-2">
-            Student?{' '}
-            <Link to="/student-login" className="text-brand-600 font-semibold hover:underline">
+            <span className="text-gray-200">·</span>
+            <Link to="/student-login" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
               Student login
             </Link>
-          </p>
+          </div>
         </div>
       </div>
 
