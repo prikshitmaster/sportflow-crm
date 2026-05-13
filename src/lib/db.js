@@ -106,9 +106,8 @@ export async function updateStudent(id, s) {
     .update(fields)
     .eq('id', id)
     .select()
-    .single()
   if (error) throw error
-  return data
+  return data?.[0] || fields
 }
 
 // ── Payments ──────────────────────────────────────────────
