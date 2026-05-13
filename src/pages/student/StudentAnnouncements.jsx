@@ -30,7 +30,7 @@ export default function StudentAnnouncements() {
   const studentBatchId = studentUser?.batchId
   const visibleEvents = events.filter(e => {
     if (e.status === 'Cancelled') return false
-    if (e.audience_type === 'all')      return true
+    if (!e.audience_type || e.audience_type === 'all')      return true
     if (e.audience_type === 'students') return true
     if (e.audience_type === 'batches')  return studentBatchId && (e.audience_ids || []).includes(studentBatchId)
     return false

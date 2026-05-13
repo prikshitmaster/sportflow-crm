@@ -20,7 +20,7 @@ export default function StaffNotices() {
   // Events visible to this staff member
   const visibleEvents = events.filter(e => {
     if (e.status === 'Cancelled') return false
-    if (e.audience_type === 'all')   return true
+    if (!e.audience_type || e.audience_type === 'all')   return true
     if (e.audience_type === 'staff') return true
     if (e.audience_type === 'staff_members') return (e.audience_ids || []).includes(user?.id)
     return false
