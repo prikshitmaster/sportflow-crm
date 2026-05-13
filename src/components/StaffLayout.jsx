@@ -5,7 +5,7 @@ import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut } fro
 const coachTabs = [
   { to: '/staff/home',       label: 'Home',    icon: Home },
   { to: '/staff/attendance', label: 'Attend',  icon: CalendarCheck },
-  { to: '/staff/scan-in',    label: 'Scan In', icon: QrCode },
+  { to: '/staff/notices',    label: 'Notices', icon: Bell },
   { to: '/staff/profile',    label: 'Me',      icon: UserCircle },
 ]
 
