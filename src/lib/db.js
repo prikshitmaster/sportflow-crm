@@ -903,9 +903,8 @@ export async function insertBatchV2(b) {
       academy_id:   b.academyId || null,
     })
     .select()
-    .single()
   if (error) throw error
-  return data
+  return data?.[0] || b
 }
 
 // ── Announcements ─────────────────────────────────────────
@@ -1039,9 +1038,8 @@ export async function updateBatch(batchId, b) {
     })
     .eq('id', batchId)
     .select()
-    .single()
   if (error) throw error
-  return data
+  return data?.[0] || b
 }
 
 export async function deleteBatch(id) {
@@ -1289,9 +1287,8 @@ export async function createLeaveRequest(staffId, staffName, startDate, endDate,
     .from('leave_requests')
     .insert({ staff_id: staffId, staff_name: staffName, start_date: startDate, end_date: endDate, reason, status: 'Pending' })
     .select()
-    .single()
   if (error) throw error
-  return data
+  return data?.[0] || { staff_id: staffId, staff_name: staffName, start_date: startDate, end_date: endDate, reason, status: 'Pending' }
 }
 
 // Owner fetches all leave requests (all staff)
