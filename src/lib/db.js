@@ -185,7 +185,7 @@ export async function activateStudentWithBatch(id, batchId, batchName, paidTill,
 
 export async function updateBatchEnrolled(batchId, delta) {
   const { data, error } = await supabase
-    .from('batches').select('enrolled').eq('id', batchId).single()
+    .from('batches').select('enrolled').eq('id', batchId).maybeSingle()
   if (error || !data) return
   await supabase.from('batches')
     .update({ enrolled: Math.max(0, data.enrolled + delta) })
@@ -1042,6 +1042,11 @@ export async function updateBatch(batchId, b) {
     .single()
   if (error) throw error
   return data
+}
+
+export async function deleteBatch(id) {
+  const { error } = await supabase.from('batches').delete().eq('id', id)
+  if (error) throw error
 }
 
 export async function fetchEvents(academyId) {

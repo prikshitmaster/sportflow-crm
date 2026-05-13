@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil } from 'lucide-react'
+import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2 } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 
 const COLORS = ['bg-brand-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600']
 
 export default function Batches() {
-  const { batches, addBatch, updateBatch, staff, students, updateBatchCoach, branches } = useApp()
+  const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches } = useApp()
   const [showModal, setShowModal] = useState(false)
   const [editingBatch, setEditingBatch] = useState(null)
   const [selectedBatch, setSelectedBatch] = useState(null)
@@ -165,6 +165,7 @@ export default function Batches() {
           staff={staff}
           onClose={() => setSelectedBatch(null)}
           onEdit={() => { setEditingBatch(selectedBatch); setSelectedBatch(null) }}
+          onDelete={async () => { await deleteBatch(selectedBatch.id); setSelectedBatch(null) }}
           onAssignCoach={async (id, name) => {
             await updateBatchCoach(id, name)
             setSelectedBatch(prev => ({ ...prev, coach: name }))
@@ -361,13 +362,20 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
   )
 }
 
-function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onAssignCoach }) {
+function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete, onAssignCoach }) {
   const enrolled = students.filter(s => s.status === 'Active' && s.batch === b.name)
   const [editCoach, setEditCoach] = useState(false)
   const [newCoach, setNewCoach] = useState(b.coach || '')
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const coaches = staff.filter(s => s.role !== 'Admin')
   const pct = Math.round((b.enrolled / b.capacity) * 100)
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try { await onDelete() } finally { setDeleting(false) }
+  }
 
   const handleSaveCoach = async () => {
     setSaving(true)
@@ -385,9 +393,14 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onAssign
             <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition">
               <X size={16} className="text-white" />
             </button>
-            <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition text-white text-xs font-semibold">
-              <Pencil size={12} /> Edit Batch
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition text-white text-xs font-semibold">
+                <Pencil size={12} /> Edit
+              </button>
+              <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/30 hover:bg-red-500/50 transition text-white text-xs font-semibold">
+                <Trash2 size={12} /> Delete
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-black text-white">{b.name}</h2>
@@ -485,6 +498,30 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onAssign
               </div>
             )}
           </div>
+
+          {/* Delete confirmation */}
+          {confirmDelete && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Trash2 size={16} className="text-red-600" />
+                <p className="text-sm font-bold text-red-800">Delete "{b.name}"?</p>
+              </div>
+              {enrolled.length > 0 && (
+                <p className="text-xs text-red-600 mb-3">
+                  ⚠ This batch has {enrolled.length} active student{enrolled.length > 1 ? 's' : ''}. Move them to another batch first, or they will lose their batch assignment.
+                </p>
+              )}
+              <p className="text-xs text-red-600 mb-4">This cannot be undone.</p>
+              <div className="flex gap-2">
+                <button onClick={() => setConfirmDelete(false)} className="flex-1 py-2 rounded-xl text-xs font-bold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
+                  Cancel
+                </button>
+                <button onClick={handleDelete} disabled={deleting} className="flex-1 py-2 rounded-xl text-xs font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                  {deleting ? 'Deleting…' : 'Yes, Delete Batch'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

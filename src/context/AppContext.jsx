@@ -840,6 +840,12 @@ export function AppProvider({ children }) {
     }
   }
 
+  const deleteBatch = async (id) => {
+    await db.deleteBatch(id)
+    setBatches(prev => prev.filter(b => b.id !== id))
+    showToast('Batch deleted')
+  }
+
   // ── Events ────────────────────────────────────────────
 
   const addEvent = async (e) => {
@@ -1145,7 +1151,7 @@ export function AppProvider({ children }) {
       students: filteredStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments: filteredPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
       trials: filteredTrials, addTrial, updateTrialStatus,
-      batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee,
+      batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee, deleteBatch,
       feePlans, addFeePlan, editFeePlan, removeFeePlan,
       events, addEvent, updateEvent, updateEventStatus, removeEvent,
       staff: filteredStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,

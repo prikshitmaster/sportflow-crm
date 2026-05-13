@@ -637,7 +637,6 @@ function AddStudentModal({ onClose, onSave }) {
     const e = {}
     if (!form.name.trim())                    e.name   = 'Required'
     if (!/^\d{10}$/.test(form.phone))         e.phone  = 'Enter 10-digit number'
-    if (!form.dob)                            e.dob    = 'Required'
     if (!form.fees || Number(form.fees) <= 0) e.fees   = 'Required'
     if (!form.batchId)                        e.batchId = 'Select a batch'
     setErrors(e)
@@ -678,7 +677,7 @@ function AddStudentModal({ onClose, onSave }) {
 
         {/* Date of Birth */}
         <div>
-          <label className="label">Date of Birth *</label>
+          <label className="label">Date of Birth</label>
           <div className="relative">
             <DobInput value={form.dob} onChange={v => set('dob', v)} hasError={!!errors.dob} />
             {form.dob && calcAge(form.dob) !== null && (
@@ -687,7 +686,6 @@ function AddStudentModal({ onClose, onSave }) {
               </span>
             )}
           </div>
-          {errors.dob && <p className="text-[11px] text-red-500 mt-1">{errors.dob}</p>}
         </div>
 
         {/* Student Phone */}
