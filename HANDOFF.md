@@ -40,35 +40,78 @@ If `staff_profiles` has no `anon INSERT` policy, run `schema_staff_complete.sql`
 
 ## Next Goals
 
-### 1. World-Class Performance & Coaching System
-A coach/player performance rating and comparison engine. Planned scope:
+### 1. World-Class Student Performance System
 
-#### Coach Performance Module
-- **Session rating** — after each attended batch session, system logs a coach performance score (1–5 stars, optional notes)
-- **Coach leaderboard** — ranked list by avg rating, sessions coached, attendance rate
-- **Trend graph** — rating over time per coach (Recharts line chart)
-- **Badge system** — auto-awarded badges on milestones:
-  - `Top Rated` — avg ≥ 4.5 over last 30 days
-  - `Consistent` — 0 missed sessions in 30 days
-  - `Veteran` — 100+ sessions logged
-  - `Rising Star` — rating improved 1+ point in 30 days
-- **Head-to-head compare** — select 2 coaches, side-by-side stats panel
+**Decisions locked:**
+- Coach fills assessments — monthly cadence
+- Visible in student portal (students see their own data only)
+- Sports in scope: Football (primary), Tennis, Squash, Table Tennis
+- Scale: 300–600 students
 
-#### Student Performance Module  
-- **Skill assessment** per student per sport (e.g. Speed, Technique, Fitness, Attitude — 1–10 scale)
-- **Position/tier badge** — auto-calculated from avg skill score:
-  - Bronze (0–4) / Silver (4–6) / Gold (6–8) / Elite (8–10)
-- **Progress timeline** — assessments plotted over time
-- **Batch ranking** — students ranked within their batch by skill score
-- **Parent-facing view** — student portal shows their own badge + progress (no other student data)
+#### Sport Skill Sets (rate 1–10)
 
-#### Database (new tables needed)
-```sql
-coach_ratings      (id, staff_id, batch_id, session_date, rating 1-5, notes, rated_by uuid)
-coach_badges       (id, staff_id, badge_type, awarded_at)
-student_assessments(id, student_id, batch_id, assessed_by, assessed_at, scores JSONB, notes)
-student_badges     (id, student_id, badge_type, tier, awarded_at)
+| Sport | Skills |
+|---|---|
+| Football | Dribbling · Passing · Shooting · Positioning · Fitness · Teamwork |
+| Tennis | Forehand · Backhand · Serve · Footwork · Match Play |
+| Squash | Shot Accuracy · Court Movement · Serve · Strategy · Fitness |
+| Table Tennis | Forehand · Backhand · Serve & Return · Footwork · Match Play |
+
+#### Tier Formula
 ```
+avg of all skills:
+1.0 – 3.9  →  Bronze
+4.0 – 5.9  →  Silver
+6.0 – 7.9  →  Gold
+8.0 – 10   →  Elite
+```
+
+#### Badges (auto-awarded)
+- **Most Improved** — biggest positive delta in a month
+- **Top in Batch** — highest avg score in their batch
+- **All-Rounder** — no single skill below 6
+- **Elite** — avg ≥ 8
+- **Consistent** — no skill drop over 3 consecutive months
+
+#### 3 Screens to Build
+
+**Screen 1 — Coach Assessment** (`/staff/assess`)
+- Coach selects batch → student list with done/pending status
+- Tap student → 5–6 sliders (1–10) + optional note
+- Submit saves to `skill_assessments` for that month
+- Green tick = assessed, grey = pending
+
+**Screen 2 — Student Portal: My Progress**
+- Tier badge (Bronze/Silver/Gold/Elite) displayed prominently
+- Radar chart of current skill scores
+- Delta vs last month per skill: *"Passing +2 ↑ · Shooting -1 ↓"*
+- Badges earned listed
+
+**Screen 3 — Owner: Performance Dashboard** (tab in Reports)
+- Top students leaderboard by avg score
+- Coach effectiveness: whose students improve fastest
+- Alert list: students with 0 improvement over 2+ months
+- Batch heatmap: colour-coded avg score per batch
+
+#### Database (2 new tables)
+```sql
+skill_assessments (
+  id, student_id, staff_id, batch_id, sport,
+  assessed_month TEXT,   -- format: 'YYYY-MM'
+  scores JSONB,          -- { "dribbling": 7, "passing": 8, ... }
+  notes TEXT, created_at
+)
+
+student_badges (
+  id, student_id, badge_type, awarded_at
+)
+```
+
+#### Build Order
+1. SQL — create tables + RLS
+2. Coach assessment screen (data entry — nothing works without this)
+3. Student portal progress view
+4. Owner performance dashboard + badge auto-award logic
 
 ### 2. Full System Testing & Polish Pass
 Go through every feature end-to-end and fix rough edges:
