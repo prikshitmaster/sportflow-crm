@@ -864,6 +864,31 @@ export function AppProvider({ children }) {
     }
   }
 
+  const updateEvent = async (id, fields) => {
+    try {
+      await db.updateEvent(id, fields)
+      setEvents(prev => prev.map(e => e.id === id ? {
+        ...e,
+        ...(fields.title        !== undefined && { title:         fields.title }),
+        ...(fields.type         !== undefined && { type:          fields.type }),
+        ...(fields.sport        !== undefined && { sport:         fields.sport }),
+        ...(fields.date         !== undefined && { date:          fields.date }),
+        ...(fields.endDate      !== undefined && { end_date:      fields.endDate }),
+        ...(fields.venue        !== undefined && { venue:         fields.venue }),
+        ...(fields.description  !== undefined && { description:   fields.description }),
+        ...(fields.audienceType !== undefined && { audience_type: fields.audienceType }),
+        ...(fields.audienceIds  !== undefined && { audience_ids:  fields.audienceIds }),
+        ...(fields.flyerUrl     !== undefined && { flyer_url:     fields.flyerUrl }),
+        ...(fields.bracketType  !== undefined && { bracket_type:  fields.bracketType }),
+        ...(fields.participants !== undefined && { participants:  fields.participants }),
+      } : e))
+      showToast('Event updated')
+    } catch (err) {
+      showToast(err.message || 'Update failed', 'error')
+      throw err
+    }
+  }
+
   const removeEvent = async (id) => {
     try {
       await db.deleteEvent(id)
@@ -1122,7 +1147,7 @@ export function AppProvider({ children }) {
       trials: filteredTrials, addTrial, updateTrialStatus,
       batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee,
       feePlans, addFeePlan, editFeePlan, removeFeePlan,
-      events, addEvent, updateEventStatus, removeEvent,
+      events, addEvent, updateEvent, updateEventStatus, removeEvent,
       staff: filteredStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,
       updateStaffProfile,
       branches, addBranch, removeBranch,

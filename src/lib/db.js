@@ -1060,15 +1060,20 @@ export async function insertEvent(e) {
   const { data, error } = await supabase
     .from('events')
     .insert({
-      title:       e.title,
-      type:        e.type,
-      sport:       e.sport || null,
-      date:        e.date,
-      end_date:    e.endDate || null,
-      venue:       e.venue || null,
-      description: e.description || null,
-      status:      e.status || 'Upcoming',
-      academy_id:  e.academyId || null,
+      title:         e.title,
+      type:          e.type,
+      sport:         e.sport || null,
+      date:          e.date,
+      end_date:      e.endDate || null,
+      venue:         e.venue || null,
+      description:   e.description || null,
+      status:        e.status || 'Upcoming',
+      academy_id:    e.academyId || null,
+      audience_type: e.audienceType || 'all',
+      audience_ids:  e.audienceIds  || [],
+      flyer_url:     e.flyerUrl     || null,
+      bracket_type:  e.bracketType  || null,
+      participants:  e.participants  || [],
     })
     .select()
     .single()
@@ -1076,19 +1081,83 @@ export async function insertEvent(e) {
   return data
 }
 
+export async function updateEvent(id, e) {
+  const fields = {}
+  if (e.title        !== undefined) fields.title         = e.title
+  if (e.type         !== undefined) fields.type          = e.type
+  if (e.sport        !== undefined) fields.sport         = e.sport || null
+  if (e.date         !== undefined) fields.date          = e.date
+  if (e.endDate      !== undefined) fields.end_date      = e.endDate || null
+  if (e.venue        !== undefined) fields.venue         = e.venue || null
+  if (e.description  !== undefined) fields.description   = e.description || null
+  if (e.status       !== undefined) fields.status        = e.status
+  if (e.audienceType !== undefined) fields.audience_type = e.audienceType
+  if (e.audienceIds  !== undefined) fields.audience_ids  = e.audienceIds
+  if (e.flyerUrl     !== undefined) fields.flyer_url     = e.flyerUrl || null
+  if (e.bracketType  !== undefined) fields.bracket_type  = e.bracketType || null
+  if (e.participants !== undefined) fields.participants  = e.participants
+  const { error } = await supabase.from('events').update(fields).eq('id', id)
+  if (error) throw error
+}
+
 export async function updateEventStatus(id, status) {
-  const { error } = await supabase
-    .from('events')
-    .update({ status })
-    .eq('id', id)
+  const { error } = await supabase.from('events').update({ status }).eq('id', id)
   if (error) throw error
 }
 
 export async function deleteEvent(id) {
+  const { error } = await supabase.from('events').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function uploadEventFlyer(file, title) {
+  const ext  = file.name.split('.').pop()
+  const path = `flyers/${Date.now()}_${title.replace(/\s+/g, '_').slice(0, 30)}.${ext}`
+  const { error } = await supabase.storage.from('staff-photos').upload(path, file, { upsert: true })
+  if (error) throw error
+  const { data } = supabase.storage.from('staff-photos').getPublicUrl(path)
+  return data.publicUrl
+}
+
+export async function fetchTournamentMatches(eventId) {
+  const { data, error } = await supabase
+    .from('tournament_matches')
+    .select('*')
+    .eq('event_id', eventId)
+    .order('round')
+    .order('match_number')
+  if (error) throw error
+  return data || []
+}
+
+export async function insertTournamentMatches(eventId, matches) {
+  const rows = matches.map(m => ({
+    event_id:     eventId,
+    round:        m.round,
+    match_number: m.matchNumber,
+    player1_id:   m.player1Id   || null,
+    player1_name: m.player1Name,
+    player2_id:   m.player2Id   || null,
+    player2_name: m.player2Name,
+    is_bye:       m.isBye       || false,
+    winner_id:    m.winnerId    || null,
+    winner_name:  m.winnerName  || null,
+  }))
+  const { error } = await supabase.from('tournament_matches').insert(rows)
+  if (error) throw error
+}
+
+export async function updateTournamentMatch(id, { winnerId, winnerName, score }) {
   const { error } = await supabase
-    .from('events')
-    .delete()
+    .from('tournament_matches')
+    .update({ winner_id: winnerId || null, winner_name: winnerName || null,
+              score: score || null, played_at: new Date().toISOString() })
     .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventMatches(eventId) {
+  const { error } = await supabase.from('tournament_matches').delete().eq('event_id', eventId)
   if (error) throw error
 }
 
