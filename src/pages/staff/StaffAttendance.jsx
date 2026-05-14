@@ -4,7 +4,7 @@
 //  Step 3: Save & sync to DB
 // No URL routing between steps — internal state machine
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { ArrowLeft, Check, Users, Clock, Search, ChevronRight } from 'lucide-react'
 
@@ -19,7 +19,9 @@ const STATUS_STYLE = {
 }
 
 export default function StaffAttendance() {
-  const { user, batches, students, attendanceData, saveAttendance } = useApp()
+  const { user, batches, students, attendanceData, saveAttendance, refreshData } = useApp()
+
+  useEffect(() => { refreshData?.() }, [])
 
   const today     = new Date().toISOString().split('T')[0]
   const todayAtt  = attendanceData[today] || {}

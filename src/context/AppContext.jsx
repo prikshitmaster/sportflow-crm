@@ -1170,6 +1170,7 @@ export function AppProvider({ children }) {
       students: filteredStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments: filteredPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
       trials: filteredTrials, addTrial, updateTrialStatus,
+      refreshData: loadAll,
       batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee, deleteBatch,
       feePlans, addFeePlan, editFeePlan, removeFeePlan,
       events, addEvent, updateEvent, updateEventStatus, removeEvent,
