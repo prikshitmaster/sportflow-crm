@@ -32,8 +32,10 @@ export default function StaffLayout() {
       {/* Sticky header */}
       <header className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center">
-            <Zap size={13} className="text-white" />
+          <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center overflow-hidden">
+            {user?.academyLogo
+              ? <img src={user.academyLogo} alt="logo" className="w-full h-full object-cover" />
+              : <Zap size={13} className="text-white" />}
           </div>
           <span className="font-bold text-gray-900 text-sm">SportFlow</span>
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${badgeColor}`}>{badge}</span>

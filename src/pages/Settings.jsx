@@ -84,6 +84,7 @@ function SaveButton({ onSave, saved }) {
 }
 
 function AcademyTab({ user, onSave, saved }) {
+  const { saveAcademyLogo } = useApp()
   const [form, setForm] = useState({
     name: user?.academy || 'Champions Sports Academy',
     owner: user?.name || 'Vikram Mehta',
@@ -94,11 +95,48 @@ function AcademyTab({ user, onSave, saved }) {
     state: 'Maharashtra',
     gstin: '27AADCC1234A1ZV',
   })
+  const [logoPreview, setLogoPreview] = useState(user?.academyLogo || null)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const logoRef = useRef(null)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleLogoChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoPreview(URL.createObjectURL(file))
+    setLogoUploading(true)
+    try { await saveAcademyLogo(file) } finally { setLogoUploading(false) }
+  }
 
   return (
     <div>
       <SectionHeader title="Academy Profile" desc="Basic information about your sports academy" />
+
+      {/* Logo upload */}
+      <div className="mb-6 flex items-center gap-4">
+        <div
+          onClick={() => logoRef.current?.click()}
+          className="w-16 h-16 rounded-2xl bg-brand-600 flex items-center justify-center overflow-hidden cursor-pointer hover:ring-2 hover:ring-brand-400 transition flex-shrink-0"
+        >
+          {logoPreview
+            ? <img src={logoPreview} alt="logo" className="w-full h-full object-cover" />
+            : <span className="text-2xl font-black text-white">{(user?.academy || 'S')[0]}</span>
+          }
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Academy Logo</p>
+          <p className="text-xs text-gray-400 mb-2">Shown in the header on all portals</p>
+          <button
+            onClick={() => logoRef.current?.click()}
+            disabled={logoUploading}
+            className="flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+          >
+            <Upload size={13} />
+            {logoUploading ? 'Uploading…' : logoPreview ? 'Change Logo' : 'Upload Logo'}
+          </button>
+          <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
           <label className="label">Academy Name</label>

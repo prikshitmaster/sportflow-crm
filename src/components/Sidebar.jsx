@@ -44,8 +44,10 @@ export default function Sidebar({ collapsed, setCollapsed }) {
     <aside className={`fixed top-0 left-0 h-full z-40 flex flex-col bg-gray-900 text-white transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'}`}>
       {/* Logo */}
       <div className={`flex items-center gap-3 px-4 py-5 border-b border-gray-800 ${collapsed ? 'justify-center' : ''}`}>
-        <div className="flex-shrink-0 w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
-          <Zap size={16} className="text-white" />
+        <div className="flex-shrink-0 w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center overflow-hidden">
+          {user?.academyLogo
+            ? <img src={user.academyLogo} alt="logo" className="w-full h-full object-cover" />
+            : <Zap size={16} className="text-white" />}
         </div>
         {!collapsed && (
           <div>

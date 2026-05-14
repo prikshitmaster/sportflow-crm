@@ -377,6 +377,20 @@ export async function uploadStaffPhoto(file, staffName) {
   return data.publicUrl
 }
 
+export async function uploadAcademyLogo(file, academyId) {
+  const ext  = file.name.split('.').pop()
+  const path = `logos/${academyId}.${ext}`
+  const { error } = await supabase.storage.from('staff-photos').upload(path, file, { upsert: true })
+  if (error) throw error
+  const { data } = supabase.storage.from('staff-photos').getPublicUrl(path)
+  return data.publicUrl
+}
+
+export async function updateAcademyLogoUrl(academyId, logoUrl) {
+  const { error } = await supabase.from('academies').update({ logo_url: logoUrl }).eq('id', academyId)
+  if (error) throw error
+}
+
 export async function insertStaff(s) {
   const { data, error } = await supabase
     .from('staff')

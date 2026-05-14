@@ -48,7 +48,8 @@ export function AppProvider({ children }) {
   const [loading,     setLoading]     = useState(true)
 
   // ── Student portal state (custom auth) ───────────────
-  const [studentUser, setStudentUser] = useState(null)
+  const [studentUser,   setStudentUser]   = useState(null)
+  const [academyLogo,   setAcademyLogo]   = useState(null)
 
   // ── Sport scoping (owner only) ────────────────────────
   const [selectedSport, setSelectedSportState] = useState(() => {
@@ -174,14 +175,15 @@ export function AppProvider({ children }) {
             }
             const ctxRole = resolveContextRole(profile.role)
             setUser({
-              id:         profile.id,
-              name:       profile.name,
-              email:      session.user.email,
-              academy:    academy.name,
-              academyId:  academy.id,
-              joinCode:   academy.join_code,
-              role:       profile.role,
-              accessRole: permsData?.access_role || 'staff',
+              id:          profile.id,
+              name:        profile.name,
+              email:       session.user.email,
+              academy:     academy.name,
+              academyId:   academy.id,
+              joinCode:    academy.join_code,
+              academyLogo: academy.logo_url || null,
+              role:        profile.role,
+              accessRole:  permsData?.access_role || 'staff',
             })
             setFeatures(flags)
             setPermissions(permsData?.permissions || ROLE_PRESETS[permsData?.access_role] || [])
@@ -196,22 +198,26 @@ export function AppProvider({ children }) {
           const member = await db.validateStaffSession(stfSess.token)
           if (member) {
             const academyId   = member.academy_id
-            const flags       = await db.fetchFeatureFlags(academyId)
-            const academyName = academyId ? (await db.fetchAcademyName(academyId)) || '' : ''
+            const [flags, academyData2] = await Promise.all([
+              db.fetchFeatureFlags(academyId),
+              academyId ? db.fetchAcademy(academyId).catch(() => null) : Promise.resolve(null),
+            ])
+            const academyName = academyData2?.name || ''
             const perms       = member.permissions?.length ? member.permissions : (ROLE_PRESETS[member.access_role] || ROLE_PRESETS['coach'])
             setUser({
-              id:         member.id,
-              name:       member.name,
-              staffCode:  member.staff_code,
-              staffType:  member.staff_type,
-              photoUrl:   member.photo_url    || null,
-              phone:      member.phone        || '',
-              age:        member.age          || null,
-              licenceUrl: member.licence_url  || null,
-              academy:    academyName,
+              id:          member.id,
+              name:        member.name,
+              staffCode:   member.staff_code,
+              staffType:   member.staff_type,
+              photoUrl:    member.photo_url    || null,
+              phone:       member.phone        || '',
+              age:         member.age          || null,
+              licenceUrl:  member.licence_url  || null,
+              academy:     academyName,
               academyId,
-              role:       'staff',
-              accessRole: member.access_role  || 'coach',
+              academyLogo: academyData2?.logo_url || null,
+              role:        'staff',
+              accessRole:  member.access_role  || 'coach',
             })
             setFeatures(flags)
             setPermissions(perms)
@@ -284,7 +290,7 @@ export function AppProvider({ children }) {
     if (profile.role !== 'owner') throw new Error('This account is not an owner account.')
     const academy = await db.fetchAcademy(profile.academy_id)
     const flags   = await db.fetchFeatureFlags(profile.academy_id)
-    setUser({ id: profile.id, name: profile.name, email, academy: academy.name, academyId: academy.id, joinCode: academy.join_code, role: 'owner' })
+    setUser({ id: profile.id, name: profile.name, email, academy: academy.name, academyId: academy.id, joinCode: academy.join_code, academyLogo: academy.logo_url || null, role: 'owner' })
     setFeatures(flags)
     setSelectedSport(null)
     setRole('owner')
@@ -309,11 +315,12 @@ export function AppProvider({ children }) {
     const token       = generateToken()
     const expiry      = await db.createStaffSession(member.id, token)
     const academyId   = member.academy_id
-    const [flags, academyName, extra] = await Promise.all([
+    const [flags, academyData, extra] = await Promise.all([
       db.fetchFeatureFlags(academyId),
-      academyId ? db.fetchAcademyName(academyId).then(n => n || '') : Promise.resolve(''),
+      academyId ? db.fetchAcademy(academyId).catch(() => null) : Promise.resolve(null),
       db.fetchStaffProfileExtra(member.id),
     ])
+    const academyName = academyData?.name || ''
     const perms = member.permissions?.length ? member.permissions : (ROLE_PRESETS[member.access_role] || ROLE_PRESETS['coach'])
     setStaffSession(token, expiry, { id: member.id, staffCode: member.staff_code, name: member.name })
     setUser({
@@ -325,10 +332,11 @@ export function AppProvider({ children }) {
       phone:      member.phone        || '',
       age:        extra.age           || null,
       licenceUrl: extra.licence_url   || null,
-      academy:    academyName,
+      academy:     academyName,
       academyId,
-      role:       'staff',
-      accessRole: member.access_role  || 'coach',
+      academyLogo: academyData?.logo_url || null,
+      role:        'staff',
+      accessRole:  member.access_role  || 'coach',
     })
     setFeatures(flags)
     setPermissions(perms)
@@ -956,6 +964,15 @@ export function AppProvider({ children }) {
     showToast('Profile updated')
   }
 
+  const saveAcademyLogo = async (file) => {
+    const url = await db.uploadAcademyLogo(file, user.academyId)
+    await db.updateAcademyLogoUrl(user.academyId, url)
+    setUser(prev => ({ ...prev, academyLogo: url }))
+    setAcademyLogo(url)
+    showToast('Logo updated')
+    return url
+  }
+
   const editStaffMember = async (id, { name, phone, photoFile, photoUrl: existingUrl, age }) => {
     let photoUrl = existingUrl
     if (photoFile) { try { photoUrl = await db.uploadStaffPhoto(photoFile, name) } catch (_) {} }
@@ -1137,6 +1154,8 @@ export function AppProvider({ children }) {
       features, isFeatureOn, toggleFeature,
       permissions, hasPermission,
       // owner auth
+      saveAcademyLogo,
+      academyLogo: user?.academyLogo || academyLogo,
       signupOwner, loginOwner, logoutOwner, logoutAdmin,
       // staff auth
       loginStaff, logoutStaff, activateStaff,
