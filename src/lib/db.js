@@ -1057,8 +1057,9 @@ export async function updateBatch(batchId, b) {
 }
 
 export async function deleteBatch(id) {
-  const { error } = await supabase.from('batches').delete().eq('id', id)
+  const { error, count } = await supabase.from('batches').delete({ count: 'exact' }).eq('id', id)
   if (error) throw error
+  if (count === 0) throw new Error('Delete blocked by database policy — check RLS permissions')
 }
 
 export async function fetchEvents(academyId) {
