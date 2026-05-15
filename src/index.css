@@ -27,10 +27,17 @@
     touch-action: manipulation;
   }
 
-  /* Prevent accidental text selection on nav/buttons */
-  button, nav, [role="tablist"] {
+  /* Prevent text selection across the whole app UI */
+  body, #root {
     -webkit-user-select: none;
+    -moz-user-select: none;
     user-select: none;
+  }
+
+  /* Re-enable selection only where the user needs to type/copy */
+  input, textarea, [contenteditable], p.selectable, span.selectable {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   /* Prevent iOS zoom on input focus (must be ≥16px) */
