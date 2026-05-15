@@ -10,8 +10,8 @@ import { ArrowLeft, Check, Users, Clock, Search, ChevronRight } from 'lucide-rea
 import { fetchBatchEnrolments } from '../../lib/db'
 import StudentAvatar from '../../components/StudentAvatar'
 
-// Status cycle: blank → Present → Absent → Late → Present …
-const NEXT_STATUS = { '': 'Present', Present: 'Absent', Absent: 'Late', Late: 'Present' }
+// Status cycle: blank → Present → Absent → Late → blank (tap again to clear mistake)
+const NEXT_STATUS = { '': 'Present', Present: 'Absent', Absent: 'Late', Late: '' }
 
 const STATUS_STYLE = {
   Present: { bg: 'bg-emerald-500', text: 'text-white',     label: 'P' },
