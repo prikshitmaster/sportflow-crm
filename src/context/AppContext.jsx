@@ -389,6 +389,13 @@ export function AppProvider({ children }) {
     return db.activateStudentAccount(studentCode, joinCode, hash)
   }
 
+  const updateStudentPhoto = async (file) => {
+    const photoUrl = await db.uploadStudentPhoto(file, studentUser.id)
+    await db.updateStudentPhotoUrl(studentUser.id, photoUrl)
+    setStudentUser(prev => ({ ...prev, photo_url: photoUrl }))
+    return photoUrl
+  }
+
   // ── Feature flag toggle ───────────────────────────────
   const toggleFeature = async (feature, enabled) => {
     if (!user?.academyId) return
@@ -1208,7 +1215,7 @@ export function AppProvider({ children }) {
       // staff auth
       loginStaff, logoutStaff, activateStaff,
       // student auth
-      loginStudent, logoutStudent, activateStudent,
+      loginStudent, logoutStudent, activateStudent, updateStudentPhoto,
       // sport scoping
       selectedSport, setSelectedSport, isAllSports,
       // raw data (for SportSelect page and any page needing unfiltered data)

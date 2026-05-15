@@ -39,16 +39,26 @@ export default function StudentStats() {
 
   if (!assessments.length) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-8 text-center"
-        style={{ background: 'linear-gradient(160deg,#f0f0ff 0%,#fff 60%)' }}>
-        <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-5"
-          style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
-          <TrendingUp size={32} className="text-white" />
+      <div className="min-h-screen pb-10" style={{ background: 'linear-gradient(160deg,#f0f0ff 0%,#fff 60%)' }}>
+        <div className="flex flex-col items-center justify-center px-8 pt-16 pb-8 text-center">
+          <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-5"
+            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+            <TrendingUp size={32} className="text-white" />
+          </div>
+          <p className="text-xl font-black text-gray-900">No assessments yet</p>
+          <p className="text-sm text-gray-400 mt-2 leading-relaxed max-w-xs">
+            Your coach hasn't submitted a performance assessment yet. Check back after your next session.
+          </p>
         </div>
-        <p className="text-xl font-black text-gray-900">No assessments yet</p>
-        <p className="text-sm text-gray-400 mt-2 leading-relaxed max-w-xs">
-          Your coach hasn't submitted a performance assessment yet. Check back after your next session.
-        </p>
+        {studentUser?.batch_id && (
+          <div className="px-4">
+            <PitchViewCard
+              batchId={studentUser.batch_id}
+              currentStudentId={studentUser.id}
+              overallScore={0}
+            />
+          </div>
+        )}
       </div>
     )
   }
@@ -139,6 +149,17 @@ export default function StudentStats() {
           </div>
         </div>
       </div>
+
+      {/* Pitch view — overlap hero bottom (shown even without assessments) */}
+      {studentUser?.batch_id && (
+        <div className="px-4 -mt-6 relative z-20 mb-1">
+          <PitchViewCard
+            batchId={studentUser.batch_id}
+            currentStudentId={studentUser.id}
+            overallScore={overall}
+          />
+        </div>
+      )}
 
       {/* Month pills — overlap hero bottom */}
       {assessments.length > 1 && (
@@ -336,5 +357,219 @@ function WhiteScoreRing({ score }) {
       <text x="59" y="54" textAnchor="middle" fontSize="28" fontWeight="900" fill="white" fontFamily="system-ui,sans-serif">{score}</text>
       <text x="59" y="71" textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.55)" fontFamily="system-ui,sans-serif">/100</text>
     </svg>
+  )
+}
+
+// ── Pitch View ────────────────────────────────────────────────────────────────
+
+function PitchViewCard({ batchId, currentStudentId, overallScore }) {
+  const [students, setStudents] = useState([])
+  const [loading,  setLoading]  = useState(true)
+
+  useEffect(() => {
+    db.fetchBatchStudentsForPitch(batchId)
+      .then(data => { setStudents(data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [batchId])
+
+  const positionedStudents = students.filter(s => FOOTBALL_POSITIONS.find(p => p.id === s.position))
+  const customPositioned   = students.filter(s => s.position && !FOOTBALL_POSITIONS.find(p => p.id === s.position))
+  const benchStudents      = students.filter(s => !s.position)
+
+  return (
+    <div className="bg-white rounded-3xl overflow-hidden"
+      style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)' }}>
+      <div className="px-5 pt-4 pb-3 flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Team</p>
+          <p className="text-base font-black text-gray-900">Formation View</p>
+        </div>
+        <span className="text-xs text-gray-400 font-semibold">{students.length} players</span>
+      </div>
+
+      {loading ? (
+        <div className="h-40 flex items-center justify-center">
+          <svg className="animate-spin h-6 w-6 text-emerald-500" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </div>
+      ) : students.length === 0 ? (
+        <p className="text-center text-sm text-gray-400 pb-8">No players in this batch yet.</p>
+      ) : (
+        <div className="px-3 pb-4">
+          {/* Pitch */}
+          <div className="relative rounded-2xl overflow-hidden" style={{ paddingBottom: '138%' }}>
+            {/* Green pitch */}
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg,#14532d 0%,#166534 20%,#15803d 50%,#166534 80%,#14532d 100%)' }}>
+              {[0,1,2,3,4,5,6,7].map(i => (
+                <div key={i} className="absolute inset-x-0" style={{
+                  top: `${i * 12.5}%`, height: '12.5%',
+                  backgroundColor: i % 2 === 0 ? 'rgba(0,0,0,0.06)' : 'transparent',
+                }} />
+              ))}
+            </div>
+
+            {/* Field lines SVG */}
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 138" preserveAspectRatio="none">
+              <rect x="3" y="3" width="94" height="132" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+              <line x1="3" y1="69" x2="97" y2="69" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+              <circle cx="50" cy="69" r="13" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+              <circle cx="50" cy="69" r="1.2" fill="rgba(255,255,255,0.8)"/>
+              <rect x="22" y="3" width="56" height="20" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+              <rect x="35" y="3" width="30" height="10" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+              <rect x="22" y="115" width="56" height="20" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+              <rect x="35" y="125" width="30" height="10" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
+              <rect x="41" y="1" width="18" height="3" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="0.8"/>
+              <rect x="41" y="134" width="18" height="3" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="0.8"/>
+            </svg>
+
+            {/* Preset-position players */}
+            {FOOTBALL_POSITIONS.map(pos => {
+              const student = positionedStudents.find(s => s.position === pos.id)
+              if (!student) return null
+              return (
+                <PlayerDot key={pos.id}
+                  student={student}
+                  posId={pos.id}
+                  x={pos.x}
+                  y={pos.y}
+                  isCurrent={student.id === currentStudentId}
+                  score={student.id === currentStudentId ? overallScore : null}
+                />
+              )
+            })}
+
+            {/* Custom-position players — spread along centre */}
+            {customPositioned.map((s, i) => (
+              <PlayerDot key={s.id}
+                student={s}
+                posId={null}
+                x={15 + (i % 5) * 17}
+                y={50}
+                isCurrent={s.id === currentStudentId}
+                score={s.id === currentStudentId ? overallScore : null}
+                customLabel={s.position}
+              />
+            ))}
+          </div>
+
+          {/* Bench — students without any position */}
+          {benchStudents.length > 0 && (
+            <div className="mt-3 px-3 py-3 bg-gray-50 rounded-2xl">
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2.5">No Position Assigned</p>
+              <div className="flex flex-wrap gap-3">
+                {benchStudents.map(s => (
+                  <div key={s.id} className="flex flex-col items-center gap-1">
+                    <PlayerAvatar
+                      photoUrl={s.photoUrl}
+                      name={s.name}
+                      size={34}
+                      isCurrent={s.id === currentStudentId}
+                      score={s.id === currentStudentId ? overallScore : null}
+                      dark={false}
+                    />
+                    <span className="text-[8px] font-semibold text-gray-500 max-w-[40px] truncate text-center">
+                      {s.name.split(' ')[0]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PlayerDot({ student, posId, x, y, isCurrent, score, customLabel }) {
+  const posColor = posId ? POSITION_COLORS[posId] : null
+  return (
+    <div style={{
+      position:  'absolute',
+      top:       `${100 - y}%`,
+      left:      `${x}%`,
+      transform: 'translate(-50%, -50%)',
+      zIndex:    isCurrent ? 10 : 5,
+    }}>
+      <div className="flex flex-col items-center" style={{ gap: 2 }}>
+        <PlayerAvatar
+          photoUrl={student.photoUrl}
+          name={student.name}
+          size={36}
+          isCurrent={isCurrent}
+          score={score}
+          dark
+        />
+        <span style={{
+          fontSize: 8, fontWeight: 700, color: '#fff',
+          maxWidth: 52, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+        }}>
+          {student.name.split(' ')[0]}
+        </span>
+        {posId && posColor && (
+          <span style={{
+            fontSize: 7, fontWeight: 900,
+            backgroundColor: posColor.hex, color: '#fff',
+            borderRadius: 4, padding: '1px 3px', lineHeight: 1.3,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+          }}>
+            {posId}
+          </span>
+        )}
+        {customLabel && (
+          <span style={{
+            fontSize: 7, fontWeight: 900,
+            backgroundColor: '#4b5563', color: '#fff',
+            borderRadius: 4, padding: '1px 3px', lineHeight: 1.3,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+          }}>
+            {customLabel.length > 8 ? customLabel.slice(0, 7) + '…' : customLabel}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PlayerAvatar({ photoUrl, name, size, isCurrent, score, dark }) {
+  const border = isCurrent ? '2.5px solid #fff' : dark ? '2px solid rgba(255,255,255,0.4)' : '2px solid #e5e7eb'
+  const shadow = isCurrent
+    ? '0 0 0 2.5px #6366f1, 0 3px 10px rgba(0,0,0,0.5)'
+    : dark ? '0 2px 6px rgba(0,0,0,0.4)' : '0 1px 4px rgba(0,0,0,0.12)'
+  const bg     = isCurrent ? '#6366f1' : dark ? 'rgba(255,255,255,0.2)' : '#e5e7eb'
+  const color  = dark ? '#fff' : '#6b7280'
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      {photoUrl ? (
+        <img src={photoUrl} alt={name} style={{
+          width: size, height: size, borderRadius: '50%', objectFit: 'cover',
+          border, boxShadow: shadow,
+        }} />
+      ) : (
+        <div style={{
+          width: size, height: size, borderRadius: '50%',
+          backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: size * 0.38, fontWeight: 900, color,
+          border, boxShadow: shadow,
+        }}>
+          {name?.[0]?.toUpperCase()}
+        </div>
+      )}
+      {score > 0 && (
+        <div style={{
+          position: 'absolute', bottom: -4, right: -4,
+          background: '#fbbf24', color: '#78350f',
+          fontSize: 8, fontWeight: 900,
+          borderRadius: 5, padding: '1px 3px', lineHeight: 1.3,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+          border: '1px solid rgba(255,255,255,0.8)',
+        }}>
+          {score}
+        </div>
+      )}
+    </div>
   )
 }

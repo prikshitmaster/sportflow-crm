@@ -1,18 +1,29 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
 import {
   QrCode, CalendarCheck, CreditCard, Megaphone, CheckCircle2, XCircle,
-  Clock, ChevronRight, Trophy,
+  Clock, ChevronRight, Trophy, Camera,
 } from 'lucide-react'
 
 export default function StudentDashboard() {
-  const { studentUser, announcements } = useApp()
+  const { studentUser, announcements, updateStudentPhoto } = useApp()
   const [todayStatus,   setTodayStatus]   = useState(null)   // null | 'Present' | 'Absent'
   const [monthStats,    setMonthStats]    = useState(null)   // { present, total }
   const [payments,      setPayments]      = useState([])
   const [loadingData,   setLoadingData]   = useState(true)
+  const [uploading,     setUploading]     = useState(false)
+  const fileRef = useRef(null)
+
+  const handlePhotoChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try { await updateStudentPhoto(file) } catch {}
+    setUploading(false)
+    e.target.value = ''
+  }
 
   useEffect(() => {
     if (!studentUser?.id) return
@@ -68,12 +79,38 @@ export default function StudentDashboard() {
     <div className="max-w-lg mx-auto px-4 py-5 space-y-5">
       {/* Welcome */}
       <div className="bg-gradient-to-br from-brand-600 to-brand-700 rounded-2xl p-5 text-white">
-        <p className="text-brand-200 text-sm mb-1">{greeting()},</p>
-        <h1 className="text-2xl font-black mb-0.5">{studentUser?.name?.split(' ')[0]}</h1>
-        <p className="text-brand-200 text-xs font-mono">{studentUser?.student_code} · {studentUser?.sport || 'Student'}</p>
-        {studentUser?.batch && (
-          <p className="text-brand-100 text-xs mt-1">{studentUser.batch} batch</p>
-        )}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-brand-200 text-sm mb-1">{greeting()},</p>
+            <h1 className="text-2xl font-black mb-0.5">{studentUser?.name?.split(' ')[0]}</h1>
+            <p className="text-brand-200 text-xs font-mono">{studentUser?.student_code} · {studentUser?.sport || 'Student'}</p>
+            {studentUser?.batch && (
+              <p className="text-brand-100 text-xs mt-1">{studentUser.batch} batch</p>
+            )}
+          </div>
+          {/* Avatar + camera upload */}
+          <div className="relative flex-shrink-0">
+            {studentUser?.photo_url ? (
+              <img src={studentUser.photo_url} alt="profile"
+                className="w-16 h-16 rounded-2xl object-cover border-2 border-white/30" />
+            ) : (
+              <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center text-3xl font-black text-white border-2 border-white/30">
+                {studentUser?.name?.[0]?.toUpperCase()}
+              </div>
+            )}
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="absolute -bottom-2 -right-2 w-7 h-7 rounded-full bg-white shadow-md flex items-center justify-center border border-gray-100"
+            >
+              {uploading
+                ? <span className="w-3.5 h-3.5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+                : <Camera size={13} className="text-brand-600" />
+              }
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+          </div>
+        </div>
       </div>
 
       {/* Today's Scan button */}

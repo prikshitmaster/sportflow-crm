@@ -35,6 +35,7 @@ export async function fetchStudents(academyId) {
     trainingType:   row.training_type || 'Daily',
     feePlan:        row.fee_plan || 'monthly',
     position:       row.position || null,
+    photoUrl:       row.photo_url || null,
   }))
 }
 
@@ -160,6 +161,41 @@ export async function insertPayment(p, invoiceId) {
 export async function updateStudentPosition(id, position) {
   const { error } = await supabase.from('students').update({ position }).eq('id', id)
   if (error) throw error
+}
+
+export async function uploadStudentPhoto(file, studentId) {
+  const ext  = file.name.split('.').pop()
+  const path = `students/${studentId}_${Date.now()}.${ext}`
+  const { error } = await supabase.storage.from('staff-photos').upload(path, file, { upsert: true })
+  if (error) throw error
+  const { data } = supabase.storage.from('staff-photos').getPublicUrl(path)
+  return data.publicUrl
+}
+
+export async function updateStudentPhotoUrl(id, photoUrl) {
+  const { error } = await supabase.from('students').update({ photo_url: photoUrl }).eq('id', id)
+  if (error) throw error
+}
+
+export async function fetchBatchStudentsForPitch(batchId) {
+  const [primary, secondary] = await Promise.all([
+    supabase.from('students').select('id, name, position, photo_url, status').eq('batch_id', batchId).neq('status', 'Deleted'),
+    supabase.from('student_batches').select('student_id, students(id, name, position, photo_url, status)').eq('batch_id', batchId),
+  ])
+  const seen = new Set()
+  const rows = []
+  for (const row of (primary.data || [])) {
+    seen.add(row.id)
+    rows.push({ id: row.id, name: row.name, position: row.position || null, photoUrl: row.photo_url || null, status: row.status })
+  }
+  for (const row of (secondary.data || [])) {
+    const s = row.students
+    if (s && !seen.has(s.id) && s.status !== 'Deleted') {
+      seen.add(s.id)
+      rows.push({ id: s.id, name: s.name, position: s.position || null, photoUrl: s.photo_url || null, status: s.status })
+    }
+  }
+  return rows
 }
 
 export async function updateStudentPaidTill(id, paidTill, fees) {
