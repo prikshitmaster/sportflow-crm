@@ -177,6 +177,12 @@ export async function updateStudentPhotoUrl(id, photoUrl) {
   if (error) throw error
 }
 
+export async function fetchStudentAnyBatchId(studentId) {
+  const { data } = await supabase
+    .from('student_batches').select('batch_id').eq('student_id', studentId).limit(1).maybeSingle()
+  return data?.batch_id || null
+}
+
 export async function fetchBatchStudentsForPitch(batchId) {
   const [primary, secondary] = await Promise.all([
     supabase.from('students').select('id, name, position, photo_url, status').eq('batch_id', batchId).neq('status', 'Deleted'),

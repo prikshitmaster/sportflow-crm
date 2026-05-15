@@ -50,10 +50,10 @@ export default function StudentStats() {
             Your coach hasn't submitted a performance assessment yet. Check back after your next session.
           </p>
         </div>
-        {studentUser?.batch_id && (
+        {studentUser?.id && (
           <div className="px-4">
             <PitchViewCard
-              batchId={studentUser.batch_id}
+              batchId={studentUser.batch_id || null}
               currentStudentId={studentUser.id}
               overallScore={0}
             />
@@ -150,11 +150,11 @@ export default function StudentStats() {
         </div>
       </div>
 
-      {/* Pitch view — overlap hero bottom (shown even without assessments) */}
-      {studentUser?.batch_id && (
-        <div className="px-4 -mt-6 relative z-20 mb-1">
+      {/* Pitch view */}
+      {studentUser?.id && (
+        <div className="px-4 mt-4 relative z-20 mb-1">
           <PitchViewCard
-            batchId={studentUser.batch_id}
+            batchId={studentUser.batch_id || null}
             currentStudentId={studentUser.id}
             overallScore={overall}
           />
@@ -363,14 +363,26 @@ function WhiteScoreRing({ score }) {
 // ── Pitch View ────────────────────────────────────────────────────────────────
 
 function PitchViewCard({ batchId, currentStudentId, overallScore }) {
-  const [students, setStudents] = useState([])
-  const [loading,  setLoading]  = useState(true)
+  const [students,      setStudents]      = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [resolvedBatch, setResolvedBatch] = useState(batchId)
 
   useEffect(() => {
-    db.fetchBatchStudentsForPitch(batchId)
-      .then(data => { setStudents(data); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [batchId])
+    async function load() {
+      try {
+        let bid = batchId
+        if (!bid) {
+          bid = await db.fetchStudentAnyBatchId(currentStudentId)
+          if (bid) setResolvedBatch(bid)
+        }
+        if (!bid) { setLoading(false); return }
+        const data = await db.fetchBatchStudentsForPitch(bid)
+        setStudents(data)
+      } catch {}
+      setLoading(false)
+    }
+    load()
+  }, [batchId, currentStudentId])
 
   const positionedStudents = students.filter(s => FOOTBALL_POSITIONS.find(p => p.id === s.position))
   const customPositioned   = students.filter(s => s.position && !FOOTBALL_POSITIONS.find(p => p.id === s.position))
@@ -394,6 +406,8 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
         </div>
+      ) : !resolvedBatch ? (
+        <p className="text-center text-sm text-gray-400 pb-8 px-4">You're not assigned to a batch yet. Ask your coach to add you.</p>
       ) : students.length === 0 ? (
         <p className="text-center text-sm text-gray-400 pb-8">No players in this batch yet.</p>
       ) : (
