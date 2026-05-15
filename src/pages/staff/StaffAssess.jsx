@@ -292,9 +292,18 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
           {/* Position picker */}
           <div className="mt-3">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Position</p>
+            {/* Free-text input */}
+            <input
+              className="input text-sm mb-2 w-full"
+              placeholder="Type any position name… (e.g. False 9, Sweeper, Libero)"
+              value={position}
+              onChange={e => setPosition(e.target.value)}
+              maxLength={40}
+            />
+            {/* Quick-pick preset chips */}
             <div className="flex flex-wrap gap-1.5">
               {FOOTBALL_POSITIONS.map(p => {
-                const col = POSITION_COLORS[p.id]
+                const col    = POSITION_COLORS[p.id]
                 const active = position === p.id
                 return (
                   <button
@@ -307,7 +316,7 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
                         : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
                     }`}
                   >
-                    {p.id} <span className="font-normal opacity-70 hidden sm:inline">· {p.label}</span>
+                    {p.id} <span className="font-normal opacity-60">· {p.label}</span>
                   </button>
                 )
               })}

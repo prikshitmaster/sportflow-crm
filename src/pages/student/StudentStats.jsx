@@ -99,13 +99,13 @@ export default function StudentStats() {
         <div className="flex items-center gap-2 mb-6 relative">
           <p className="text-[10px] font-black text-indigo-200 uppercase tracking-widest">{sport} · Performance</p>
           {studentUser?.position && (() => {
-            const pos  = FOOTBALL_POSITIONS.find(p => p.id === studentUser.position)
-            const col  = POSITION_COLORS[studentUser.position]
-            return pos ? (
+            const preset = FOOTBALL_POSITIONS.find(p => p.id === studentUser.position)
+            const col    = preset ? POSITION_COLORS[preset.id] : null
+            return (
               <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-white/20 text-white backdrop-blur-sm">
-                {pos.id} · {pos.label}
+                {preset ? `${preset.id} · ${preset.label}` : studentUser.position}
               </span>
-            ) : null
+            )
           })()}
         </div>
 

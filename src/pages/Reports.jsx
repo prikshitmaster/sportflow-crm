@@ -1252,18 +1252,18 @@ function PerformanceTab({ students, batches, academyId }) {
               <h4 className="text-sm font-black text-gray-900 mb-3">Top Players</h4>
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-50">
                 {leaderboard.slice(0, 20).map(({ student, score, tier }, i) => {
-                  const pos    = student.position ? FOOTBALL_POSITIONS.find(p => p.id === student.position) : null
-                  const posCol = student.position ? POSITION_COLORS[student.position] : null
+                  const preset = student.position ? FOOTBALL_POSITIONS.find(p => p.id === student.position) : null
+                  const posCol = preset ? POSITION_COLORS[preset.id] : null
                   return (
                     <div key={student.id} className="px-4 py-3 flex items-center gap-3">
                       <span className={`text-sm font-black w-7 flex-shrink-0 ${i < 3 ? 'text-brand-600' : 'text-gray-300'}`}>#{i+1}</span>
                       <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-xs font-black text-gray-600 flex-shrink-0">{student.name[0]}</div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <p className="text-sm font-bold text-gray-900 truncate">{student.name}</p>
-                          {pos && posCol && (
-                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md flex-shrink-0 ${posCol.bg} ${posCol.text}`}>
-                              {pos.id}
+                          {student.position && (
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md flex-shrink-0 ${posCol ? `${posCol.bg} ${posCol.text}` : 'bg-gray-100 text-gray-600'}`}>
+                              {student.position}
                             </span>
                           )}
                         </div>
