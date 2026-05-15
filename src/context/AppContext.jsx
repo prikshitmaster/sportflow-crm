@@ -130,10 +130,19 @@ export function AppProvider({ children }) {
           return diffDays >= graceDays
         })
         if (toSuspend.length > 0) {
-          await Promise.all(toSuspend.map(async (student) => {
-            await db.suspendStudent(student.id)
-            if (student.batchId) await db.updateBatchEnrolled(student.batchId, -1)
-          }))
+          // Suspend students in parallel — safe, each touches a different student row
+          await Promise.all(toSuspend.map(s => db.suspendStudent(s.id)))
+          // Group by batch and decrement each batch ONCE with total count.
+          // Avoids read-modify-write race when multiple students from the same batch suspend together.
+          const batchDeltas = {}
+          toSuspend.forEach(s => {
+            if (s.batchId) batchDeltas[s.batchId] = (batchDeltas[s.batchId] || 0) - 1
+          })
+          await Promise.all(
+            Object.entries(batchDeltas).map(([batchId, delta]) =>
+              db.updateBatchEnrolled(batchId, delta)
+            )
+          )
           setStudents(prev => prev.map(x => {
             if (!toSuspend.find(sus => sus.id === x.id)) return x
             return { ...x, status: 'Suspended', suspendedSince: todayStr }
@@ -685,7 +694,7 @@ export function AppProvider({ children }) {
       const paymentRow = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, academyId: user?.academyId }
       await db.insertPayment(paymentRow, invoiceId)
 
-      const student = students.find(s => s.id === Number(p.studentId))
+      const student = students.find(s => String(s.id) === String(p.studentId))
       if (student) {
         if (student.status === 'Suspended') {
           const batchId   = p.batchId   || student.batchId
@@ -733,7 +742,7 @@ export function AppProvider({ children }) {
       setPayments(remaining)
 
       // Revert student's paid_till to their previous payment
-      const student = students.find(s => s.id === Number(payment.studentId))
+      const student = students.find(s => String(s.id) === String(payment.studentId))
       if (student) {
         const prevPaid = remaining
           .filter(p => String(p.studentId) === String(payment.studentId) && p.status === 'Paid' && p.date)

@@ -658,7 +658,7 @@ function AddStudentModal({ onClose, onSave }) {
   }
 
   const handleFeePlanPick = (planId) => {
-    const plan = feePlans.find(p => p.id === Number(planId))
+    const plan = feePlans.find(p => String(p.id) === String(planId))
     if (!plan) { setForm(f => ({ ...f, feePlanId: '' })); return }
     const feeMap = { monthly: plan.monthlyFee, quarterly: plan.quarterlyFee, yearly: plan.yearlyFee }
     setForm(f => ({
@@ -678,7 +678,7 @@ function AddStudentModal({ onClose, onSave }) {
 
   const handleFeePlan = (plan) => {
     setForm(f => {
-      const selectedPlan = f.feePlanId ? feePlans.find(p => p.id === Number(f.feePlanId)) : null
+      const selectedPlan = f.feePlanId ? feePlans.find(p => String(p.id) === String(f.feePlanId)) : null
       const feeMap = selectedPlan ? { monthly: selectedPlan.monthlyFee, quarterly: selectedPlan.quarterlyFee, yearly: selectedPlan.yearlyFee } : null
       return {
         ...f, feePlan: plan,
@@ -820,7 +820,7 @@ function AddStudentModal({ onClose, onSave }) {
               ))}
             </select>
             {form.feePlanId && (() => {
-              const pl = feePlans.find(p => p.id === Number(form.feePlanId))
+              const pl = feePlans.find(p => String(p.id) === String(form.feePlanId))
               if (!pl) return null
               const expectedFee = { monthly: pl.monthlyFee, quarterly: pl.quarterlyFee, yearly: pl.yearlyFee }[form.feePlan] || pl.monthlyFee
               return (
@@ -880,7 +880,7 @@ function AddStudentModal({ onClose, onSave }) {
             className={`input ${errors.fees ? 'border-red-400' : ''} ${
               (() => {
                 if (!form.feePlanId) return ''
-                const pl = feePlans.find(p => p.id === Number(form.feePlanId))
+                const pl = feePlans.find(p => String(p.id) === String(form.feePlanId))
                 if (!pl) return ''
                 const expected = { monthly: pl.monthlyFee, quarterly: pl.quarterlyFee, yearly: pl.yearlyFee }[form.feePlan] || pl.monthlyFee
                 return expected > 0 && Number(form.fees) !== expected ? 'border-amber-400' : ''
@@ -891,7 +891,7 @@ function AddStudentModal({ onClose, onSave }) {
           {errors.fees && <p className="text-[11px] text-red-500 mt-1">{errors.fees}</p>}
           {(() => {
             if (!form.feePlanId || !form.fees) return null
-            const pl = feePlans.find(p => p.id === Number(form.feePlanId))
+            const pl = feePlans.find(p => String(p.id) === String(form.feePlanId))
             if (!pl) return null
             const expected = { monthly: pl.monthlyFee, quarterly: pl.quarterlyFee, yearly: pl.yearlyFee }[form.feePlan] || pl.monthlyFee
             if (!expected || Number(form.fees) === expected) return null
@@ -1209,7 +1209,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleBatch = (batchId) => {
-    const b = batches.find(x => x.id === Number(batchId))
+    const b = batches.find(x => String(x.id) === String(batchId))
     setForm(f => ({ ...f, batchId: batchId ? Number(batchId) : '', batchName: b?.name || '' }))
   }
 
