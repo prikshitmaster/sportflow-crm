@@ -289,6 +289,7 @@ export default function StudentStats() {
         {/* ── AI Coach Tip ── */}
         <AiCoachTip
           assessment={current}
+          allAssessments={assessments}
           sport={sport}
           categories={categories}
           position={studentUser?.position}
@@ -433,13 +434,17 @@ function TipDisplay({ tip }) {
 }
 
 // ── AI Coaching Tip ──────────────────────────────────────
-function AiCoachTip({ assessment, sport, categories, position, overall, tier, history, studentName, batch }) {
+function AiCoachTip({ assessment, allAssessments, sport, categories, position, overall, tier, history, studentName, batch }) {
   const [tip,     setTip]     = useState(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
 
-  const notesStamp = assessment.notes?.trim().slice(0, 30).replace(/\s+/g, '_') || 'none'
-  const cacheKey = `ai_tip_v7_${assessment.id || assessment.assessed_month}_${notesStamp}`
+  // Cache invalidates when latest notes OR any historical note changes
+  const allNotesStamp = (allAssessments || [assessment])
+    .map(a => (a.notes || '').trim().slice(0, 15))
+    .join('|')
+    .replace(/\s+/g, '_')
+  const cacheKey = `ai_tip_v8_${assessment.id || assessment.assessed_month}_${allNotesStamp}`
 
   useEffect(() => {
     if (!GROQ_KEY) return
@@ -452,6 +457,9 @@ function AiCoachTip({ assessment, sport, categories, position, overall, tier, hi
     setLoading(true)
     setError(null)
     try {
+      const history_full = (allAssessments || [assessment])
+
+      // Latest assessment scores
       const allSkills = categories.flatMap(cat =>
         cat.skills.map(s => {
           const val = Number(assessment.scores?.[s] || 0)
@@ -464,61 +472,85 @@ function AiCoachTip({ assessment, sport, categories, position, overall, tier, hi
         return `  ${cat.label || cat.short}: ${avg}/100`
       }).join('\n')
 
+      // Score trend across all months
       const trendLine = history?.length > 1
-        ? `Score trend: ${history.map(h => h.score).join(' → ')} (${history[history.length-1].score - history[0].score > 0 ? '+' : ''}${history[history.length-1].score - history[0].score} overall)`
-        : 'First assessment — no trend data yet'
+        ? `Score trend: ${history.map(h => `${h.month}:${h.score}`).join(' → ')} (${history[history.length-1].score - history[0].score >= 0 ? '+' : ''}${history[history.length-1].score - history[0].score} overall)`
+        : 'First assessment — no trend yet'
+
+      // All coach notes across all months (most recent first)
+      const allNotes = history_full
+        .filter(a => a.notes?.trim())
+        .map(a => `  [${monthLabel(a.assessed_month)}]: "${a.notes.trim()}"`)
+        .join('\n')
+
+      // Recurring themes in coach notes
+      const noteCount = history_full.filter(a => a.notes?.trim()).length
+      const latestNote = assessment.notes?.trim()
 
       const scoredSkills = categories.flatMap(cat =>
         cat.skills.map(s => ({ name: s, val: Number(assessment.scores?.[s] || 0) }))
       ).filter(x => x.val > 0).sort((a, b) => a.val - b.val)
-      const weakest  = scoredSkills[0]
+      const weakest   = scoredSkills[0]
       const strongest = [...scoredSkills].sort((a, b) => b.val - a.val)[0]
+
+      // Per-skill trend: show improvement/decline for top weak skills
+      const skillTrends = scoredSkills.slice(0, 3).map(sk => {
+        const vals = history_full.map(a => Number(a.scores?.[sk.name] || 0)).filter(v => v > 0)
+        if (vals.length < 2) return null
+        const delta = vals[0] - vals[vals.length - 1]
+        return `  ${sk.name}: ${vals.join('→')} (${delta >= 0 ? '+' : ''}${delta})`
+      }).filter(Boolean).join('\n')
 
       const posKey = Object.keys(POSITION_PRIORITIES).find(k =>
         position?.toUpperCase().includes(k)
       )
       const priorities = posKey ? POSITION_PRIORITIES[posKey] : null
 
-      const hasNotes = !!assessment.notes?.trim()
-      const prompt = `You are a UEFA Pro-Licensed ${sport || 'football'} coach with 20 years of elite youth development experience.
+      const hasNotes  = !!allNotes
+      const hasLatest = !!latestNote
+
+      const prompt = `You are a UEFA Pro-Licensed ${sport || 'football'} coach with 20 years of elite youth development experience. You have been tracking this player across ${history_full.length} assessment${history_full.length > 1 ? 's' : ''}.
 
 PLAYER: ${studentName || 'Player'}, ${batch || ''} batch
 POSITION: ${position || 'Not assigned'}
-OVERALL RATING: ${overall}/100 — ${tier.label} Tier
+CURRENT RATING: ${overall}/100 — ${tier.label} Tier
 ${trendLine}
 
-INDIVIDUAL SKILL SCORES (out of 10):
+CURRENT MONTH SKILL SCORES (out of 10):
 ${allSkills || '  No scores recorded'}
 
-CATEGORY AVERAGES:
+CATEGORY AVERAGES (current):
 ${catSummary}
 
-KEY STRENGTHS: ${strongest ? `${strongest.name} (${strongest.val}/10)` : 'Not enough data'}
+KEY STRENGTH: ${strongest ? `${strongest.name} (${strongest.val}/10)` : 'Not enough data'}
 BIGGEST WEAKNESS: ${weakest ? `${weakest.name} (${weakest.val}/10)` : 'Not enough data'}
-${priorities ? `CRITICAL SKILLS FOR ${position?.toUpperCase() || 'THIS POSITION'}: ${priorities.join(', ')}` : ''}
+${skillTrends ? `SKILL TRENDS (weakest skills, oldest→newest):\n${skillTrends}` : ''}
+${priorities ? `CRITICAL SKILLS FOR ${position?.toUpperCase()}: ${priorities.join(', ')}` : ''}
 ${hasNotes ? `
-⚑ COACH'S DIRECT OBSERVATION (highest priority — your analysis MUST reflect this):
-"${assessment.notes}"
-This is what the coach saw on the pitch. Reference it directly in your Focus and Verdict. Do not ignore it.` : ''}
+⚑ COACH OBSERVATIONS ACROSS ALL SESSIONS (${noteCount} note${noteCount > 1 ? 's' : ''} — HIGHEST PRIORITY):
+${allNotes}
+${noteCount > 1 ? 'Identify PATTERNS — if the coach has flagged the same issue multiple times, it is a persistent problem that MUST be the primary focus.' : ''}
+${hasLatest ? `The LATEST note is: "${latestNote}" — this is the most current priority.` : ''}
+Your analysis MUST be shaped by these coach observations. They override scores.` : ''}
 
-Write the analysis directly to the player using "you/your". Use EXACTLY this markdown structure:
+Write directly to the player ("you/your"). Use EXACTLY this structure:
 
 **Strength**
-• Your [best skill] — [why it gives you an edge at your position]. One line.
-• Your [second quality] — [what it enables you to do]. One line.
+• Your [top skill] — [edge it gives at your position]. One line.
+• Your [second quality] — [what it unlocks]. One line.
 
 **This Week's Focus**
-• [Most critical weakness from scores${hasNotes ? ' AND coach observation' : ''}] — [why it matters]. One line.
-• [Second area — ${hasNotes ? 'directly referencing coach note if relevant' : 'from scores'}]. One line.
+• [${hasNotes ? 'Top issue from coach notes — especially if recurring' : 'Biggest weakness from scores'}] — [why it holds you back]. One line.
+• [${hasNotes ? 'Second coach-flagged or score-based issue' : 'Second weakness'}] — [specific aspect]. One line.
 
 **Drills**
-• Drill Name (Xmin) — [targets the weakness the coach flagged${hasNotes ? '' : ' or lowest score'}]. One line.
-• Drill Name (Xmin) — second drill, different skill. One line.
+• Drill Name (Xmin) — [directly addresses ${hasLatest ? 'latest coach note' : 'top weakness'}]. One line.
+• Drill Name (Xmin) — [addresses score gap or recurring coach theme]. One line.
 
 **Verdict**
-One punchy sentence${hasNotes ? " that ties the coach's observation to the player's potential" : ' about what this player can become'}.
+One punchy sentence tying ${noteCount > 1 ? 'the recurring coach observations' : hasLatest ? "the coach's note" : 'the data'} to what this player can become.
 
-Rules: Address the player as "you/your". Bold headers exactly as shown. No intro, no greetings. Be specific — real drills, real skills. ${hasNotes ? 'The coach note is ground truth — weight it above scores.' : ''} Tone: direct, warm, confident like Pep Guardiola.`
+Rules: Bold headers exactly as shown. No intro. No greetings. Real drills, real skills. ${hasNotes ? 'Coach notes = ground truth. Recurring notes = urgent.' : ''} Tone: direct, warm, like Pep Guardiola.`
 
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -529,7 +561,7 @@ Rules: Address the player as "you/your". Bold headers exactly as shown. No intro
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 200,
+          max_tokens: 280,
           temperature: 0.8,
         }),
       })
