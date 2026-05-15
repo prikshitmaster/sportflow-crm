@@ -7,6 +7,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { ArrowLeft, Check, Users, Clock, Search, ChevronRight } from 'lucide-react'
+import { fetchBatchEnrolments } from '../../lib/db'
 
 // Status cycle: blank → Present → Absent → Late → Present …
 const NEXT_STATUS = { '': 'Present', Present: 'Absent', Absent: 'Late', Late: 'Present' }
@@ -30,6 +31,7 @@ export default function StaffAttendance() {
   // Step 1: batch picker state
   const [step,          setStep]          = useState(1)
   const [selectedBatch, setSelectedBatch] = useState(null)
+  const [mbStudentIds,  setMbStudentIds]  = useState(new Set())
 
   // Step 2: mark attendance state
   const [marks,         setMarks]         = useState({})  // { studentId: 'Present'|'Absent'|'Late'|'' }
@@ -45,13 +47,13 @@ export default function StaffAttendance() {
     return assigned.length > 0 ? assigned : batches
   }, [batches, user])
 
-  // Students in the selected batch
+  // Students in the selected batch (primary + multi-batch)
   const batchStudents = useMemo(() => {
     if (!selectedBatch) return []
     return students.filter(
-      s => s.status === 'Active' && (s.batchId === selectedBatch.id || s.batch === selectedBatch.name)
+      s => s.status === 'Active' && (s.batchId === selectedBatch.id || s.batch === selectedBatch.name || mbStudentIds.has(s.id))
     )
-  }, [students, selectedBatch])
+  }, [students, selectedBatch, mbStudentIds])
 
   // Suspended students who were in this batch — shown read-only
   const suspendedInBatch = useMemo(() => {
@@ -73,8 +75,14 @@ export default function StaffAttendance() {
   const presentCount = batchStudents.filter(s => (marks[s.id] || todayAtt[s.id] || '') === 'Present').length
 
   // ── Select a batch → go to step 2 ────────────────────
-  const pickBatch = (batch) => {
+  const pickBatch = async (batch) => {
     setSelectedBatch(batch)
+    setMbStudentIds(new Set())
+    // Load multi-batch enrolments
+    try {
+      const rows = await fetchBatchEnrolments(batch.id)
+      setMbStudentIds(new Set(rows.map(r => r.student_id)))
+    } catch {/* table may not exist yet */}
     // Pre-load existing today's marks
     const existing = {}
     students

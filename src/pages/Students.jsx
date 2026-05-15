@@ -7,6 +7,7 @@ import {
   ShieldCheck, Award, ChevronRight, Pencil, Ban, Trash2,
 } from 'lucide-react'
 import { RecordPaymentModal } from './Payments'
+import { assignStudentToBatch } from '../lib/db'
 
 const accountBadge = {
   pending: 'badge-yellow',
@@ -487,7 +488,16 @@ export default function Students() {
       {showModal && (
         <AddStudentModal
           onClose={() => setShowModal(false)}
-          onSave={async (data) => { await addStudent(data); setShowModal(false) }}
+          onSave={async (data) => {
+            const newStudent = await addStudent(data)
+            if (newStudent && data.additionalBatchIds?.length > 0) {
+              for (const bid of data.additionalBatchIds) {
+                const bObj = batches.find(b => b.id === bid)
+                await assignStudentToBatch(newStudent.id, bid, bObj?.name || '', newStudent.academyId || null).catch(() => {})
+              }
+            }
+            setShowModal(false)
+          }}
         />
       )}
       {deleteTarget && (
@@ -584,9 +594,16 @@ function AddStudentModal({ onClose, onSave }) {
     paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '',
     trainingType: 'Daily', feePlan: 'monthly', feePlanId: '',
   })
+  const [additionalBatchIds, setAdditionalBatchIds] = useState([])
   const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const toggleAdditionalBatch = (id) => {
+    setAdditionalBatchIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
 
   const handleBatch = (id) => {
     const b = batches.find(b => String(b.id) === id)
@@ -646,7 +663,7 @@ function AddStudentModal({ onClose, onSave }) {
   const handleSave = async () => {
     if (!validate()) return
     setLoading(true)
-    try { await onSave({ ...form, age: calcAge(form.dob) }) } finally { setLoading(false) }
+    try { await onSave({ ...form, age: calcAge(form.dob), additionalBatchIds }) } finally { setLoading(false) }
   }
 
   const preview = coveragePreview(form.joinDate, form.paidTill)
@@ -721,13 +738,36 @@ function AddStudentModal({ onClose, onSave }) {
 
         {/* Batch */}
         <div className={form.batchId && feePlans.some(p => p.batchId === Number(form.batchId)) ? '' : ''}>
-          <label className="label">Batch *</label>
+          <label className="label">Primary Batch *</label>
           <select className={`input ${errors.batchId ? 'border-red-400' : ''}`} value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— Select Batch —</option>
             {batches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
           {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
         </div>
+
+        {/* Additional Batches */}
+        {batches.length > 1 && (
+          <div className="col-span-2">
+            <label className="label">Additional Batches <span className="text-gray-400 font-normal">(optional — for students in multiple batches)</span></label>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {batches.filter(b => form.batchId ? b.id !== Number(form.batchId) : true).map(b => {
+                const sel = additionalBatchIds.includes(b.id)
+                return (
+                  <button key={b.id} type="button" onClick={() => toggleAdditionalBatch(b.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${sel ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                    {sel ? '✓ ' : ''}{b.name}{b.code ? ` (${b.code})` : ''}
+                  </button>
+                )
+              })}
+            </div>
+            {additionalBatchIds.length > 0 && (
+              <p className="text-[11px] text-purple-600 mt-1.5 font-medium">
+                +{additionalBatchIds.length} additional batch{additionalBatchIds.length > 1 ? 'es' : ''} selected
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Fee Plan picker — shown only when batch has named plans */}
         {form.batchId && feePlans.some(p => p.batchId === Number(form.batchId)) ? (

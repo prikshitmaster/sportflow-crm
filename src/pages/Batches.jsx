@@ -1,10 +1,12 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2 } from 'lucide-react'
+import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
+import { fetchBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch, updateBatchEnrolled } from '../lib/db'
 
 const COLORS = ['bg-brand-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600']
+const COLOR_HEX = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
 
 export default function Batches() {
   const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches } = useApp()
@@ -12,6 +14,12 @@ export default function Batches() {
   const [editingBatch, setEditingBatch] = useState(null)
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [activeBranch, setActiveBranch] = useState('All')
+  const [enrolledAdj, setEnrolledAdj] = useState({}) // { [batchId]: cumulative delta }
+
+  const adjustEnrolled = (batchId, delta) => {
+    updateBatchEnrolled(batchId, delta).catch(() => {})
+    setEnrolledAdj(prev => ({ ...prev, [batchId]: (prev[batchId] || 0) + delta }))
+  }
 
   // Derive branch list from batch sports (sorted), regardless of DB branches
   const branchList = useMemo(() => {
@@ -52,15 +60,15 @@ export default function Batches() {
   }
 
   return (
-    <div className="space-y-5 max-w-[1200px]">
+    <div className="space-y-4 max-w-[1200px]">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-black text-gray-900">Batch Management</h2>
-          <p className="text-sm text-gray-500">Manage morning, evening and weekend batches</p>
+          <h2 className="text-xl font-black text-gray-900">Batches</h2>
+          <p className="text-xs text-gray-500">Tap a batch to view details &amp; manage students</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> Create Batch
+        <button className="btn-primary shrink-0" onClick={() => setShowModal(true)}>
+          <Plus size={15} /> <span className="hidden sm:inline">Create Batch</span><span className="sm:hidden">New</span>
         </button>
       </div>
 
@@ -69,40 +77,32 @@ export default function Batches() {
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
           <button
             onClick={() => setActiveBranch('All')}
-            className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition ${activeBranch === 'All' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold border transition ${activeBranch === 'All' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200'}`}
           >
             All <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === 'All' ? 'bg-white/20' : 'bg-gray-100'}`}>{batches.length}</span>
           </button>
           {branchList.map(br => (
-            <button
-              key={br}
-              onClick={() => setActiveBranch(br)}
-              className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-bold border transition ${activeBranch === br ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-            >
+            <button key={br} onClick={() => setActiveBranch(br)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold border transition ${activeBranch === br ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200'}`}>
               {br} <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === br ? 'bg-white/20' : 'bg-gray-100'}`}>{batches.filter(b => b.sports?.includes(br)).length}</span>
             </button>
           ))}
         </div>
       )}
 
-      {/* Summary row — scoped to active branch */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-gray-900">{visibleBatches.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Active Batches</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-brand-600">{visibleBatches.reduce((s,b) => s+b.enrolled, 0)}</p>
-          <p className="text-xs text-gray-500 mt-1">Total Enrolled</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-amber-600">{visibleBatches.reduce((s,b) => s+b.waitlist, 0)}</p>
-          <p className="text-xs text-gray-500 mt-1">On Waitlist</p>
-        </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-gray-400">{visibleBatches.reduce((s,b) => s+(b.capacity-b.enrolled), 0)}</p>
-          <p className="text-xs text-gray-500 mt-1">Available Seats</p>
-        </div>
+      {/* Summary row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { val: visibleBatches.length, label: 'Batches', color: 'text-gray-900' },
+          { val: visibleBatches.reduce((s,b) => s + (b.enrolled || 0), 0), label: 'Enrolled', color: 'text-brand-600' },
+          { val: visibleBatches.reduce((s,b) => s + (b.waitlist || 0), 0), label: 'Waitlist', color: 'text-amber-600' },
+          { val: visibleBatches.reduce((s,b) => s + Math.max(0, b.capacity - (b.enrolled || 0)), 0), label: 'Seats Free', color: 'text-gray-400' },
+        ].map(({ val, label, color }) => (
+          <div key={label} className="card p-3 text-center">
+            <p className={`text-2xl font-black ${color}`}>{val}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+          </div>
+        ))}
       </div>
 
       {/* ── Grouped branch sections (when branches configured) ── */}
@@ -118,9 +118,9 @@ export default function Batches() {
                   {branchBatches.length} batch{branchBatches.length !== 1 ? 'es' : ''} · {branchBatches.reduce((s,b) => s+b.enrolled, 0)} enrolled
                 </span>
               </div>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {branchBatches.map((b, idx) => (
-                  <BatchCard key={b.id} b={b} idx={idx} onSelect={setSelectedBatch} />
+                  <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} onSelect={setSelectedBatch} />
                 ))}
               </div>
             </div>
@@ -133,17 +133,17 @@ export default function Batches() {
         </div>
       ) : (
         /* Single branch selected — flat grid */
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {visibleBatches.map((b, idx) => (
-            <BatchCard key={b.id} b={b} idx={idx} onSelect={setSelectedBatch} />
+            <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} onSelect={setSelectedBatch} />
           ))}
         </div>
       )}
 
       {/* Fallback flat grid when no branches configured */}
       {!grouped && (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} onSelect={setSelectedBatch} />)}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} onSelect={setSelectedBatch} />)}
         </div>
       )}
 
@@ -160,7 +160,7 @@ export default function Batches() {
 
       {selectedBatch && (
         <BatchDetailPanel
-          batch={selectedBatch}
+          batch={{ ...selectedBatch, enrolled: (selectedBatch.enrolled || 0) + (enrolledAdj[selectedBatch.id] || 0) }}
           students={students}
           staff={staff}
           onClose={() => setSelectedBatch(null)}
@@ -170,78 +170,99 @@ export default function Batches() {
             await updateBatchCoach(id, name)
             setSelectedBatch(prev => ({ ...prev, coach: name }))
           }}
+          onEnrolledChange={adjustEnrolled}
         />
       )}
     </div>
   )
 }
 
-function BatchCard({ b, idx, onSelect }) {
-  const pct = Math.round((b.enrolled / b.capacity) * 100)
-  const isFull = b.enrolled >= b.capacity
+function BatchCard({ b, idx, enrolledAdj = {}, onSelect }) {
+  const enrolled = (b.enrolled || 0) + (enrolledAdj[b.id] || 0)
+  const pct = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
+  const isFull = enrolled >= b.capacity
+  const hex = COLOR_HEX[idx % COLOR_HEX.length]
+
   return (
-    <div className="card p-5 hover:shadow-md transition">
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <div className={`inline-flex items-center gap-1.5 text-xs font-bold text-white px-2.5 py-1 rounded-full mb-2 ${COLORS[idx % COLORS.length]}`}>
-            <Layers size={11} /> {b.name}
+    <div
+      onClick={() => onSelect(b)}
+      className="bg-white rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] hover:shadow-md transition-all cursor-pointer overflow-hidden"
+    >
+      {/* Color accent bar */}
+      <div className="h-1" style={{ background: hex }} />
+
+      <div className="p-4">
+        {/* Name row */}
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-gray-900 text-[15px] leading-snug">{b.name}</p>
+            {b.code && <span className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{b.code}</span>}
           </div>
-          {b.code && (
-            <div className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded mb-1 inline-block">{b.code}</div>
-          )}
-          <div className="flex items-center gap-1.5 text-gray-500 text-xs">
-            <Clock size={12} /> {b.time}
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            {isFull
+              ? <span className="badge badge-red text-[10px]">Full</span>
+              : b.waitlist > 0 && <span className="badge badge-yellow text-[10px]">{b.waitlist} wait</span>
+            }
+            {b.sports?.length > 0 && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ background: hex }}>
+                {b.sports[0]}
+              </span>
+            )}
           </div>
-          {b.ground && (
-            <div className="flex items-center gap-1.5 text-gray-400 text-xs mt-0.5">
-              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-              {b.ground}
-            </div>
+        </div>
+
+        {/* Schedule row */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mb-3">
+          {b.time && (
+            <span className="flex items-center gap-1">
+              <Clock size={11} className="flex-shrink-0" />{b.time}
+            </span>
           )}
           {b.days?.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {b.days.map(d => <span key={d} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-semibold">{d}</span>)}
-            </div>
+            <span className="flex flex-wrap gap-1">
+              {b.days.map(d => (
+                <span key={d} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-semibold">{d}</span>
+              ))}
+            </span>
+          )}
+          {b.ground && (
+            <span className="text-gray-400 truncate max-w-[120px]">{b.ground}</span>
           )}
         </div>
-        <div className="flex flex-col items-end gap-1">
-          {isFull && <span className="badge badge-red">Full</span>}
-          {b.waitlist > 0 && !isFull && <span className="badge badge-yellow">{b.waitlist} waiting</span>}
+
+        {/* Capacity bar */}
+        <div className="mb-3">
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-gray-500">{enrolled} / {b.capacity} students</span>
+            <span className="font-semibold" style={{ color: isFull ? '#ef4444' : pct > 80 ? '#f59e0b' : hex }}>
+              {pct}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-1.5">
+            <div
+              className="h-1.5 rounded-full transition-all"
+              style={{ width: `${pct}%`, background: isFull ? '#ef4444' : pct > 80 ? '#f59e0b' : hex }}
+            />
+          </div>
+        </div>
+
+        {/* Age range */}
+        {(b.ageMin > 0 || b.ageMax < 99) && (
+          <p className="text-xs text-gray-400 mb-3">Ages {b.ageMin}–{b.ageMax} yrs</p>
+        )}
+
+        {/* Coach footer */}
+        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
+              style={{ background: hex }}>
+              {(b.coach || 'U')[0]}
+            </div>
+            <span className="text-xs text-gray-600 truncate">{b.coach || 'Unassigned'}</span>
+          </div>
+          <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
         </div>
       </div>
-
-      <div className="flex flex-wrap gap-1.5 mb-4">
-        {b.sports.map(s => <span key={s} className="badge badge-blue">{s}</span>)}
-      </div>
-
-      <div className="mb-3">
-        <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-          <span>Capacity</span>
-          <span className="font-bold text-gray-700">{b.enrolled} / {b.capacity}</span>
-        </div>
-        <div className="w-full bg-gray-100 rounded-full h-2">
-          <div className={`h-2 rounded-full transition-all ${isFull ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
-        </div>
-        <p className="text-xs text-gray-400 mt-1">{pct}% full · {b.capacity - b.enrolled} seats left</p>
-      </div>
-
-      {(b.ageMin > 0 || b.ageMax < 99) && (
-        <p className="text-xs text-gray-400 mb-3">Ages {b.ageMin}–{b.ageMax} yrs</p>
-      )}
-
-      <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
-        <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600">
-          {(b.coach || 'C')[0]}
-        </div>
-        <div className="flex-1">
-          <p className="text-xs font-semibold text-gray-700">{b.coach || 'Unassigned'}</p>
-          <p className="text-xs text-gray-400">Assigned Coach</p>
-        </div>
-      </div>
-
-      <button onClick={() => onSelect(b)} className="w-full mt-4 btn-secondary text-xs justify-center py-2 gap-2">
-        View Details <ChevronRight size={12} />
-      </button>
     </div>
   )
 }
@@ -362,8 +383,12 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
   )
 }
 
-function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete, onAssignCoach }) {
-  const enrolled = students.filter(s => s.status === 'Active' && s.batch === b.name)
+function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete, onAssignCoach, onEnrolledChange }) {
+  const { user } = useApp()
+  const [mbEnrolments, setMbEnrolments] = useState([])
+  const [assignSearch, setAssignSearch] = useState('')
+  const [assigning, setAssigning] = useState(null)
+  const [unassigning, setUnassigning] = useState(null)
   const [editCoach, setEditCoach] = useState(false)
   const [newCoach, setNewCoach] = useState(b.coach || '')
   const [saving, setSaving] = useState(false)
@@ -371,6 +396,46 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
   const [deleting, setDeleting] = useState(false)
   const coaches = staff.filter(s => s.role !== 'Admin')
   const pct = Math.round((b.enrolled / b.capacity) * 100)
+
+  useEffect(() => {
+    fetchBatchEnrolments(b.id).then(rows => setMbEnrolments(rows)).catch(() => {})
+  }, [b.id])
+
+  const primaryEnrolled = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name))
+  const primaryIds = useMemo(() => new Set(primaryEnrolled.map(s => s.id)), [primaryEnrolled])
+  const mbStudentIds = useMemo(() => new Set(mbEnrolments.map(e => e.student_id)), [mbEnrolments])
+  const mbOnly = students.filter(s => mbStudentIds.has(s.id) && !primaryIds.has(s.id) && s.status === 'Active')
+  const allEnrolled = [...primaryEnrolled, ...mbOnly]
+  const enrolledIds = useMemo(() => new Set(allEnrolled.map(s => s.id)), [allEnrolled])
+
+  const searchResults = assignSearch.trim().length >= 2
+    ? students.filter(s => s.status === 'Active' && !enrolledIds.has(s.id) &&
+        s.name.toLowerCase().includes(assignSearch.toLowerCase()))
+      .slice(0, 6)
+    : []
+
+  const handleAssign = async (student) => {
+    setAssigning(student.id)
+    try {
+      await assignStudentToBatch(student.id, b.id, b.name, user?.academyId)
+      setMbEnrolments(prev => [...prev, { student_id: student.id, batch_id: b.id }])
+      onEnrolledChange?.(b.id, 1)
+      setAssignSearch('')
+    } finally {
+      setAssigning(null)
+    }
+  }
+
+  const handleUnassign = async (studentId) => {
+    setUnassigning(studentId)
+    try {
+      await unassignStudentFromBatch(studentId, b.id)
+      setMbEnrolments(prev => prev.filter(e => e.student_id !== studentId))
+      onEnrolledChange?.(b.id, -1)
+    } finally {
+      setUnassigning(null)
+    }
+  }
 
   const handleDelete = async () => {
     setDeleting(true)
@@ -387,8 +452,8 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white h-full w-full max-w-md shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
-        <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-6 pt-6 pb-8">
+      <div className="relative bg-white h-full w-full max-w-lg shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
+        <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-5 pt-5 pb-6 sm:px-6 sm:pt-6 sm:pb-8">
           <div className="flex items-start justify-between mb-4">
             <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition">
               <X size={16} className="text-white" />
@@ -420,7 +485,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
           )}
           <div className="grid grid-cols-3 gap-3 mt-5">
             <div className="bg-white/15 rounded-xl p-3 text-center">
-              <p className="text-lg font-black text-white">{enrolled.length}</p>
+              <p className="text-lg font-black text-white">{allEnrolled.length}</p>
               <p className="text-[10px] text-brand-200">Enrolled</p>
             </div>
             <div className="bg-white/15 rounded-xl p-3 text-center">
@@ -473,28 +538,89 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
             )}
           </div>
 
-          {/* Student list */}
+          {/* Assign Student */}
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
-              Enrolled Students ({enrolled.length})
-            </p>
-            {enrolled.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-4">No active students in this batch</p>
-            ) : (
-              <div className="space-y-2.5 max-h-64 overflow-y-auto">
-                {enrolled.map((s, i) => (
-                  <div key={s.id} className="flex items-center gap-3">
-                    <span className="text-xs text-gray-400 w-5">{i + 1}</span>
-                    <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-xs font-bold text-brand-700">
+            <div className="flex items-center gap-2 mb-3">
+              <UserPlus size={14} className="text-brand-600" />
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Assign Student</p>
+            </div>
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                className="input pl-8 text-sm"
+                placeholder="Type name to search…"
+                value={assignSearch}
+                onChange={e => setAssignSearch(e.target.value)}
+              />
+            </div>
+            {searchResults.length > 0 && (
+              <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+                {searchResults.map(s => (
+                  <div key={s.id} className="flex items-center gap-3 px-2 py-1.5 rounded-xl hover:bg-gray-50 transition">
+                    <div className="w-7 h-7 bg-brand-100 rounded-full flex items-center justify-center text-xs font-bold text-brand-700 flex-shrink-0">
                       {s.name[0]}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
-                      <p className="text-xs text-gray-400">{s.sport} · {s.age} yrs</p>
+                      <p className="text-xs text-gray-400">{s.sport} · {s.batch || 'No primary batch'}</p>
                     </div>
-                    <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'} text-[10px]`}>{s.status}</span>
+                    <button
+                      onClick={() => handleAssign(s)}
+                      disabled={assigning === s.id}
+                      className="text-xs font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 px-3 py-1 rounded-lg transition disabled:opacity-50 flex-shrink-0"
+                    >
+                      {assigning === s.id ? '…' : 'Assign'}
+                    </button>
                   </div>
                 ))}
+              </div>
+            )}
+            {assignSearch.trim().length >= 2 && searchResults.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-3">No students found</p>
+            )}
+          </div>
+
+          {/* Student list */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
+              Enrolled Students ({allEnrolled.length})
+            </p>
+            {allEnrolled.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-4">No active students in this batch</p>
+            ) : (
+              <div className="space-y-2.5 max-h-72 overflow-y-auto">
+                {allEnrolled.map((s, i) => {
+                  const isMultiBatch = !primaryIds.has(s.id) || (mbStudentIds.has(s.id) && !( s.batchId === b.id || s.batch === b.name))
+                  const canUnassign = mbStudentIds.has(s.id)
+                  return (
+                    <div key={s.id} className="flex items-center gap-3">
+                      <span className="text-xs text-gray-400 w-5">{i + 1}</span>
+                      <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-xs font-bold text-brand-700 flex-shrink-0">
+                        {s.name[0]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
+                          {!primaryIds.has(s.id) && (
+                            <span className="text-[9px] font-bold bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full flex-shrink-0">Multi</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400">{s.sport} · {s.age} yrs</p>
+                      </div>
+                      {canUnassign ? (
+                        <button
+                          onClick={() => handleUnassign(s.id)}
+                          disabled={unassigning === s.id}
+                          className="text-[10px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition disabled:opacity-40 flex-shrink-0"
+                        >
+                          {unassigning === s.id ? '…' : 'Remove'}
+                        </button>
+                      ) : (
+                        <span className="badge badge-green text-[10px]">Primary</span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -506,9 +632,9 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
                 <Trash2 size={16} className="text-red-600" />
                 <p className="text-sm font-bold text-red-800">Delete "{b.name}"?</p>
               </div>
-              {enrolled.length > 0 && (
+              {allEnrolled.length > 0 && (
                 <p className="text-xs text-red-600 mb-3">
-                  ⚠ This batch has {enrolled.length} active student{enrolled.length > 1 ? 's' : ''}. Move them to another batch first, or they will lose their batch assignment.
+                  ⚠ This batch has {allEnrolled.length} active student{allEnrolled.length > 1 ? 's' : ''}. Move them to another batch first, or they will lose their batch assignment.
                 </p>
               )}
               <p className="text-xs text-red-600 mb-4">This cannot be undone.</p>

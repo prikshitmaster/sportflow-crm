@@ -1567,3 +1567,49 @@ export async function upsertAssessment({ studentId, staffId, batchId, sport, mon
   return data?.[0]
 }
 
+// ── Multi-batch enrolment ─────────────────────────────────
+
+export async function fetchStudentBatches(studentId) {
+  const { data, error } = await supabase
+    .from('student_batches')
+    .select('*')
+    .eq('student_id', studentId)
+    .order('enrolled_at', { ascending: true })
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function fetchBatchEnrolments(batchId) {
+  const { data, error } = await supabase
+    .from('student_batches')
+    .select('*')
+    .eq('batch_id', batchId)
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function assignStudentToBatch(studentId, batchId, batchName, academyId) {
+  const { error } = await supabase
+    .from('student_batches')
+    .upsert({ student_id: studentId, batch_id: batchId, batch_name: batchName, academy_id: academyId },
+      { onConflict: 'student_id,batch_id' })
+  if (error) throw error
+}
+
+export async function unassignStudentFromBatch(studentId, batchId) {
+  const { error } = await supabase
+    .from('student_batches')
+    .delete()
+    .eq('student_id', studentId)
+    .eq('batch_id', batchId)
+  if (error) throw error
+}
+
+export async function fetchAllStudentBatches(academyId) {
+  let q = supabase.from('student_batches').select('*')
+  if (academyId) q = q.eq('academy_id', academyId)
+  const { data, error } = await q
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
