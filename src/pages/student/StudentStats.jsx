@@ -869,26 +869,6 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
             </div>
           )}
 
-          {/* True bench — students not ghost-placed */}
-          {trueBench.length > 0 && (
-            <div className="mt-3 px-3 py-3 bg-gray-50 rounded-2xl">
-              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2.5">No Position Assigned</p>
-              <div className="flex flex-wrap gap-3">
-                {trueBench.map(s => (
-                  <div key={s.id} className="flex flex-col items-center gap-1">
-                    <PlayerAvatar photoUrl={s.photoUrl} name={s.name} size={34}
-                      isCurrent={s.id === currentStudentId}
-                      score={s.id === currentStudentId ? overallScore : null}
-                      dark={false}
-                    />
-                    <span className="text-[8px] font-semibold text-gray-500 max-w-[40px] truncate text-center">
-                      {s.name.split(' ')[0]}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
