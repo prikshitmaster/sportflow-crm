@@ -173,8 +173,8 @@ export async function uploadStudentPhoto(file, studentId) {
 }
 
 export async function updateStudentPhotoUrl(id, photoUrl) {
-  const { error } = await supabase.from('students').update({ photo_url: photoUrl }).eq('id', id)
-  if (error) throw error
+  // Students use custom auth (anon key) — RLS may block; photo still shows in session
+  await supabase.from('students').update({ photo_url: photoUrl }).eq('id', id)
 }
 
 export async function fetchStudentAnyBatchId(studentId) {

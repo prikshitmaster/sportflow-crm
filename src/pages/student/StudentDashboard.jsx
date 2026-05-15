@@ -20,7 +20,11 @@ export default function StudentDashboard() {
     const file = e.target.files?.[0]
     if (!file) return
     setUploading(true)
-    try { await updateStudentPhoto(file) } catch {}
+    try {
+      await updateStudentPhoto(file)
+    } catch (err) {
+      alert('Photo upload failed: ' + (err?.message || 'Unknown error'))
+    }
     setUploading(false)
     e.target.value = ''
   }
