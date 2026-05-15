@@ -35,7 +35,7 @@ export default function StaffAssess() {
           </button>
         </div>
       </div>
-      {tab === 'assess' ? <AssessTab user={user} batches={batches} students={students} /> : <ViewTab students={students} />}
+      {tab === 'assess' ? <AssessTab user={user} batches={batches} students={students} /> : <ViewTab students={students} user={user} />}
     </div>
   )
 }
@@ -455,7 +455,7 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
 
 // ── View Tab (search + stats) ─────────────────────────────
 
-function ViewTab({ students }) {
+function ViewTab({ students, user }) {
   const [query, setQuery]           = useState('')
   const [playerData, setPlayerData] = useState({})
   const [loadingId, setLoadingId]   = useState(null)
@@ -471,7 +471,7 @@ function ViewTab({ students }) {
     if (playerData[student.id]) { setExpanded(student.id); return }
     setLoadingId(student.id)
     try {
-      const data = await db.fetchStudentAssessments(student.id)
+      const data = await db.fetchStudentAssessmentsForCoach(student.id, user?.academyId)
       setPlayerData(prev => ({ ...prev, [student.id]: data }))
       setExpanded(student.id)
     } catch (e) {

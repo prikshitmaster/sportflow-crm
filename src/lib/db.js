@@ -1648,6 +1648,19 @@ export async function fetchStudentAssessments(studentId) {
   return data || []
 }
 
+// Coach portal — includes academy_id so RLS can match the row
+export async function fetchStudentAssessmentsForCoach(studentId, academyId) {
+  let q = supabase
+    .from('skill_assessments')
+    .select('*')
+    .eq('student_id', studentId)
+    .order('assessed_month', { ascending: false })
+  if (academyId) q = q.eq('academy_id', academyId)
+  const { data, error } = await q
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
 export async function fetchAllAssessments(academyId, month) {
   let q = supabase.from('skill_assessments').select('*')
   if (academyId) q = q.eq('academy_id', academyId)
