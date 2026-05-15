@@ -97,56 +97,82 @@ export default function StudentStats() {
   const radarColor = activeCat ? activeCat.color : '#6366f1'
 
   return (
-    <div className="min-h-screen" style={{ background: 'linear-gradient(180deg,#f5f4ff 0%,#f9f9ff 40%,#fff 100%)' }}>
+    <div className="min-h-screen" style={{ background: '#0f0f13' }}>
 
-      {/* ── Premium Hero ── */}
-      <div className="relative overflow-hidden px-5 pt-8 pb-12"
-        style={{ background: 'linear-gradient(135deg,#4f46e5 0%,#7c3aed 55%,#a855f7 100%)' }}>
-        {/* Decorative circles */}
-        <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full opacity-20"
-          style={{ background: 'radial-gradient(circle,#fff,transparent)' }} />
-        <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full opacity-10"
-          style={{ background: 'radial-gradient(circle,#fff,transparent)' }} />
+      {/* ── Pro Hero ── */}
+      <div className="relative overflow-hidden"
+        style={{ background: 'linear-gradient(160deg,#0d0d14 0%,#111827 60%,#0d1117 100%)' }}>
 
-        <div className="flex items-center gap-2 mb-6 relative">
-          <p className="text-[10px] font-black text-indigo-200 uppercase tracking-widest">{sport} · Performance</p>
-          {studentUser?.position && (() => {
-            const preset = FOOTBALL_POSITIONS.find(p => p.id === studentUser.position)
-            const col    = preset ? POSITION_COLORS[preset.id] : null
-            return (
-              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-white/20 text-white backdrop-blur-sm">
-                {preset ? `${preset.id} · ${preset.label}` : studentUser.position}
-              </span>
-            )
-          })()}
-        </div>
+        {/* Top accent bar */}
+        <div className="h-0.5 w-full" style={{ background: 'linear-gradient(90deg,#6366f1,#a855f7,transparent)' }} />
 
-        <div className="flex items-center gap-6 relative">
-          {/* Score ring — white on gradient */}
-          <WhiteScoreRing score={overall} />
+        {/* Diagonal grid lines — subtle */}
+        <div className="absolute inset-0 opacity-[0.04]" style={{
+          backgroundImage: 'repeating-linear-gradient(45deg,#fff 0,#fff 1px,transparent 0,transparent 50%)',
+          backgroundSize: '24px 24px',
+        }} />
 
-          <div>
-            {/* Tier badge */}
-            <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full mb-3">
-              <Award size={13} className="text-white/90" />
-              <span className="text-xs font-black text-white">{tier.label} Tier</span>
-            </div>
-            <p className="text-4xl font-black text-white leading-none">
-              {overall}<span className="text-lg font-bold text-white/60 ml-1">/100</span>
-            </p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-xs text-white/50">vs last month</span>
-              {overallDelta !== null ? (
-                <span className={`text-sm font-black px-2 py-0.5 rounded-full ${
-                  overallDelta > 0 ? 'bg-emerald-400/30 text-emerald-200'
-                  : overallDelta < 0 ? 'bg-red-400/30 text-red-200'
-                  : 'text-white/40'
-                }`}>
-                  {overallDelta > 0 ? `+${overallDelta}` : overallDelta === 0 ? '—' : overallDelta}
+        <div className="relative px-5 pt-5 pb-6">
+          {/* Sport + position row */}
+          <div className="flex items-center gap-2 mb-5">
+            <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">{sport} · Performance</span>
+            {studentUser?.position && (() => {
+              const preset = FOOTBALL_POSITIONS.find(p => p.id === studentUser.position)
+              const posCol = preset ? POSITION_COLORS[preset.id] : null
+              return (
+                <span style={{
+                  fontSize: 9, fontWeight: 900, letterSpacing: '0.08em',
+                  padding: '2px 8px', borderRadius: 3,
+                  backgroundColor: posCol?.hex || '#6366f1',
+                  color: '#fff', textTransform: 'uppercase',
+                }}>
+                  {preset ? `${preset.id} · ${preset.label}` : studentUser.position}
                 </span>
-              ) : (
-                <span className="text-xs text-white/40 italic">first assessment</span>
-              )}
+              )
+            })()}
+          </div>
+
+          <div className="flex items-end gap-6">
+            {/* Score ring */}
+            <ScoreRingDark score={overall} tier={tier} />
+
+            {/* Right stats */}
+            <div className="flex-1 pb-1">
+              {/* Tier strip */}
+              <div className="flex items-center gap-2 mb-3">
+                <div style={{
+                  width: 3, height: 20, borderRadius: 2,
+                  backgroundColor: tier.label === 'Elite' ? '#a855f7' : tier.label === 'Gold' ? '#f59e0b' : tier.label === 'Silver' ? '#94a3b8' : '#b45309',
+                }} />
+                <span style={{
+                  fontSize: 11, fontWeight: 900, letterSpacing: '0.15em',
+                  color: tier.label === 'Elite' ? '#c084fc' : tier.label === 'Gold' ? '#fbbf24' : tier.label === 'Silver' ? '#cbd5e1' : '#d97706',
+                  textTransform: 'uppercase',
+                }}>{tier.label} Tier</span>
+              </div>
+
+              {/* Big score */}
+              <div className="flex items-baseline gap-1 mb-2">
+                <span style={{ fontSize: 52, fontWeight: 900, color: '#fff', lineHeight: 1, letterSpacing: '-2px' }}>{overall}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: 'rgba(255,255,255,0.3)' }}>/100</span>
+              </div>
+
+              {/* Delta */}
+              <div className="flex items-center gap-2">
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontWeight: 600, letterSpacing: '0.05em' }}>VS LAST MONTH</span>
+                {overallDelta !== null ? (
+                  <span style={{
+                    fontSize: 11, fontWeight: 900, padding: '1px 6px', borderRadius: 2,
+                    backgroundColor: overallDelta > 0 ? 'rgba(52,211,153,0.15)' : overallDelta < 0 ? 'rgba(239,68,68,0.15)' : 'transparent',
+                    color: overallDelta > 0 ? '#34d399' : overallDelta < 0 ? '#f87171' : 'rgba(255,255,255,0.25)',
+                    border: `1px solid ${overallDelta > 0 ? 'rgba(52,211,153,0.3)' : overallDelta < 0 ? 'rgba(239,68,68,0.3)' : 'transparent'}`,
+                  }}>
+                    {overallDelta > 0 ? `+${overallDelta}` : overallDelta === 0 ? '—' : overallDelta}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>First</span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -163,18 +189,21 @@ export default function StudentStats() {
         </div>
       )}
 
-      {/* Month pills — overlap hero bottom */}
+      {/* Month selector */}
       {assessments.length > 1 && (
-        <div className="px-4 -mt-4 relative z-10 mb-1">
-          <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="px-4 pt-3 pb-1" style={{ background: '#0f0f13' }}>
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
             {assessments.map((a, i) => (
               <button key={a.id || i}
                 onClick={() => { setSelectedIdx(i); setActiveCatId(null) }}
-                className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold shadow-sm transition border ${
-                  selectedIdx === i
-                    ? 'bg-white text-indigo-700 border-indigo-200 shadow-indigo-100'
-                    : 'bg-white/80 text-gray-500 border-gray-100'
-                }`}>
+                style={{
+                  flexShrink: 0, padding: '5px 14px', borderRadius: 3,
+                  fontSize: 10, fontWeight: 800, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', transition: 'all 0.15s',
+                  backgroundColor: selectedIdx === i ? '#6366f1' : 'rgba(255,255,255,0.06)',
+                  color: selectedIdx === i ? '#fff' : 'rgba(255,255,255,0.35)',
+                  border: `1px solid ${selectedIdx === i ? '#6366f1' : 'rgba(255,255,255,0.08)'}`,
+                }}>
                 {monthLabel(a.assessed_month)}
               </button>
             ))}
@@ -182,21 +211,24 @@ export default function StudentStats() {
         </div>
       )}
 
-      <div className="px-4 pt-4 space-y-4 pb-10">
+      <div className="px-4 pt-3 space-y-3 pb-10" style={{ background: '#0f0f13' }}>
 
         {/* ── Radar card ── */}
-        <div className="bg-white rounded-3xl overflow-hidden"
-          style={{ boxShadow: '0 4px 24px rgba(99,102,241,0.10), 0 1px 4px rgba(0,0,0,0.06)' }}>
+        <div style={{ background: '#16161d', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
 
           {/* Card header */}
-          <div className="px-5 pt-5 pb-1">
-            <p className="text-[10px] font-black uppercase tracking-widest"
-              style={{ color: activeCat ? activeCat.color : '#6366f1' }}>
-              {activeCat ? activeCat.label : 'Skill Shape'}
-            </p>
-            <p className="text-lg font-black text-gray-900 mt-0.5">
-              {activeCat ? 'Detailed view' : 'Your performance map'}
-            </p>
+          <div className="px-5 pt-4 pb-1 flex items-center justify-between">
+            <div>
+              <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: activeCat ? activeCat.color : '#6366f1' }}>
+                {activeCat ? activeCat.label : 'Skill Radar'}
+              </p>
+              <p style={{ fontSize: 15, fontWeight: 900, color: '#fff', marginTop: 2 }}>
+                {activeCat ? 'Drill Down' : 'Performance Map'}
+              </p>
+            </div>
+            {activeCat && (
+              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: activeCat.color, boxShadow: `0 0 8px ${activeCat.color}` }} />
+            )}
           </div>
 
           <ResponsiveContainer width="100%" height={240}>
@@ -217,21 +249,25 @@ export default function StudentStats() {
             </RadarChart>
           </ResponsiveContainer>
 
-          {/* Category pill tabs */}
-          <div className="px-4 pb-5 flex gap-2 flex-wrap">
+          {/* Category selector — sharp sport tabs */}
+          <div className="px-4 pb-4 flex gap-2 flex-wrap">
             {categories.map(cat => {
-              const avg     = getCategoryAvg(current.scores, cat.skills)
+              const avg      = getCategoryAvg(current.scores, cat.skills)
               const isActive = activeCatId === cat.id
+              const barColor = avg >= 75 ? '#22c55e' : avg >= 55 ? '#f59e0b' : '#ef4444'
               return (
                 <button key={cat.id}
                   onClick={() => setActiveCatId(isActive ? null : cat.id)}
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-black transition"
-                  style={isActive
-                    ? { backgroundColor: cat.color, color: '#fff', boxShadow: `0 4px 12px ${cat.color}55` }
-                    : { backgroundColor: '#f3f4f6', color: '#6b7280' }
-                  }>
-                  <span>{cat.short}</span>
-                  <span className={`text-sm font-black ${isActive ? 'text-white' : 'text-gray-800'}`}>{avg}</span>
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 12px', borderRadius: 4,
+                    backgroundColor: isActive ? cat.color : 'rgba(255,255,255,0.05)',
+                    border: `1px solid ${isActive ? cat.color : 'rgba(255,255,255,0.08)'}`,
+                    boxShadow: isActive ? `0 0 12px ${cat.color}44` : 'none',
+                    transition: 'all 0.15s',
+                  }}>
+                  <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', color: isActive ? '#fff' : 'rgba(255,255,255,0.45)' }}>{cat.short}</span>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: isActive ? '#fff' : barColor }}>{avg}</span>
                 </button>
               )
             })}
@@ -240,46 +276,51 @@ export default function StudentStats() {
 
         {/* ── Skills panel ── */}
         {activeCat && (
-          <div className="bg-white rounded-3xl overflow-hidden"
-            style={{ boxShadow: `0 4px 24px ${activeCat.color}18, 0 1px 4px rgba(0,0,0,0.06)` }}>
-            {/* Colored top stripe */}
-            <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg,${activeCat.color},${activeCat.color}88)` }} />
-            <div className="px-5 py-5 space-y-5">
+          <div style={{ background: '#16161d', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
+            {/* Left accent bar */}
+            <div style={{ height: 2, background: `linear-gradient(90deg,${activeCat.color},transparent)` }} />
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               {activeCat.skills.map(skill => {
                 const val        = Number(current.scores?.[skill] || 0)
                 const prevVal    = prev?.scores?.[skill] != null ? Number(prev.scores[skill]) : null
                 const skillDelta = prevVal !== null ? val - prevVal : null
+                const barColor   = val >= 75 ? '#22c55e' : val >= 55 ? '#f59e0b' : '#ef4444'
                 return (
                   <div key={skill}>
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-semibold text-gray-700">{skill}</span>
-                      <div className="flex items-center gap-2">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.65)', letterSpacing: '0.02em' }}>{skill}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {skillDelta !== null && skillDelta !== 0 && (
-                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
-                            skillDelta > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
-                          }`}>
+                          <span style={{
+                            fontSize: 9, fontWeight: 900, padding: '1px 5px', borderRadius: 2,
+                            backgroundColor: skillDelta > 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                            color: skillDelta > 0 ? '#4ade80' : '#f87171',
+                            border: `1px solid ${skillDelta > 0 ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                          }}>
                             {skillDelta > 0 ? `+${skillDelta}` : skillDelta}
                           </span>
                         )}
-                        <span className="text-xl font-black tabular-nums" style={{ color: activeCat.color }}>{val}</span>
+                        <span style={{ fontSize: 20, fontWeight: 900, color: barColor, tabularNums: true, letterSpacing: '-0.5px' }}>{val}</span>
                       </div>
                     </div>
-                    <div className="w-full h-2.5 rounded-full bg-gray-100">
-                      <div className="h-2.5 rounded-full transition-all duration-700"
-                        style={{
-                          width: `${val}%`,
-                          background: `linear-gradient(90deg,${activeCat.color}99,${activeCat.color})`,
-                        }} />
+                    <div style={{ width: '100%', height: 3, backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 2 }}>
+                      <div style={{
+                        height: 3, borderRadius: 2,
+                        width: `${val}%`,
+                        background: `linear-gradient(90deg,${barColor}88,${barColor})`,
+                        boxShadow: `0 0 6px ${barColor}66`,
+                        transition: 'width 0.7s ease',
+                      }} />
                     </div>
                   </div>
                 )
               })}
             </div>
             {current.notes && (
-              <div className="px-5 pb-5 pt-0">
-                <div className="rounded-2xl p-4" style={{ backgroundColor: activeCat.color + '10' }}>
-                  <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: activeCat.color }}>Coach Note</p>
-                  <p className="text-sm text-gray-700 italic">"{current.notes}"</p>
+              <div style={{ padding: '0 20px 16px' }}>
+                <div style={{ padding: '10px 14px', borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.04)', borderLeft: `3px solid ${activeCat.color}` }}>
+                  <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.15em', textTransform: 'uppercase', color: activeCat.color, marginBottom: 4 }}>Coach Note</p>
+                  <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontStyle: 'italic' }}>"{current.notes}"</p>
                 </div>
               </div>
             )}
@@ -637,20 +678,31 @@ Rules: Bold headers exactly as shown. No intro. No greetings. Real drills, real 
   )
 }
 
-function WhiteScoreRing({ score }) {
-  const r    = 46
-  const circ = 2 * Math.PI * r
-  const dash = (score / 100) * circ
+function ScoreRingDark({ score, tier }) {
+  const r     = 42
+  const circ  = 2 * Math.PI * r
+  const dash  = (score / 100) * circ
+  const color = tier.label === 'Elite' ? '#a855f7' : tier.label === 'Gold' ? '#f59e0b' : tier.label === 'Silver' ? '#94a3b8' : '#b45309'
   return (
-    <svg width="118" height="118" viewBox="0 0 118 118" className="flex-shrink-0">
-      <circle cx="59" cy="59" r={r} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="10" />
-      <circle cx="59" cy="59" r={r} fill="none" stroke="white" strokeWidth="10"
-        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-        transform="rotate(-90 59 59)"
-        style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.6))', transition: 'stroke-dasharray 1s ease' }}
+    <svg width="100" height="100" viewBox="0 0 100 100" style={{ flexShrink: 0 }}>
+      <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+      <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="6"
+        strokeDasharray={`${dash} ${circ}`} strokeLinecap="butt"
+        transform="rotate(-90 50 50)"
+        style={{ filter: `drop-shadow(0 0 6px ${color}99)`, transition: 'stroke-dasharray 1s ease' }}
       />
-      <text x="59" y="54" textAnchor="middle" fontSize="28" fontWeight="900" fill="white" fontFamily="system-ui,sans-serif">{score}</text>
-      <text x="59" y="71" textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.55)" fontFamily="system-ui,sans-serif">/100</text>
+      {/* Tick marks */}
+      {[0,25,50,75,100].map(v => {
+        const angle = (v / 100) * 360 - 90
+        const rad   = (angle * Math.PI) / 180
+        const x1 = 50 + (r - 4) * Math.cos(rad)
+        const y1 = 50 + (r - 4) * Math.sin(rad)
+        const x2 = 50 + (r + 1) * Math.cos(rad)
+        const y2 = 50 + (r + 1) * Math.sin(rad)
+        return <line key={v} x1={x1} y1={y1} x2={x2} y2={y2} stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+      })}
+      <text x="50" y="46" textAnchor="middle" fontSize="24" fontWeight="900" fill="white" fontFamily="system-ui,sans-serif" letterSpacing="-1">{score}</text>
+      <text x="50" y="60" textAnchor="middle" fontSize="9" fontWeight="700" fill="rgba(255,255,255,0.3)" fontFamily="system-ui,sans-serif" letterSpacing="1">SCORE</text>
     </svg>
   )
 }
