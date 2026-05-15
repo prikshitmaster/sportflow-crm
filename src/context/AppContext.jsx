@@ -12,6 +12,7 @@ import {
   getStaffSession, setStaffSession, clearStaffSession,
 } from '../lib/auth'
 import { ALL_PERMISSIONS, ROLE_PRESETS } from '../lib/permissions'
+import { logAudit, ACTIONS, diffObjects } from '../lib/audit'
 
 const SPORT_KEY   = 'sf_selected_sport'
 const SUSPEND_KEY = 'sf_suspend_days'
@@ -478,6 +479,7 @@ export function AppProvider({ children }) {
       }
 
       showToast(`Student created — Code: ${studentCode} · Join: ${joinCode}`, 'success')
+      logAudit({ actor: user, action: ACTIONS.STUDENT_ADD, entityType: 'student', entityId: mapped.id, entityName: mapped.name, changes: { batch: mapped.batch || '—', sport: mapped.sport, fees: String(mapped.fees) }, academyId: user?.academyId })
       return mapped
     } catch (err) {
       showToast(err.message || 'Failed to add student', 'error')
@@ -549,6 +551,16 @@ export function AppProvider({ children }) {
       }
 
       showToast('Student updated')
+      const diff = diffObjects(
+        oldStudent,
+        { name: s.name, batch: s.batchName || s.batch, fees: Number(s.fees), paidTill, sport: s.sport, feePlan: s.feePlan, phone: s.phone },
+        [
+          { key: 'name' }, { key: 'batch', label: 'Batch' }, { key: 'fees', label: 'Fees' },
+          { key: 'paidTill', label: 'Paid Till' }, { key: 'sport', label: 'Sport' },
+          { key: 'feePlan', label: 'Fee Plan' }, { key: 'phone', label: 'Phone' },
+        ]
+      )
+      logAudit({ actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student', entityId: id, entityName: s.name || oldStudent?.name, changes: diff, academyId: user?.academyId })
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
       throw err
@@ -567,6 +579,7 @@ export function AppProvider({ children }) {
         ...s, status: 'Active', suspendedSince: null,
       } : s))
       showToast(`${student.name} reactivated`)
+      logAudit({ actor: user, action: ACTIONS.STUDENT_REACTIVATE, entityType: 'student', entityId: student.id, entityName: student.name, academyId: user?.academyId })
     } catch (err) {
       showToast(err.message || 'Reactivate failed', 'error')
     }
@@ -582,6 +595,7 @@ export function AppProvider({ children }) {
       }
       setStudents(prev => prev.filter(s => s.id !== student.id))
       setPayments(prev => prev.filter(p => p.studentId !== student.id))
+      logAudit({ actor: user, action: ACTIONS.STUDENT_DELETE, entityType: 'student', entityId: student.id, entityName: student.name, changes: { batch: student.batch || '—', sport: student.sport }, academyId: user?.academyId })
       showToast(`${student.name} deleted`)
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
@@ -601,6 +615,7 @@ export function AppProvider({ children }) {
         ...s, status: 'Suspended', suspendedSince: today,
       } : s))
       showToast(`${student.name} suspended`)
+      logAudit({ actor: user, action: ACTIONS.STUDENT_SUSPEND, entityType: 'student', entityId: student.id, entityName: student.name, academyId: user?.academyId })
     } catch (err) {
       showToast(err.message || 'Suspend failed', 'error')
     }
@@ -624,6 +639,8 @@ export function AppProvider({ children }) {
         s.id === id ? { ...s, accountStatus: 'pending', joinCode: newJoin } : s
       ))
       showToast(`Reset done — New Join Code: ${newJoin}`, 'info')
+      const resetS = students.find(x => x.id === id)
+      logAudit({ actor: user, action: ACTIONS.STUDENT_RESET, entityType: 'student', entityId: id, entityName: resetS?.name, academyId: user?.academyId })
       return newJoin
     } catch (err) {
       showToast(err.message || 'Reset failed', 'error')
@@ -685,6 +702,7 @@ export function AppProvider({ children }) {
         ...paymentRow, id: invoiceId,
         date: payDate, status: 'Paid', month: monthLabel,
       }, ...prev])
+      logAudit({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId })
       showToast('Payment recorded')
     } catch (err) {
       showToast(err.message || 'Payment failed', 'error')
@@ -721,6 +739,7 @@ export function AppProvider({ children }) {
         await db.updateStudentPaidTill(student.id, newPaidTill, null)
         setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
       }
+      logAudit({ actor: user, action: ACTIONS.PAYMENT_REMOVE, entityType: 'payment', entityId: payment.id, entityName: payment.student, changes: { amount: String(payment.amount), month: payment.month || '—' }, academyId: user?.academyId })
       showToast('Payment deleted')
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
@@ -733,6 +752,8 @@ export function AppProvider({ children }) {
       setPayments(prev => prev.map(p =>
         p.id === id ? { ...p, status: 'Paid', mode, date: new Date().toISOString().split('T')[0] } : p
       ))
+      const paidPay = payments.find(p => p.id === id)
+      logAudit({ actor: user, action: ACTIONS.PAYMENT_PAID, entityType: 'payment', entityId: id, entityName: paidPay?.student, changes: { mode }, academyId: user?.academyId })
       showToast('Payment marked as paid')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
@@ -775,6 +796,7 @@ export function AppProvider({ children }) {
         ground: created.ground || null,
         defaultFee: created.default_fee || 0, defaultPlan: created.default_plan || 'monthly',
       }])
+      logAudit({ actor: user, action: ACTIONS.BATCH_ADD, entityType: 'batch', entityId: created.id, entityName: created.name, changes: { sport: (b.sports || []).join(', '), capacity: String(b.capacity), coach: b.coach || '—' }, academyId: user?.academyId })
       showToast('Batch created')
     } catch (err) {
       showToast(err.message || 'Failed to create batch', 'error')
@@ -820,8 +842,10 @@ export function AppProvider({ children }) {
 
   const updateBatchCoach = async (batchId, coachName) => {
     try {
+      const oldBatch = batches.find(b => b.id === batchId)
       await db.updateBatchCoach(batchId, coachName)
       setBatches(prev => prev.map(b => b.id === batchId ? { ...b, coach: coachName } : b))
+      logAudit({ actor: user, action: ACTIONS.BATCH_COACH, entityType: 'batch', entityId: batchId, entityName: oldBatch?.name, changes: { Coach: { old: oldBatch?.coach || '—', new: coachName || '—' } }, academyId: user?.academyId })
       showToast('Coach assigned')
     } catch (err) {
       showToast(err.message || 'Failed', 'error')
@@ -830,6 +854,7 @@ export function AppProvider({ children }) {
 
   const updateBatch = async (batchId, b) => {
     try {
+      const oldBatch = batches.find(x => x.id === batchId)
       const updated = await db.updateBatch(batchId, b)
       setBatches(prev => prev.map(existing => existing.id === batchId ? {
         ...existing,
@@ -841,6 +866,10 @@ export function AppProvider({ children }) {
         ground: updated.ground || null,
         defaultFee: updated.default_fee || 0, defaultPlan: updated.default_plan || 'monthly',
       } : existing))
+      const batchDiff = diffObjects(oldBatch, { name: b.name, coach: b.coach, capacity: b.capacity }, [
+        { key: 'name' }, { key: 'coach', label: 'Coach' }, { key: 'capacity', label: 'Capacity' },
+      ])
+      logAudit({ actor: user, action: ACTIONS.BATCH_EDIT, entityType: 'batch', entityId: batchId, entityName: b.name || oldBatch?.name, changes: batchDiff, academyId: user?.academyId })
       showToast('Batch updated')
       return updated
     } catch (err) {
@@ -849,8 +878,10 @@ export function AppProvider({ children }) {
   }
 
   const deleteBatch = async (id) => {
+    const delBatch = batches.find(b => b.id === id)
     await db.deleteBatch(id)
     setBatches(prev => prev.filter(b => b.id !== id))
+    logAudit({ actor: user, action: ACTIONS.BATCH_DELETE, entityType: 'batch', entityId: id, entityName: delBatch?.name, academyId: user?.academyId })
     showToast('Batch deleted')
   }
 

@@ -8,8 +8,10 @@ import {
   Download, TrendingUp, Users, CreditCard, UserPlus, AlertTriangle,
   ArrowUpRight, ArrowDownRight, Minus, BarChart3, BookOpen, Layers,
   CalendarCheck, Clock, Search, FileText, IndianRupee, Target, Star,
+  Shield, ChevronDown, ChevronUp, RefreshCw,
 } from 'lucide-react'
 import * as db from '../lib/db'
+import { ACTION_LABELS, ENTITY_COLORS, ROLE_COLORS } from '../lib/audit'
 import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel } from '../lib/performance'
 
 // ── Utilities ─────────────────────────────────────────────
@@ -153,6 +155,7 @@ const TABS = [
   { id: 'ageing',       label: 'Ageing',       icon: Clock        },
   { id: 'attendance',   label: 'Attendance',   icon: CalendarCheck },
   { id: 'performance',  label: 'Performance',  icon: Star         },
+  { id: 'audit',        label: 'Audit Log',    icon: Shield       },
 ]
 
 // ── Main ──────────────────────────────────────────────────
@@ -197,6 +200,7 @@ export default function Reports() {
         {activeTab === 'ageing'       && <AgeingTab     students={students} payments={payments} />}
         {activeTab === 'attendance'   && <AttendanceTab students={students} batches={batches} attendanceData={attendanceData} />}
         {activeTab === 'performance'  && <PerformanceTab students={students} batches={batches} academyId={user?.academyId} />}
+        {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} />}
       </div>
     </div>
   )
@@ -1311,6 +1315,221 @@ function PerformanceTab({ students, batches, academyId }) {
             </div>
           )}
         </>
+      )}
+    </div>
+  )
+}
+
+// ── Audit Log Tab ──────────────────────────────────────────
+
+const ENTITY_TYPES = ['All', 'student', 'payment', 'batch']
+
+function relativeTime(iso) {
+  if (!iso) return '—'
+  const diff = Math.floor((Date.now() - new Date(iso)) / 1000)
+  if (diff < 60)  return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+function fullTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function groupByDate(logs) {
+  const map = {}
+  for (const log of logs) {
+    const d = (log.created_at || '').slice(0, 10)
+    if (!map[d]) map[d] = []
+    map[d].push(log)
+  }
+  return Object.entries(map).sort(([a], [b]) => b.localeCompare(a))
+}
+
+function AuditEntry({ log, expanded, onToggle }) {
+  const changes = log.changes || {}
+  const hasChanges = Object.keys(changes).length > 0
+  const label = ACTION_LABELS[log.action] || log.action
+  const roleColor = ROLE_COLORS[log.actor_role] || ROLE_COLORS.Staff
+  const entityColor = ENTITY_COLORS[log.entity_type] || { bg: 'bg-gray-100', text: 'text-gray-600' }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-3 hover:border-gray-200 transition">
+      <div className="flex items-start gap-3">
+        {/* Avatar */}
+        <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-black flex-shrink-0 uppercase">
+          {(log.actor_name || '?')[0]}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          {/* Actor row */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-sm font-bold text-gray-900">{log.actor_name}</span>
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${roleColor.bg} ${roleColor.text}`}>
+              {log.actor_role}
+            </span>
+          </div>
+          {/* Action row */}
+          <p className="text-xs text-gray-600 mt-0.5">
+            {label}{log.entity_name ? <> — <span className="font-semibold text-gray-900">{log.entity_name}</span></> : ''}
+          </p>
+          {/* Entity type badge */}
+          {log.entity_type && (
+            <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-full mt-1 ${entityColor.bg} ${entityColor.text}`}>
+              {log.entity_type}
+            </span>
+          )}
+        </div>
+
+        {/* Time + diff toggle */}
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <span className="text-[11px] text-gray-400" title={fullTime(log.created_at)}>
+            {relativeTime(log.created_at)}
+          </span>
+          {hasChanges && (
+            <button
+              onClick={onToggle}
+              className="flex items-center gap-0.5 text-[10px] text-brand-600 font-semibold hover:underline"
+            >
+              {expanded ? <><ChevronUp size={10}/> Hide</> : <><ChevronDown size={10}/> Diff</>}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Expanded diff */}
+      {expanded && hasChanges && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Changes</p>
+          <div className="space-y-1.5">
+            {Object.entries(changes).map(([field, val]) => {
+              const isOldNew = val && typeof val === 'object' && ('old' in val || 'new' in val)
+              return (
+                <div key={field} className="flex items-start gap-2 text-xs">
+                  <span className="text-gray-500 font-semibold w-20 flex-shrink-0 capitalize">{field}</span>
+                  {isOldNew ? (
+                    <span className="flex items-center gap-1.5 flex-wrap">
+                      <span className="line-through text-red-400">{String(val.old || '—')}</span>
+                      <span className="text-gray-300">→</span>
+                      <span className="text-emerald-600 font-medium">{String(val.new || '—')}</span>
+                    </span>
+                  ) : (
+                    <span className="text-gray-700">{String(val)}</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AuditTab({ academyId }) {
+  const [logs, setLogs]           = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState('')
+  const [filterType, setFilterType] = useState('All')
+  const [expandedId, setExpandedId] = useState(null)
+
+  const load = () => {
+    setLoading(true)
+    db.fetchAuditLogs(academyId)
+      .then(setLogs)
+      .catch(() => setLogs([]))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [academyId])
+
+  const filtered = useMemo(() => logs.filter(l => {
+    const matchType   = filterType === 'All' || l.entity_type === filterType
+    const matchSearch = !search || l.actor_name?.toLowerCase().includes(search.toLowerCase()) || l.entity_name?.toLowerCase().includes(search.toLowerCase())
+    return matchType && matchSearch
+  }), [logs, filterType, search])
+
+  const grouped = useMemo(() => groupByDate(filtered), [filtered])
+
+  const actors = useMemo(() => [...new Set(logs.map(l => l.actor_name).filter(Boolean))].sort(), [logs])
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
+            <Shield size={16} className="text-brand-600" /> Audit Log
+          </h3>
+          <p className="text-xs text-gray-500">Every create / edit / delete action — who did it and what changed</p>
+        </div>
+        <button onClick={load} className="btn-secondary text-xs gap-1.5">
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 flex-1 min-w-48">
+          <Search size={13} className="text-gray-400" />
+          <input
+            className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full"
+            placeholder="Search by name or student…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-1.5">
+          {ENTITY_TYPES.map(t => (
+            <button key={t} onClick={() => setFilterType(t)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition capitalize ${filterType === t ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-gray-400 ml-auto">{filtered.length} entries</span>
+      </div>
+
+      {/* Timeline */}
+      {loading ? (
+        <div className="card p-10 text-center">
+          <RefreshCw size={24} className="animate-spin text-gray-300 mx-auto mb-2" />
+          <p className="text-sm text-gray-400">Loading audit log…</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="card p-10 text-center">
+          <Shield size={32} className="text-gray-200 mx-auto mb-3" />
+          <p className="text-sm font-bold text-gray-500">No audit entries yet</p>
+          <p className="text-xs text-gray-400 mt-1">Actions will appear here as they happen</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {grouped.map(([date, entries]) => (
+            <div key={date}>
+              {/* Date heading */}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="h-px flex-1 bg-gray-100" />
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">
+                  {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
+                <div className="h-px flex-1 bg-gray-100" />
+              </div>
+              <div className="space-y-2">
+                {entries.map(log => (
+                  <AuditEntry
+                    key={log.id}
+                    log={log}
+                    expanded={expandedId === log.id}
+                    onToggle={() => setExpandedId(prev => prev === log.id ? null : log.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

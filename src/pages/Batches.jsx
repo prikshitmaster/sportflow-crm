@@ -4,6 +4,7 @@ import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Penc
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import { fetchBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch, updateBatchEnrolled } from '../lib/db'
+import { logAudit, ACTIONS } from '../lib/audit'
 
 const COLORS = ['bg-brand-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600']
 const COLOR_HEX = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
@@ -420,6 +421,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
       await assignStudentToBatch(student.id, b.id, b.name, user?.academyId)
       setMbEnrolments(prev => [...prev, { student_id: student.id, batch_id: b.id }])
       onEnrolledChange?.(b.id, 1)
+      logAudit({ actor: user, action: ACTIONS.BATCH_ASSIGN, entityType: 'batch', entityId: b.id, entityName: b.name, changes: { student: student.name }, academyId: user?.academyId })
       setAssignSearch('')
     } finally {
       setAssigning(null)
@@ -432,6 +434,8 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
       await unassignStudentFromBatch(studentId, b.id)
       setMbEnrolments(prev => prev.filter(e => e.student_id !== studentId))
       onEnrolledChange?.(b.id, -1)
+      const removedS = students.find(s => s.id === studentId)
+      logAudit({ actor: user, action: ACTIONS.BATCH_UNASSIGN, entityType: 'batch', entityId: b.id, entityName: b.name, changes: { student: removedS?.name || String(studentId) }, academyId: user?.academyId })
     } finally {
       setUnassigning(null)
     }

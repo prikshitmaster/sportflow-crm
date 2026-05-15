@@ -1613,3 +1613,11 @@ export async function fetchAllStudentBatches(academyId) {
   return data || []
 }
 
+export async function fetchAuditLogs(academyId, limit = 300) {
+  let q = supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(limit)
+  if (academyId) q = q.eq('academy_id', academyId)
+  const { data, error } = await q
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
