@@ -1,15 +1,16 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import {
-  Home, QrCode, CalendarCheck, CreditCard, Megaphone, LogOut, Zap,
+  Home, QrCode, CalendarCheck, CreditCard, Megaphone, LogOut, Zap, TrendingUp,
 } from 'lucide-react'
 
 const tabs = [
-  { to: '/student/dashboard',     label: 'Home',       icon: Home },
-  { to: '/student/scan',          label: 'Scan',        icon: QrCode },
-  { to: '/student/attendance',    label: 'Attendance',  icon: CalendarCheck },
-  { to: '/student/payments',      label: 'Fees',        icon: CreditCard },
-  { to: '/student/announcements', label: 'Notice',      icon: Megaphone },
+  { to: '/student/dashboard',     label: 'Home',   icon: Home },
+  { to: '/student/scan',          label: 'Scan',   icon: QrCode },
+  { to: '/student/attendance',    label: 'Attend', icon: CalendarCheck },
+  { to: '/student/stats',         label: 'Stats',  icon: TrendingUp },
+  { to: '/student/payments',      label: 'Fees',   icon: CreditCard },
+  { to: '/student/announcements', label: 'Notice', icon: Megaphone },
 ]
 
 export default function StudentLayout() {

@@ -1,12 +1,13 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut } from 'lucide-react'
+import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut, ClipboardList } from 'lucide-react'
 
 const coachTabs = [
-  { to: '/staff/home',       label: 'Home',    icon: Home },
-  { to: '/staff/attendance', label: 'Attend',  icon: CalendarCheck },
-  { to: '/staff/notices',    label: 'Notices', icon: Bell },
-  { to: '/staff/profile',    label: 'Me',      icon: UserCircle },
+  { to: '/staff/home',       label: 'Home',   icon: Home },
+  { to: '/staff/attendance', label: 'Attend', icon: CalendarCheck },
+  { to: '/staff/assess',     label: 'Assess', icon: ClipboardList },
+  { to: '/staff/notices',    label: 'Notices',icon: Bell },
+  { to: '/staff/profile',    label: 'Me',     icon: UserCircle },
 ]
 
 const officeTabs = [

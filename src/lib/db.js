@@ -1506,3 +1506,64 @@ export async function fetchStaffAttendanceForDate(academyId, date) {
   if (error) throw error
   return data || []
 }
+
+// ── Performance / Skill Assessments ──────────────────────
+
+export async function fetchAssessmentsByBatch(batchId, month) {
+  const { data, error } = await supabase
+    .from('skill_assessments')
+    .select('*')
+    .eq('batch_id', batchId)
+    .eq('assessed_month', month)
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function fetchAssessmentsByBatches(batchIds, month) {
+  if (!batchIds || !batchIds.length) return []
+  const { data, error } = await supabase
+    .from('skill_assessments')
+    .select('*')
+    .in('batch_id', batchIds)
+    .eq('assessed_month', month)
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function fetchStudentAssessments(studentId) {
+  const { data, error } = await supabase
+    .from('skill_assessments')
+    .select('*')
+    .eq('student_id', studentId)
+    .order('assessed_month', { ascending: false })
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function fetchAllAssessments(academyId, month) {
+  let q = supabase.from('skill_assessments').select('*')
+  if (academyId) q = q.eq('academy_id', academyId)
+  if (month) q = q.eq('assessed_month', month)
+  const { data, error } = await q.order('assessed_month', { ascending: false })
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function upsertAssessment({ studentId, staffId, batchId, sport, month, scores, notes, academyId }) {
+  const { data, error } = await supabase
+    .from('skill_assessments')
+    .upsert({
+      student_id:     studentId,
+      staff_id:       staffId,
+      batch_id:       batchId,
+      sport,
+      assessed_month: month,
+      scores,
+      notes,
+      academy_id:     academyId,
+    }, { onConflict: 'student_id,assessed_month,sport' })
+    .select()
+  if (error) throw error
+  return data?.[0]
+}
+

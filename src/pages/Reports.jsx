@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   AreaChart, Area, BarChart, Bar, ComposedChart, Line,
@@ -7,8 +7,10 @@ import {
 import {
   Download, TrendingUp, Users, CreditCard, UserPlus, AlertTriangle,
   ArrowUpRight, ArrowDownRight, Minus, BarChart3, BookOpen, Layers,
-  CalendarCheck, Clock, Search, FileText, IndianRupee, Target,
+  CalendarCheck, Clock, Search, FileText, IndianRupee, Target, Star,
 } from 'lucide-react'
+import * as db from '../lib/db'
+import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel } from '../lib/performance'
 
 // ── Utilities ─────────────────────────────────────────────
 
@@ -144,18 +146,19 @@ const STATUS_CHIP = {
 // ── Tab definitions ───────────────────────────────────────
 
 const TABS = [
-  { id: 'overview',   label: 'Overview',   icon: BarChart3   },
-  { id: 'financial',  label: 'Financial',  icon: BookOpen    },
-  { id: 'by_batch',   label: 'By Batch',   icon: Layers      },
-  { id: 'students',   label: 'Ledger',     icon: FileText    },
-  { id: 'ageing',     label: 'Ageing',     icon: Clock       },
-  { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
+  { id: 'overview',     label: 'Overview',     icon: BarChart3    },
+  { id: 'financial',    label: 'Financial',    icon: BookOpen     },
+  { id: 'by_batch',     label: 'By Batch',     icon: Layers       },
+  { id: 'students',     label: 'Ledger',       icon: FileText     },
+  { id: 'ageing',       label: 'Ageing',       icon: Clock        },
+  { id: 'attendance',   label: 'Attendance',   icon: CalendarCheck },
+  { id: 'performance',  label: 'Performance',  icon: Star         },
 ]
 
 // ── Main ──────────────────────────────────────────────────
 
 export default function Reports() {
-  const { students, payments, trials, batches, attendanceData } = useApp()
+  const { user, students, payments, trials, batches, attendanceData } = useApp()
   const [activeTab, setActiveTab] = useState('overview')
 
   const generatedAt = today.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -187,12 +190,13 @@ export default function Reports() {
 
       {/* Tab panels */}
       <div>
-        {activeTab === 'overview'   && <OverviewTab   students={students} payments={payments} trials={trials} batches={batches} />}
-        {activeTab === 'financial'  && <FinancialTab  payments={payments} students={students} />}
-        {activeTab === 'by_batch'   && <BatchTab      batches={batches} students={students} payments={payments} attendanceData={attendanceData} />}
-        {activeTab === 'students'   && <StudentLedgerTab students={students} payments={payments} />}
-        {activeTab === 'ageing'     && <AgeingTab     students={students} payments={payments} />}
-        {activeTab === 'attendance' && <AttendanceTab students={students} batches={batches} attendanceData={attendanceData} />}
+        {activeTab === 'overview'     && <OverviewTab   students={students} payments={payments} trials={trials} batches={batches} />}
+        {activeTab === 'financial'    && <FinancialTab  payments={payments} students={students} />}
+        {activeTab === 'by_batch'     && <BatchTab      batches={batches} students={students} payments={payments} attendanceData={attendanceData} />}
+        {activeTab === 'students'     && <StudentLedgerTab students={students} payments={payments} />}
+        {activeTab === 'ageing'       && <AgeingTab     students={students} payments={payments} />}
+        {activeTab === 'attendance'   && <AttendanceTab students={students} batches={batches} attendanceData={attendanceData} />}
+        {activeTab === 'performance'  && <PerformanceTab students={students} batches={batches} academyId={user?.academyId} />}
       </div>
     </div>
   )
@@ -1156,3 +1160,159 @@ function AttendanceTab({ students, batches, attendanceData }) {
     </div>
   )
 }
+
+// ── Performance Tab ───────────────────────────────────────
+
+const PERF_MONTH_OPTS = buildMonthOpts(12)
+
+function PerformanceTab({ students, batches, academyId }) {
+  const [month, setMonth]             = useState(PERF_MONTH_OPTS[0].value)
+  const [assessments, setAssessments] = useState([])
+  const [loading, setLoading]         = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    db.fetchAllAssessments(academyId, month)
+      .then(setAssessments)
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [month, academyId])
+
+  const studentMap  = Object.fromEntries(students.map(s => [s.id, s]))
+  const leaderboard = assessments
+    .map(a => {
+      const student = studentMap[a.student_id]
+      if (!student) return null
+      const cats  = SPORT_CATEGORIES[a.sport] || FOOTBALL_CATEGORIES
+      const score = getOverallScore(a.scores, cats)
+      return { student, score, tier: getTier(score) }
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score)
+
+  const batchScores = {}
+  leaderboard.forEach(({ student, score }) => {
+    const key = student.batch || 'Unassigned'
+    if (!batchScores[key]) batchScores[key] = []
+    batchScores[key].push(score)
+  })
+  const batchAvgs = Object.entries(batchScores)
+    .map(([name, scores]) => ({ name, avg: Math.round(scores.reduce((a,b)=>a+b,0)/scores.length), count: scores.length }))
+    .sort((a,b) => b.avg - a.avg)
+
+  const assessedIds = new Set(assessments.map(a => a.student_id))
+  const notAssessed = students.filter(s => s.status === 'Active' && !assessedIds.has(s.id))
+  const avgScore    = leaderboard.length ? Math.round(leaderboard.reduce((a,b)=>a+b.score,0)/leaderboard.length) : 0
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-black text-gray-900">Player Performance</h3>
+        <select
+          value={month} onChange={e => setMonth(e.target.value)}
+          className="text-xs font-semibold border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none"
+        >
+          {PERF_MONTH_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </div>
+
+      {loading && (
+        <div className="flex justify-center py-16">
+          <svg className="animate-spin h-7 w-7 text-brand-600" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </div>
+      )}
+
+      {!loading && (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+              <p className="text-2xl font-black text-gray-900">{leaderboard.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Assessed</p>
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+              <p className="text-2xl font-black text-brand-600">{avgScore || '—'}</p>
+              <p className="text-xs text-gray-500 mt-1">Avg Score</p>
+            </div>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+              <p className="text-2xl font-black text-red-500">{notAssessed.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Pending</p>
+            </div>
+          </div>
+
+          {leaderboard.length > 0 && (
+            <div>
+              <h4 className="text-sm font-black text-gray-900 mb-3">Top Players</h4>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-50">
+                {leaderboard.slice(0, 20).map(({ student, score, tier }, i) => (
+                  <div key={student.id} className="px-4 py-3 flex items-center gap-3">
+                    <span className={`text-sm font-black w-7 ${i < 3 ? 'text-brand-600' : 'text-gray-300'}`}>#{i+1}</span>
+                    <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-xs font-black text-gray-600">{student.name[0]}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900 truncate">{student.name}</p>
+                      <p className="text-xs text-gray-400">{student.batch || '—'}</p>
+                    </div>
+                    <span className={`text-xs font-black px-2.5 py-1 rounded-full border flex-shrink-0 ${tier.bgClass} ${tier.textClass} ${tier.borderClass}`}>
+                      {score} · {tier.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {batchAvgs.length > 0 && (
+            <div>
+              <h4 className="text-sm font-black text-gray-900 mb-3">Batch Performance</h4>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+                {batchAvgs.map(({ name, avg, count }) => {
+                  const t = getTier(avg)
+                  return (
+                    <div key={name} className="flex items-center gap-3">
+                      <span className="text-xs font-semibold text-gray-700 w-32 truncate">{name}</span>
+                      <div className="flex-1 h-3 bg-gray-100 rounded-full">
+                        <div className="h-3 rounded-full" style={{ width: `${avg}%`, backgroundColor: t.hex + 'cc' }} />
+                      </div>
+                      <span className="text-xs font-black text-gray-900 w-8 text-right">{avg}</span>
+                      <span className="text-[10px] text-gray-400 w-14">{count} players</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {notAssessed.length > 0 && (
+            <div>
+              <h4 className="text-sm font-black text-gray-900 mb-3">Not Assessed This Month ({notAssessed.length})</h4>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-50">
+                {notAssessed.slice(0, 15).map(s => (
+                  <div key={s.id} className="px-4 py-3 flex items-center gap-3">
+                    <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center text-xs font-black text-red-400">{s.name[0]}</div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-gray-900">{s.name}</p>
+                      <p className="text-xs text-gray-400">{s.batch || '—'}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {assessments.length === 0 && (
+            <div className="text-center py-20">
+              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Star size={28} className="text-gray-300" />
+              </div>
+              <p className="text-sm font-bold text-gray-500">No assessments for {monthLabel(month)}</p>
+              <p className="text-xs text-gray-400 mt-1">Coaches need to submit assessments first</p>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+

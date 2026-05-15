@@ -34,6 +34,7 @@ import StaffRoster from './pages/staff/StaffRoster'
 import StaffNotices from './pages/staff/StaffNotices'
 import StaffAttendance from './pages/staff/StaffAttendance'
 import StaffScanIn from './pages/staff/StaffScanIn'
+import StaffAssess from './pages/staff/StaffAssess'
 
 // Student pages
 import StudentLogin from './pages/StudentLogin'
@@ -43,6 +44,7 @@ import StudentAttendance from './pages/student/StudentAttendance'
 import StudentPayments from './pages/student/StudentPayments'
 import StudentAnnouncements from './pages/student/StudentAnnouncements'
 import StudentScan from './pages/student/StudentScan'
+import StudentStats from './pages/student/StudentStats'
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
@@ -178,6 +180,7 @@ function AppRoutes() {
         <Route path="notices"    element={<StaffNotices />} />
         <Route path="attendance" element={<StaffAttendance />} />
         <Route path="scan-in"    element={<StaffScanIn />} />
+        <Route path="assess"     element={<StaffAssess />} />
         {/* Permission-gated admin pages rendered inside staff portal */}
         <Route path="students"  element={<PermRequired perm="students.view">  <Students />  </PermRequired>} />
         <Route path="payments"  element={<PermRequired perm="payments.view">  <Payments />  </PermRequired>} />
@@ -196,6 +199,7 @@ function AppRoutes() {
       <Route path="/student" element={<StudentRoute><StudentLayout /></StudentRoute>}>
         <Route path="dashboard"   element={<StudentDashboard />} />
         <Route path="attendance"  element={<StudentAttendance />} />
+        <Route path="stats"       element={<StudentStats />} />
         <Route path="payments"    element={<StudentPayments />} />
         <Route path="notices"     element={<StudentAnnouncements />} />
         <Route path="scan"        element={<StudentScan />} />
