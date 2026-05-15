@@ -21,6 +21,7 @@ Inputs from `RecordPaymentModal`:
 5. **If student is Suspended** → auto-reactivate (see student lifecycle doc)
 6. **If student is Active** → `db.updateStudentPaidTill(studentId, paidTill, baseAmount)`
 7. Prepends new payment to local `payments` array
+8. **Audit logged**: `action = 'payment.add'` with amount, months covered, payment mode
 
 ---
 
@@ -45,6 +46,15 @@ Inputs from `RecordPaymentModal`:
    - If no prior payments → `paidTill = null`
 3. `db.updateStudentPaidTill(studentId, newPaidTill, null)`
 4. Updates local state
+5. **Audit logged**: `action = 'payment.remove'` with amount + month label
+
+---
+
+## Marking Payment Paid (`markPaymentPaid`)
+
+1. `db.updatePaymentStatus(id, 'Paid', mode)` → sets status + today's date + payment mode
+2. Updates local state
+3. **Audit logged**: `action = 'payment.mark_paid'` with payment mode
 
 ---
 
@@ -136,3 +146,19 @@ Output: { monthsCovered, label, amount, startDate }
 ## Excel Export
 
 Payments page has a Download button that exports the filtered payment rows as an `.xlsx` file using the `xlsx` library.
+
+---
+
+## Reports — Financial Tab (ERP Accounts Receivable)
+
+The **Financial** tab in `Reports.jsx` provides an ERP-grade AR view:
+
+- **KPI cards**: Total Outstanding, Overdue (90+ days), Current (within 30 days), Collected This Month
+- **Ageing buckets**: 0–30 / 31–60 / 61–90 / 90+ days past due (includes Suspended students)
+- **Status badges** on students: Active (green), Suspended (red), Overdue (amber)
+- **Month filter** and **status filter** (All / Active / Suspended)
+- **Trend chart**: monthly collected vs outstanding (6-month rolling)
+- **Collection rate** metric (collected / total due × 100)
+- **CSV export**: filtered data as downloadable CSV
+
+Outstanding KPIs and financial filters reflect real data including Suspended students — not just Active.

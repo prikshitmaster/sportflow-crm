@@ -2,6 +2,7 @@
 
 Run schemas in this order in Supabase SQL Editor:
 1. `schema.sql` → `schema_v2.sql` → `schema_v3.sql` → `schema_v4.sql` → `schema_permissions.sql`
+2. Then run new feature schemas: `schema_performance.sql` → `schema_student_batches.sql` → `schema_audit_logs.sql`
 
 ---
 
@@ -12,7 +13,7 @@ Core student record. One row per enrolled student.
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | bigserial PK | |
+| `id` | bigserial PK | BIGINT — all FK references must use BIGINT |
 | `name` | text | |
 | `parent` | text | parent/guardian name |
 | `phone` | text | student phone |
@@ -20,7 +21,7 @@ Core student record. One row per enrolled student.
 | `age` | integer | |
 | `sport` | text | |
 | `batch` | text | batch name (denormalized) |
-| `batch_id` | bigint → batches.id | |
+| `batch_id` | bigint → batches.id | primary batch only |
 | `join_date` | date | |
 | `status` | text | `Active` / `Inactive` / `Suspended` |
 | `fees` | integer | current fee rate (INR) |
@@ -63,6 +64,27 @@ Training batches / groups.
 | `age_max` | integer | |
 | `ground` | text | venue / ground name |
 | `academy_id` | uuid | |
+
+---
+
+### `student_batches`
+Multi-batch junction table — tracks all batch enrolments per student (additive; does not replace `students.batch_id`).
+
+Schema file: `supabase/schema_student_batches.sql` **(MUST RUN IN SUPABASE)**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | bigserial PK | |
+| `student_id` | bigint | students.id (BIGINT, no FK constraint) |
+| `batch_id` | bigint | batches.id |
+| `batch_name` | text | denormalized for display |
+| `enrolled_at` | timestamptz | default now() |
+| `academy_id` | uuid | |
+| UNIQUE | `(student_id, batch_id)` | upsert-safe |
+
+**On first run**: the migration also back-fills from `students.batch_id` — every student with a primary batch gets a row here automatically.
+
+RLS: open policy for anon + authenticated.
 
 ---
 
@@ -288,8 +310,80 @@ Owner-managed list of sports/branches shown on Dashboard filter.
 
 ---
 
+### `skill_assessments`
+Player performance assessments submitted by coaches.
+
+Schema file: `supabase/schema_performance.sql` **(MUST RUN IN SUPABASE)**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | bigserial PK | |
+| `academy_id` | uuid | |
+| `student_id` | bigint | students.id (BIGINT) |
+| `student_name` | text | denormalized |
+| `batch_id` | bigint | |
+| `batch_name` | text | denormalized |
+| `assessed_by` | bigint | staff user id (may be UUID in practice — check) |
+| `assessed_month` | text | `YYYY-MM` format |
+| `scores` | jsonb | `{ skillKey: 0–100, … }` |
+| `note` | text | coach note |
+| `created_at` | timestamptz | |
+| UNIQUE | `(student_id, assessed_month)` | one per student per month (upsert) |
+
+RLS: open policy for anon + authenticated.
+
+---
+
+### `student_badges`
+Reserved for future badge award logic — table exists but not yet populated by app.
+
+Schema file: `supabase/schema_performance.sql`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | bigserial PK | |
+| `student_id` | bigint | |
+| `badge_key` | text | |
+| `awarded_at` | timestamptz | |
+| `academy_id` | uuid | |
+
+RLS: open policy for anon + authenticated.
+
+---
+
+### `audit_logs`
+Full audit trail of all owner/staff actions.
+
+Schema file: `supabase/schema_audit_logs.sql` **(MUST RUN IN SUPABASE)**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | bigserial PK | |
+| `academy_id` | uuid | |
+| `actor_id` | text | Supabase auth UID of actor |
+| `actor_name` | text | denormalized display name |
+| `actor_role` | text | `Owner` / `Coach` / `Admin` / `Staff` |
+| `action` | text | action key e.g. `student.edit`, `payment.add` |
+| `entity_type` | text | `student` / `payment` / `batch` |
+| `entity_id` | text | stringified ID of affected record |
+| `entity_name` | text | denormalized name for display |
+| `changes` | jsonb | `{ fieldLabel: { old, new } }` diff map |
+| `note` | text | optional freetext note |
+| `created_at` | timestamptz | indexed DESC |
+
+Index: `(academy_id, created_at DESC)` for fast timeline queries.
+RLS: open policy for anon + authenticated.
+
+---
+
 ## Pending Schema Migrations (NOT YET RUN)
 ```sql
+-- These are in the migration files — must be run in Supabase SQL editor:
+-- supabase/schema_performance.sql
+-- supabase/schema_student_batches.sql
+-- supabase/schema_audit_logs.sql
+
+-- Legacy column additions (if not already present):
 ALTER TABLE students ADD COLUMN IF NOT EXISTS training_type TEXT DEFAULT 'Daily';
 ALTER TABLE students ADD COLUMN IF NOT EXISTS fee_plan TEXT DEFAULT 'monthly';
 ```

@@ -109,6 +109,7 @@ On app open, `restore()` in AppContext checks `localStorage['sf_student']`:
 2. Generates new `join_code` → `db.resetStudentPassword(id, newJoinCode)`
 3. Sets `password_hash = null`, `account_status = 'pending'`, `join_code = newJoinCode`
 4. Owner shares new join code → student re-activates
+5. **Audit logged**: `action = 'student.password_reset'`, actor = current owner/staff user
 
 ---
 
@@ -122,3 +123,17 @@ PublicRoute  → redirects logged-in users to their home page
 ```
 
 Loading state while checking session → `<PageLoading />` spinner.
+
+---
+
+## Audit Logging for Auth Actions
+
+The following auth-adjacent actions are instrumented with `logAudit()` from `src/lib/audit.js`:
+
+| Action | When |
+|---|---|
+| `student.password_reset` | Owner resets a student's password |
+| `student.suspend` | Manual suspend by owner/staff |
+| `student.reactivate` | Manual reactivate by owner/staff |
+
+All audit events are fire-and-forget — they never block or throw.

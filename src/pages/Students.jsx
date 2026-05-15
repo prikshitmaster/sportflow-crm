@@ -7,7 +7,7 @@ import {
   ShieldCheck, Award, ChevronRight, Pencil, Ban, Trash2,
 } from 'lucide-react'
 import { RecordPaymentModal } from './Payments'
-import { assignStudentToBatch } from '../lib/db'
+import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches } from '../lib/db'
 
 const accountBadge = {
   pending: 'badge-yellow',
@@ -54,10 +54,12 @@ function DobInput({ value, onChange, hasError }) {
 }
 
 export default function Students() {
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment, selectedSport } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment, selectedSport, user } = useApp()
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
+  const [mbStudentIds,    setMbStudentIds]    = useState(new Set())
+  const [allMbRows,       setAllMbRows]       = useState([])
   const [accFilter,       setAccFilter]       = useState('All')
   const [showModal,       setShowModal]       = useState(false)
   const [showPayModal,    setShowPayModal]    = useState(false)
@@ -81,6 +83,29 @@ export default function Students() {
     return () => { clearTimeout(t); document.removeEventListener('click', close) }
   }, [openMenu])
 
+  // Load multi-batch enrollments when batch filter changes
+  useEffect(() => {
+    if (batchFilter === 'All') { setMbStudentIds(new Set()); return }
+    fetchBatchEnrolments(Number(batchFilter))
+      .then(rows => setMbStudentIds(new Set(rows.map(r => r.student_id))))
+      .catch(() => setMbStudentIds(new Set()))
+  }, [batchFilter])
+
+  // Load all multi-batch rows for the academy (for showing batch chips per student)
+  useEffect(() => {
+    if (!user?.academyId) return
+    fetchAllStudentBatches(user.academyId)
+      .then(rows => setAllMbRows(rows))
+      .catch(() => {})
+  }, [user?.academyId])
+
+  // Build map: studentId → [batchName, ...]  (all batches from student_batches)
+  const studentBatchMap = allMbRows.reduce((acc, r) => {
+    if (!acc[r.student_id]) acc[r.student_id] = []
+    if (r.batch_name && !acc[r.student_id].includes(r.batch_name)) acc[r.student_id].push(r.batch_name)
+    return acc
+  }, {})
+
   const now     = new Date()
   const today   = now.toISOString().split('T')[0]
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
@@ -100,7 +125,7 @@ export default function Students() {
       (s.phone || '').includes(q) ||
       (s.studentCode || '').toLowerCase().includes(q)
     const matchSport = sportFilter === 'All' || s.sport  === sportFilter
-    const matchBatch = batchFilter === 'All' || s.batch === batchFilter
+    const matchBatch = batchFilter === 'All' || String(s.batchId) === batchFilter || mbStudentIds.has(s.id)
     const matchAcc   = accFilter   === 'All' || s.accountStatus === accFilter
     return matchQ && matchSport && matchBatch && matchAcc
   })
@@ -296,7 +321,7 @@ export default function Students() {
         )}
         <select className="input w-auto" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
           <option value="All">All Batches</option>
-          {batches.map(b => <option key={b.id} value={b.name}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
+          {batches.map(b => <option key={b.id} value={String(b.id)}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
         </select>
         <select className="input w-auto" value={accFilter} onChange={e => setAccFilter(e.target.value)}>
           <option value="All">All Accounts</option>
@@ -370,7 +395,20 @@ export default function Students() {
                       <span className={`badge text-[10px] ${s.trainingType === 'Alternate' ? 'badge-purple' : 'badge-gray'}`}>{s.trainingType || 'Daily'}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{s.batch || '—'}</td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const batchNames = studentBatchMap[s.id] || (s.batch ? [s.batch] : [])
+                      if (!batchNames.length) return <span className="text-gray-400">—</span>
+                      if (batchNames.length === 1) return <span className="text-gray-600 text-sm">{batchNames[0]}</span>
+                      return (
+                        <div className="flex flex-col gap-1">
+                          {batchNames.map(n => (
+                            <span key={n} className="badge badge-purple text-[10px] whitespace-nowrap">{n}</span>
+                          ))}
+                        </div>
+                      )
+                    })()}
+                  </td>
                   <td className="px-4 py-3 font-semibold text-gray-900">₹{(s.fees || 0).toLocaleString('en-IN')}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">

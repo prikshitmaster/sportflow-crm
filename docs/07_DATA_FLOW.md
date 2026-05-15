@@ -10,6 +10,9 @@ AppContext.jsx (global state + actions)
 src/lib/db.js (raw Supabase calls)
         ↕ supabase client
 Supabase Postgres
+
+Side-channel (fire-and-forget):
+AppContext actions → logAudit() → audit_logs table
 ```
 
 ---
@@ -74,7 +77,6 @@ Then:
 | `updateStudentStatus(id, status)` | UPDATE status only |
 | `updateStudentPaidTill(id, paidTill, fees)` | UPDATE paid_till (+ fees if provided) |
 | `fetchNextStudentCode()` | Finds max SA### and returns next |
-| `createStudentAccount(s)` | Full insert with all columns |
 | `activateStudentAccount(code, joinCode, hash)` | Verify + set password |
 | `loginStudentAccount(code, hash)` | Verify credentials |
 | `resetStudentPassword(id, newJoinCode)` | Reset to pending |
@@ -98,6 +100,26 @@ Then:
 | `updateBatch(batchId, b)` | UPDATE all editable fields |
 | `updateBatchCoach(batchId, coachName)` | UPDATE coach only |
 | `updateBatchEnrolled(batchId, delta)` | Read → +delta → UPDATE (safe, no negative) |
+
+### Multi-Batch Enrolment
+| Function | Operation |
+|---|---|
+| `fetchBatchEnrolments(batchId)` | SELECT from student_batches for one batch |
+| `assignStudentToBatch(studentId, batchId, batchName, academyId)` | UPSERT on conflict (student_id, batch_id) |
+| `unassignStudentFromBatch(studentId, batchId)` | DELETE from student_batches |
+| `fetchAllStudentBatches(academyId)` | All enrolments for an academy |
+
+### Performance / Assessments
+| Function | Operation |
+|---|---|
+| `fetchAssessments(academyId)` | SELECT all assessments for academy |
+| `upsertAssessment(row)` | INSERT ... ON CONFLICT (student_id, assessed_month) DO UPDATE |
+| `fetchStudentAssessments(studentId)` | SELECT all months for one student |
+
+### Audit Logs
+| Function | Operation |
+|---|---|
+| `fetchAuditLogs(academyId, limit)` | SELECT ordered by created_at DESC; returns [] on 42P01 (table not yet created) |
 
 ### Attendance
 | Function | Operation |
@@ -139,6 +161,51 @@ Then:
 
 ---
 
+## Audit Logging (`src/lib/audit.js`)
+
+### `logAudit(params)` — fire-and-forget
+Never throws, never blocks. Uses `.then(() => {}).catch(() => {})`.
+
+```js
+logAudit({
+  actor:      { id, name, role },   // from user/context
+  action:     ACTIONS.STUDENT_EDIT, // string key
+  entityType: 'student',
+  entityId:   student.id,
+  entityName: student.name,
+  changes:    diffObjects(old, new, fields),  // field-level diff
+  note:       'optional freetext',
+  academyId:  user.academyId
+})
+```
+
+### `diffObjects(oldObj, newObj, fields)` — returns changed fields only
+```js
+const fields = [
+  { key: 'name', label: 'Name' },
+  { key: 'fees', label: 'Fee (₹)', fmt: v => `₹${v}` },
+  { key: 'batch', label: 'Batch' },
+]
+// Returns: { 'Fee (₹)': { old: '₹2000', new: '₹2500' } }
+```
+
+### Action Keys (`ACTIONS` constant)
+```
+student.add  · student.edit  · student.delete
+student.suspend · student.reactivate · student.password_reset
+payment.add · payment.remove · payment.mark_paid
+batch.add · batch.edit · batch.delete · batch.coach_assign
+batch.student_assign · batch.student_unassign
+```
+
+### 13 Instrumented Functions in AppContext
+All of these call `logAudit()` after their DB operation succeeds:
+`addStudent`, `updateStudent`, `deleteStudent`, `suspendStudent`, `reactivateStudent`,
+`resetStudentPasswordAdmin`, `addPayment`, `removePayment`, `markPaymentPaid`,
+`addBatch`, `updateBatch`, `deleteBatch`, `updateBatchCoach`
+
+---
+
 ## Context Actions Exposed via `useApp()`
 
 ### Auth
@@ -150,21 +217,21 @@ loginStudent, logoutStudent, activateStudent
 
 ### Students
 ```
-addStudent(s)                    → creates + auto-payment + auto-suspend check
-updateStudent(id, s)             → update + payment sync
-deleteStudent(student)           → cascades payments + sessions
-suspendStudent(student)          → manual suspend
-reactivateStudent(student)       → manual reactivate (keeps batch)
+addStudent(s)                    → creates + auto-payment + auto-suspend check + audit log
+updateStudent(id, s)             → update + payment sync + audit log (diff)
+deleteStudent(student)           → cascades payments + sessions + audit log
+suspendStudent(student)          → manual suspend + audit log
+reactivateStudent(student)       → manual reactivate (keeps batch) + audit log
 updateStudentStatus(id, status)  → raw status change
-resetStudentPasswordAdmin(id)    → generates new join code
+resetStudentPasswordAdmin(id)    → generates new join code + audit log
 refreshStudents()                → re-fetches from DB
 ```
 
 ### Payments
 ```
-addPayment(p)             → record + auto-reactivate if suspended
-markPaymentPaid(id, mode) → update status
-removePayment(payment)    → delete + recompute paidTill
+addPayment(p)             → record + auto-reactivate if suspended + audit log
+markPaymentPaid(id, mode) → update status + audit log
+removePayment(payment)    → delete + recompute paidTill + audit log
 updatePaymentDate(id, date) → inline date edit
 ```
 
@@ -176,9 +243,10 @@ saveAttendance(date, records)    → full day save
 
 ### Batches
 ```
-addBatch(b)
-updateBatch(batchId, b)
-updateBatchCoach(batchId, coachName)
+addBatch(b)                      → + audit log
+updateBatch(batchId, b)          → + audit log (diff)
+updateBatchCoach(batchId, coachName) → + audit log (old→new coach)
+deleteBatch(id)                  → + audit log
 ```
 
 ### Events
@@ -237,6 +305,17 @@ All DB queries filter by `academy_id` from `user.academyId`. Staff see the same 
 - Student suspended → `-1`
 - Student reactivated / paid → `+1`
 - Student deleted (not suspended) → `-1`
+- Multi-batch assign (via `student_batches`) → `+1` via `updateBatchEnrolled` + `enrolledAdj` local overlay
+- Multi-batch unassign → `-1` same
+
+### `enrolledAdj` Local Overlay (Batches Page)
+`BatchDetailPanel` uses an `enrolledAdj = { [batchId]: delta }` state in the parent `Batches` component. Applied on top of `b.enrolled` during render, giving instant feedback without a full re-fetch:
+```js
+const displayEnrolled = (b.enrolled || 0) + (enrolledAdj[b.id] || 0)
+```
 
 ### calcHistoricalPayment
 Used when a student is added/edited with a `paidTill` date. Computes what the auto-generated payment should look like without creating a duplicate if the payment already exists for the same month label.
+
+### Fire-and-Forget Audit Logs
+`logAudit` is always called after the main DB operation succeeds. It never blocks user-facing actions and never surfaces errors to the UI. If the `audit_logs` table doesn't exist yet, `fetchAuditLogs` guards for PostgreSQL error `42P01` and returns `[]`.
