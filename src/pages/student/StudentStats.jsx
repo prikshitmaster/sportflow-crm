@@ -438,7 +438,7 @@ function AiCoachTip({ assessment, sport, categories, position, overall, tier, hi
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
 
-  const cacheKey = `ai_tip_v6_${assessment.id || assessment.assessed_month}`
+  const cacheKey = `ai_tip_v7_${assessment.id || assessment.assessed_month}`
 
   useEffect(() => {
     if (!GROQ_KEY) return
@@ -478,6 +478,7 @@ function AiCoachTip({ assessment, sport, categories, position, overall, tier, hi
       )
       const priorities = posKey ? POSITION_PRIORITIES[posKey] : null
 
+      const hasNotes = !!assessment.notes?.trim()
       const prompt = `You are a UEFA Pro-Licensed ${sport || 'football'} coach with 20 years of elite youth development experience.
 
 PLAYER: ${studentName || 'Player'}, ${batch || ''} batch
@@ -494,7 +495,10 @@ ${catSummary}
 KEY STRENGTHS: ${strongest ? `${strongest.name} (${strongest.val}/10)` : 'Not enough data'}
 BIGGEST WEAKNESS: ${weakest ? `${weakest.name} (${weakest.val}/10)` : 'Not enough data'}
 ${priorities ? `CRITICAL SKILLS FOR ${position?.toUpperCase() || 'THIS POSITION'}: ${priorities.join(', ')}` : ''}
-${assessment.notes ? `COACH OBSERVATION: "${assessment.notes}"` : ''}
+${hasNotes ? `
+⚑ COACH'S DIRECT OBSERVATION (highest priority — your analysis MUST reflect this):
+"${assessment.notes}"
+This is what the coach saw on the pitch. Reference it directly in your Focus and Verdict. Do not ignore it.` : ''}
 
 Write the analysis directly to the player using "you/your". Use EXACTLY this markdown structure:
 
@@ -503,17 +507,17 @@ Write the analysis directly to the player using "you/your". Use EXACTLY this mar
 • Your [second quality] — [what it enables you to do]. One line.
 
 **This Week's Focus**
-• [Most critical weakness] — [why it's holding you back at your position]. One line.
-• [Second improvement area] — [specific aspect to work on]. One line.
+• [Most critical weakness from scores${hasNotes ? ' AND coach observation' : ''}] — [why it matters]. One line.
+• [Second area — ${hasNotes ? 'directly referencing coach note if relevant' : 'from scores'}]. One line.
 
 **Drills**
-• Drill Name (Xmin) — what to do and what it trains. One line.
-• Drill Name (Xmin) — second drill, different muscle group. One line.
+• Drill Name (Xmin) — [targets the weakness the coach flagged${hasNotes ? '' : ' or lowest score'}]. One line.
+• Drill Name (Xmin) — second drill, different skill. One line.
 
 **Verdict**
-One punchy sentence about what this player can become if they execute.
+One punchy sentence${hasNotes ? " that ties the coach's observation to the player's potential" : ' about what this player can become'}.
 
-Rules: Address the player as "you/your". Use bullet points in every section except Verdict. Bold headers exactly as shown. No intro sentence, no greetings. Be specific — name real skills and real drills. Tone: direct, warm, confident like Pep Guardiola.`
+Rules: Address the player as "you/your". Bold headers exactly as shown. No intro, no greetings. Be specific — real drills, real skills. ${hasNotes ? 'The coach note is ground truth — weight it above scores.' : ''} Tone: direct, warm, confident like Pep Guardiola.`
 
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
