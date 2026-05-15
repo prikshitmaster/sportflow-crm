@@ -1,8 +1,23 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Suspense, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   Home, QrCode, CalendarCheck, CreditCard, Megaphone, LogOut, Zap, TrendingUp,
 } from 'lucide-react'
+
+function PageSkeleton() {
+  return (
+    <div className="max-w-lg mx-auto px-4 py-5 space-y-4 animate-pulse">
+      <div className="h-28 bg-brand-100 rounded-2xl" />
+      <div className="h-16 bg-gray-100 rounded-2xl" />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="h-20 bg-gray-100 rounded-2xl" />
+        <div className="h-20 bg-gray-100 rounded-2xl" />
+      </div>
+      <div className="h-24 bg-gray-100 rounded-2xl" />
+    </div>
+  )
+}
 
 const tabs = [
   { to: '/student/dashboard',     label: 'Home',   icon: Home },
@@ -16,6 +31,15 @@ const tabs = [
 export default function StudentLayout() {
   const { studentUser, logoutStudent, academyLogo } = useApp()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    // Prefetch all student page chunks in background so tab switches are instant
+    import('../pages/student/StudentAttendance')
+    import('../pages/student/StudentPayments')
+    import('../pages/student/StudentAnnouncements')
+    import('../pages/student/StudentStats')
+    import('../pages/student/StudentScan')
+  }, [])
 
   const handleLogout = async () => {
     await logoutStudent()
@@ -52,7 +76,9 @@ export default function StudentLayout() {
 
       {/* Page content */}
       <main className="flex-1 overflow-y-auto pb-20 animate-fade-in">
-        <Outlet />
+        <Suspense fallback={<PageSkeleton />}>
+          <Outlet />
+        </Suspense>
       </main>
 
       {/* Bottom navigation */}

@@ -28,7 +28,7 @@ export default function StaffDashboard() {
 
   const isCoach = !user?.accessRole || ['coach', 'staff'].includes(user?.accessRole)
 
-  useEffect(() => { loadLeaveRequests() }, [])
+  useEffect(() => { if (!leaveRequests.length) loadLeaveRequests() }, [])
 
   const today    = new Date().toISOString().split('T')[0]
   const todayAtt = attendanceData[today] || {}
@@ -60,17 +60,6 @@ export default function StaffDashboard() {
 
   // Tiles the current user can see — always permission-based regardless of role
   const myTiles = WORK_TILES.filter(t => hasPermission(t.perm))
-
-  if (dataLoading) {
-    return (
-      <div className="flex items-center justify-center h-60">
-        <svg className="animate-spin h-7 w-7 text-brand-600" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-        </svg>
-      </div>
-    )
-  }
 
   return (
     <div className="px-4 pt-5 pb-4 space-y-5">
@@ -171,8 +160,8 @@ export default function StaffDashboard() {
         </div>
       )}
 
-      {/* Player Stats — coaches only */}
-      {isCoach && <PlayerStatsSection user={user} batches={batches} students={students} navigate={navigate} />}
+      {/* Player Stats — coaches only, deferred until data is loaded */}
+      {isCoach && batches.length > 0 && <PlayerStatsSection user={user} batches={batches} students={students} navigate={navigate} />}
 
       {/* Clock In — always */}
       <button onClick={() => navigate('/staff/scan-in')}

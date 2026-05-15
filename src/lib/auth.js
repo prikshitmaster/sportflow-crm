@@ -89,3 +89,27 @@ export function clearStaffSession() {
 export function generateStaffCode(prefix, existingCount) {
   return prefix + String(existingCount + 1).padStart(3, '0')
 }
+
+// ── Optimistic session cache (instant restore without DB round-trip) ──
+const STUDENT_CACHE_KEY = 'sf_student_cache'
+const STAFF_CACHE_KEY   = 'sf_staff_cache'
+
+export function setCachedStudentUser(data) {
+  try { localStorage.setItem(STUDENT_CACHE_KEY, JSON.stringify(data)) } catch {}
+}
+export function getCachedStudentUser() {
+  try { const r = localStorage.getItem(STUDENT_CACHE_KEY); return r ? JSON.parse(r) : null } catch { return null }
+}
+export function clearCachedStudentUser() {
+  try { localStorage.removeItem(STUDENT_CACHE_KEY) } catch {}
+}
+
+export function setCachedStaffUser(data) {
+  try { localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify(data)) } catch {}
+}
+export function getCachedStaffUser() {
+  try { const r = localStorage.getItem(STAFF_CACHE_KEY); return r ? JSON.parse(r) : null } catch { return null }
+}
+export function clearCachedStaffUser() {
+  try { localStorage.removeItem(STAFF_CACHE_KEY) } catch {}
+}

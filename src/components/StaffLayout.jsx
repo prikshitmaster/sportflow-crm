@@ -1,6 +1,20 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Suspense, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut, ClipboardList } from 'lucide-react'
+
+function PageSkeleton() {
+  return (
+    <div className="px-4 pt-5 space-y-4 animate-pulse">
+      <div className="h-14 bg-gray-100 rounded-2xl" />
+      <div className="h-20 bg-gray-100 rounded-2xl" />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="h-24 bg-gray-100 rounded-2xl" />
+        <div className="h-24 bg-gray-100 rounded-2xl" />
+      </div>
+    </div>
+  )
+}
 
 const coachTabs = [
   { to: '/staff/home',       label: 'Home',   icon: Home },
@@ -20,6 +34,17 @@ const officeTabs = [
 export default function StaffLayout() {
   const { user, logoutStaff } = useApp()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    // Prefetch all staff page chunks so tab switches are instant
+    import('../pages/staff/StaffMe')
+    import('../pages/staff/StaffProfile')
+    import('../pages/staff/StaffRoster')
+    import('../pages/staff/StaffNotices')
+    import('../pages/staff/StaffAttendance')
+    import('../pages/staff/StaffScanIn')
+    import('../pages/staff/StaffAssess')
+  }, [])
 
   const isOffice = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)
   const tabs = isOffice ? officeTabs : coachTabs
@@ -50,7 +75,9 @@ export default function StaffLayout() {
       </header>
 
       <main className="flex-1 overflow-y-auto pb-20 animate-fade-in">
-        <Outlet />
+        <Suspense fallback={<PageSkeleton />}>
+          <Outlet />
+        </Suspense>
       </main>
 
       {/* Bottom navigation */}

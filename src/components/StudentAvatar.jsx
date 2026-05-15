@@ -5,6 +5,7 @@ export default function StudentAvatar({ photoUrl, name, size = 32 }) {
       <img
         src={photoUrl}
         alt={name}
+        loading="lazy"
         className="rounded-full object-cover flex-shrink-0"
         style={{ width: size, height: size }}
       />

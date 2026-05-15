@@ -13,7 +13,7 @@ export default function StudentAnnouncements() {
   const [loading,       setLoading]       = useState(true)
 
   useEffect(() => {
-    const academyId = studentUser?.academyId
+    const academyId = studentUser?.academy_id
     Promise.all([
       ctxAnnouncements?.length ? Promise.resolve(ctxAnnouncements) : db.fetchAnnouncements(),
       db.fetchEvents(academyId),

@@ -725,7 +725,7 @@ function PlayerAvatar({ photoUrl, name, size, isCurrent, score, dark, highlighte
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       {photoUrl ? (
-        <img src={photoUrl} alt={name} style={{
+        <img src={photoUrl} alt={name} loading="lazy" style={{
           width: size, height: size, borderRadius: '50%', objectFit: 'cover',
           border, boxShadow: shadow,
         }} />

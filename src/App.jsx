@@ -1,50 +1,52 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Component } from 'react'
+import { Component, lazy, Suspense } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import Layout from './components/Layout'
 import StaffLayout from './components/StaffLayout'
 import StudentLayout from './components/StudentLayout'
 
-// Owner pages
+// Auth pages — kept eager (tiny, needed on first render)
 import Login from './pages/Login'
 import Signup from './pages/Signup'
-import Dashboard from './pages/Dashboard'
-import Students from './pages/Students'
-import Attendance from './pages/Attendance'
-import Payments from './pages/Payments'
-import Trials from './pages/Trials'
-import Batches from './pages/Batches'
-import Staff from './pages/Staff'
-import Reports from './pages/Reports'
-import Community from './pages/Community'
-import Settings from './pages/Settings'
-import AdminQR from './pages/AdminQR'
-import Events from './pages/Events'
-import StaffAttendanceQR from './pages/StaffAttendanceQR'
-import Invite from './pages/Invite'
-import SportSelect from './pages/SportSelect'
-
-// Staff pages
 import StaffLogin from './pages/StaffLogin'
 import StaffActivate from './pages/StaffActivate'
-import StaffDashboard from './pages/staff/StaffDashboard'
-import StaffMe from './pages/staff/StaffMe'
-import StaffProfile from './pages/staff/StaffProfile'
-import StaffRoster from './pages/staff/StaffRoster'
-import StaffNotices from './pages/staff/StaffNotices'
-import StaffAttendance from './pages/staff/StaffAttendance'
-import StaffScanIn from './pages/staff/StaffScanIn'
-import StaffAssess from './pages/staff/StaffAssess'
-
-// Student pages
 import StudentLogin from './pages/StudentLogin'
 import Activate from './pages/Activate'
-import StudentDashboard from './pages/student/StudentDashboard'
-import StudentAttendance from './pages/student/StudentAttendance'
-import StudentPayments from './pages/student/StudentPayments'
-import StudentAnnouncements from './pages/student/StudentAnnouncements'
-import StudentScan from './pages/student/StudentScan'
-import StudentStats from './pages/student/StudentStats'
+import Invite from './pages/Invite'
+
+// Owner pages — lazy loaded
+const Dashboard        = lazy(() => import('./pages/Dashboard'))
+const Students         = lazy(() => import('./pages/Students'))
+const Attendance       = lazy(() => import('./pages/Attendance'))
+const Payments         = lazy(() => import('./pages/Payments'))
+const Trials           = lazy(() => import('./pages/Trials'))
+const Batches          = lazy(() => import('./pages/Batches'))
+const Staff            = lazy(() => import('./pages/Staff'))
+const Reports          = lazy(() => import('./pages/Reports'))
+const Community        = lazy(() => import('./pages/Community'))
+const Settings         = lazy(() => import('./pages/Settings'))
+const AdminQR          = lazy(() => import('./pages/AdminQR'))
+const Events           = lazy(() => import('./pages/Events'))
+const StaffAttendanceQR = lazy(() => import('./pages/StaffAttendanceQR'))
+const SportSelect      = lazy(() => import('./pages/SportSelect'))
+
+// Staff pages — lazy loaded
+const StaffDashboard   = lazy(() => import('./pages/staff/StaffDashboard'))
+const StaffMe          = lazy(() => import('./pages/staff/StaffMe'))
+const StaffProfile     = lazy(() => import('./pages/staff/StaffProfile'))
+const StaffRoster      = lazy(() => import('./pages/staff/StaffRoster'))
+const StaffNotices     = lazy(() => import('./pages/staff/StaffNotices'))
+const StaffAttendance  = lazy(() => import('./pages/staff/StaffAttendance'))
+const StaffScanIn      = lazy(() => import('./pages/staff/StaffScanIn'))
+const StaffAssess      = lazy(() => import('./pages/staff/StaffAssess'))
+
+// Student pages — lazy loaded
+const StudentDashboard     = lazy(() => import('./pages/student/StudentDashboard'))
+const StudentAttendance    = lazy(() => import('./pages/student/StudentAttendance'))
+const StudentPayments      = lazy(() => import('./pages/student/StudentPayments'))
+const StudentAnnouncements = lazy(() => import('./pages/student/StudentAnnouncements'))
+const StudentScan          = lazy(() => import('./pages/student/StudentScan'))
+const StudentStats         = lazy(() => import('./pages/student/StudentStats'))
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
@@ -218,7 +220,9 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AppProvider>
-          <AppRoutes />
+          <Suspense fallback={<PageLoading />}>
+            <AppRoutes />
+          </Suspense>
         </AppProvider>
       </BrowserRouter>
     </ErrorBoundary>

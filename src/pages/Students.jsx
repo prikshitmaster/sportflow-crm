@@ -1023,9 +1023,14 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-2xl font-black text-white">
-              {s.name[0]}
-            </div>
+            {s.photoUrl ? (
+              <img src={s.photoUrl} alt={s.name} loading="lazy"
+                className="w-16 h-16 rounded-2xl object-cover border-2 border-white/30 flex-shrink-0" />
+            ) : (
+              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-2xl font-black text-white flex-shrink-0">
+                {s.name[0]}
+              </div>
+            )}
             <div>
               <h2 className="text-xl font-black text-white">{s.name}</h2>
               <p className="text-brand-200 text-sm">{s.sport} · {s.batch || 'No batch'}</p>

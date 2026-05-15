@@ -34,12 +34,6 @@ export default function StudentDashboard() {
     loadData()
   }, [])
 
-  // Load announcements if not already loaded
-  useEffect(() => {
-    if (announcements.length === 0) {
-      db.fetchAnnouncements().then(() => {}).catch(() => {})
-    }
-  }, [])
 
   const loadData = async () => {
     try {
