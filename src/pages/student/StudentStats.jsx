@@ -366,6 +366,9 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
   const [students,      setStudents]      = useState([])
   const [loading,       setLoading]       = useState(true)
   const [resolvedBatch, setResolvedBatch] = useState(batchId)
+  const [selectedId,    setSelectedId]    = useState(null)   // tapped other player
+  const [rivalMode,     setRivalMode]     = useState(false)  // tapped self → show competitors
+  const [statsCache,    setStatsCache]    = useState({})     // { id: {overall,tier,topSkill} | 'loading' | null }
 
   useEffect(() => {
     async function load() {
@@ -384,9 +387,62 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
     load()
   }, [batchId, currentStudentId])
 
+  const fetchStats = async (studentId) => {
+    if (statsCache[studentId] !== undefined) return
+    setStatsCache(prev => ({ ...prev, [studentId]: 'loading' }))
+    try {
+      const assessments = await db.fetchStudentAssessments(studentId)
+      if (assessments.length) {
+        const overall  = getOverallScore(assessments[0].scores, FOOTBALL_CATEGORIES)
+        const tier     = getTier(overall)
+        const topSkill = Object.entries(assessments[0].scores || {})
+          .map(([skill, val]) => ({ skill, val: Number(val) }))
+          .filter(x => x.val > 0)
+          .sort((a, b) => b.val - a.val)[0] || null
+        setStatsCache(prev => ({ ...prev, [studentId]: { overall, tier, topSkill } }))
+      } else {
+        setStatsCache(prev => ({ ...prev, [studentId]: null }))
+      }
+    } catch {
+      setStatsCache(prev => ({ ...prev, [studentId]: null }))
+    }
+  }
+
+  const handleTap = (student) => {
+    if (student.id === currentStudentId) {
+      const entering = !rivalMode
+      setRivalMode(entering)
+      setSelectedId(null)
+      if (entering) {
+        const rivals = students.filter(s => s.id !== currentStudentId && s.position === student.position)
+        rivals.forEach(r => fetchStats(r.id))
+      }
+    } else {
+      setSelectedId(prev => prev === student.id ? null : student.id)
+      setRivalMode(false)
+      fetchStats(student.id)
+    }
+  }
+
   const positionedStudents = students.filter(s => FOOTBALL_POSITIONS.find(p => p.id === s.position))
   const customPositioned   = students.filter(s => s.position && !FOOTBALL_POSITIONS.find(p => p.id === s.position))
   const benchStudents      = students.filter(s => !s.position)
+
+  // Ghost fill: assign bench students to empty position slots (deterministic by id order)
+  const filledIds     = new Set(positionedStudents.map(s => s.position))
+  const emptySlots    = FOOTBALL_POSITIONS.filter(p => !filledIds.has(p.id))
+  const sortedBench   = [...benchStudents].sort((a, b) => a.id - b.id)
+  const ghostMap      = {}  // { posId: student }
+  emptySlots.forEach((pos, i) => { if (sortedBench[i]) ghostMap[pos.id] = sortedBench[i] })
+  const ghostedIds    = new Set(Object.values(ghostMap).map(s => s.id))
+  const trueBench     = benchStudents.filter(s => !ghostedIds.has(s.id))
+
+  const currentStudent = students.find(s => s.id === currentStudentId)
+  const rivals = rivalMode && currentStudent?.position
+    ? students.filter(s => s.id !== currentStudentId && s.position === currentStudent.position)
+    : []
+
+  const selectedStudent = selectedId ? students.find(s => s.id === selectedId) : null
 
   return (
     <div className="bg-white rounded-3xl overflow-hidden"
@@ -414,7 +470,6 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
         <div className="px-3 pb-4">
           {/* Pitch */}
           <div className="relative rounded-2xl overflow-hidden" style={{ paddingBottom: '138%' }}>
-            {/* Green pitch */}
             <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg,#14532d 0%,#166534 20%,#15803d 50%,#166534 80%,#14532d 100%)' }}>
               {[0,1,2,3,4,5,6,7].map(i => (
                 <div key={i} className="absolute inset-x-0" style={{
@@ -423,8 +478,6 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
                 }} />
               ))}
             </div>
-
-            {/* Field lines SVG */}
             <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 138" preserveAspectRatio="none">
               <rect x="3" y="3" width="94" height="132" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
               <line x1="3" y1="69" x2="97" y2="69" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8"/>
@@ -438,47 +491,151 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
               <rect x="41" y="134" width="18" height="3" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="0.8"/>
             </svg>
 
-            {/* Preset-position players */}
+            {/* Real positioned players */}
             {FOOTBALL_POSITIONS.map(pos => {
               const student = positionedStudents.find(s => s.position === pos.id)
               if (!student) return null
               return (
-                <PlayerDot key={pos.id}
-                  student={student}
-                  posId={pos.id}
-                  x={pos.x}
-                  y={pos.y}
+                <PlayerDot key={pos.id} student={student} posId={pos.id}
+                  x={pos.x} y={pos.y}
                   isCurrent={student.id === currentStudentId}
                   score={student.id === currentStudentId ? overallScore : null}
+                  onTap={() => handleTap(student)}
+                  highlighted={rivalMode && student.id === currentStudentId}
                 />
               )
             })}
 
-            {/* Custom-position players — spread along centre */}
+            {/* Ghost fill — bench students at empty positions (40% opacity) */}
+            {Object.entries(ghostMap).map(([posId, student]) => {
+              const pos = FOOTBALL_POSITIONS.find(p => p.id === posId)
+              if (!pos) return null
+              return (
+                <PlayerDot key={`ghost-${student.id}`} student={student} posId={null}
+                  x={pos.x} y={pos.y}
+                  isCurrent={false} score={null}
+                  onTap={() => handleTap(student)}
+                  ghost
+                />
+              )
+            })}
+
+            {/* Custom-position players */}
             {customPositioned.map((s, i) => (
-              <PlayerDot key={s.id}
-                student={s}
-                posId={null}
-                x={15 + (i % 5) * 17}
-                y={50}
+              <PlayerDot key={s.id} student={s} posId={null}
+                x={15 + (i % 5) * 17} y={50}
                 isCurrent={s.id === currentStudentId}
                 score={s.id === currentStudentId ? overallScore : null}
+                onTap={() => handleTap(s)}
                 customLabel={s.position}
               />
             ))}
           </div>
 
-          {/* Bench — students without any position */}
-          {benchStudents.length > 0 && (
+          {/* ── Tap hint ── */}
+          {currentStudent?.position && !rivalMode && !selectedId && (
+            <p className="text-center text-[10px] text-gray-400 mt-2">
+              Tap your icon to see competitors at {currentStudent.position}
+            </p>
+          )}
+
+          {/* ── Rivals panel ── */}
+          {rivalMode && (
+            <div className="mt-3 rounded-2xl overflow-hidden border border-indigo-100" style={{ background: 'linear-gradient(135deg,#eef2ff,#f5f3ff)' }}>
+              <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-indigo-500 uppercase tracking-wider">
+                    {currentStudent?.position} · Competitors
+                  </p>
+                  <p className="text-xs text-indigo-700 font-semibold mt-0.5">
+                    {rivals.length === 0 ? 'No one else at this position yet' : `${rivals.length} player${rivals.length > 1 ? 's' : ''} competing for your spot`}
+                  </p>
+                </div>
+                <button onClick={() => setRivalMode(false)} className="text-indigo-300 hover:text-indigo-500 text-lg leading-none">✕</button>
+              </div>
+              {rivals.length > 0 && (
+                <div className="px-3 pb-3 space-y-2">
+                  {rivals.map(r => {
+                    const st = statsCache[r.id]
+                    return (
+                      <div key={r.id} className="bg-white rounded-xl p-3 flex items-center gap-3">
+                        <PlayerAvatar photoUrl={r.photoUrl} name={r.name} size={40} isCurrent={false} score={null} dark={false} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-black text-gray-800 truncate">{r.name}</p>
+                          {st === 'loading' ? (
+                            <p className="text-xs text-gray-400">Loading…</p>
+                          ) : st ? (
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${st.tier.bgClass} ${st.tier.textClass}`}>
+                                {st.tier.label} · {st.overall}
+                              </span>
+                              {st.topSkill && (
+                                <span className="text-[10px] text-gray-500">
+                                  Top: <span className="font-bold text-gray-700">{SKILL_SHORTS[st.topSkill.skill] || st.topSkill.skill}</span> {st.topSkill.val}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 italic">No assessment yet</p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Quick stats panel (other player tapped) ── */}
+          {selectedStudent && !rivalMode && (
+            <div className="mt-3 bg-gray-50 rounded-2xl p-3 border border-gray-100">
+              <div className="flex items-center gap-3">
+                <PlayerAvatar photoUrl={selectedStudent.photoUrl} name={selectedStudent.name} size={44} isCurrent={false} score={null} dark={false} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm font-black text-gray-900">{selectedStudent.name}</p>
+                    {selectedStudent.position && (() => {
+                      const preset = FOOTBALL_POSITIONS.find(p => p.id === selectedStudent.position)
+                      const col    = preset ? POSITION_COLORS[preset.id] : null
+                      return (
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${col ? `${col.bg} ${col.text}` : 'bg-gray-100 text-gray-600'}`}>
+                          {selectedStudent.position}
+                        </span>
+                      )
+                    })()}
+                  </div>
+                  {(() => {
+                    const st = statsCache[selectedId]
+                    if (st === 'loading') return <p className="text-xs text-gray-400 mt-0.5">Loading…</p>
+                    if (st) return (
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${st.tier.bgClass} ${st.tier.textClass}`}>
+                          {st.tier.label} · {st.overall}/100
+                        </span>
+                        {st.topSkill && (
+                          <span className="text-[10px] text-gray-500">
+                            Top: <span className="font-bold text-gray-700">{SKILL_SHORTS[st.topSkill.skill] || st.topSkill.skill}</span> {st.topSkill.val}
+                          </span>
+                        )}
+                      </div>
+                    )
+                    return <p className="text-xs text-gray-400 italic mt-0.5">No assessment yet</p>
+                  })()}
+                </div>
+                <button onClick={() => setSelectedId(null)} className="text-gray-300 hover:text-gray-500 text-lg leading-none flex-shrink-0">✕</button>
+              </div>
+            </div>
+          )}
+
+          {/* True bench — students not ghost-placed */}
+          {trueBench.length > 0 && (
             <div className="mt-3 px-3 py-3 bg-gray-50 rounded-2xl">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2.5">No Position Assigned</p>
               <div className="flex flex-wrap gap-3">
-                {benchStudents.map(s => (
+                {trueBench.map(s => (
                   <div key={s.id} className="flex flex-col items-center gap-1">
-                    <PlayerAvatar
-                      photoUrl={s.photoUrl}
-                      name={s.name}
-                      size={34}
+                    <PlayerAvatar photoUrl={s.photoUrl} name={s.name} size={34}
                       isCurrent={s.id === currentStudentId}
                       score={s.id === currentStudentId ? overallScore : null}
                       dark={false}
@@ -497,33 +654,41 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
   )
 }
 
-function PlayerDot({ student, posId, x, y, isCurrent, score, customLabel }) {
+function PlayerDot({ student, posId, x, y, isCurrent, score, customLabel, onTap, ghost, highlighted }) {
   const posColor = posId ? POSITION_COLORS[posId] : null
   return (
-    <div style={{
-      position:  'absolute',
-      top:       `${100 - y}%`,
-      left:      `${x}%`,
-      transform: 'translate(-50%, -50%)',
-      zIndex:    isCurrent ? 10 : 5,
-    }}>
+    <div
+      onClick={onTap}
+      style={{
+        position:  'absolute',
+        top:       `${100 - y}%`,
+        left:      `${x}%`,
+        transform: 'translate(-50%, -50%)',
+        zIndex:    isCurrent ? 10 : ghost ? 3 : 5,
+        opacity:   ghost ? 0.42 : 1,
+        cursor:    'pointer',
+      }}
+    >
       <div className="flex flex-col items-center" style={{ gap: 2 }}>
         <PlayerAvatar
           photoUrl={student.photoUrl}
           name={student.name}
-          size={36}
+          size={ghost ? 30 : 36}
           isCurrent={isCurrent}
           score={score}
           dark
+          highlighted={highlighted}
         />
-        <span style={{
-          fontSize: 8, fontWeight: 700, color: '#fff',
-          maxWidth: 52, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          textShadow: '0 1px 4px rgba(0,0,0,0.9)',
-        }}>
-          {student.name.split(' ')[0]}
-        </span>
-        {posId && posColor && (
+        {!ghost && (
+          <span style={{
+            fontSize: 8, fontWeight: 700, color: '#fff',
+            maxWidth: 52, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+          }}>
+            {student.name.split(' ')[0]}
+          </span>
+        )}
+        {!ghost && posId && posColor && (
           <span style={{
             fontSize: 7, fontWeight: 900,
             backgroundColor: posColor.hex, color: '#fff',
@@ -533,7 +698,7 @@ function PlayerDot({ student, posId, x, y, isCurrent, score, customLabel }) {
             {posId}
           </span>
         )}
-        {customLabel && (
+        {!ghost && customLabel && (
           <span style={{
             fontSize: 7, fontWeight: 900,
             backgroundColor: '#4b5563', color: '#fff',
@@ -548,9 +713,11 @@ function PlayerDot({ student, posId, x, y, isCurrent, score, customLabel }) {
   )
 }
 
-function PlayerAvatar({ photoUrl, name, size, isCurrent, score, dark }) {
+function PlayerAvatar({ photoUrl, name, size, isCurrent, score, dark, highlighted }) {
   const border = isCurrent ? '2.5px solid #fff' : dark ? '2px solid rgba(255,255,255,0.4)' : '2px solid #e5e7eb'
-  const shadow = isCurrent
+  const shadow = highlighted
+    ? '0 0 0 3px #fbbf24, 0 0 12px #fbbf2488, 0 3px 10px rgba(0,0,0,0.5)'
+    : isCurrent
     ? '0 0 0 2.5px #6366f1, 0 3px 10px rgba(0,0,0,0.5)'
     : dark ? '0 2px 6px rgba(0,0,0,0.4)' : '0 1px 4px rgba(0,0,0,0.12)'
   const bg     = isCurrent ? '#6366f1' : dark ? 'rgba(255,255,255,0.2)' : '#e5e7eb'
