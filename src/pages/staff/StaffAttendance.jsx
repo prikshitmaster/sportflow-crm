@@ -8,6 +8,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { ArrowLeft, Check, Users, Clock, Search, ChevronRight } from 'lucide-react'
 import { fetchBatchEnrolments } from '../../lib/db'
+import StudentAvatar from '../../components/StudentAvatar'
 
 // Status cycle: blank → Present → Absent → Late → Present …
 const NEXT_STATUS = { '': 'Present', Present: 'Absent', Absent: 'Late', Late: 'Present' }
@@ -248,9 +249,7 @@ export default function StaffAttendance() {
                   className="w-full flex items-center gap-3 px-4 py-3 active:bg-gray-50 text-left"
                 >
                   {/* Avatar */}
-                  <div className="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-sm font-black text-brand-700 flex-shrink-0">
-                    {s.name[0]}
-                  </div>
+                  <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={36} />
                   {/* Name + parent */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">{s.name}</p>

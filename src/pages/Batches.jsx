@@ -5,6 +5,7 @@ import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import { fetchBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch, updateBatchEnrolled } from '../lib/db'
 import { logAudit, ACTIONS } from '../lib/audit'
+import StudentAvatar from '../components/StudentAvatar'
 
 const COLORS = ['bg-brand-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600']
 const COLOR_HEX = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
@@ -561,9 +562,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
               <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
                 {searchResults.map(s => (
                   <div key={s.id} className="flex items-center gap-3 px-2 py-1.5 rounded-xl hover:bg-gray-50 transition">
-                    <div className="w-7 h-7 bg-brand-100 rounded-full flex items-center justify-center text-xs font-bold text-brand-700 flex-shrink-0">
-                      {s.name[0]}
-                    </div>
+                    <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={28} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
                       <p className="text-xs text-gray-400">{s.sport} · {s.batch || 'No primary batch'}</p>
@@ -599,9 +598,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
                   return (
                     <div key={s.id} className="flex items-center gap-3">
                       <span className="text-xs text-gray-400 w-5">{i + 1}</span>
-                      <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-xs font-bold text-brand-700 flex-shrink-0">
-                        {s.name[0]}
-                      </div>
+                      <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={32} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>

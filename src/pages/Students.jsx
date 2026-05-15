@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { RecordPaymentModal } from './Payments'
 import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches } from '../lib/db'
+import StudentAvatar from '../components/StudentAvatar'
 
 const accountBadge = {
   pending: 'badge-yellow',
@@ -373,9 +374,7 @@ export default function Students() {
                 <tr key={s.id} className="hover:bg-gray-50/60 transition group">
                   <td className="px-4 py-3">
                     <button onClick={() => setProfile(s)} className="flex items-center gap-3 text-left hover:opacity-80 transition">
-                      <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-xs font-bold text-brand-700 flex-shrink-0">
-                        {s.name[0]}
-                      </div>
+                      <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={32} />
                       <div>
                         <p className="font-semibold text-gray-900 hover:text-brand-600 transition">{s.name}</p>
                         {s.studentCode && (
