@@ -8,10 +8,11 @@ import {
 } from 'lucide-react'
 
 export default function StudentDashboard() {
-  const { studentUser, announcements, updateStudentPhoto } = useApp()
-  const [todayStatus,   setTodayStatus]   = useState(null)   // null | 'Present' | 'Absent'
-  const [monthStats,    setMonthStats]    = useState(null)   // { present, total }
+  const { studentUser, updateStudentPhoto } = useApp()
+  const [todayStatus,   setTodayStatus]   = useState(null)
+  const [monthStats,    setMonthStats]    = useState(null)
   const [payments,      setPayments]      = useState([])
+  const [notices,       setNotices]       = useState([])
   const [loadingData,   setLoadingData]   = useState(true)
   const [uploading,     setUploading]     = useState(false)
   const fileRef = useRef(null)
@@ -32,8 +33,12 @@ export default function StudentDashboard() {
   useEffect(() => {
     if (!studentUser?.id) return
     loadData()
+    if (studentUser.academy_id) {
+      db.fetchAnnouncements(studentUser.academy_id)
+        .then(data => setNotices(data.slice(0, 3)))
+        .catch(() => {})
+    }
   }, [])
-
 
   const loadData = async () => {
     try {
@@ -47,14 +52,10 @@ export default function StudentDashboard() {
         db.fetchStudentOwnPayments(studentUser.id),
       ])
 
-      // Today status
       const todayRow = monthAtt.find(r => r.date === todayStr)
       setTodayStatus(todayRow ? (todayRow.status || (todayRow.present ? 'Present' : 'Absent')) : null)
-
-      // Month stats — count only working days up to today
       const present = monthAtt.filter(r => r.present || r.status === 'Present').length
       setMonthStats({ present, total: monthAtt.length })
-
       setPayments(pays)
     } catch (err) {
       console.error(err)
@@ -64,7 +65,7 @@ export default function StudentDashboard() {
   }
 
   const latestPayment = payments[0]
-  const announceList  = (announcements?.length ? announcements : []).slice(0, 3)
+  const announceList  = notices
 
   const greeting = () => {
     const h = new Date().getHours()

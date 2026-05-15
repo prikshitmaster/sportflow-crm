@@ -4,13 +4,15 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts'
-import { TrendingUp, Award } from 'lucide-react'
+import { TrendingUp, Award, Sparkles } from 'lucide-react'
 import * as db from '../../lib/db'
 import {
   SPORT_CATEGORIES, FOOTBALL_CATEGORIES,
   getCategoryAvg, getOverallScore, getTier, monthLabel, SKILL_SHORTS,
   FOOTBALL_POSITIONS, POSITION_COLORS,
 } from '../../lib/performance'
+
+const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY
 
 export default function StudentStats() {
   const { studentUser } = useApp()
@@ -284,12 +286,22 @@ export default function StudentStats() {
           </div>
         )}
 
+        {/* ── AI Coach Tip ── */}
+        <AiCoachTip
+          assessment={current}
+          sport={sport}
+          categories={categories}
+          position={studentUser?.position}
+          overall={overall}
+          tier={tier}
+        />
+
         {/* ── History chart ── */}
-        {historyData.length > 1 && (
-          <div className="bg-white rounded-3xl p-5"
-            style={{ boxShadow: '0 4px 24px rgba(99,102,241,0.08), 0 1px 4px rgba(0,0,0,0.05)' }}>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Progress</p>
-            <p className="text-lg font-black text-gray-900 mt-0.5 mb-5">Score over time</p>
+        <div className="bg-white rounded-3xl p-5"
+          style={{ boxShadow: '0 4px 24px rgba(99,102,241,0.08), 0 1px 4px rgba(0,0,0,0.05)' }}>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Progress</p>
+          <p className="text-lg font-black text-gray-900 mt-0.5 mb-4">Score over time</p>
+          {historyData.length > 1 ? (
             <ResponsiveContainer width="100%" height={160}>
               <LineChart data={historyData} margin={{ top: 5, right: 8, bottom: 5, left: -25 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
@@ -305,8 +317,18 @@ export default function StudentStats() {
                 />
               </LineChart>
             </ResponsiveContainer>
-          </div>
-        )}
+          ) : (
+            <div className="flex items-center gap-4 bg-indigo-50 rounded-2xl p-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                <TrendingUp size={20} className="text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">Baseline: {historyData[0]?.score ?? overall}/100</p>
+                <p className="text-xs text-gray-400 mt-0.5">Your trend graph appears after your second assessment</p>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── Tier scale ── */}
         <div className="bg-white rounded-3xl p-5"
@@ -337,6 +359,82 @@ export default function StudentStats() {
           </div>
         </div>
 
+      </div>
+    </div>
+  )
+}
+
+// ── AI Coaching Tip ──────────────────────────────────────
+function AiCoachTip({ assessment, sport, categories, position, overall, tier }) {
+  const [tip,     setTip]     = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const cacheKey = `ai_tip_${assessment.id || assessment.assessed_month}`
+
+  useEffect(() => {
+    if (!GEMINI_KEY) return
+    const cached = sessionStorage.getItem(cacheKey)
+    if (cached) { setTip(cached); return }
+    generate()
+  }, [cacheKey])
+
+  async function generate() {
+    setLoading(true)
+    try {
+      const catLines = categories.map(cat => {
+        const avg = getCategoryAvg(assessment.scores, cat.skills)
+        const bottom = cat.skills
+          .map(s => ({ s, v: Number(assessment.scores?.[s] || 0) }))
+          .filter(x => x.v > 0).sort((a, b) => a.v - b.v)
+          .slice(0, 2).map(x => `${x.s}: ${x.v}`).join(', ')
+        return `${cat.short} ${avg}/100${bottom ? ` (weak: ${bottom})` : ''}`
+      }).join(' | ')
+
+      const prompt = `Football coach giving advice to a student.
+Position: ${position || 'unassigned'} | Overall: ${overall}/100 (${tier.label})
+${catLines}${assessment.notes ? `\nCoach note: "${assessment.notes}"` : ''}
+Write exactly 2 short sentences of actionable advice. Focus on the weakest skill area. Be positive and position-specific. Plain text only.`
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${GEMINI_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 100, temperature: 0.75 },
+          }),
+        }
+      )
+      const json = await res.json()
+      const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      if (text) { sessionStorage.setItem(cacheKey, text); setTip(text) }
+    } catch { /* silent — feature is optional */ }
+    finally { setLoading(false) }
+  }
+
+  if (!GEMINI_KEY) return null
+
+  return (
+    <div className="rounded-3xl overflow-hidden"
+      style={{ background: 'linear-gradient(135deg,#1e1b4b 0%,#312e81 60%,#4c1d95 100%)', boxShadow: '0 8px 32px rgba(99,102,241,0.28)' }}>
+      <div className="px-5 py-4">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ background: 'rgba(167,139,250,0.35)' }}>
+            <Sparkles size={14} className="text-violet-200" />
+          </div>
+          <p className="text-[10px] font-black text-violet-300 uppercase tracking-widest">AI Coach Tip</p>
+        </div>
+        {loading ? (
+          <div className="space-y-2.5">
+            <div className="h-3 rounded-full bg-white/10 animate-pulse w-full" />
+            <div className="h-3 rounded-full bg-white/10 animate-pulse w-4/5" />
+          </div>
+        ) : tip ? (
+          <p className="text-sm text-white/90 leading-relaxed">{tip}</p>
+        ) : (
+          <p className="text-xs text-violet-300 italic">Generating your personalised tip…</p>
+        )}
       </div>
     </div>
   )
