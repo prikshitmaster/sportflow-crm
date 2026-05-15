@@ -74,26 +74,32 @@ export default function StaffLayout() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto pb-20 animate-fade-in">
+      <main className="flex-1 overflow-y-auto" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
         <Suspense fallback={<PageSkeleton />}>
-          <Outlet />
+          <div className="page-enter">
+            <Outlet />
+          </div>
         </Suspense>
       </main>
 
       {/* Bottom navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-100 flex max-w-md mx-auto">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-100 flex max-w-md mx-auto"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {tabs.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to}
             className={({ isActive }) =>
-              `flex-1 flex flex-col items-center gap-1 py-2.5 transition-all ${
-                isActive ? 'text-brand-600' : 'text-gray-400 hover:text-gray-600'
+              `flex-1 flex flex-col items-center gap-0.5 pt-2 pb-1.5 transition-all active:scale-90 ${
+                isActive ? 'text-brand-600' : 'text-gray-400'
               }`
             }
           >
             {({ isActive }) => (
               <>
-                <div className={`p-1.5 rounded-xl ${isActive ? 'bg-brand-50' : ''}`}>
+                <div className={`relative p-1.5 rounded-xl transition-all duration-150 ${isActive ? 'bg-brand-50' : ''}`}>
                   <Icon size={20} strokeWidth={isActive ? 2.5 : 1.8} />
+                  {isActive && (
+                    <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-brand-600" />
+                  )}
                 </div>
                 <span className="text-[10px] font-semibold">{label}</span>
               </>

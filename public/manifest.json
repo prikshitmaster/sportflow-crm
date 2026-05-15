@@ -1,0 +1,16 @@
+{
+  "name": "SportFlow",
+  "short_name": "SportFlow",
+  "description": "Sports Academy Management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" },
+    { "src": "/icon-192.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "categories": ["sports", "productivity"],
+  "screenshots": []
+}

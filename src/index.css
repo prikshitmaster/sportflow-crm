@@ -3,11 +3,51 @@
 @tailwind utilities;
 
 @layer base {
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent; /* no blue flash on tap */
+  }
+
+  html {
+    scroll-behavior: smooth;
+    height: 100%;
+    /* Prevent elastic bounce scroll on iOS at page level */
+    overscroll-behavior: none;
+  }
+
   body {
     @apply font-sans antialiased text-gray-900 bg-gray-50;
+    height: 100%;
+    overscroll-behavior-y: none;
+    -webkit-font-smoothing: antialiased;
   }
+
+  /* Remove 300ms tap delay on all interactive elements */
+  a, button, [role="button"], label, select {
+    touch-action: manipulation;
+  }
+
+  /* Prevent accidental text selection on nav/buttons */
+  button, nav, [role="tablist"] {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Prevent iOS zoom on input focus (must be ≥16px) */
+  input, select, textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+/* Hide scrollbars on mobile but keep scrolling */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
+}
+
+/* Momentum scrolling on iOS for all scroll areas */
+.overflow-y-auto, .overflow-x-auto, main {
+  -webkit-overflow-scrolling: touch;
 }
 
 @layer components {
@@ -40,20 +80,32 @@
   .badge-purple { @apply badge bg-purple-50 text-purple-700; }
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-gray-200 rounded-full; }
-::-webkit-scrollbar-thumb:hover { @apply bg-gray-300; }
-
-/* Mobile touch scrolling */
-.overflow-x-auto { -webkit-overflow-scrolling: touch; }
+/* Desktop scrollbars only */
+@media (min-width: 769px) {
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-gray-200 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-gray-300; }
+}
 
 /* Hide scrollbar but keep scroll functionality */
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
-/* Safe area for bottom nav */
-.safe-pb { padding-bottom: env(safe-area-inset-bottom, 0); }
+/* Safe area helpers */
+.safe-pb  { padding-bottom: env(safe-area-inset-bottom, 0); }
+.safe-top { padding-top: env(safe-area-inset-top, 0); }
+
+/* Native-feel press on cards/buttons */
+.press-scale { transition: transform 0.1s ease; }
+.press-scale:active { transform: scale(0.97); }
+
+/* Page enter animation */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: fadeSlideUp 0.2s ease forwards; }
 
 /* Responsive grid helpers */
 @layer utilities {
