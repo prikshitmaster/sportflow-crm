@@ -38,32 +38,33 @@ export const FOOTBALL_CATEGORIES = [
   },
 ]
 
+// 4-3-3 formation — 11 positions with pitch coordinates (x: left→right, y: bottom→top, 0–100)
 export const FOOTBALL_POSITIONS = [
-  { id: 'GK', label: 'Goalkeeper',    group: 'Goalkeeper' },
-  { id: 'RB', label: 'Right Back',    group: 'Defender'   },
-  { id: 'CB', label: 'Center Back',   group: 'Defender'   },
-  { id: 'LB', label: 'Left Back',     group: 'Defender'   },
-  { id: 'DM', label: 'Defensive Mid', group: 'Midfielder' },
-  { id: 'CM', label: 'Central Mid',   group: 'Midfielder' },
-  { id: 'AM', label: 'Attacking Mid', group: 'Midfielder' },
-  { id: 'RW', label: 'Right Wing',    group: 'Forward'    },
-  { id: 'LW', label: 'Left Wing',     group: 'Forward'    },
-  { id: 'ST', label: 'Striker',       group: 'Forward'    },
-  { id: 'CF', label: 'Center Forward',group: 'Forward'    },
+  { id: 'GK',   label: 'Goalkeeper',                   group: 'Goalkeeper', x: 50, y: 7  },
+  { id: 'RB',   label: 'Right Back',                   group: 'Defender',   x: 83, y: 23 },
+  { id: 'RCB',  label: 'Right Center Back',             group: 'Defender',   x: 62, y: 20 },
+  { id: 'LCB',  label: 'Left Center Back',              group: 'Defender',   x: 38, y: 20 },
+  { id: 'LB',   label: 'Left Back',                    group: 'Defender',   x: 17, y: 23 },
+  { id: 'CDM',  label: 'Central Defensive Midfielder',  group: 'Midfielder', x: 50, y: 38 },
+  { id: 'LCAM', label: 'Central Attacking Midfielder',  group: 'Midfielder', x: 28, y: 53 },
+  { id: 'RCAM', label: 'Central Attacking Midfielder',  group: 'Midfielder', x: 72, y: 53 },
+  { id: 'LW',   label: 'Left Winger',                  group: 'Forward',    x: 15, y: 73 },
+  { id: 'ST',   label: 'Striker',                      group: 'Forward',    x: 50, y: 80 },
+  { id: 'RW',   label: 'Right Winger',                 group: 'Forward',    x: 85, y: 73 },
 ]
 
 export const POSITION_COLORS = {
-  GK: { bg: 'bg-yellow-100',  text: 'text-yellow-700',  hex: '#d97706' },
-  RB: { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
-  CB: { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
-  LB: { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
-  DM: { bg: 'bg-green-100',   text: 'text-green-700',   hex: '#059669' },
-  CM: { bg: 'bg-green-100',   text: 'text-green-700',   hex: '#059669' },
-  AM: { bg: 'bg-teal-100',    text: 'text-teal-700',    hex: '#0d9488' },
-  RW: { bg: 'bg-red-100',     text: 'text-red-700',     hex: '#dc2626' },
-  LW: { bg: 'bg-red-100',     text: 'text-red-700',     hex: '#dc2626' },
-  ST: { bg: 'bg-purple-100',  text: 'text-purple-700',  hex: '#7c3aed' },
-  CF: { bg: 'bg-purple-100',  text: 'text-purple-700',  hex: '#7c3aed' },
+  GK:   { bg: 'bg-yellow-100',  text: 'text-yellow-700',  hex: '#d97706' },
+  RB:   { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
+  RCB:  { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
+  LCB:  { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
+  LB:   { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
+  CDM:  { bg: 'bg-green-100',   text: 'text-green-700',   hex: '#059669' },
+  LCAM: { bg: 'bg-teal-100',    text: 'text-teal-700',    hex: '#0d9488' },
+  RCAM: { bg: 'bg-teal-100',    text: 'text-teal-700',    hex: '#0d9488' },
+  LW:   { bg: 'bg-red-100',     text: 'text-red-700',     hex: '#dc2626' },
+  ST:   { bg: 'bg-purple-100',  text: 'text-purple-700',  hex: '#7c3aed' },
+  RW:   { bg: 'bg-red-100',     text: 'text-red-700',     hex: '#dc2626' },
 }
 
 export const SPORT_CATEGORIES = {
