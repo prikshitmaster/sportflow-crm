@@ -7,8 +7,9 @@ import {
   ShieldCheck, Award, ChevronRight, Pencil, Ban, Trash2,
 } from 'lucide-react'
 import { RecordPaymentModal } from './Payments'
-import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches } from '../lib/db'
+import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition } from '../lib/db'
 import StudentAvatar from '../components/StudentAvatar'
+import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 
 const accountBadge = {
   pending: 'badge-yellow',
@@ -1196,6 +1197,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     joinDate:     s.joinDate     || '',
     trainingType: s.trainingType || 'Daily',
     feePlan:      s.feePlan      || 'monthly',
+    position:     s.position     || '',
   })
   const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
@@ -1361,6 +1363,32 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
             )}
           </div>
         )}
+        {/* Position */}
+        <div className="col-span-2">
+          <label className="label">Position</label>
+          <input
+            className="input text-sm mb-2"
+            placeholder="Type any position… (e.g. False 9, Sweeper) or pick below"
+            value={form.position}
+            onChange={e => set('position', e.target.value)}
+            maxLength={40}
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {FOOTBALL_POSITIONS.map(p => {
+              const col    = POSITION_COLORS[p.id]
+              const active = form.position === p.id
+              return (
+                <button key={p.id} type="button"
+                  onClick={() => set('position', active ? '' : p.id)}
+                  className={`px-2 py-1 rounded-lg text-xs font-black border transition ${
+                    active ? `${col.bg} ${col.text} border-current` : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+                  }`}>
+                  {p.id} <span className="font-normal opacity-60">· {p.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>

@@ -6,6 +6,8 @@ import { SPORTS } from '../data/mockData'
 import { fetchBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch, updateBatchEnrolled } from '../lib/db'
 import { logAudit, ACTIONS } from '../lib/audit'
 import StudentAvatar from '../components/StudentAvatar'
+import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
+import { updateStudentPosition } from '../lib/db'
 
 const COLORS = ['bg-brand-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600']
 const COLOR_HEX = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
@@ -396,6 +398,23 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [posEditId, setPosEditId]   = useState(null)  // student id being position-edited
+  const [posInput,  setPosInput]    = useState('')
+  const [posSaving, setPosSaving]   = useState(false)
+  // local position overrides: { [studentId]: positionString }
+  const [localPositions, setLocalPositions] = useState({})
+
+  const openPosEdit = (s) => { setPosEditId(s.id); setPosInput(localPositions[s.id] ?? s.position ?? '') }
+  const closePosEdit = () => { setPosEditId(null); setPosInput('') }
+  const savePosition = async (studentId) => {
+    setPosSaving(true)
+    try {
+      await updateStudentPosition(studentId, posInput || null)
+      setLocalPositions(prev => ({ ...prev, [studentId]: posInput || null }))
+      closePosEdit()
+    } catch {}
+    setPosSaving(false)
+  }
   const coaches = staff.filter(s => s.role !== 'Admin')
   const pct = Math.round((b.enrolled / b.capacity) * 100)
 
@@ -593,31 +612,89 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
             ) : (
               <div className="space-y-2.5 max-h-72 overflow-y-auto">
                 {allEnrolled.map((s, i) => {
-                  const isMultiBatch = !primaryIds.has(s.id) || (mbStudentIds.has(s.id) && !( s.batchId === b.id || s.batch === b.name))
                   const canUnassign = mbStudentIds.has(s.id)
+                  const pos = localPositions[s.id] !== undefined ? localPositions[s.id] : s.position
+                  const preset = pos ? FOOTBALL_POSITIONS.find(p => p.id === pos) : null
+                  const posCol = preset ? POSITION_COLORS[preset.id] : null
                   return (
-                    <div key={s.id} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400 w-5">{i + 1}</span>
-                      <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={32} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
-                          {!primaryIds.has(s.id) && (
-                            <span className="text-[9px] font-bold bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full flex-shrink-0">Multi</span>
-                          )}
+                    <div key={s.id} className="rounded-xl border border-gray-100 overflow-hidden">
+                      {/* Main row */}
+                      <div className="flex items-center gap-3 px-2 py-2">
+                        <span className="text-xs text-gray-400 w-5 flex-shrink-0">{i + 1}</span>
+                        <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={32} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
+                            {!primaryIds.has(s.id) && (
+                              <span className="text-[9px] font-bold bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full flex-shrink-0">Multi</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400">{s.sport} · {s.age} yrs</p>
                         </div>
-                        <p className="text-xs text-gray-400">{s.sport} · {s.age} yrs</p>
-                      </div>
-                      {canUnassign ? (
+                        {/* Position chip / button */}
                         <button
-                          onClick={() => handleUnassign(s.id)}
-                          disabled={unassigning === s.id}
-                          className="text-[10px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition disabled:opacity-40 flex-shrink-0"
+                          onClick={() => posEditId === s.id ? closePosEdit() : openPosEdit(s)}
+                          className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition flex-shrink-0 ${
+                            pos
+                              ? posCol
+                                ? `${posCol.bg} ${posCol.text} border-current`
+                                : 'bg-gray-100 text-gray-600 border-gray-200'
+                              : 'bg-gray-50 text-gray-400 border-dashed border-gray-300 hover:border-gray-400'
+                          }`}
                         >
-                          {unassigning === s.id ? '…' : 'Remove'}
+                          {pos || '+ Pos'}
                         </button>
-                      ) : (
-                        <span className="badge badge-green text-[10px]">Primary</span>
+                        {canUnassign ? (
+                          <button
+                            onClick={() => handleUnassign(s.id)}
+                            disabled={unassigning === s.id}
+                            className="text-[10px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition disabled:opacity-40 flex-shrink-0"
+                          >
+                            {unassigning === s.id ? '…' : 'Remove'}
+                          </button>
+                        ) : (
+                          <span className="badge badge-green text-[10px] flex-shrink-0">Primary</span>
+                        )}
+                      </div>
+                      {/* Inline position editor */}
+                      {posEditId === s.id && (
+                        <div className="px-3 pb-3 pt-1 bg-gray-50 border-t border-gray-100">
+                          <input
+                            className="input text-xs py-1.5 mb-2"
+                            placeholder="Type position or pick below…"
+                            value={posInput}
+                            onChange={e => setPosInput(e.target.value)}
+                            maxLength={40}
+                            autoFocus
+                          />
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {FOOTBALL_POSITIONS.map(p => {
+                              const c = POSITION_COLORS[p.id]
+                              const active = posInput === p.id
+                              return (
+                                <button key={p.id} type="button"
+                                  onClick={() => setPosInput(active ? '' : p.id)}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-black border transition ${
+                                    active ? `${c.bg} ${c.text} border-current` : 'bg-white text-gray-400 border-gray-200 hover:bg-gray-100'
+                                  }`}>
+                                  {p.id}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => savePosition(s.id)}
+                              disabled={posSaving}
+                              className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-brand-600 text-white hover:bg-brand-700 transition disabled:opacity-50"
+                            >
+                              {posSaving ? '…' : 'Save'}
+                            </button>
+                            <button onClick={closePosEdit} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )

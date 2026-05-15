@@ -521,6 +521,7 @@ export function AppProvider({ children }) {
         joinDate:     updated.join_date,
         trainingType: updated.training_type || 'Daily',
         feePlan:      updated.fee_plan || 'monthly',
+        position:     updated.position || null,
       } : x))
 
       if (oldBatchId !== newBatchId) {

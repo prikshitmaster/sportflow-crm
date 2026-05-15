@@ -102,6 +102,7 @@ export async function updateStudent(id, s) {
     join_date:     s.joinDate     || null,
     training_type: s.trainingType || 'Daily',
     fee_plan:      s.feePlan      || 'monthly',
+    position:      s.position     || null,
   }
   const { data, error } = await supabase
     .from('students')
