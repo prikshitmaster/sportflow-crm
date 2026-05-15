@@ -203,7 +203,7 @@ function AppRoutes() {
         <Route path="attendance"  element={<StudentAttendance />} />
         <Route path="stats"       element={<StudentStats />} />
         <Route path="payments"    element={<StudentPayments />} />
-        <Route path="notices"     element={<StudentAnnouncements />} />
+        <Route path="announcements" element={<StudentAnnouncements />} />
         <Route path="scan"        element={<StudentScan />} />
       </Route>
 

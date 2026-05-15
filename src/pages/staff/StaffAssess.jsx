@@ -199,6 +199,61 @@ function AssessTab({ user, batches, students }) {
   )
 }
 
+// ── Position Picker ───────────────────────────────────────
+function PositionPicker({ position, setPosition }) {
+  const [open, setOpen] = useState(false)
+  const preset = FOOTBALL_POSITIONS.find(p => p.id === position)
+  const col    = preset ? POSITION_COLORS[preset.id] : null
+
+  return (
+    <div className="mt-3">
+      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Position</p>
+      {/* Collapsed trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 w-full text-left"
+      >
+        {position ? (
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-black border ${col ? `${col.bg} ${col.text} border-current` : 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+            {position}
+            {preset && <span className="font-normal opacity-60 text-xs">· {preset.label}</span>}
+          </span>
+        ) : (
+          <span className="px-3 py-1.5 rounded-xl text-sm text-gray-400 border border-dashed border-gray-300 bg-gray-50">
+            Select position…
+          </span>
+        )}
+        <ChevronDown size={14} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Expanded chip grid */}
+      {open && (
+        <div className="mt-2 p-3 bg-gray-50 rounded-2xl border border-gray-100">
+          <div className="flex flex-wrap gap-1.5">
+            {FOOTBALL_POSITIONS.map(p => {
+              const c      = POSITION_COLORS[p.id]
+              const active = position === p.id
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { setPosition(active ? '' : p.id); setOpen(false) }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-black border transition ${
+                    active ? `${c.bg} ${c.text} border-current` : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  {p.id} <span className="font-normal opacity-60">· {p.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Assessment Modal ──────────────────────────────────────
 
 function AssessmentModal({ student, existing, sport, categories, month, batchId, user, onClose, onSaved }) {
@@ -290,38 +345,7 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
           </div>
 
           {/* Position picker */}
-          <div className="mt-3">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Position</p>
-            {/* Free-text input */}
-            <input
-              className="input text-sm mb-2 w-full"
-              placeholder="Type any position name… (e.g. False 9, Sweeper, Libero)"
-              value={position}
-              onChange={e => setPosition(e.target.value)}
-              maxLength={40}
-            />
-            {/* Quick-pick preset chips */}
-            <div className="flex flex-wrap gap-1.5">
-              {FOOTBALL_POSITIONS.map(p => {
-                const col    = POSITION_COLORS[p.id]
-                const active = position === p.id
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setPosition(active ? '' : p.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-black border transition ${
-                      active
-                        ? `${col.bg} ${col.text} border-current`
-                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    {p.id} <span className="font-normal opacity-60">· {p.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          <PositionPicker position={position} setPosition={setPosition} />
         </div>
 
         {/* Prompt */}

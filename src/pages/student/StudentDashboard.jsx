@@ -172,28 +172,23 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Fee status */}
-      {latestPayment && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <CreditCard size={16} className="text-brand-600" />
-              <span className="text-sm font-bold text-gray-900">Latest Payment</span>
-            </div>
-            <Link to="/student/payments" className="text-xs text-brand-600 font-semibold hover:underline">View all</Link>
+      {/* Fee alert — only shown when overdue or suspended */}
+      {(studentUser?.status === 'Suspended' || (latestPayment && latestPayment.status !== 'Paid')) && (
+        <Link to="/student/payments"
+          className="flex items-center gap-4 bg-red-50 border border-red-200 rounded-2xl p-4">
+          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <CreditCard size={18} className="text-red-500" />
           </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-gray-900">{latestPayment.month}</p>
-              <p className="text-xs text-gray-400">₹{latestPayment.amount?.toLocaleString('en-IN')}</p>
-            </div>
-            <span className={`badge ${
-              latestPayment.status === 'Paid' ? 'badge-green'
-              : latestPayment.status === 'Overdue' ? 'badge-red'
-              : 'badge-yellow'
-            }`}>{latestPayment.status}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-red-700">Fees Overdue</p>
+            <p className="text-xs text-red-400 mt-0.5">
+              {latestPayment?.month
+                ? `${latestPayment.month} — ₹${latestPayment.amount?.toLocaleString('en-IN')} unpaid`
+                : 'Please clear your dues to continue'}
+            </p>
           </div>
-        </div>
+          <ChevronRight size={16} className="text-red-400 flex-shrink-0" />
+        </Link>
       )}
 
       {/* Announcements */}

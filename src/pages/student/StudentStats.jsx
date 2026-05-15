@@ -12,7 +12,7 @@ import {
   FOOTBALL_POSITIONS, POSITION_COLORS,
 } from '../../lib/performance'
 
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY
+const GROQ_KEY = import.meta.env.VITE_GROQ_KEY
 
 export default function StudentStats() {
   const { studentUser } = useApp()
@@ -294,6 +294,9 @@ export default function StudentStats() {
           position={studentUser?.position}
           overall={overall}
           tier={tier}
+          history={historyData}
+          studentName={studentUser?.name?.split(' ')[0]}
+          batch={studentUser?.batch}
         />
 
         {/* ── History chart ── */}
@@ -364,15 +367,81 @@ export default function StudentStats() {
   )
 }
 
+// ── Position priority map — what a pro coach values per role ─
+const POSITION_PRIORITIES = {
+  GK:  ['Shot Stopping', 'Distribution', 'Positioning', 'Commanding Area'],
+  CB:  ['Aerial/Heading', 'Defensive Positioning', 'Tackling', 'Passing from Back'],
+  LB:  ['Defensive Tracking', 'Crossing', 'Stamina', 'Pace'],
+  RB:  ['Defensive Tracking', 'Crossing', 'Stamina', 'Pace'],
+  CDM: ['Ball Winning', 'Positioning', 'Short Passing', 'Stamina'],
+  CM:  ['Passing Range', 'Movement', 'Decision Making', 'Stamina'],
+  CAM: ['Creativity', 'Final Pass', 'Movement off Ball', 'Shooting'],
+  LW:  ['Dribbling', 'Pace', 'Crossing/Cutting Inside', 'Finishing'],
+  RW:  ['Dribbling', 'Pace', 'Crossing/Cutting Inside', 'Finishing'],
+  ST:  ['Finishing', 'Movement off Ball', 'Hold-up Play', 'Aerial Ability'],
+  SS:  ['Movement', 'Finishing', 'Link-up Play', 'Dribbling'],
+}
+
+function renderInline(text) {
+  // Render **bold** inline
+  const parts = text.split(/(\*\*[^*]+\*\*)/)
+  return parts.map((p, i) =>
+    p.startsWith('**') && p.endsWith('**')
+      ? <strong key={i} className="text-white font-semibold">{p.slice(2, -2)}</strong>
+      : <span key={i}>{p}</span>
+  )
+}
+
+function TipDisplay({ tip }) {
+  const blocks = tip.trim().split('\n')
+  const elements = []
+  let sectionCount = 0
+
+  blocks.forEach((raw, i) => {
+    const line = raw.trim()
+    if (!line) return
+
+    if (line.startsWith('**') && line.endsWith('**')) {
+      const label = line.slice(2, -2)
+      elements.push(
+        <div key={`h${i}`} className={sectionCount > 0 ? 'pt-3 border-t border-white/10' : ''}>
+          <p className="text-xs font-bold text-violet-300 mb-1">{label}</p>
+        </div>
+      )
+      sectionCount++
+    } else if (line.startsWith('•') || line.startsWith('-')) {
+      const text = line.replace(/^[•\-]\s*/, '')
+      const parts = text.split(/\s*—\s*/)
+      elements.push(
+        <div key={`b${i}`} className="flex items-start gap-2.5 ml-0.5">
+          <span className="text-violet-400 text-xs mt-1 flex-shrink-0">▸</span>
+          <p className="text-sm text-white/85 leading-snug">
+            {parts.length > 1
+              ? <><span className="font-semibold text-white">{parts[0]}</span><span className="text-white/55"> — {parts.slice(1).join(' — ')}</span></>
+              : renderInline(text)}
+          </p>
+        </div>
+      )
+    } else {
+      elements.push(
+        <p key={`p${i}`} className="text-sm text-white/80 leading-relaxed">{renderInline(line)}</p>
+      )
+    }
+  })
+
+  return <div className="space-y-2">{elements}</div>
+}
+
 // ── AI Coaching Tip ──────────────────────────────────────
-function AiCoachTip({ assessment, sport, categories, position, overall, tier }) {
+function AiCoachTip({ assessment, sport, categories, position, overall, tier, history, studentName, batch }) {
   const [tip,     setTip]     = useState(null)
   const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState(null)
 
-  const cacheKey = `ai_tip_${assessment.id || assessment.assessed_month}`
+  const cacheKey = `ai_tip_v6_${assessment.id || assessment.assessed_month}`
 
   useEffect(() => {
-    if (!GEMINI_KEY) return
+    if (!GROQ_KEY) return
     const cached = sessionStorage.getItem(cacheKey)
     if (cached) { setTip(cached); return }
     generate()
@@ -380,61 +449,135 @@ function AiCoachTip({ assessment, sport, categories, position, overall, tier }) 
 
   async function generate() {
     setLoading(true)
+    setError(null)
     try {
-      const catLines = categories.map(cat => {
+      const allSkills = categories.flatMap(cat =>
+        cat.skills.map(s => {
+          const val = Number(assessment.scores?.[s] || 0)
+          return val > 0 ? `  ${s}: ${val}/10` : null
+        }).filter(Boolean)
+      ).join('\n')
+
+      const catSummary = categories.map(cat => {
         const avg = getCategoryAvg(assessment.scores, cat.skills)
-        const bottom = cat.skills
-          .map(s => ({ s, v: Number(assessment.scores?.[s] || 0) }))
-          .filter(x => x.v > 0).sort((a, b) => a.v - b.v)
-          .slice(0, 2).map(x => `${x.s}: ${x.v}`).join(', ')
-        return `${cat.short} ${avg}/100${bottom ? ` (weak: ${bottom})` : ''}`
-      }).join(' | ')
+        return `  ${cat.label || cat.short}: ${avg}/100`
+      }).join('\n')
 
-      const prompt = `Football coach giving advice to a student.
-Position: ${position || 'unassigned'} | Overall: ${overall}/100 (${tier.label})
-${catLines}${assessment.notes ? `\nCoach note: "${assessment.notes}"` : ''}
-Write exactly 2 short sentences of actionable advice. Focus on the weakest skill area. Be positive and position-specific. Plain text only.`
+      const trendLine = history?.length > 1
+        ? `Score trend: ${history.map(h => h.score).join(' → ')} (${history[history.length-1].score - history[0].score > 0 ? '+' : ''}${history[history.length-1].score - history[0].score} overall)`
+        : 'First assessment — no trend data yet'
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-8b:generateContent?key=${GEMINI_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 100, temperature: 0.75 },
-          }),
-        }
+      const scoredSkills = categories.flatMap(cat =>
+        cat.skills.map(s => ({ name: s, val: Number(assessment.scores?.[s] || 0) }))
+      ).filter(x => x.val > 0).sort((a, b) => a.val - b.val)
+      const weakest  = scoredSkills[0]
+      const strongest = [...scoredSkills].sort((a, b) => b.val - a.val)[0]
+
+      const posKey = Object.keys(POSITION_PRIORITIES).find(k =>
+        position?.toUpperCase().includes(k)
       )
+      const priorities = posKey ? POSITION_PRIORITIES[posKey] : null
+
+      const prompt = `You are a UEFA Pro-Licensed ${sport || 'football'} coach with 20 years of elite youth development experience.
+
+PLAYER: ${studentName || 'Player'}, ${batch || ''} batch
+POSITION: ${position || 'Not assigned'}
+OVERALL RATING: ${overall}/100 — ${tier.label} Tier
+${trendLine}
+
+INDIVIDUAL SKILL SCORES (out of 10):
+${allSkills || '  No scores recorded'}
+
+CATEGORY AVERAGES:
+${catSummary}
+
+KEY STRENGTHS: ${strongest ? `${strongest.name} (${strongest.val}/10)` : 'Not enough data'}
+BIGGEST WEAKNESS: ${weakest ? `${weakest.name} (${weakest.val}/10)` : 'Not enough data'}
+${priorities ? `CRITICAL SKILLS FOR ${position?.toUpperCase() || 'THIS POSITION'}: ${priorities.join(', ')}` : ''}
+${assessment.notes ? `COACH OBSERVATION: "${assessment.notes}"` : ''}
+
+Write the analysis directly to the player using "you/your". Use EXACTLY this markdown structure:
+
+**Strength**
+• Your [best skill] — [why it gives you an edge at your position]. One line.
+• Your [second quality] — [what it enables you to do]. One line.
+
+**This Week's Focus**
+• [Most critical weakness] — [why it's holding you back at your position]. One line.
+• [Second improvement area] — [specific aspect to work on]. One line.
+
+**Drills**
+• Drill Name (Xmin) — what to do and what it trains. One line.
+• Drill Name (Xmin) — second drill, different muscle group. One line.
+
+**Verdict**
+One punchy sentence about what this player can become if they execute.
+
+Rules: Address the player as "you/your". Use bullet points in every section except Verdict. Bold headers exactly as shown. No intro sentence, no greetings. Be specific — name real skills and real drills. Tone: direct, warm, confident like Pep Guardiola.`
+
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GROQ_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 200,
+          temperature: 0.8,
+        }),
+      })
       const json = await res.json()
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      if (json.error) { setError(json.error.message); return }
+      const text = json.choices?.[0]?.message?.content?.trim()
       if (text) { sessionStorage.setItem(cacheKey, text); setTip(text) }
-    } catch { /* silent — feature is optional */ }
-    finally { setLoading(false) }
+      else setError('No response from AI')
+    } catch (e) {
+      setError(e.message || 'Network error')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  if (!GEMINI_KEY) return null
+  if (!GROQ_KEY) return null
 
   return (
     <div className="rounded-3xl overflow-hidden"
-      style={{ background: 'linear-gradient(135deg,#1e1b4b 0%,#312e81 60%,#4c1d95 100%)', boxShadow: '0 8px 32px rgba(99,102,241,0.28)' }}>
-      <div className="px-5 py-4">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ background: 'rgba(167,139,250,0.35)' }}>
-            <Sparkles size={14} className="text-violet-200" />
+      style={{ background: 'linear-gradient(135deg,#0f0c29 0%,#302b63 50%,#24243e 100%)', boxShadow: '0 8px 40px rgba(99,102,241,0.32)' }}>
+      <div className="px-5 py-5">
+        <div className="flex items-center justify-between gap-2.5 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'rgba(167,139,250,0.25)', border: '1px solid rgba(167,139,250,0.3)' }}>
+              <Sparkles size={15} className="text-violet-300" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-violet-400 uppercase tracking-widest leading-none">AI Coach Analysis</p>
+              <p className="text-[9px] text-violet-600 mt-0.5">Personalised for your position & scores</p>
+            </div>
           </div>
-          <p className="text-[10px] font-black text-violet-300 uppercase tracking-widest">AI Coach Tip</p>
+          {!loading && (tip || error) && (
+            <button onClick={() => { sessionStorage.removeItem(cacheKey); setTip(null); generate() }}
+              className="text-[10px] text-violet-500 hover:text-violet-300 transition">↺ refresh</button>
+          )}
         </div>
+
         {loading ? (
           <div className="space-y-2.5">
-            <div className="h-3 rounded-full bg-white/10 animate-pulse w-full" />
-            <div className="h-3 rounded-full bg-white/10 animate-pulse w-4/5" />
+            <div className="h-2.5 rounded-full bg-white/8 animate-pulse w-full" />
+            <div className="h-2.5 rounded-full bg-white/8 animate-pulse w-11/12" />
+            <div className="h-2.5 rounded-full bg-white/8 animate-pulse w-4/5" />
+            <div className="h-2.5 rounded-full bg-white/8 animate-pulse w-10/12" />
+            <p className="text-[10px] text-violet-500 mt-2">Analysing your performance data…</p>
+          </div>
+        ) : error ? (
+          <div>
+            <p className="text-xs text-red-400 mb-2">{error}</p>
+            <button onClick={generate} className="text-[11px] font-bold text-violet-400 underline">Try again</button>
           </div>
         ) : tip ? (
-          <p className="text-sm text-white/90 leading-relaxed">{tip}</p>
-        ) : (
-          <p className="text-xs text-violet-300 italic">Generating your personalised tip…</p>
-        )}
+          <TipDisplay tip={tip} />
+        ) : null}
       </div>
     </div>
   )
