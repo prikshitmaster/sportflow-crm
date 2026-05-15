@@ -5,7 +5,8 @@
 @layer base {
   * {
     box-sizing: border-box;
-    -webkit-tap-highlight-color: transparent; /* no blue flash on tap */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none; /* disables iOS long-press popup (copy/share/search) */
   }
 
   html {
