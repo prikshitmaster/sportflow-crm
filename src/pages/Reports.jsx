@@ -8,10 +8,11 @@ import {
   Download, TrendingUp, Users, CreditCard, UserPlus, AlertTriangle,
   ArrowUpRight, ArrowDownRight, Minus, BarChart3, BookOpen, Layers,
   CalendarCheck, Clock, Search, FileText, IndianRupee, Target, Star,
-  Shield, ChevronDown, ChevronUp, RefreshCw,
+  Shield, ChevronDown, ChevronUp, RefreshCw, Filter, X, Calendar, User,
+  FileDown, CheckSquare, Trash2, PlusSquare, Edit3,
 } from 'lucide-react'
 import * as db from '../lib/db'
-import { ACTION_LABELS, ENTITY_COLORS, ROLE_COLORS } from '../lib/audit'
+import { ACTION_LABELS, ACTION_CATEGORY, ENTITY_COLORS, ROLE_COLORS } from '../lib/audit'
 import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel } from '../lib/performance'
 
 // ── Utilities ─────────────────────────────────────────────
@@ -1322,7 +1323,52 @@ function PerformanceTab({ students, batches, academyId }) {
 
 // ── Audit Log Tab ──────────────────────────────────────────
 
-const ENTITY_TYPES = ['All', 'student', 'payment', 'batch']
+const ENTITY_TYPES = ['All', 'student', 'payment', 'batch', 'trial', 'event', 'staff', 'announcement', 'assessment']
+const ACTION_TYPES = [
+  { id: 'all',    label: 'All Actions', icon: null },
+  { id: 'add',    label: 'Added',       icon: PlusSquare },
+  { id: 'edit',   label: 'Edited',      icon: Edit3 },
+  { id: 'delete', label: 'Deleted',     icon: Trash2 },
+]
+
+const ENTITY_ICONS = {
+  student:      '👤',
+  payment:      '💳',
+  batch:        '🏷️',
+  trial:        '📋',
+  event:        '📅',
+  staff:        '👷',
+  announcement: '📢',
+  assessment:   '📊',
+}
+
+function exportAuditCSV(logs) {
+  const rows = [
+    ['Date', 'Time', 'Actor', 'Role', 'Action', 'Entity Type', 'Entity Name', 'Changes', 'Note'],
+    ...logs.map(l => {
+      const dt = l.created_at ? new Date(l.created_at) : null
+      const changes = Object.entries(l.changes || {}).map(([k, v]) =>
+        v && typeof v === 'object' ? `${k}: ${v.old || '—'} → ${v.new || '—'}` : `${k}: ${v}`
+      ).join('; ')
+      return [
+        dt ? dt.toLocaleDateString('en-IN') : '',
+        dt ? dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '',
+        l.actor_name || '',
+        l.actor_role || '',
+        ACTION_LABELS[l.action] || l.action,
+        l.entity_type || '',
+        l.entity_name || '',
+        changes,
+        l.note || '',
+      ]
+    })
+  ]
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = `audit-log-${new Date().toISOString().slice(0,10)}.csv`; a.click()
+  URL.revokeObjectURL(url)
+}
 
 function relativeTime(iso) {
   if (!iso) return '—'
@@ -1350,14 +1396,18 @@ function groupByDate(logs) {
 }
 
 function AuditEntry({ log, expanded, onToggle }) {
-  const changes = log.changes || {}
+  const changes    = log.changes || {}
   const hasChanges = Object.keys(changes).length > 0
-  const label = ACTION_LABELS[log.action] || log.action
-  const roleColor = ROLE_COLORS[log.actor_role] || ROLE_COLORS.Staff
+  const label      = ACTION_LABELS[log.action] || log.action
+  const roleColor  = ROLE_COLORS[log.actor_role] || ROLE_COLORS.Staff
   const entityColor = ENTITY_COLORS[log.entity_type] || { bg: 'bg-gray-100', text: 'text-gray-600' }
+  const cat        = ACTION_CATEGORY[log.action]
+  const catColor   = cat === 'add' ? 'text-emerald-500' : cat === 'delete' ? 'text-red-400' : 'text-amber-500'
+  const catIcon    = cat === 'add' ? <PlusSquare size={11} className={catColor}/> : cat === 'delete' ? <Trash2 size={11} className={catColor}/> : <Edit3 size={11} className={catColor}/>
+  const entityEmoji = ENTITY_ICONS[log.entity_type] || '•'
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-3 hover:border-gray-200 transition">
+    <div className="bg-white rounded-xl border border-gray-100 p-3 hover:border-gray-200 transition group">
       <div className="flex items-start gap-3">
         {/* Avatar */}
         <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-black flex-shrink-0 uppercase">
@@ -1365,23 +1415,32 @@ function AuditEntry({ log, expanded, onToggle }) {
         </div>
 
         <div className="flex-1 min-w-0">
-          {/* Actor row */}
+          {/* Actor + role */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-bold text-gray-900">{log.actor_name}</span>
             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${roleColor.bg} ${roleColor.text}`}>
               {log.actor_role}
             </span>
           </div>
-          {/* Action row */}
-          <p className="text-xs text-gray-600 mt-0.5">
-            {label}{log.entity_name ? <> — <span className="font-semibold text-gray-900">{log.entity_name}</span></> : ''}
-          </p>
-          {/* Entity type badge */}
-          {log.entity_type && (
-            <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-full mt-1 ${entityColor.bg} ${entityColor.text}`}>
-              {log.entity_type}
-            </span>
-          )}
+          {/* Action + entity */}
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            {catIcon}
+            <p className="text-xs text-gray-600">
+              {label}
+              {log.entity_name ? <> — <span className="font-semibold text-gray-900">{log.entity_name}</span></> : ''}
+            </p>
+          </div>
+          {/* Entity badge + note */}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {log.entity_type && (
+              <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${entityColor.bg} ${entityColor.text}`}>
+                <span>{entityEmoji}</span> {log.entity_type}
+              </span>
+            )}
+            {log.note && (
+              <span className="text-[10px] text-gray-400 italic">"{log.note}"</span>
+            )}
+          </div>
         </div>
 
         {/* Time + diff toggle */}
@@ -1389,12 +1448,13 @@ function AuditEntry({ log, expanded, onToggle }) {
           <span className="text-[11px] text-gray-400" title={fullTime(log.created_at)}>
             {relativeTime(log.created_at)}
           </span>
+          <span className="text-[10px] text-gray-300">{fullTime(log.created_at).split(',')[1]?.trim()}</span>
           {hasChanges && (
             <button
               onClick={onToggle}
-              className="flex items-center gap-0.5 text-[10px] text-brand-600 font-semibold hover:underline"
+              className="flex items-center gap-0.5 text-[10px] text-brand-600 font-semibold hover:underline mt-1"
             >
-              {expanded ? <><ChevronUp size={10}/> Hide</> : <><ChevronDown size={10}/> Diff</>}
+              {expanded ? <><ChevronUp size={10}/> Hide</> : <><ChevronDown size={10}/> Details</>}
             </button>
           )}
         </div>
@@ -1403,21 +1463,21 @@ function AuditEntry({ log, expanded, onToggle }) {
       {/* Expanded diff */}
       {expanded && hasChanges && (
         <div className="mt-3 pt-3 border-t border-gray-100">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Changes</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">What Changed</p>
           <div className="space-y-1.5">
             {Object.entries(changes).map(([field, val]) => {
               const isOldNew = val && typeof val === 'object' && ('old' in val || 'new' in val)
               return (
                 <div key={field} className="flex items-start gap-2 text-xs">
-                  <span className="text-gray-500 font-semibold w-20 flex-shrink-0 capitalize">{field}</span>
+                  <span className="text-gray-400 font-semibold w-24 flex-shrink-0 capitalize">{field}</span>
                   {isOldNew ? (
                     <span className="flex items-center gap-1.5 flex-wrap">
-                      <span className="line-through text-red-400">{String(val.old || '—')}</span>
+                      <span className="line-through text-red-400 bg-red-50 px-1 rounded">{String(val.old || '—')}</span>
                       <span className="text-gray-300">→</span>
-                      <span className="text-emerald-600 font-medium">{String(val.new || '—')}</span>
+                      <span className="text-emerald-600 font-medium bg-emerald-50 px-1 rounded">{String(val.new || '—')}</span>
                     </span>
                   ) : (
-                    <span className="text-gray-700">{String(val)}</span>
+                    <span className="text-gray-600">{String(val)}</span>
                   )}
                 </div>
               )
@@ -1430,15 +1490,20 @@ function AuditEntry({ log, expanded, onToggle }) {
 }
 
 function AuditTab({ academyId }) {
-  const [logs, setLogs]           = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [search, setSearch]       = useState('')
-  const [filterType, setFilterType] = useState('All')
+  const [logs, setLogs]             = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [search, setSearch]         = useState('')
+  const [entityFilter, setEntityFilter] = useState('All')
+  const [actionFilter, setActionFilter] = useState('all')
+  const [actorFilter, setActorFilter]   = useState('All')
+  const [dateFrom, setDateFrom]     = useState('')
+  const [dateTo, setDateTo]         = useState('')
   const [expandedId, setExpandedId] = useState(null)
+  const [showFilters, setShowFilters] = useState(false)
 
   const load = () => {
     setLoading(true)
-    db.fetchAuditLogs(academyId)
+    db.fetchAuditLogs(academyId, 500)
       .then(setLogs)
       .catch(() => setLogs([]))
       .finally(() => setLoading(false))
@@ -1446,15 +1511,35 @@ function AuditTab({ academyId }) {
 
   useEffect(() => { load() }, [academyId])
 
+  const actors = useMemo(() => ['All', ...[...new Set(logs.map(l => l.actor_name).filter(Boolean))].sort()], [logs])
+
   const filtered = useMemo(() => logs.filter(l => {
-    const matchType   = filterType === 'All' || l.entity_type === filterType
-    const matchSearch = !search || l.actor_name?.toLowerCase().includes(search.toLowerCase()) || l.entity_name?.toLowerCase().includes(search.toLowerCase())
-    return matchType && matchSearch
-  }), [logs, filterType, search])
+    const matchEntity = entityFilter === 'All' || l.entity_type === entityFilter
+    const matchAction = actionFilter === 'all' || ACTION_CATEGORY[l.action] === actionFilter
+    const matchActor  = actorFilter === 'All' || l.actor_name === actorFilter
+    const matchSearch = !search || l.actor_name?.toLowerCase().includes(search.toLowerCase()) || l.entity_name?.toLowerCase().includes(search.toLowerCase()) || (ACTION_LABELS[l.action] || '').toLowerCase().includes(search.toLowerCase())
+    const logDate     = (l.created_at || '').slice(0, 10)
+    const matchFrom   = !dateFrom || logDate >= dateFrom
+    const matchTo     = !dateTo   || logDate <= dateTo
+    return matchEntity && matchAction && matchActor && matchSearch && matchFrom && matchTo
+  }), [logs, entityFilter, actionFilter, actorFilter, search, dateFrom, dateTo])
 
   const grouped = useMemo(() => groupByDate(filtered), [filtered])
 
-  const actors = useMemo(() => [...new Set(logs.map(l => l.actor_name).filter(Boolean))].sort(), [logs])
+  const hasActiveFilters = entityFilter !== 'All' || actionFilter !== 'all' || actorFilter !== 'All' || search || dateFrom || dateTo
+
+  const clearFilters = () => {
+    setEntityFilter('All'); setActionFilter('all'); setActorFilter('All')
+    setSearch(''); setDateFrom(''); setDateTo('')
+  }
+
+  // Summary counts
+  const counts = useMemo(() => ({
+    total:   logs.length,
+    adds:    logs.filter(l => ACTION_CATEGORY[l.action] === 'add').length,
+    edits:   logs.filter(l => ACTION_CATEGORY[l.action] === 'edit').length,
+    deletes: logs.filter(l => ACTION_CATEGORY[l.action] === 'delete').length,
+  }), [logs])
 
   return (
     <div className="space-y-4">
@@ -1464,34 +1549,123 @@ function AuditTab({ academyId }) {
           <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
             <Shield size={16} className="text-brand-600" /> Audit Log
           </h3>
-          <p className="text-xs text-gray-500">Every create / edit / delete action — who did it and what changed</p>
+          <p className="text-xs text-gray-500">Every action — who did it, when, and what changed</p>
         </div>
-        <button onClick={load} className="btn-secondary text-xs gap-1.5">
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => exportAuditCSV(filtered)} className="btn-secondary text-xs gap-1.5" disabled={filtered.length === 0}>
+            <FileDown size={12} /> Export CSV
+          </button>
+          <button onClick={load} className="btn-secondary text-xs gap-1.5">
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 flex-1 min-w-48">
-          <Search size={13} className="text-gray-400" />
+      {/* Summary KPIs */}
+      {!loading && logs.length > 0 && (
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: 'Total Actions', val: counts.total,   color: 'text-gray-900' },
+            { label: 'Added',         val: counts.adds,    color: 'text-emerald-600' },
+            { label: 'Edited',        val: counts.edits,   color: 'text-amber-600' },
+            { label: 'Deleted',       val: counts.deletes, color: 'text-red-500' },
+          ].map(k => (
+            <div key={k.label} className="card p-3 text-center">
+              <p className={`text-xl font-black ${k.color}`}>{k.val}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">{k.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Search + filter toggle bar */}
+      <div className="flex gap-2 flex-wrap items-center">
+        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 flex-1 min-w-52">
+          <Search size={13} className="text-gray-400 flex-shrink-0" />
           <input
             className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full"
-            placeholder="Search by name or student…"
+            placeholder="Search actor, name, or action…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {search && <button onClick={() => setSearch('')}><X size={12} className="text-gray-400 hover:text-gray-600"/></button>}
         </div>
-        <div className="flex gap-1.5">
-          {ENTITY_TYPES.map(t => (
-            <button key={t} onClick={() => setFilterType(t)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition capitalize ${filterType === t ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-              {t}
-            </button>
-          ))}
-        </div>
-        <span className="text-xs text-gray-400 ml-auto">{filtered.length} entries</span>
+        <button
+          onClick={() => setShowFilters(f => !f)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition ${showFilters || hasActiveFilters ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+        >
+          <Filter size={12} /> Filters {hasActiveFilters && <span className="bg-white/30 text-white rounded-full px-1">●</span>}
+        </button>
+        {hasActiveFilters && (
+          <button onClick={clearFilters} className="text-xs text-red-500 hover:underline flex items-center gap-1">
+            <X size={11} /> Clear all
+          </button>
+        )}
+        <span className="text-xs text-gray-400 ml-auto font-medium">{filtered.length} / {logs.length} entries</span>
       </div>
+
+      {/* Filter panel */}
+      {showFilters && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+          {/* Date range */}
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <Calendar size={11}/> Date Range
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">From</span>
+                <input type="date" className="input text-xs py-1.5 w-36" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">To</span>
+                <input type="date" className="input text-xs py-1.5 w-36" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              </div>
+              {(dateFrom || dateTo) && (
+                <button onClick={() => { setDateFrom(''); setDateTo('') }} className="text-xs text-gray-400 hover:text-red-500">
+                  <X size={12}/>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Actor */}
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <User size={11}/> Who Did It
+            </p>
+            <select className="input text-xs py-1.5 w-48" value={actorFilter} onChange={e => setActorFilter(e.target.value)}>
+              {actors.map(a => <option key={a}>{a}</option>)}
+            </select>
+          </div>
+
+          {/* Action type */}
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Action Type</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {ACTION_TYPES.map(t => (
+                <button key={t.id} onClick={() => setActionFilter(t.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${actionFilter === t.id ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Entity type */}
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Module</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {ENTITY_TYPES.map(t => (
+                <button key={t} onClick={() => setEntityFilter(t)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition capitalize ${entityFilter === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  {t !== 'All' && ENTITY_ICONS[t] ? `${ENTITY_ICONS[t]} ` : ''}{t}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Timeline */}
       {loading ? (
@@ -1502,18 +1676,25 @@ function AuditTab({ academyId }) {
       ) : filtered.length === 0 ? (
         <div className="card p-10 text-center">
           <Shield size={32} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-sm font-bold text-gray-500">No audit entries yet</p>
-          <p className="text-xs text-gray-400 mt-1">Actions will appear here as they happen</p>
+          <p className="text-sm font-bold text-gray-500">{logs.length === 0 ? 'No audit entries yet' : 'No entries match filters'}</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {logs.length === 0 ? 'Actions will appear here as they happen' : 'Try adjusting your filters'}
+          </p>
+          {hasActiveFilters && (
+            <button onClick={clearFilters} className="mt-3 text-xs text-brand-600 font-bold hover:underline">Clear Filters</button>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
           {grouped.map(([date, entries]) => (
             <div key={date}>
-              {/* Date heading */}
               <div className="flex items-center gap-3 mb-3">
                 <div className="h-px flex-1 bg-gray-100" />
-                <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <Calendar size={10}/>
                   {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                  <span className="text-gray-300">·</span>
+                  <span className="text-gray-400">{entries.length} action{entries.length > 1 ? 's' : ''}</span>
                 </span>
                 <div className="h-px flex-1 bg-gray-100" />
               </div>

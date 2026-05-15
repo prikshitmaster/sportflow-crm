@@ -766,6 +766,7 @@ export function AppProvider({ children }) {
     try {
       const created = await db.insertTrial({ ...t, academyId: user?.academyId })
       setTrials(prev => [created, ...prev])
+      logAudit({ actor: user, action: ACTIONS.TRIAL_ADD, entityType: 'trial', entityId: created.id, entityName: t.name, changes: { sport: t.sport || '—', source: t.source || '—', date: t.trialDate || '—' }, academyId: user?.academyId })
       showToast('Trial lead added')
     } catch (err) {
       showToast(err.message || 'Failed to add trial', 'error')
@@ -775,7 +776,11 @@ export function AppProvider({ children }) {
   const updateTrialStatus = async (id, updates) => {
     try {
       await db.updateTrial(id, updates)
+      const trial = trials.find(t => t.id === id)
+      const isConvert = updates.converted === true
+      const action = isConvert ? ACTIONS.TRIAL_CONVERT : ACTIONS.TRIAL_UPDATE
       setTrials(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
+      logAudit({ actor: user, action, entityType: 'trial', entityId: id, entityName: trial?.name, changes: updates.status ? { status: { old: trial?.status, new: updates.status } } : {}, academyId: user?.academyId })
       showToast('Trial updated')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
@@ -891,6 +896,7 @@ export function AppProvider({ children }) {
     try {
       const created = await db.insertEvent({ ...e, academyId: user?.academyId })
       setEvents(prev => [...prev, created].sort((a, b) => a.date.localeCompare(b.date)))
+      logAudit({ actor: user, action: ACTIONS.EVENT_ADD, entityType: 'event', entityId: created.id, entityName: e.title, changes: { type: e.type || '—', date: e.date || '—', venue: e.venue || '—' }, academyId: user?.academyId })
       showToast('Event added')
       return created
     } catch (err) {
@@ -901,8 +907,10 @@ export function AppProvider({ children }) {
 
   const updateEventStatus = async (id, status) => {
     try {
+      const ev = events.find(e => e.id === id)
       await db.updateEventStatus(id, status)
       setEvents(prev => prev.map(e => e.id === id ? { ...e, status } : e))
+      logAudit({ actor: user, action: ACTIONS.EVENT_UPDATE, entityType: 'event', entityId: id, entityName: ev?.title, changes: { status: { old: ev?.status, new: status } }, academyId: user?.academyId })
       showToast('Event updated')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
@@ -912,6 +920,8 @@ export function AppProvider({ children }) {
   const updateEvent = async (id, fields) => {
     try {
       await db.updateEvent(id, fields)
+      const ev = events.find(e => e.id === id)
+      logAudit({ actor: user, action: ACTIONS.EVENT_UPDATE, entityType: 'event', entityId: id, entityName: ev?.title || fields.title, changes: fields.title ? { title: { old: ev?.title, new: fields.title } } : {}, academyId: user?.academyId })
       setEvents(prev => prev.map(e => e.id === id ? {
         ...e,
         ...(fields.title        !== undefined && { title:         fields.title }),
@@ -936,8 +946,10 @@ export function AppProvider({ children }) {
 
   const removeEvent = async (id) => {
     try {
+      const ev = events.find(e => e.id === id)
       await db.deleteEvent(id)
       setEvents(prev => prev.filter(e => e.id !== id))
+      logAudit({ actor: user, action: ACTIONS.EVENT_DELETE, entityType: 'event', entityId: id, entityName: ev?.title, academyId: user?.academyId })
       showToast('Event deleted')
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
@@ -961,14 +973,17 @@ export function AppProvider({ children }) {
       staffType:     s.staffType || 'coach',
       accountStatus: 'pending',
     }])
+    logAudit({ actor: user, action: ACTIONS.STAFF_ADD, entityType: 'staff', entityId: created.id, entityName: s.name, changes: { role: s.role || '—', sport: (s.sports || []).join(', ') || '—' }, academyId: user?.academyId })
     showToast('Staff member added')
     return { staffCode, joinCode }
   }
 
   const removeStaffMember = async (id) => {
     try {
+      const member = staff.find(s => s.id === id)
       await db.deleteStaff(id)
       setStaff(prev => prev.filter(s => s.id !== id))
+      logAudit({ actor: user, action: ACTIONS.STAFF_REMOVE, entityType: 'staff', entityId: id, entityName: member?.name, academyId: user?.academyId })
       showToast('Staff member removed')
     } catch (err) {
       showToast(err.message || 'Failed to delete', 'error')
@@ -1048,6 +1063,7 @@ export function AppProvider({ children }) {
   const inviteStaff = async (name, accessRole, permissions) => {
     try {
       const invite = await db.createInvite(user.academyId, user.academy, name, accessRole, permissions)
+      logAudit({ actor: user, action: ACTIONS.STAFF_INVITE, entityType: 'staff', entityName: name, changes: { role: accessRole, permissions: permissions.join(', ') || '—' }, academyId: user?.academyId })
       return `${window.location.origin}/invite/${invite.token}`
     } catch (err) {
       showToast(err.message || 'Failed to create invite', 'error')
@@ -1139,6 +1155,7 @@ export function AppProvider({ children }) {
       const ann     = { ...a, author: user?.name || 'Owner', academyId: user?.academyId }
       const created = await db.insertAnnouncement(ann)
       setAnnouncements(prev => [created, ...prev])
+      logAudit({ actor: user, action: ACTIONS.ANNOUNCEMENT_ADD, entityType: 'announcement', entityId: created.id, entityName: a.title, changes: { type: a.type || '—' }, academyId: user?.academyId })
       showToast('Announcement posted')
     } catch (err) {
       showToast(err.message || 'Failed', 'error')

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { Search, CheckCircle, Clock, X, Save, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react'
 import * as db from '../../lib/db'
+import { logAudit, ACTIONS } from '../../lib/audit'
 import {
   SPORT_CATEGORIES, FOOTBALL_CATEGORIES,
   getCategoryAvg, getOverallScore, getTier,
@@ -238,6 +239,16 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
         scores,
         notes,
         academyId: user?.academyId,
+      })
+      const isUpdate = !!existing
+      logAudit({
+        actor:      user,
+        action:     isUpdate ? ACTIONS.ASSESSMENT_UPDATE : ACTIONS.ASSESSMENT_ADD,
+        entityType: 'assessment',
+        entityId:   student.id,
+        entityName: student.name,
+        changes:    { month, batch: student.batch || '—', note: notes || '—' },
+        academyId:  user?.academyId,
       })
       onSaved(result || { student_id: student.id, scores, notes, assessed_month: month, batch_id: batchId })
     } catch (e) {
