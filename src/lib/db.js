@@ -165,10 +165,10 @@ export async function updateStudentPosition(id, position) {
 
 export async function uploadStudentPhoto(file, studentId) {
   const ext  = file.name.split('.').pop()
-  const path = `students/${studentId}_${Date.now()}.${ext}`
-  const { error } = await supabase.storage.from('staff-photos').upload(path, file, { upsert: true })
+  const path = `${studentId}_${Date.now()}.${ext}`
+  const { error } = await supabase.storage.from('student-photos').upload(path, file, { upsert: true })
   if (error) throw error
-  const { data } = supabase.storage.from('staff-photos').getPublicUrl(path)
+  const { data } = supabase.storage.from('student-photos').getPublicUrl(path)
   return data.publicUrl
 }
 
