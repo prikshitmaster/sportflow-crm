@@ -107,11 +107,9 @@ export default function StaffAttendance() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      // Merge existing today's data with new marks
-      const merged = { ...todayAtt }
-      Object.entries(marks).forEach(([id, status]) => {
-        if (status) merged[id] = status
-      })
+      // Merge existing today's data with new marks. Empty marks are kept
+      // so DB layer can DELETE them — that's how coach's undo persists.
+      const merged = { ...todayAtt, ...marks }
       await saveAttendance(today, merged)
       setStep(3)
     } finally {

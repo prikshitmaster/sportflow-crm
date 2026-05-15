@@ -1,13 +1,44 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
-import { QrCode, CheckCircle2, XCircle, Camera, ArrowLeft } from 'lucide-react'
+import { QrCode, CheckCircle2, XCircle, Camera, ArrowLeft, Lock, CreditCard } from 'lucide-react'
 import jsQR from 'jsqr'
 
 export default function StudentScan() {
   const { studentUser } = useApp()
   const navigate = useNavigate()
+
+  // Suspended students cannot mark attendance — must clear dues first
+  if (studentUser?.status === 'Suspended') {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-5">
+        <div className="flex items-center gap-3 mb-6">
+          <button onClick={() => navigate('/student/dashboard')}
+            className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 transition">
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h1 className="text-xl font-black text-gray-900">Attendance Locked</h1>
+            <p className="text-xs text-gray-500">Account suspended</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl border border-red-100 p-8 text-center">
+          <div className="w-20 h-20 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+            <Lock size={36} className="text-red-500" />
+          </div>
+          <h2 className="text-lg font-black text-gray-900 mb-2">Cannot mark attendance</h2>
+          <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+            Your account is suspended due to overdue fees. Please clear your dues to resume attendance.
+          </p>
+          <Link to="/student/payments"
+            className="inline-flex items-center justify-center gap-2 w-full bg-red-600 text-white font-bold rounded-xl py-3 active:scale-95 transition">
+            <CreditCard size={18} /> View &amp; Pay Dues
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   // ready | scanning | processing | success | already | error
   const [phase, setPhase] = useState('ready')

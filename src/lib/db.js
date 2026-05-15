@@ -641,17 +641,28 @@ export async function fetchAttendanceForDate(date) {
 }
 
 export async function saveAttendanceForDate(date, records) {
-  const rows = Object.entries(records).map(([student_id, status]) => ({
-    date,
-    student_id: Number(student_id),
-    present: status === 'Present',
-    status: status || 'Present',
-  }))
-  if (rows.length === 0) return
-  const { error } = await supabase
-    .from('attendance')
-    .upsert(rows, { onConflict: 'date,student_id' })
-  if (error) throw error
+  const toDelete = []
+  const toUpsert = []
+  Object.entries(records).forEach(([student_id, status]) => {
+    const sid = Number(student_id)
+    if (!status) {
+      toDelete.push(sid)   // blank means coach undid the mark
+    } else {
+      toUpsert.push({ date, student_id: sid, present: status === 'Present', status })
+    }
+  })
+  if (toDelete.length > 0) {
+    const { error } = await supabase
+      .from('attendance').delete()
+      .eq('date', date).in('student_id', toDelete)
+    if (error) throw error
+  }
+  if (toUpsert.length > 0) {
+    const { error } = await supabase
+      .from('attendance')
+      .upsert(toUpsert, { onConflict: 'date,student_id' })
+    if (error) throw error
+  }
 }
 
 // Fetch all attendance records for a full month
