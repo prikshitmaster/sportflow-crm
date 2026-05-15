@@ -669,7 +669,8 @@ export async function fetchAttendanceForMonth(year, month) {
   if (error) throw error
   const result = {}
   data.forEach(row => {
-    const day = new Date(row.date).getDate()
+    // Parse YYYY-MM-DD directly to avoid timezone shift (was: new Date(row.date).getDate())
+    const day = parseInt(String(row.date).slice(8, 10), 10)
     if (!result[row.student_id]) result[row.student_id] = {}
     result[row.student_id][day] = row.status || (row.present ? 'Present' : 'Absent')
   })

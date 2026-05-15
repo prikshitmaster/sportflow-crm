@@ -13,6 +13,14 @@ const STATUS_MAP = {
 export default function Payments() {
   const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport } = useApp()
   const [editingDate, setEditingDate] = useState(null) // paymentId being edited
+  const [markingPaid, setMarkingPaid] = useState(null) // paymentId currently being marked Paid
+
+  const handleMarkPaid = async (id) => {
+    if (markingPaid) return
+    setMarkingPaid(id)
+    try { await markPaymentPaid(id, 'UPI') }
+    finally { setMarkingPaid(null) }
+  }
 
   const [search,          setSearch]          = useState('')
   const [statusFilter,    setStatusFilter]    = useState('All')
@@ -278,10 +286,11 @@ export default function Payments() {
                         </button>
                       ) : p.status !== 'Paid' ? (
                         <button
-                          className="text-xs text-brand-600 font-semibold hover:underline"
-                          onClick={() => markPaymentPaid(p.id, 'UPI')}
+                          className="text-xs text-brand-600 font-semibold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => handleMarkPaid(p.id)}
+                          disabled={markingPaid === p.id}
                         >
-                          Mark Paid
+                          {markingPaid === p.id ? 'Marking…' : 'Mark Paid'}
                         </button>
                       ) : (
                         <div className="flex items-center gap-3">

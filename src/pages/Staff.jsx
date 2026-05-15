@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { UserCog, Plus, Phone, Award, X, Layers, CheckCircle, ChevronRight, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor, FileText, ExternalLink } from 'lucide-react'
+import { UserCog, Plus, Phone, Award, X, Layers, CheckCircle, ChevronRight, ChevronDown, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor, FileText, ExternalLink } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
