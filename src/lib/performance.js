@@ -38,6 +38,34 @@ export const FOOTBALL_CATEGORIES = [
   },
 ]
 
+export const FOOTBALL_POSITIONS = [
+  { id: 'GK', label: 'Goalkeeper',    group: 'Goalkeeper' },
+  { id: 'RB', label: 'Right Back',    group: 'Defender'   },
+  { id: 'CB', label: 'Center Back',   group: 'Defender'   },
+  { id: 'LB', label: 'Left Back',     group: 'Defender'   },
+  { id: 'DM', label: 'Defensive Mid', group: 'Midfielder' },
+  { id: 'CM', label: 'Central Mid',   group: 'Midfielder' },
+  { id: 'AM', label: 'Attacking Mid', group: 'Midfielder' },
+  { id: 'RW', label: 'Right Wing',    group: 'Forward'    },
+  { id: 'LW', label: 'Left Wing',     group: 'Forward'    },
+  { id: 'ST', label: 'Striker',       group: 'Forward'    },
+  { id: 'CF', label: 'Center Forward',group: 'Forward'    },
+]
+
+export const POSITION_COLORS = {
+  GK: { bg: 'bg-yellow-100',  text: 'text-yellow-700',  hex: '#d97706' },
+  RB: { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
+  CB: { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
+  LB: { bg: 'bg-blue-100',    text: 'text-blue-700',    hex: '#2563eb' },
+  DM: { bg: 'bg-green-100',   text: 'text-green-700',   hex: '#059669' },
+  CM: { bg: 'bg-green-100',   text: 'text-green-700',   hex: '#059669' },
+  AM: { bg: 'bg-teal-100',    text: 'text-teal-700',    hex: '#0d9488' },
+  RW: { bg: 'bg-red-100',     text: 'text-red-700',     hex: '#dc2626' },
+  LW: { bg: 'bg-red-100',     text: 'text-red-700',     hex: '#dc2626' },
+  ST: { bg: 'bg-purple-100',  text: 'text-purple-700',  hex: '#7c3aed' },
+  CF: { bg: 'bg-purple-100',  text: 'text-purple-700',  hex: '#7c3aed' },
+}
+
 export const SPORT_CATEGORIES = {
   Football: FOOTBALL_CATEGORIES,
   Tennis: null,

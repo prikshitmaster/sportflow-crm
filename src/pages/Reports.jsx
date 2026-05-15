@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import * as db from '../lib/db'
 import { ACTION_LABELS, ACTION_CATEGORY, ENTITY_COLORS, ROLE_COLORS } from '../lib/audit'
-import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel } from '../lib/performance'
+import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel, FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 
 // ── Utilities ─────────────────────────────────────────────
 
@@ -1251,19 +1251,30 @@ function PerformanceTab({ students, batches, academyId }) {
             <div>
               <h4 className="text-sm font-black text-gray-900 mb-3">Top Players</h4>
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-50">
-                {leaderboard.slice(0, 20).map(({ student, score, tier }, i) => (
-                  <div key={student.id} className="px-4 py-3 flex items-center gap-3">
-                    <span className={`text-sm font-black w-7 ${i < 3 ? 'text-brand-600' : 'text-gray-300'}`}>#{i+1}</span>
-                    <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-xs font-black text-gray-600">{student.name[0]}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-900 truncate">{student.name}</p>
-                      <p className="text-xs text-gray-400">{student.batch || '—'}</p>
+                {leaderboard.slice(0, 20).map(({ student, score, tier }, i) => {
+                  const pos    = student.position ? FOOTBALL_POSITIONS.find(p => p.id === student.position) : null
+                  const posCol = student.position ? POSITION_COLORS[student.position] : null
+                  return (
+                    <div key={student.id} className="px-4 py-3 flex items-center gap-3">
+                      <span className={`text-sm font-black w-7 flex-shrink-0 ${i < 3 ? 'text-brand-600' : 'text-gray-300'}`}>#{i+1}</span>
+                      <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-xs font-black text-gray-600 flex-shrink-0">{student.name[0]}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-bold text-gray-900 truncate">{student.name}</p>
+                          {pos && posCol && (
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md flex-shrink-0 ${posCol.bg} ${posCol.text}`}>
+                              {pos.id}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400">{student.batch || '—'}</p>
+                      </div>
+                      <span className={`text-xs font-black px-2.5 py-1 rounded-full border flex-shrink-0 ${tier.bgClass} ${tier.textClass} ${tier.borderClass}`}>
+                        {score} · {tier.label}
+                      </span>
                     </div>
-                    <span className={`text-xs font-black px-2.5 py-1 rounded-full border flex-shrink-0 ${tier.bgClass} ${tier.textClass} ${tier.borderClass}`}>
-                      {score} · {tier.label}
-                    </span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}

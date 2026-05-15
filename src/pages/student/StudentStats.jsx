@@ -9,6 +9,7 @@ import * as db from '../../lib/db'
 import {
   SPORT_CATEGORIES, FOOTBALL_CATEGORIES,
   getCategoryAvg, getOverallScore, getTier, monthLabel, SKILL_SHORTS,
+  FOOTBALL_POSITIONS, POSITION_COLORS,
 } from '../../lib/performance'
 
 export default function StudentStats() {
@@ -95,7 +96,18 @@ export default function StudentStats() {
         <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full opacity-10"
           style={{ background: 'radial-gradient(circle,#fff,transparent)' }} />
 
-        <p className="text-[10px] font-black text-indigo-200 uppercase tracking-widest mb-6 relative">{sport} · Performance</p>
+        <div className="flex items-center gap-2 mb-6 relative">
+          <p className="text-[10px] font-black text-indigo-200 uppercase tracking-widest">{sport} · Performance</p>
+          {studentUser?.position && (() => {
+            const pos  = FOOTBALL_POSITIONS.find(p => p.id === studentUser.position)
+            const col  = POSITION_COLORS[studentUser.position]
+            return pos ? (
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-white/20 text-white backdrop-blur-sm">
+                {pos.id} · {pos.label}
+              </span>
+            ) : null
+          })()}
+        </div>
 
         <div className="flex items-center gap-6 relative">
           {/* Score ring — white on gradient */}

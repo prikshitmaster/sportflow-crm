@@ -34,6 +34,7 @@ export async function fetchStudents(academyId) {
     suspendedSince: row.suspended_since,
     trainingType:   row.training_type || 'Daily',
     feePlan:        row.fee_plan || 'monthly',
+    position:       row.position || null,
   }))
 }
 
@@ -153,6 +154,11 @@ export async function insertPayment(p, invoiceId) {
       academy_id:     p.academyId    || null,
       notes:          p.notes        || null,
     })
+  if (error) throw error
+}
+
+export async function updateStudentPosition(id, position) {
+  const { error } = await supabase.from('students').update({ position }).eq('id', id)
   if (error) throw error
 }
 

@@ -7,6 +7,7 @@ import {
   SPORT_CATEGORIES, FOOTBALL_CATEGORIES,
   getCategoryAvg, getOverallScore, getTier,
   buildMonthOpts, monthLabel, currentMonth,
+  FOOTBALL_POSITIONS, POSITION_COLORS,
 } from '../../lib/performance'
 
 const MONTH_OPTS = buildMonthOpts()
@@ -208,9 +209,10 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
     categories.forEach(cat => cat.skills.forEach(sk => { init[sk] = 50 }))
     return init
   })
-  const [notes, setNotes]   = useState(existing?.notes || '')
-  const [saving, setSaving] = useState(false)
-  const [openCat, setOpenCat] = useState(categories[0]?.id || null)
+  const [notes, setNotes]       = useState(existing?.notes || '')
+  const [position, setPosition] = useState(student.position || '')
+  const [saving, setSaving]     = useState(false)
+  const [openCat, setOpenCat]   = useState(categories[0]?.id || null)
 
   function startUpdate() {
     setScores(existing?.scores ? { ...existing.scores } : {})
@@ -240,6 +242,9 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
         notes,
         academyId: user?.academyId,
       })
+      if (position !== (student.position || '')) {
+        await db.updateStudentPosition(student.id, position || null)
+      }
       const isUpdate = !!existing
       logAudit({
         actor:      user,
@@ -247,10 +252,10 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
         entityType: 'assessment',
         entityId:   student.id,
         entityName: student.name,
-        changes:    { month, batch: student.batch || '—', note: notes || '—' },
+        changes:    { month, position: position || '—', batch: student.batch || '—', note: notes || '—' },
         academyId:  user?.academyId,
       })
-      onSaved(result || { student_id: student.id, scores, notes, assessed_month: month, batch_id: batchId })
+      onSaved(result || { student_id: student.id, scores, notes, assessed_month: month, batch_id: batchId, position })
     } catch (e) {
       alert(e.message)
     } finally {
@@ -281,6 +286,31 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
               <button onClick={onClose} className="p-2 rounded-xl bg-gray-100 text-gray-500">
                 <X size={18} />
               </button>
+            </div>
+          </div>
+
+          {/* Position picker */}
+          <div className="mt-3">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Position</p>
+            <div className="flex flex-wrap gap-1.5">
+              {FOOTBALL_POSITIONS.map(p => {
+                const col = POSITION_COLORS[p.id]
+                const active = position === p.id
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPosition(active ? '' : p.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-black border transition ${
+                      active
+                        ? `${col.bg} ${col.text} border-current`
+                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    {p.id} <span className="font-normal opacity-70 hidden sm:inline">· {p.label}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
