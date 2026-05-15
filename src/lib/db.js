@@ -178,6 +178,14 @@ export async function updateStudentPhotoUrl(id, photoUrl) {
   await supabase.from('students').update({ photo_url: photoUrl }).eq('id', id)
 }
 
+export async function fetchBatchCoachInfo(batchId) {
+  if (!batchId) return null
+  const { data } = await supabase.from('batches').select('coach').eq('id', batchId).maybeSingle()
+  if (!data?.coach) return null
+  const { data: s } = await supabase.from('staff').select('name, photo_url').ilike('name', data.coach).maybeSingle()
+  return { name: data.coach, photoUrl: s?.photo_url || null }
+}
+
 export async function fetchStudentAnyBatchId(studentId) {
   const { data } = await supabase
     .from('student_batches').select('batch_id').eq('student_id', studentId).limit(1).maybeSingle()

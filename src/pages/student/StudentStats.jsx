@@ -609,7 +609,8 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
   const [resolvedBatch, setResolvedBatch] = useState(batchId)
   const [selectedId,    setSelectedId]    = useState(null)   // tapped other player
   const [rivalMode,     setRivalMode]     = useState(false)  // tapped self → show competitors
-  const [statsCache,    setStatsCache]    = useState({})     // { id: {overall,tier,topSkill} | 'loading' | null }
+  const [statsCache,    setStatsCache]    = useState({})
+  const [coach,         setCoach]         = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -620,13 +621,18 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
           setResolvedBatch(true)
           setStudents(data)
         } else {
-          // Fallback to primary batch_id if available
           let bid = batchId || await db.fetchStudentAnyBatchId(currentStudentId)
           if (bid) {
             setResolvedBatch(bid)
             const fallback = await db.fetchBatchStudentsForPitch(bid)
             setStudents(fallback)
           }
+        }
+        // Fetch assigned coach for the batch
+        const bid = batchId || await db.fetchStudentAnyBatchId(currentStudentId)
+        if (bid) {
+          const coachInfo = await db.fetchBatchCoachInfo(bid)
+          if (coachInfo) setCoach(coachInfo)
         }
       } catch {}
       setLoading(false)
@@ -806,6 +812,9 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
               )
             })}
 
+            {/* Coach — center circle */}
+            {coach && <CoachDot coach={coach} />}
+
             {/* Custom-position players */}
             {customPositioned.map((s, i) => (
               <PlayerDot key={s.id} student={s} posId={null}
@@ -916,6 +925,64 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
 
         </div>
       )}
+    </div>
+  )
+}
+
+function CoachDot({ coach }) {
+  return (
+    <div style={{
+      position: 'absolute', top: '50%', left: '50%',
+      transform: 'translate(-50%, -50%)',
+      zIndex: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+    }}>
+      {/* Tactics board icon above avatar */}
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))' }}>
+        <rect x="1" y="2" width="14" height="12" rx="2" fill="#d97706" stroke="#fff" strokeWidth="1"/>
+        <rect x="4" y="0.5" width="8" height="3" rx="1" fill="#d97706" stroke="#fff" strokeWidth="1"/>
+        <line x1="4" y1="7" x2="12" y2="7" stroke="white" strokeWidth="1" strokeDasharray="2 1"/>
+        <line x1="4" y1="10" x2="9"  y2="10" stroke="white" strokeWidth="1" strokeDasharray="2 1"/>
+        <circle cx="11" cy="10" r="1.2" fill="white"/>
+      </svg>
+
+      {/* Avatar */}
+      <div style={{ position: 'relative' }}>
+        {coach.photoUrl ? (
+          <img src={coach.photoUrl} alt={coach.name} style={{
+            width: 38, height: 38, borderRadius: '50%', objectFit: 'cover',
+            border: '2.5px solid #fbbf24',
+            boxShadow: '0 0 0 2px #d97706, 0 3px 10px rgba(0,0,0,0.5)',
+          }} />
+        ) : (
+          <div style={{
+            width: 38, height: 38, borderRadius: '50%',
+            background: 'linear-gradient(135deg,#f59e0b,#d97706)',
+            border: '2.5px solid #fbbf24',
+            boxShadow: '0 0 0 2px #d97706, 0 3px 10px rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 15, fontWeight: 900, color: '#fff',
+          }}>
+            {coach.name?.[0]?.toUpperCase()}
+          </div>
+        )}
+      </div>
+
+      {/* Name */}
+      <span style={{
+        fontSize: 7, fontWeight: 700, color: '#fff', maxWidth: 52,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        textShadow: '0 1px 4px rgba(0,0,0,0.9)',
+      }}>
+        {coach.name.split(' ')[0]}
+      </span>
+
+      {/* COACH chip */}
+      <span style={{
+        fontSize: 7, fontWeight: 900,
+        background: 'linear-gradient(90deg,#d97706,#b45309)',
+        color: '#fff', borderRadius: 4, padding: '1px 4px', lineHeight: 1.4,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+      }}>COACH</span>
     </div>
   )
 }
