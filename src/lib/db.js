@@ -184,22 +184,69 @@ export async function fetchStudentAnyBatchId(studentId) {
   return data?.batch_id || null
 }
 
+// Fetch ALL batchmates of a student across every batch they belong to (primary + multi-batch)
+export async function fetchStudentBatchmatesForPitch(studentId) {
+  // 1. Get all batch IDs this student is enrolled in
+  const [primaryRow, sbRows] = await Promise.all([
+    supabase.from('students').select('batch_id').eq('id', studentId).maybeSingle(),
+    supabase.from('student_batches').select('batch_id').eq('student_id', studentId),
+  ])
+  const batchIds = new Set()
+  if (primaryRow.data?.batch_id) batchIds.add(primaryRow.data.batch_id)
+  for (const r of (sbRows.data || [])) if (r.batch_id) batchIds.add(r.batch_id)
+  if (batchIds.size === 0) return []
+
+  // 2. Get all student IDs in those batches
+  const batchIdArr = [...batchIds]
+  const [primStudents, sbStudents] = await Promise.all([
+    supabase.from('students').select('id, name, position, photo_url, status')
+      .in('batch_id', batchIdArr).neq('status', 'Deleted'),
+    supabase.from('student_batches').select('student_id').in('batch_id', batchIdArr),
+  ])
+
+  const seen = new Set()
+  const rows = []
+  for (const s of (primStudents.data || [])) {
+    seen.add(String(s.id))
+    rows.push({ id: s.id, name: s.name, position: s.position || null, photoUrl: s.photo_url || null })
+  }
+  const extraIds = (sbStudents.data || []).map(r => r.student_id).filter(id => !seen.has(String(id)))
+  if (extraIds.length > 0) {
+    const { data: extra } = await supabase
+      .from('students').select('id, name, position, photo_url, status')
+      .in('id', extraIds).neq('status', 'Deleted')
+    for (const s of (extra || [])) {
+      if (!seen.has(String(s.id))) {
+        seen.add(String(s.id))
+        rows.push({ id: s.id, name: s.name, position: s.position || null, photoUrl: s.photo_url || null })
+      }
+    }
+  }
+  return rows
+}
+
 export async function fetchBatchStudentsForPitch(batchId) {
-  const [primary, secondary] = await Promise.all([
+  // Two separate queries — avoids PostgREST join which requires FK relationship
+  const [primary, sbRows] = await Promise.all([
     supabase.from('students').select('id, name, position, photo_url, status').eq('batch_id', batchId).neq('status', 'Deleted'),
-    supabase.from('student_batches').select('student_id, students(id, name, position, photo_url, status)').eq('batch_id', batchId),
+    supabase.from('student_batches').select('student_id').eq('batch_id', batchId),
   ])
   const seen = new Set()
   const rows = []
   for (const row of (primary.data || [])) {
-    seen.add(row.id)
+    seen.add(String(row.id))
     rows.push({ id: row.id, name: row.name, position: row.position || null, photoUrl: row.photo_url || null, status: row.status })
   }
-  for (const row of (secondary.data || [])) {
-    const s = row.students
-    if (s && !seen.has(s.id) && s.status !== 'Deleted') {
-      seen.add(s.id)
-      rows.push({ id: s.id, name: s.name, position: s.position || null, photoUrl: s.photo_url || null, status: s.status })
+  const secondaryIds = (sbRows.data || []).map(r => r.student_id).filter(id => !seen.has(String(id)))
+  if (secondaryIds.length > 0) {
+    const { data: secStudents } = await supabase
+      .from('students').select('id, name, position, photo_url, status')
+      .in('id', secondaryIds).neq('status', 'Deleted')
+    for (const s of (secStudents || [])) {
+      if (!seen.has(String(s.id))) {
+        seen.add(String(s.id))
+        rows.push({ id: s.id, name: s.name, position: s.position || null, photoUrl: s.photo_url || null, status: s.status })
+      }
     }
   }
   return rows

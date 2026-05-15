@@ -614,14 +614,20 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
   useEffect(() => {
     async function load() {
       try {
-        let bid = batchId
-        if (!bid) {
-          bid = await db.fetchStudentAnyBatchId(currentStudentId)
-          if (bid) setResolvedBatch(bid)
+        // Fetch batchmates across ALL batches the student belongs to
+        const data = await db.fetchStudentBatchmatesForPitch(currentStudentId)
+        if (data.length > 0) {
+          setResolvedBatch(true)
+          setStudents(data)
+        } else {
+          // Fallback to primary batch_id if available
+          let bid = batchId || await db.fetchStudentAnyBatchId(currentStudentId)
+          if (bid) {
+            setResolvedBatch(bid)
+            const fallback = await db.fetchBatchStudentsForPitch(bid)
+            setStudents(fallback)
+          }
         }
-        if (!bid) { setLoading(false); return }
-        const data = await db.fetchBatchStudentsForPitch(bid)
-        setStudents(data)
       } catch {}
       setLoading(false)
     }
@@ -669,6 +675,13 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
   const customPositioned   = students.filter(s => s.position && !FOOTBALL_POSITIONS.find(p => p.id === s.position))
   const benchStudents      = students.filter(s => !s.position)
 
+  // Group all positioned students by position (multiple players can share a slot)
+  const positionGroups = {}
+  positionedStudents.forEach(s => {
+    if (!positionGroups[s.position]) positionGroups[s.position] = []
+    positionGroups[s.position].push(s)
+  })
+
   // Ghost fill: assign bench students to empty position slots (deterministic by id order)
   const filledIds     = new Set(positionedStudents.map(s => s.position))
   const emptySlots    = FOOTBALL_POSITIONS.filter(p => !filledIds.has(p.id))
@@ -703,7 +716,7 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
         </div>
-      ) : !resolvedBatch ? (
+      ) : !resolvedBatch && students.length === 0 ? (
         <p className="text-center text-sm text-gray-400 pb-8 px-4">You're not assigned to a batch yet. Ask your coach to add you.</p>
       ) : students.length === 0 ? (
         <p className="text-center text-sm text-gray-400 pb-8">No players in this batch yet.</p>
@@ -732,27 +745,59 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
               <rect x="41" y="134" width="18" height="3" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="0.8"/>
             </svg>
 
-            {/* Real positioned players */}
+            {/* Real positioned players — all students per slot, offset horizontally */}
             {FOOTBALL_POSITIONS.map(pos => {
-              const student = positionedStudents.find(s => s.position === pos.id)
-              if (!student) return null
+              const group = positionGroups[pos.id]
+              if (!group || group.length === 0) return null
+              const total  = group.length
+              const spread = Math.min((total - 1) * 8, 20) // max 20% spread
+              return group.map((student, idx) => {
+                const offset = total === 1 ? 0 : -spread / 2 + (spread / (total - 1)) * idx
+                return (
+                  <PlayerDot key={student.id} student={student} posId={pos.id}
+                    x={pos.x + offset} y={pos.y}
+                    isCurrent={student.id === currentStudentId}
+                    score={student.id === currentStudentId ? overallScore : null}
+                    onTap={() => handleTap(student)}
+                    highlighted={rivalMode && student.id === currentStudentId}
+                  />
+                )
+              })
+            })}
+
+            {/* Completely empty slots — show position label only */}
+            {FOOTBALL_POSITIONS.map(pos => {
+              const hasPlayer = positionGroups[pos.id]?.length > 0
+              const hasGhost  = ghostMap[pos.id]
+              if (hasPlayer || hasGhost) return null
+              const posColor = POSITION_COLORS[pos.id]
               return (
-                <PlayerDot key={pos.id} student={student} posId={pos.id}
-                  x={pos.x} y={pos.y}
-                  isCurrent={student.id === currentStudentId}
-                  score={student.id === currentStudentId ? overallScore : null}
-                  onTap={() => handleTap(student)}
-                  highlighted={rivalMode && student.id === currentStudentId}
-                />
+                <div key={`empty-${pos.id}`} style={{
+                  position: 'absolute',
+                  top: `${100 - pos.y}%`, left: `${pos.x}%`,
+                  transform: 'translate(-50%, -50%)',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    backgroundColor: 'rgba(255,255,255,0.12)',
+                    border: '1.5px dashed rgba(255,255,255,0.35)',
+                  }} />
+                  <span style={{
+                    fontSize: 7, fontWeight: 900,
+                    backgroundColor: 'rgba(0,0,0,0.40)', color: 'rgba(255,255,255,0.7)',
+                    borderRadius: 4, padding: '1px 4px', lineHeight: 1.4,
+                  }}>{pos.id}</span>
+                </div>
               )
             })}
 
-            {/* Ghost fill — bench students at empty positions (40% opacity) */}
+            {/* Ghost fill — bench students at empty positions, show slot label */}
             {Object.entries(ghostMap).map(([posId, student]) => {
               const pos = FOOTBALL_POSITIONS.find(p => p.id === posId)
               if (!pos) return null
               return (
-                <PlayerDot key={`ghost-${student.id}`} student={student} posId={null}
+                <PlayerDot key={`ghost-${student.id}`} student={student} posId={posId}
                   x={pos.x} y={pos.y}
                   isCurrent={false} score={null}
                   onTap={() => handleTap(student)}
@@ -899,6 +944,7 @@ function PlayerDot({ student, posId, x, y, isCurrent, score, customLabel, onTap,
           score={score}
           dark
           highlighted={highlighted}
+          posHex={posColor?.hex}
         />
         {!ghost && (
           <span style={{
@@ -909,11 +955,12 @@ function PlayerDot({ student, posId, x, y, isCurrent, score, customLabel, onTap,
             {student.name.split(' ')[0]}
           </span>
         )}
-        {!ghost && posId && posColor && (
+        {posId && posColor && (
           <span style={{
             fontSize: 7, fontWeight: 900,
-            backgroundColor: posColor.hex, color: '#fff',
-            borderRadius: 4, padding: '1px 3px', lineHeight: 1.3,
+            backgroundColor: ghost ? 'rgba(0,0,0,0.45)' : posColor.hex,
+            color: '#fff',
+            borderRadius: 4, padding: '1px 4px', lineHeight: 1.4,
             boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
           }}>
             {posId}
@@ -934,15 +981,16 @@ function PlayerDot({ student, posId, x, y, isCurrent, score, customLabel, onTap,
   )
 }
 
-function PlayerAvatar({ photoUrl, name, size, isCurrent, score, dark, highlighted }) {
-  const border = isCurrent ? '2.5px solid #fff' : dark ? '2px solid rgba(255,255,255,0.4)' : '2px solid #e5e7eb'
+function PlayerAvatar({ photoUrl, name, size, isCurrent, score, dark, highlighted, posHex }) {
+  const border = isCurrent ? '2.5px solid #fff' : dark ? '2px solid rgba(255,255,255,0.5)' : '2px solid #e5e7eb'
   const shadow = highlighted
     ? '0 0 0 3px #fbbf24, 0 0 12px #fbbf2488, 0 3px 10px rgba(0,0,0,0.5)'
     : isCurrent
     ? '0 0 0 2.5px #6366f1, 0 3px 10px rgba(0,0,0,0.5)'
     : dark ? '0 2px 6px rgba(0,0,0,0.4)' : '0 1px 4px rgba(0,0,0,0.12)'
-  const bg     = isCurrent ? '#6366f1' : dark ? 'rgba(255,255,255,0.2)' : '#e5e7eb'
-  const color  = dark ? '#fff' : '#6b7280'
+  // Use position colour for identity on pitch; fallback to indigo for current, grey for rest
+  const bg     = isCurrent ? '#6366f1' : posHex ? posHex : dark ? '#374151' : '#e5e7eb'
+  const color  = '#fff'
   return (
     <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       {photoUrl ? (
