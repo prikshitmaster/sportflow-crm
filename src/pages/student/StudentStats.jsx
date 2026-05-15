@@ -438,7 +438,8 @@ function AiCoachTip({ assessment, sport, categories, position, overall, tier, hi
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
 
-  const cacheKey = `ai_tip_v7_${assessment.id || assessment.assessed_month}`
+  const notesStamp = assessment.notes?.trim().slice(0, 30).replace(/\s+/g, '_') || 'none'
+  const cacheKey = `ai_tip_v7_${assessment.id || assessment.assessed_month}_${notesStamp}`
 
   useEffect(() => {
     if (!GROQ_KEY) return
