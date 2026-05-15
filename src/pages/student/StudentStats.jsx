@@ -41,14 +41,14 @@ export default function StudentStats() {
 
   if (!assessments.length) {
     return (
-      <div className="min-h-screen pb-10" style={{ background: 'linear-gradient(160deg,#f0f0ff 0%,#fff 60%)' }}>
+      <div className="min-h-screen pb-10" style={{ background: '#0f0f13' }}>
         <div className="flex flex-col items-center justify-center px-8 pt-16 pb-8 text-center">
           <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-5"
-            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', boxShadow: '0 0 32px rgba(99,102,241,0.4)' }}>
             <TrendingUp size={32} className="text-white" />
           </div>
-          <p className="text-xl font-black text-gray-900">No assessments yet</p>
-          <p className="text-sm text-gray-400 mt-2 leading-relaxed max-w-xs">
+          <p className="text-xl font-black" style={{ color: '#fff' }}>No assessments yet</p>
+          <p className="text-sm mt-2 leading-relaxed max-w-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
             Your coach hasn't submitted a performance assessment yet. Check back after your next session.
           </p>
         </div>
@@ -342,62 +342,78 @@ export default function StudentStats() {
         />
 
         {/* ── History chart ── */}
-        <div className="bg-white rounded-3xl p-5"
-          style={{ boxShadow: '0 4px 24px rgba(99,102,241,0.08), 0 1px 4px rgba(0,0,0,0.05)' }}>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Progress</p>
-          <p className="text-lg font-black text-gray-900 mt-0.5 mb-4">Score over time</p>
+        <div style={{ background: '#16161d', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ height: 2, background: 'linear-gradient(90deg,#6366f1,transparent)' }} />
+          <div style={{ padding: '16px 20px 4px' }}>
+            <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#6366f1' }}>Progress</p>
+            <p style={{ fontSize: 15, fontWeight: 900, color: '#fff', marginTop: 2, marginBottom: 16 }}>Score over time</p>
+          </div>
           {historyData.length > 1 ? (
             <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={historyData} margin={{ top: 5, right: 8, bottom: 5, left: -25 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9ca3af', fontWeight: 600 }} axisLine={false} tickLine={false} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+              <LineChart data={historyData} margin={{ top: 5, right: 16, bottom: 8, left: -20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.35)', fontWeight: 600 }} axisLine={false} tickLine={false} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.25)' }} axisLine={false} tickLine={false} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 16, border: 'none', boxShadow: '0 8px 32px rgba(0,0,0,0.12)', fontSize: 13, fontWeight: 700 }}
+                  contentStyle={{ borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: '#1e1e2e', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', fontSize: 13, fontWeight: 700, color: '#fff' }}
                   formatter={val => [`${val}/100`, 'Score']}
+                  labelStyle={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }}
                 />
-                <Line type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={3}
-                  dot={{ r: 5, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }}
-                  activeDot={{ r: 7, fill: '#6366f1', stroke: '#fff', strokeWidth: 2 }}
+                <Line type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={2.5}
+                  dot={{ r: 4, fill: '#6366f1', strokeWidth: 2, stroke: '#0f0f13' }}
+                  activeDot={{ r: 6, fill: '#818cf8', stroke: '#0f0f13', strokeWidth: 2 }}
+                  style={{ filter: 'drop-shadow(0 0 4px #6366f188)' }}
                 />
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center gap-4 bg-indigo-50 rounded-2xl p-4">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                <TrendingUp size={20} className="text-indigo-600" />
+            <div style={{ margin: '0 16px 16px', padding: '14px 16px', borderRadius: 8, background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <TrendingUp size={18} style={{ color: '#818cf8' }} />
               </div>
               <div>
-                <p className="text-sm font-bold text-gray-900">Baseline: {historyData[0]?.score ?? overall}/100</p>
-                <p className="text-xs text-gray-400 mt-0.5">Your trend graph appears after your second assessment</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Baseline: {historyData[0]?.score ?? overall}/100</p>
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>Trend graph appears after your second assessment</p>
               </div>
             </div>
           )}
         </div>
 
         {/* ── Tier scale ── */}
-        <div className="bg-white rounded-3xl p-5"
-          style={{ boxShadow: '0 4px 24px rgba(0,0,0,0.05)' }}>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Tier Scale</p>
-          <div className="space-y-3">
+        <div style={{ background: '#16161d', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ height: 2, background: 'linear-gradient(90deg,#a855f7,transparent)' }} />
+          <div style={{ padding: '16px 20px 4px' }}>
+            <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>Tier Scale</p>
+          </div>
+          <div style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[
-              { label: 'Elite',  range: '80–100', color: '#7c3aed', bg: '#f5f3ff' },
-              { label: 'Gold',   range: '60–79',  color: '#d97706', bg: '#fffbeb' },
-              { label: 'Silver', range: '40–59',  color: '#64748b', bg: '#f8fafc' },
-              { label: 'Bronze', range: '0–39',   color: '#c2410c', bg: '#fff7ed' },
+              { label: 'Elite',  range: '80–100', color: '#a855f7', glow: 'rgba(168,85,247,0.15)', border: 'rgba(168,85,247,0.3)' },
+              { label: 'Gold',   range: '60–79',  color: '#f59e0b', glow: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.3)' },
+              { label: 'Silver', range: '40–59',  color: '#94a3b8', glow: 'rgba(148,163,184,0.1)', border: 'rgba(148,163,184,0.2)' },
+              { label: 'Bronze', range: '0–39',   color: '#b45309', glow: 'rgba(180,83,9,0.12)',   border: 'rgba(180,83,9,0.25)'   },
             ].map(t => {
               const isYou = t.label === tier.label
               return (
-                <div key={t.label}
-                  className={`flex items-center justify-between px-4 py-3 rounded-2xl transition ${isYou ? 'ring-2' : ''}`}
-                  style={{ backgroundColor: t.bg, ringColor: t.color }}>
-                  <span className="text-sm font-black" style={{ color: t.color }}>{t.label}</span>
-                  <span className="text-xs font-semibold text-gray-400">{t.range}</span>
-                  {isYou && (
-                    <span className="text-xs font-black px-2.5 py-1 rounded-full text-white" style={{ backgroundColor: t.color }}>
-                      You
-                    </span>
-                  )}
+                <div key={t.label} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 14px', borderRadius: 8,
+                  backgroundColor: isYou ? t.glow : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${isYou ? t.border : 'rgba(255,255,255,0.06)'}`,
+                  boxShadow: isYou ? `0 0 16px ${t.glow}` : 'none',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: t.color }} />
+                    <span style={{ fontSize: 13, fontWeight: 900, color: isYou ? t.color : 'rgba(255,255,255,0.5)', letterSpacing: '0.04em' }}>{t.label}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.25)' }}>{t.range}</span>
+                    {isYou && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 900, padding: '2px 8px', borderRadius: 3,
+                        backgroundColor: t.color, color: '#fff', letterSpacing: '0.06em',
+                      }}>YOU</span>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -811,27 +827,27 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
   const selectedStudent = selectedId ? students.find(s => s.id === selectedId) : null
 
   return (
-    <div className="bg-white rounded-3xl overflow-hidden"
-      style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)' }}>
+    <div style={{ background: '#16161d', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ height: 2, background: 'linear-gradient(90deg,#10b981,transparent)' }} />
       <div className="px-5 pt-4 pb-3 flex items-center justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Team</p>
-          <p className="text-base font-black text-gray-900">Formation View</p>
+          <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#10b981' }}>Team</p>
+          <p style={{ fontSize: 15, fontWeight: 900, color: '#fff', marginTop: 2 }}>Formation View</p>
         </div>
-        <span className="text-xs text-gray-400 font-semibold">{students.length} players</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.3)' }}>{students.length} players</span>
       </div>
 
       {loading ? (
         <div className="h-40 flex items-center justify-center">
-          <svg className="animate-spin h-6 w-6 text-emerald-500" viewBox="0 0 24 24" fill="none">
+          <svg className="animate-spin h-6 w-6" style={{ color: '#10b981' }} viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
         </div>
       ) : !resolvedBatch && students.length === 0 ? (
-        <p className="text-center text-sm text-gray-400 pb-8 px-4">You're not assigned to a batch yet. Ask your coach to add you.</p>
+        <p className="text-center pb-8 px-4" style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)' }}>You're not assigned to a batch yet. Ask your coach to add you.</p>
       ) : students.length === 0 ? (
-        <p className="text-center text-sm text-gray-400 pb-8">No players in this batch yet.</p>
+        <p className="text-center pb-8" style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)' }}>No players in this batch yet.</p>
       ) : (
         <div className="px-3 pb-4">
           {/* Pitch */}
@@ -935,49 +951,49 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
 
           {/* ── Tap hint ── */}
           {currentStudent?.position && !rivalMode && !selectedId && (
-            <p className="text-center text-[10px] text-gray-400 mt-2">
+            <p className="text-center mt-2" style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
               Tap your icon to see competitors at {currentStudent.position}
             </p>
           )}
 
           {/* ── Rivals panel ── */}
           {rivalMode && (
-            <div className="mt-3 rounded-2xl overflow-hidden border border-indigo-100" style={{ background: 'linear-gradient(135deg,#eef2ff,#f5f3ff)' }}>
+            <div style={{ marginTop: 12, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(99,102,241,0.25)', background: 'rgba(99,102,241,0.08)' }}>
               <div className="px-4 pt-3 pb-2 flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black text-indigo-500 uppercase tracking-wider">
+                  <p style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#818cf8' }}>
                     {currentStudent?.position} · Competitors
                   </p>
-                  <p className="text-xs text-indigo-700 font-semibold mt-0.5">
+                  <p style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>
                     {rivals.length === 0 ? 'No one else at this position yet' : `${rivals.length} player${rivals.length > 1 ? 's' : ''} competing for your spot`}
                   </p>
                 </div>
-                <button onClick={() => setRivalMode(false)} className="text-indigo-300 hover:text-indigo-500 text-lg leading-none">✕</button>
+                <button onClick={() => setRivalMode(false)} style={{ color: 'rgba(255,255,255,0.3)', fontSize: 18, lineHeight: 1 }}>✕</button>
               </div>
               {rivals.length > 0 && (
-                <div className="px-3 pb-3 space-y-2">
+                <div style={{ padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {rivals.map(r => {
                     const st = statsCache[r.id]
                     return (
-                      <div key={r.id} className="bg-white rounded-xl p-3 flex items-center gap-3">
-                        <PlayerAvatar photoUrl={r.photoUrl} name={r.name} size={40} isCurrent={false} score={null} dark={false} />
+                      <div key={r.id} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 10, padding: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <PlayerAvatar photoUrl={r.photoUrl} name={r.name} size={40} isCurrent={false} score={null} dark />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-black text-gray-800 truncate">{r.name}</p>
+                          <p style={{ fontSize: 13, fontWeight: 900, color: '#fff' }} className="truncate">{r.name}</p>
                           {st === 'loading' ? (
-                            <p className="text-xs text-gray-400">Loading…</p>
+                            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>Loading…</p>
                           ) : st ? (
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${st.tier.bgClass} ${st.tier.textClass}`}>
+                              <span style={{ fontSize: 10, fontWeight: 900, padding: '2px 7px', borderRadius: 4, backgroundColor: `${st.tier.hex}22`, color: st.tier.hex, border: `1px solid ${st.tier.hex}44` }}>
                                 {st.tier.label} · {st.overall}
                               </span>
                               {st.topSkill && (
-                                <span className="text-[10px] text-gray-500">
-                                  Top: <span className="font-bold text-gray-700">{SKILL_SHORTS[st.topSkill.skill] || st.topSkill.skill}</span> {st.topSkill.val}
+                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                                  Top: <span style={{ fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{SKILL_SHORTS[st.topSkill.skill] || st.topSkill.skill}</span> {st.topSkill.val}
                                 </span>
                               )}
                             </div>
                           ) : (
-                            <p className="text-xs text-gray-400 italic">No assessment yet</p>
+                            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>No assessment yet</p>
                           )}
                         </div>
                       </div>
@@ -990,17 +1006,17 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
 
           {/* ── Quick stats panel (other player tapped) ── */}
           {selectedStudent && !rivalMode && (
-            <div className="mt-3 bg-gray-50 rounded-2xl p-3 border border-gray-100">
+            <div style={{ marginTop: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: 12, border: '1px solid rgba(255,255,255,0.08)' }}>
               <div className="flex items-center gap-3">
-                <PlayerAvatar photoUrl={selectedStudent.photoUrl} name={selectedStudent.name} size={44} isCurrent={false} score={null} dark={false} />
+                <PlayerAvatar photoUrl={selectedStudent.photoUrl} name={selectedStudent.name} size={44} isCurrent={false} score={null} dark />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-sm font-black text-gray-900">{selectedStudent.name}</p>
+                    <p style={{ fontSize: 13, fontWeight: 900, color: '#fff' }}>{selectedStudent.name}</p>
                     {selectedStudent.position && (() => {
                       const preset = FOOTBALL_POSITIONS.find(p => p.id === selectedStudent.position)
-                      const col    = preset ? POSITION_COLORS[preset.id] : null
+                      const hex    = preset ? POSITION_COLORS[preset.id]?.hex : null
                       return (
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${col ? `${col.bg} ${col.text}` : 'bg-gray-100 text-gray-600'}`}>
+                        <span style={{ fontSize: 9, fontWeight: 900, padding: '2px 6px', borderRadius: 3, backgroundColor: hex || '#374151', color: '#fff' }}>
                           {selectedStudent.position}
                         </span>
                       )
@@ -1008,23 +1024,23 @@ function PitchViewCard({ batchId, currentStudentId, overallScore }) {
                   </div>
                   {(() => {
                     const st = statsCache[selectedId]
-                    if (st === 'loading') return <p className="text-xs text-gray-400 mt-0.5">Loading…</p>
+                    if (st === 'loading') return <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>Loading…</p>
                     if (st) return (
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${st.tier.bgClass} ${st.tier.textClass}`}>
+                        <span style={{ fontSize: 10, fontWeight: 900, padding: '2px 7px', borderRadius: 4, backgroundColor: `${st.tier.hex}22`, color: st.tier.hex, border: `1px solid ${st.tier.hex}44` }}>
                           {st.tier.label} · {st.overall}/100
                         </span>
                         {st.topSkill && (
-                          <span className="text-[10px] text-gray-500">
-                            Top: <span className="font-bold text-gray-700">{SKILL_SHORTS[st.topSkill.skill] || st.topSkill.skill}</span> {st.topSkill.val}
+                          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+                            Top: <span style={{ fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>{SKILL_SHORTS[st.topSkill.skill] || st.topSkill.skill}</span> {st.topSkill.val}
                           </span>
                         )}
                       </div>
                     )
-                    return <p className="text-xs text-gray-400 italic mt-0.5">No assessment yet</p>
+                    return <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', fontStyle: 'italic', marginTop: 2 }}>No assessment yet</p>
                   })()}
                 </div>
-                <button onClick={() => setSelectedId(null)} className="text-gray-300 hover:text-gray-500 text-lg leading-none flex-shrink-0">✕</button>
+                <button onClick={() => setSelectedId(null)} style={{ color: 'rgba(255,255,255,0.3)', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
             </div>
           )}
