@@ -410,6 +410,20 @@ function TipDisplay({ tip }) {
         </div>
       )
       sectionCount++
+    } else if (/^\d+\./.test(line)) {
+      const num  = line.match(/^(\d+)\./)[1]
+      const text = line.replace(/^\d+\.\s*/, '')
+      const parts = text.split(/\s*—\s*/)
+      elements.push(
+        <div key={`n${i}`} className="flex items-start gap-2.5 ml-0.5">
+          <span className="text-violet-400 text-xs font-black mt-0.5 flex-shrink-0 w-4 text-center">{num}.</span>
+          <p className="text-sm text-white/85 leading-snug">
+            {parts.length > 1
+              ? <><span className="font-semibold text-white">{parts[0]}</span><span className="text-white/55"> — {parts.slice(1).join(' — ')}</span></>
+              : renderInline(text)}
+          </p>
+        </div>
+      )
     } else if (line.startsWith('•') || line.startsWith('-')) {
       const text = line.replace(/^[•\-]\s*/, '')
       const parts = text.split(/\s*—\s*/)
@@ -544,8 +558,11 @@ Write directly to the player ("you/your"). Use EXACTLY this structure:
 • [${hasNotes ? 'Second coach-flagged or score-based issue' : 'Second weakness'}] — [specific aspect]. One line.
 
 **Drills**
-• Drill Name (Xmin) — [directly addresses ${hasLatest ? 'latest coach note' : 'top weakness'}]. One line.
-• Drill Name (Xmin) — [addresses score gap or recurring coach theme]. One line.
+1. Drill Name (Xmin) — [directly addresses ${hasLatest ? 'latest coach note' : 'top weakness'}]. One line.
+2. Drill Name (Xmin) — [addresses score gap or recurring coach theme]. One line.
+3. Drill Name (Xmin) — [targets position-critical skill]. One line.
+4. Drill Name (Xmin) — [complements drill 1, different muscle group or skill]. One line.
+5. Drill Name (Xmin) — [match-realistic drill combining strength + technique]. One line.
 
 **Verdict**
 One punchy sentence tying ${noteCount > 1 ? 'the recurring coach observations' : hasLatest ? "the coach's note" : 'the data'} to what this player can become.
@@ -561,7 +578,7 @@ Rules: Bold headers exactly as shown. No intro. No greetings. Real drills, real 
         body: JSON.stringify({
           model: 'llama-3.3-70b-versatile',
           messages: [{ role: 'user', content: prompt }],
-          max_tokens: 280,
+          max_tokens: 380,
           temperature: 0.8,
         }),
       })
