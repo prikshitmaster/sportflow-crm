@@ -49,7 +49,7 @@ $$;
 
 -- ── Helper: resolve the student id behind a student token (for self-only reads) ──
 CREATE OR REPLACE FUNCTION current_student_id()
-RETURNS UUID
+RETURNS BIGINT
 LANGUAGE SQL STABLE SECURITY DEFINER
 SET search_path = public
 AS $$

@@ -2,13 +2,75 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
-import { QrCode, CheckCircle2, XCircle, Camera, ArrowLeft, Lock, CreditCard } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
+import { QrCode, CheckCircle2, XCircle, Camera, ArrowLeft, Lock, CreditCard, Clock } from 'lucide-react'
 import jsQR from 'jsqr'
 import { logAudit, ACTIONS } from '../../lib/audit'
+
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const WINDOW_MINS = 30  // minutes before/after batch start that scanning is allowed
+
+// Parse "HH:MM" into today's Date object
+function parseBatchTime(timeStr) {
+  if (!timeStr) return null
+  const [h, m] = timeStr.split(':').map(Number)
+  if (isNaN(h) || isNaN(m)) return null
+  const d = new Date()
+  d.setHours(h, m, 0, 0)
+  return d
+}
+
+// Returns { allowed: bool, reason: string|null, opensAt: string|null }
+function checkScanWindow(batchDays, startTime, endTime) {
+  const now = new Date()
+  const todayDay = DAYS[now.getDay()]
+
+  // No batch config — always open
+  if (!batchDays?.length && !startTime) return { allowed: true }
+
+  // Off day
+  if (batchDays?.length > 0 && !batchDays.includes(todayDay)) {
+    return { allowed: false, reason: 'No training today', opensAt: null }
+  }
+
+  // No start time configured — allow all day on training days
+  const batchStart = parseBatchTime(startTime)
+  if (!batchStart) return { allowed: true }
+
+  // Window opens 30 min before batch start
+  const windowOpen = new Date(batchStart.getTime() - WINDOW_MINS * 60 * 1000)
+
+  // Window closes 30 min after batch END (or 30 min after start if no end time)
+  const batchEnd   = parseBatchTime(endTime)
+  const windowClose = batchEnd
+    ? new Date(batchEnd.getTime()  + WINDOW_MINS * 60 * 1000)
+    : new Date(batchStart.getTime() + WINDOW_MINS * 60 * 1000)
+
+  if (now < windowOpen) {
+    const h = String(windowOpen.getHours()).padStart(2, '0')
+    const m = String(windowOpen.getMinutes()).padStart(2, '0')
+    return { allowed: false, reason: 'Too early', opensAt: `${h}:${m}` }
+  }
+  if (now > windowClose) {
+    return { allowed: false, reason: 'Attendance window closed', opensAt: null }
+  }
+  return { allowed: true }
+}
 
 export default function StudentScan() {
   const { studentUser } = useApp()
   const navigate = useNavigate()
+  const [scanWindow, setScanWindow] = useState(null) // null while loading
+
+  useEffect(() => {
+    const batchId = studentUser?.batch_id || studentUser?.batchId
+    if (!batchId) { setScanWindow({ allowed: true }); return }
+    supabase.from('batches').select('days, start_time, end_time').eq('id', batchId).maybeSingle()
+      .then(({ data }) => {
+        setScanWindow(checkScanWindow(data?.days, data?.start_time, data?.end_time))
+      })
+      .catch(() => setScanWindow({ allowed: true }))
+  }, [studentUser])
 
   // Suspended students cannot mark attendance — must clear dues first
   if (studentUser?.status === 'Suspended') {
@@ -194,24 +256,51 @@ export default function StudentScan() {
         </div>
       </div>
 
-      {/* Ready */}
+      {/* Ready — locked if outside scan window */}
       {phase === 'ready' && (
         <div className="space-y-5">
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center">
-            <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
-              <QrCode size={40} className="text-gray-400" />
+          {scanWindow && !scanWindow.allowed ? (
+            <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
+              <div className="w-20 h-20 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                <Clock size={40} className="text-amber-400" />
+              </div>
+              <h2 className="text-lg font-black text-gray-900 mb-2">
+                {scanWindow.reason || 'Attendance Closed'}
+              </h2>
+              {scanWindow.opensAt ? (
+                <p className="text-sm text-gray-500 mb-2">
+                  Attendance opens at <strong>{scanWindow.opensAt}</strong><br/>
+                  <span className="text-xs text-gray-400">{WINDOW_MINS} min before batch starts</span>
+                </p>
+              ) : (
+                <p className="text-sm text-gray-500 mb-2">
+                  Attendance window is <strong>{WINDOW_MINS} min</strong> before and after batch start time.
+                </p>
+              )}
+              <button
+                onClick={() => navigate('/student/dashboard')}
+                className="w-full btn-secondary justify-center py-3 mt-4"
+              >
+                Back to Dashboard
+              </button>
             </div>
-            <h2 className="text-lg font-black text-gray-900 mb-2">Ready to scan</h2>
-            <p className="text-sm text-gray-500 mb-6">
-              Point your camera at the QR code posted at the academy entrance gate.
-            </p>
-            <button onClick={startCamera} className="w-full btn-primary justify-center py-3.5 text-base gap-3">
-              <Camera size={20} /> Open Camera &amp; Scan QR
-            </button>
-            <button onClick={markDirect} className="w-full btn-secondary justify-center py-3 text-sm gap-2 mt-2">
-              ✓ Mark Without Scan (Test)
-            </button>
-          </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 text-center">
+              <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                <QrCode size={40} className="text-gray-400" />
+              </div>
+              <h2 className="text-lg font-black text-gray-900 mb-2">Ready to scan</h2>
+              <p className="text-sm text-gray-500 mb-6">
+                Point your camera at the QR code posted at the academy entrance gate.
+              </p>
+              <button onClick={startCamera} className="w-full btn-primary justify-center py-3.5 text-base gap-3">
+                <Camera size={20} /> Open Camera &amp; Scan QR
+              </button>
+              <button onClick={markDirect} className="w-full btn-secondary justify-center py-3 text-sm gap-2 mt-2">
+                ✓ Mark Without Scan (Test)
+              </button>
+            </div>
+          )}
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
             <p className="text-xs font-semibold text-blue-800 mb-1">How it works</p>
             <ol className="text-xs text-blue-700 space-y-1">

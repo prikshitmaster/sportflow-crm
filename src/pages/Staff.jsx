@@ -122,11 +122,7 @@ export default function Staff() {
         <AddStaffModal
           onClose={() => setShowModal(false)}
           onSave={async (form, photoFile) => {
-            let photoUrl = null
-            if (photoFile && !demoMode) {
-              try { photoUrl = await db.uploadStaffPhoto(photoFile, form.name) } catch (_) {}
-            }
-            const codes = await addStaffMember({ ...form, photoUrl })
+            const codes = await addStaffMember({ ...form }, !demoMode ? photoFile : null)
             return { activationInfo: codes }
           }}
           demoMode={demoMode}

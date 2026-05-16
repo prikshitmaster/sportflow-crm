@@ -9,8 +9,8 @@ import StudentAvatar from '../components/StudentAvatar'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { updateStudentPosition } from '../lib/db'
 
-const COLORS = ['bg-brand-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600']
-const COLOR_HEX = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
+const COLOR_HEX      = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
+const COLOR_HEX_DARK = ['#3730a3', '#047857', '#6d28d9', '#b45309', '#be123c']
 
 export default function Batches() {
   const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches } = useApp()
@@ -25,26 +25,33 @@ export default function Batches() {
     setEnrolledAdj(prev => ({ ...prev, [batchId]: (prev[batchId] || 0) + delta }))
   }
 
-  // Derive branch list from batch sports (sorted), regardless of DB branches
+  // Return the single "home" sport for a batch: the longest entry in its sports array.
+  // Handles both array and string (in case DB returns text instead of text[]).
+  const getBatchSection = (b) => {
+    const sports = Array.isArray(b.sports) ? b.sports : (b.sports ? [String(b.sports)] : [])
+    return sports.slice().sort((a, z) => z.length - a.length)[0] ?? null
+  }
+
+  // Build the branch tab list from primary sports only — no ghost tabs for secondary sports.
   const branchList = useMemo(() => {
     const set = new Set()
-    batches.forEach(b => b.sports?.forEach(s => set.add(s)))
+    batches.forEach(b => { const s = getBatchSection(b); if (s) set.add(s) })
     return [...set].sort()
   }, [batches])
 
-  // Grouped sections — always available when batches have sports
+  // Grouped sections — each batch in exactly one section
   const grouped = useMemo(() => {
     if (branchList.length === 0) return null
     return branchList.map(br => ({
       branch: br,
-      batches: batches.filter(b => b.sports?.includes(br)),
+      batches: batches.filter(b => getBatchSection(b) === br),
     }))
   }, [branchList, batches])
 
-  // Active branch filter (used only when clicking a pill to scroll/jump is not needed — kept for stats)
+  // Active branch filter — also exclusive
   const visibleBatches = activeBranch === 'All'
     ? batches
-    : batches.filter(b => b.sports?.includes(activeBranch))
+    : batches.filter(b => getBatchSection(b) === activeBranch)
 
   const handleAdd = async (b) => {
     await addBatch(b)
@@ -88,7 +95,7 @@ export default function Batches() {
           {branchList.map(br => (
             <button key={br} onClick={() => setActiveBranch(br)}
               className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-sm font-bold border transition ${activeBranch === br ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200'}`}>
-              {br} <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === br ? 'bg-white/20' : 'bg-gray-100'}`}>{batches.filter(b => b.sports?.includes(br)).length}</span>
+              {br} <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${activeBranch === br ? 'bg-white/20' : 'bg-gray-100'}`}>{batches.filter(b => getBatchSection(b) === br).length}</span>
             </button>
           ))}
         </div>
@@ -124,7 +131,7 @@ export default function Batches() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {branchBatches.map((b, idx) => (
-                  <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} onSelect={setSelectedBatch} />
+                  <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />
                 ))}
               </div>
             </div>
@@ -139,7 +146,7 @@ export default function Batches() {
         /* Single branch selected — flat grid */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {visibleBatches.map((b, idx) => (
-            <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} onSelect={setSelectedBatch} />
+            <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />
           ))}
         </div>
       )}
@@ -147,7 +154,7 @@ export default function Batches() {
       {/* Fallback flat grid when no branches configured */}
       {!grouped && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} onSelect={setSelectedBatch} />)}
+          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />)}
         </div>
       )}
 
@@ -181,88 +188,96 @@ export default function Batches() {
   )
 }
 
-function BatchCard({ b, idx, enrolledAdj = {}, onSelect }) {
+function BatchCard({ b, idx, enrolledAdj = {}, staff = [], onSelect, onEdit }) {
   const enrolled = (b.enrolled || 0) + (enrolledAdj[b.id] || 0)
-  const pct = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
-  const isFull = enrolled >= b.capacity
-  const hex = COLOR_HEX[idx % COLOR_HEX.length]
+  const pct      = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
+  const isFull   = enrolled >= b.capacity
+  const hex      = COLOR_HEX[idx % COLOR_HEX.length]
+  const hexDark  = COLOR_HEX_DARK[idx % COLOR_HEX_DARK.length]
+  const barColor = isFull ? '#ef4444' : pct > 80 ? '#f59e0b' : hex
+
+  const coachStaff = b.coach ? staff.find(s => s.name === b.coach) : null
 
   return (
-    <div
-      onClick={() => onSelect(b)}
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm active:scale-[0.98] hover:shadow-md transition-all cursor-pointer overflow-hidden"
-    >
-      {/* Color accent bar */}
-      <div className="h-1" style={{ background: hex }} />
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden hover:shadow-md active:scale-[0.98] transition-all border border-gray-100/80">
+      {/* Gradient header — click opens detail panel */}
+      <div
+        className="px-4 pt-4 pb-5 relative cursor-pointer"
+        style={{ background: `linear-gradient(135deg, ${hex} 0%, ${hexDark} 100%)` }}
+        onClick={() => onSelect(b)}
+      >
+        {/* Edit button top-right */}
+        <button
+          onClick={e => { e.stopPropagation(); onEdit(b) }}
+          className="absolute top-3 right-3 p-1.5 rounded-lg bg-white/20 hover:bg-white/35 active:bg-white/40 transition"
+          title="Edit batch"
+        >
+          <Pencil size={12} className="text-white" />
+        </button>
 
-      <div className="p-4">
-        {/* Name row */}
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex-1 min-w-0">
-            <p className="font-black text-gray-900 text-[15px] leading-snug">{b.name}</p>
-            {b.code && <span className="font-mono text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{b.code}</span>}
-          </div>
-          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-            {isFull
-              ? <span className="badge badge-red text-[10px]">Full</span>
-              : b.waitlist > 0 && <span className="badge badge-yellow text-[10px]">{b.waitlist} wait</span>
-            }
-            {b.sports?.length > 0 && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full text-white" style={{ background: hex }}>
-                {b.sports[0]}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Schedule row */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mb-3">
-          {b.time && (
-            <span className="flex items-center gap-1">
-              <Clock size={11} className="flex-shrink-0" />{b.time}
-            </span>
-          )}
-          {b.days?.length > 0 && (
-            <span className="flex flex-wrap gap-1">
-              {b.days.map(d => (
-                <span key={d} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-semibold">{d}</span>
-              ))}
-            </span>
-          )}
-          {b.ground && (
-            <span className="text-gray-400 truncate max-w-[120px]">{b.ground}</span>
-          )}
-        </div>
-
-        {/* Capacity bar */}
-        <div className="mb-3">
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-gray-500">{enrolled} / {b.capacity} students</span>
-            <span className="font-semibold" style={{ color: isFull ? '#ef4444' : pct > 80 ? '#f59e0b' : hex }}>
-              {pct}%
-            </span>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-1.5">
-            <div
-              className="h-1.5 rounded-full transition-all"
-              style={{ width: `${pct}%`, background: isFull ? '#ef4444' : pct > 80 ? '#f59e0b' : hex }}
-            />
-          </div>
-        </div>
-
-        {/* Age range */}
-        {(b.ageMin > 0 || b.ageMax < 99) && (
-          <p className="text-xs text-gray-400 mb-3">Ages {b.ageMin}–{b.ageMax} yrs</p>
+        {/* Sport badge */}
+        {b.sports?.length > 0 && (
+          <span className="inline-block text-[10px] font-bold text-white/90 bg-white/20 px-2 py-0.5 rounded-full mb-2">
+            {b.sports[0]}
+          </span>
         )}
 
+        {/* Batch name */}
+        <h3 className="font-black text-white text-base leading-snug pr-8">{b.name}</h3>
+        {b.code && <p className="font-mono text-[10px] text-white/50 mt-0.5">{b.code}</p>}
+
+        {/* Schedule */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2.5">
+          {b.time && (
+            <span className="flex items-center gap-1 text-white/80 text-xs">
+              <Clock size={10} className="flex-shrink-0" />{b.time}
+            </span>
+          )}
+          {b.days?.map(d => (
+            <span key={d} className="text-[10px] bg-white/25 text-white px-1.5 py-0.5 rounded font-bold">{d}</span>
+          ))}
+        </div>
+        {b.ground && <p className="text-white/50 text-[10px] mt-1 truncate">{b.ground}</p>}
+      </div>
+
+      {/* Card body */}
+      <div className="px-4 py-3 cursor-pointer" onClick={() => onSelect(b)}>
+        {/* Capacity bar */}
+        <div className="mb-2.5">
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-gray-500">{enrolled} / {b.capacity} students</span>
+            <span className="font-bold" style={{ color: barColor }}>{pct}%</span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-1.5">
+            <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
+          </div>
+        </div>
+
+        {/* Status badges + age */}
+        <div className="flex items-center gap-2 mb-3">
+          {isFull && <span className="badge badge-red text-[10px]">Full</span>}
+          {!isFull && b.waitlist > 0 && <span className="badge badge-yellow text-[10px]">{b.waitlist} waitlist</span>}
+          {(b.ageMin > 0 || b.ageMax < 99) && (
+            <span className="text-[11px] text-gray-400">Ages {b.ageMin}–{b.ageMax} yrs</span>
+          )}
+        </div>
+
         {/* Coach footer */}
-        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+        <div className="flex items-center justify-between pt-2.5 border-t border-gray-100">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
-              style={{ background: hex }}>
-              {(b.coach || 'U')[0]}
+            {coachStaff?.photoUrl ? (
+              <img src={coachStaff.photoUrl} alt={b.coach}
+                className="w-7 h-7 rounded-full object-cover flex-shrink-0 border-2 border-white shadow-sm" />
+            ) : (
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0 shadow-sm"
+                style={{ background: hex }}>
+                {(b.coach || 'U')[0]}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-gray-700 truncate">{b.coach || 'Unassigned'}</p>
+              <p className="text-[10px] text-gray-400">Coach</p>
             </div>
-            <span className="text-xs text-gray-600 truncate">{b.coach || 'Unassigned'}</span>
           </div>
           <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
         </div>
@@ -429,13 +444,17 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
   const allEnrolled = [...primaryEnrolled, ...mbOnly]
   const enrolledIds = useMemo(() => new Set(allEnrolled.map(s => s.id)), [allEnrolled])
 
+  const nameMatch = (s) => s.name.toLowerCase().includes(assignSearch.toLowerCase())
+  const isAlternateBlocked = (s) => s.trainingType === 'Alternate' && !!s.batchId
+
   const searchResults = assignSearch.trim().length >= 2
-    ? students.filter(s => s.status === 'Active' && !enrolledIds.has(s.id) &&
-        s.name.toLowerCase().includes(assignSearch.toLowerCase()))
-      .slice(0, 6)
+    ? students
+        .filter(s => s.status === 'Active' && !enrolledIds.has(s.id) && nameMatch(s))
+        .slice(0, 8)
     : []
 
   const handleAssign = async (student) => {
+    if (isAlternateBlocked(student)) return
     setAssigning(student.id)
     try {
       await assignStudentToBatch(student.id, b.id, b.name, user?.academyId)
@@ -579,22 +598,31 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
             </div>
             {searchResults.length > 0 && (
               <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
-                {searchResults.map(s => (
-                  <div key={s.id} className="flex items-center gap-3 px-2 py-1.5 rounded-xl hover:bg-gray-50 transition">
-                    <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={28} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
-                      <p className="text-xs text-gray-400">{s.sport} · {s.batch || 'No primary batch'}</p>
+                {searchResults.map(s => {
+                  const blocked = isAlternateBlocked(s)
+                  return (
+                    <div key={s.id} className={`flex items-center gap-3 px-2 py-1.5 rounded-xl transition ${blocked ? 'opacity-50' : 'hover:bg-gray-50'}`}>
+                      <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={28} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
+                        <p className="text-xs text-gray-400">{s.sport} · {s.batch || 'No primary batch'}</p>
+                      </div>
+                      {blocked ? (
+                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg flex-shrink-0 whitespace-nowrap">
+                          Alternate — 1 batch only
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleAssign(s)}
+                          disabled={assigning === s.id}
+                          className="text-xs font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 px-3 py-1 rounded-lg transition disabled:opacity-50 flex-shrink-0"
+                        >
+                          {assigning === s.id ? '…' : 'Assign'}
+                        </button>
+                      )}
                     </div>
-                    <button
-                      onClick={() => handleAssign(s)}
-                      disabled={assigning === s.id}
-                      className="text-xs font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 px-3 py-1 rounded-lg transition disabled:opacity-50 flex-shrink-0"
-                    >
-                      {assigning === s.id ? '…' : 'Assign'}
-                    </button>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
             {assignSearch.trim().length >= 2 && searchResults.length === 0 && (
@@ -702,6 +730,16 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
               </div>
             )}
           </div>
+
+          {/* Delete trigger button — always visible at bottom of panel */}
+          {!confirmDelete && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-red-200 text-red-600 text-sm font-bold hover:bg-red-50 active:bg-red-100 transition"
+            >
+              <Trash2 size={15} /> Delete Batch
+            </button>
+          )}
 
           {/* Delete confirmation */}
           {confirmDelete && (

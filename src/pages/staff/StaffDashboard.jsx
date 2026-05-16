@@ -65,9 +65,13 @@ export default function StaffDashboard() {
   const totalStudents = myStudentIds.size
 
   const todayShort = new Date().toLocaleDateString('en-IN', { weekday: 'short' })
-  const todayBatches = displayBatches.filter(b =>
+  const batchTrainsToday = (b) =>
     !b.days || b.days.length === 0 ||
     b.days.some(d => d.toLowerCase().startsWith(todayShort.toLowerCase().slice(0, 2)))
+  const todayBatches = displayBatches.filter(batchTrainsToday)
+  // All batches with today's first, non-training-today batches greyed
+  const sortedBatches = [...displayBatches].sort((a, b) =>
+    (batchTrainsToday(b) ? 1 : 0) - (batchTrainsToday(a) ? 1 : 0)
   )
 
   const presentCount  = [...myStudentIds].filter(id => todayAtt[id] === 'Present').length
@@ -142,23 +146,36 @@ export default function StaffDashboard() {
         </div>
       )}
 
-      {/* Today's batch cards — coaches only */}
-      {isCoach && todayBatches.length > 0 && (
+      {/* My batch cards — coaches only. Today's first, others greyed. */}
+      {isCoach && sortedBatches.length > 0 && (
         <div>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Today's Sessions</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">My Sessions</p>
           <div className="space-y-2">
-            {todayBatches.map(b => {
+            {sortedBatches.map(b => {
+              const trains   = batchTrainsToday(b)
               const bStu     = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name))
               const bPresent = bStu.filter(s => todayAtt[s.id] === 'Present').length
               return (
                 <button key={b.id} onClick={() => navigate('/staff/attendance')}
-                  className="w-full bg-white rounded-2xl p-4 border border-gray-100 active:bg-gray-50 text-left flex items-center justify-between">
-                  <div>
-                    <p className="font-bold text-gray-900 text-sm">{b.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{b.startTime || b.time || '—'} · {b.sports?.join(', ')}</p>
+                  className={`w-full rounded-2xl p-4 border text-left flex items-center justify-between transition ${
+                    trains
+                      ? 'bg-white border-gray-100 active:bg-gray-50'
+                      : 'bg-gray-50 border-gray-100 opacity-55 active:opacity-70'
+                  }`}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className={`font-bold text-sm truncate ${trains ? 'text-gray-900' : 'text-gray-500'}`}>{b.name}</p>
+                      {trains
+                        ? <span className="text-[9px] font-black px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 leading-none">Today</span>
+                        : <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-gray-200 text-gray-500 leading-none">Off</span>}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">
+                      {b.startTime || b.time || '—'} · {b.sports?.join(', ')}
+                      {!trains && b.days?.length > 0 && <> · {b.days.join(', ')}</>}
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-black text-gray-900">{bPresent}/{bStu.length}</p>
+                  <div className="text-right flex-shrink-0 ml-3">
+                    <p className={`text-sm font-black ${trains ? 'text-gray-900' : 'text-gray-400'}`}>{bPresent}/{bStu.length}</p>
                     <p className="text-[10px] text-gray-400">marked</p>
                   </div>
                 </button>

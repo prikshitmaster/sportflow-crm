@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
+import { supabase } from '../../lib/supabase'
 import { ChevronLeft, ChevronRight, CalendarCheck } from 'lucide-react'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -20,10 +21,31 @@ export default function StudentAttendance() {
   const [month, setMonth] = useState(now.getMonth())
   const [attMap,  setAttMap]  = useState({})   // { 'YYYY-MM-DD': status }
   const [loading, setLoading] = useState(true)
+  const [batchDays, setBatchDays] = useState(null)  // null = unknown, [] = no days, ['Mon','Wed','Fri'] etc.
+
+  const isAlternate = (studentUser?.training_type || studentUser?.trainingType) === 'Alternate'
 
   useEffect(() => {
     loadMonth()
   }, [year, month, studentUser])
+
+  // Fetch the student's batch days once (for off-day cross-out on Alternate students)
+  useEffect(() => {
+    if (!studentUser?.id || !isAlternate) return
+    const batchId = studentUser.batch_id || studentUser.batchId
+    if (!batchId) return
+    supabase.from('batches').select('days').eq('id', batchId).maybeSingle()
+      .then(({ data }) => setBatchDays(data?.days || []))
+      .catch(() => setBatchDays([]))
+  }, [studentUser, isAlternate])
+
+  // Priority: Present > Late > Leave > Absent (best status wins when multiple batch records exist)
+  const STATUS_PRI = { Present: 4, Late: 3, Leave: 2, Absent: 1 }
+  const bestStatus = (a, b) => {
+    if (!a) return b
+    if (!b) return a
+    return (STATUS_PRI[a] || 0) >= (STATUS_PRI[b] || 0) ? a : b
+  }
 
   const loadMonth = async () => {
     if (!studentUser?.id) return
@@ -31,7 +53,11 @@ export default function StudentAttendance() {
     try {
       const rows = await db.fetchStudentOwnAttendance(studentUser.id, year, month)
       const map = {}
-      rows.forEach(r => { map[r.date] = r.status || (r.present ? 'Present' : 'Absent') })
+      // Deduplicate across batches: same date may appear twice if student is in MWF + TTS
+      rows.forEach(r => {
+        const st = r.status || (r.present ? 'Present' : 'Absent')
+        map[r.date] = bestStatus(map[r.date], st)
+      })
       setAttMap(map)
     } catch (err) {
       console.error(err)
@@ -57,7 +83,14 @@ export default function StudentAttendance() {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d)
 
   const pad = n => String(n).padStart(2, '0')
-  const today = new Date().toISOString().split('T')[0]
+  // LOCAL today (not UTC) — toISOString returns UTC, gives wrong day in early-morning IST
+  const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+
+  // Off-day = Alternate student + date's day name is NOT in their batch's training days
+  const isOffDay = (day) => {
+    if (!isAlternate || !batchDays || batchDays.length === 0) return false
+    return !batchDays.includes(DAYS[new Date(year, month, day).getDay()])
+  }
 
   const present = Object.values(attMap).filter(v => v === 'Present').length
   const absent  = Object.values(attMap).filter(v => v === 'Absent').length
@@ -108,6 +141,20 @@ export default function StudentAttendance() {
               const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`
               const status  = attMap[dateStr]
               const isToday = dateStr === today
+              const off     = isOffDay(day)
+              // Off-day takes precedence — alternate students shouldn't see "Absent" on days they don't train
+              if (off) {
+                return (
+                  <div
+                    key={idx}
+                    className="aspect-square flex flex-col items-center justify-center rounded-lg text-[10px] font-bold bg-red-50 text-red-400 relative"
+                    title="Off day — not your training day"
+                  >
+                    <span className="text-[10px] leading-none">{day}</span>
+                    <span className="text-sm leading-none mt-0.5">✕</span>
+                  </div>
+                )
+              }
               return (
                 <div
                   key={idx}
@@ -136,6 +183,12 @@ export default function StudentAttendance() {
             <span className="text-xs text-gray-600">{label}</span>
           </div>
         ))}
+        {isAlternate && batchDays && batchDays.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm bg-red-50 flex items-center justify-center text-red-400 text-[8px] font-black">✕</div>
+            <span className="text-xs text-gray-600">Off Day</span>
+          </div>
+        )}
       </div>
 
       {/* Monthly summary */}

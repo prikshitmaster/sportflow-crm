@@ -165,7 +165,7 @@ export function diffObjects(oldObj, newObj, fields) {
 }
 
 // Fire-and-forget — never throws, never blocks
-export function logAudit({ actor, action, entityType, entityId, entityName, changes = {}, note, academyId }) {
+export function logAudit({ actor, action, entityType, entityId, entityName, changes = {}, note, academyId, sport }) {
   supabase.from('audit_logs').insert({
     academy_id:  academyId || null,
     actor_id:    actor?.id ? String(actor.id) : null,
@@ -177,5 +177,6 @@ export function logAudit({ actor, action, entityType, entityId, entityName, chan
     entity_name: entityName || null,
     changes:     Object.keys(changes).length > 0 ? changes : {},
     note:        note || null,
+    sport:       sport || null,
   }).then(() => {}).catch(() => {})
 }

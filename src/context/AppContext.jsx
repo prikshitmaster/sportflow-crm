@@ -168,7 +168,9 @@ export function AppProvider({ children }) {
         showToast(`Auto-suspend error: ${suspendErr.message}`, 'error')
       }
 
-      const today = now.toISOString().split('T')[0]
+      // LOCAL date (not UTC) — toISOString() would return previous day in early-morning IST
+      const pad2 = (n) => String(n).padStart(2, '0')
+      const today = `${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`
       const att = await db.fetchAttendanceForDate(today)
       setAttendanceData({ [today]: att })
     } catch (err) {
@@ -1062,13 +1064,21 @@ export function AppProvider({ children }) {
 
   // ── Staff HR ──────────────────────────────────────────
 
-  const addStaffMember = async (s) => {
+  const addStaffMember = async (s, photoFile = null) => {
     const staffCode = await db.fetchNextStaffCode(s.staffType || 'coach')
     const joinCode  = generateJoinCode()
     const created   = await db.insertStaff({ ...s, academyId: user?.academyId, staffCode, joinCode })
+    // Upload photo AFTER insert so we have the real staff ID for fixed-path storage
+    let photoUrl = created.photoUrl || null
+    if (photoFile) {
+      try {
+        photoUrl = await db.uploadStaffPhoto(photoFile, created.id)
+        await db.updateStaffProfile(created.id, { name: s.name, phone: s.phone, photoUrl })
+      } catch (_) {}
+    }
     setStaff(prev => [...prev, {
       ...created,
-      photoUrl:      created.photoUrl || null,
+      photoUrl,
       userId:        null,
       accessRole:    null,
       permissions:   [],
@@ -1099,7 +1109,7 @@ export function AppProvider({ children }) {
     if (!id) return
     let photoUrl   = undefined
     let licenceUrl = undefined
-    if (photoFile)   photoUrl   = await db.uploadStaffPhoto(photoFile, name || user.name)
+    if (photoFile)   photoUrl   = await db.uploadStaffPhoto(photoFile, id)
     if (licenceFile) licenceUrl = await db.uploadStaffLicence(licenceFile, id)
     await db.updateStaffProfile(id, { name, phone, photoUrl })
     if (age !== undefined || licenceUrl !== undefined) await db.upsertStaffProfileExtra(id, { age, licenceUrl })
@@ -1125,7 +1135,7 @@ export function AppProvider({ children }) {
 
   const editStaffMember = async (id, { name, phone, photoFile, photoUrl: existingUrl, age }) => {
     let photoUrl = existingUrl
-    if (photoFile) { try { photoUrl = await db.uploadStaffPhoto(photoFile, name) } catch (_) {} }
+    if (photoFile) { try { photoUrl = await db.uploadStaffPhoto(photoFile, id) } catch (_) {} }
     await db.updateStaffProfile(id, { name, phone, photoUrl })
     if (age !== undefined) await db.upsertStaffProfileExtra(id, { age })
     setStaff(prev => prev.map(s => s.id === id ? { ...s, name, phone, photoUrl: photoUrl || s.photoUrl, age } : s))
@@ -1207,10 +1217,18 @@ export function AppProvider({ children }) {
     }
   }
 
-  const saveAttendance = async (date, records) => {
+  const saveAttendance = async (date, records, batchId = null) => {
     try {
-      await db.saveAttendanceForDate(date, records)
-      setAttendanceData(prev => ({ ...prev, [date]: records }))
+      await db.saveAttendanceForDate(date, records, batchId)
+      // Merge into aggregate cache (so dashboard present-count stays current)
+      setAttendanceData(prev => {
+        const updated = { ...(prev[date] || {}) }
+        Object.entries(records).forEach(([id, status]) => {
+          if (status) updated[id] = status
+          else delete updated[id]
+        })
+        return { ...prev, [date]: updated }
+      })
       showToast('Attendance saved')
     } catch (err) {
       showToast(err.message || 'Save failed', 'error')

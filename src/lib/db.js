@@ -182,12 +182,18 @@ export async function updateStudentPosition(id, position) {
 }
 
 export async function uploadStudentPhoto(file, studentId) {
-  const ext  = file.name.split('.').pop()
-  const path = `${studentId}_${Date.now()}.${ext}`
-  const { error } = await supabase.storage.from('student-photos').upload(path, file, { upsert: true })
+  const { compressImage } = await import('./imageUtils.js')
+  const compressed = await compressImage(file)
+  // Fixed path — upsert overwrites old file automatically, no orphans.
+  const path = `${studentId}.jpg`
+  const { error } = await supabase.storage.from('student-photos').upload(path, compressed, {
+    upsert: true,
+    contentType: 'image/jpeg',
+  })
   if (error) throw error
   const { data } = supabase.storage.from('student-photos').getPublicUrl(path)
-  return data.publicUrl
+  // Append version param to bust CDN cache after overwrite
+  return `${data.publicUrl}?v=${Date.now()}`
 }
 
 export async function updateStudentPhotoUrl(id, photoUrl) {
@@ -489,13 +495,18 @@ export async function deleteStaff(id) {
   if (error) throw error
 }
 
-export async function uploadStaffPhoto(file, staffName) {
-  const ext  = file.name.split('.').pop()
-  const path = `staff/${Date.now()}_${staffName.replace(/\s+/g, '_')}.${ext}`
-  const { error } = await supabase.storage.from('staff-photos').upload(path, file, { upsert: true })
+export async function uploadStaffPhoto(file, staffId) {
+  const { compressImage } = await import('./imageUtils.js')
+  const compressed = await compressImage(file)
+  // Fixed path keyed by staffId — upsert overwrites old file, no orphans.
+  const path = `staff/${staffId}.jpg`
+  const { error } = await supabase.storage.from('staff-photos').upload(path, compressed, {
+    upsert: true,
+    contentType: 'image/jpeg',
+  })
   if (error) throw error
   const { data } = supabase.storage.from('staff-photos').getPublicUrl(path)
-  return data.publicUrl
+  return `${data.publicUrl}?v=${Date.now()}`
 }
 
 export async function uploadAcademyLogo(file, academyId) {
@@ -696,72 +707,82 @@ export async function fetchAcademyName(academyId) {
 }
 
 // ── Attendance ────────────────────────────────────────────
-export async function fetchAttendanceForDate(date) {
-  const { data, error } = await supabase
-    .from('attendance')
-    .select('student_id, present, status')
-    .eq('date', date)
+
+// Best-status wins when multiple batch records exist for same student+date
+const _STATUS_PRI = { Present: 4, Late: 3, Leave: 2, Absent: 1 }
+const _bestStatus = (a, b) => {
+  if (!a) return b
+  if (!b) return a
+  return (_STATUS_PRI[a] || 0) >= (_STATUS_PRI[b] || 0) ? a : b
+}
+
+// batchId = null → fetch all batches (aggregate; used for dashboard counts)
+// batchId = number → fetch only that batch's marks
+export async function fetchAttendanceForDate(date, batchId = null) {
+  let q = supabase.from('attendance').select('student_id, present, status').eq('date', date)
+  if (batchId != null) q = q.eq('batch_id', batchId)
+  const { data, error } = await q
   if (error) {
     if (error.code === '42P01') return {}
     throw error
   }
   const record = {}
   data.forEach(row => {
-    record[row.student_id] = row.status || (row.present ? 'Present' : 'Absent')
+    const st = row.status || (row.present ? 'Present' : 'Absent')
+    record[row.student_id] = _bestStatus(record[row.student_id], st)
   })
   return record
 }
 
-export async function saveAttendanceForDate(date, records) {
+// batchId = null → save as legacy/admin mark (no batch context)
+// batchId = number → save scoped to that batch
+export async function saveAttendanceForDate(date, records, batchId = null) {
   const toDelete = []
   const toUpsert = []
   Object.entries(records).forEach(([student_id, status]) => {
     const sid = Number(student_id)
-    if (!status) {
-      toDelete.push(sid)   // blank means coach undid the mark
-    } else {
-      toUpsert.push({ date, student_id: sid, present: status === 'Present', status })
-    }
+    if (!status) toDelete.push(sid)
+    else toUpsert.push({ date, student_id: sid, batch_id: batchId, present: status === 'Present', status })
   })
   if (toDelete.length > 0) {
-    const { error } = await supabase
-      .from('attendance').delete()
-      .eq('date', date).in('student_id', toDelete)
+    let q = supabase.from('attendance').delete().eq('date', date).in('student_id', toDelete)
+    q = batchId != null ? q.eq('batch_id', batchId) : q.is('batch_id', null)
+    const { error } = await q
     if (error) throw error
   }
   if (toUpsert.length > 0) {
     const { error } = await supabase
       .from('attendance')
-      .upsert(toUpsert, { onConflict: 'date,student_id' })
+      .upsert(toUpsert, { onConflict: 'date,student_id,batch_id' })
     if (error) throw error
   }
 }
 
-// Fetch all attendance records for a full month
+// Fetch all attendance records for a full month.
+// batchId = null → all batches (aggregate); batchId = number → only that batch.
 // Returns: { [studentId]: { [day]: 'Present'|'Absent'|'Late'|'Leave' } }
-export async function fetchAttendanceForMonth(year, month) {
+export async function fetchAttendanceForMonth(year, month, batchId = null) {
   const pad = n => String(n).padStart(2, '0')
   const lastDay = new Date(year, month + 1, 0).getDate()
   const start = `${year}-${pad(month + 1)}-01`
   const end   = `${year}-${pad(month + 1)}-${pad(lastDay)}`
-  const { data, error } = await supabase
-    .from('attendance')
-    .select('student_id, date, present, status')
-    .gte('date', start)
-    .lte('date', end)
+  let q = supabase.from('attendance').select('student_id, date, present, status').gte('date', start).lte('date', end)
+  if (batchId != null) q = q.eq('batch_id', batchId)
+  const { data, error } = await q
   if (error) throw error
   const result = {}
   data.forEach(row => {
-    // Parse YYYY-MM-DD directly to avoid timezone shift (was: new Date(row.date).getDate())
     const day = parseInt(String(row.date).slice(8, 10), 10)
     if (!result[row.student_id]) result[row.student_id] = {}
-    result[row.student_id][day] = row.status || (row.present ? 'Present' : 'Absent')
+    const st = row.status || (row.present ? 'Present' : 'Absent')
+    result[row.student_id][day] = _bestStatus(result[row.student_id][day], st)
   })
   return result
 }
 
-// Save entire month's attendance in one upsert
-export async function saveAttendanceMonth(year, month, monthData) {
+// Save entire month's attendance in one upsert.
+// batchId = null → legacy/admin mark; batchId = number → batch-scoped.
+export async function saveAttendanceMonth(year, month, monthData, batchId = null) {
   const pad = n => String(n).padStart(2, '0')
   const rows = []
   for (const [studentId, days] of Object.entries(monthData)) {
@@ -770,6 +791,7 @@ export async function saveAttendanceMonth(year, month, monthData) {
       rows.push({
         date:       `${year}-${pad(month + 1)}-${pad(Number(day))}`,
         student_id: Number(studentId),
+        batch_id:   batchId,
         present:    status === 'Present',
         status,
       })
@@ -778,7 +800,7 @@ export async function saveAttendanceMonth(year, month, monthData) {
   if (rows.length === 0) return
   const { error } = await supabase
     .from('attendance')
-    .upsert(rows, { onConflict: 'date,student_id' })
+    .upsert(rows, { onConflict: 'date,student_id,batch_id' })
   if (error) throw error
 }
 

@@ -163,7 +163,7 @@ const TABS = [
 // ── Main ──────────────────────────────────────────────────
 
 export default function Reports() {
-  const { user, students, payments, trials, batches, attendanceData } = useApp()
+  const { user, students, payments, trials, batches, attendanceData, selectedSport } = useApp()
   const [activeTab, setActiveTab] = useState('overview')
 
   const generatedAt = today.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -202,7 +202,7 @@ export default function Reports() {
         {activeTab === 'ageing'       && <AgeingTab     students={students} payments={payments} />}
         {activeTab === 'attendance'   && <AttendanceTab students={students} batches={batches} attendanceData={attendanceData} />}
         {activeTab === 'performance'  && <PerformanceTab students={students} batches={batches} academyId={user?.academyId} />}
-        {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} />}
+        {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} selectedSport={selectedSport} />}
       </div>
     </div>
   )
@@ -1499,7 +1499,7 @@ function AuditEntry({ log, expanded, onToggle }) {
   )
 }
 
-function AuditTab({ academyId }) {
+function AuditTab({ academyId, selectedSport }) {
   const [logs, setLogs]             = useState([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
@@ -1513,13 +1513,13 @@ function AuditTab({ academyId }) {
 
   const load = () => {
     setLoading(true)
-    db.fetchAuditLogs(academyId, 500)
+    db.fetchAuditLogs(academyId, 500, selectedSport || null)
       .then(setLogs)
       .catch(() => setLogs([]))
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [academyId])
+  useEffect(() => { load() }, [academyId, selectedSport])
 
   const actors = useMemo(() => ['All', ...[...new Set(logs.map(l => l.actor_name).filter(Boolean))].sort()], [logs])
 
@@ -1688,7 +1688,10 @@ function AuditTab({ academyId }) {
           <Shield size={32} className="text-gray-200 mx-auto mb-3" />
           <p className="text-sm font-bold text-gray-500">{logs.length === 0 ? 'No audit entries yet' : 'No entries match filters'}</p>
           <p className="text-xs text-gray-400 mt-1">
-            {logs.length === 0 ? 'Actions will appear here as they happen' : 'Try adjusting your filters'}
+            {logs.length === 0 && selectedSport
+              ? `No actions recorded in "${selectedSport}" yet — do any action then click Refresh`
+              : logs.length === 0 ? 'Actions will appear here as they happen'
+              : 'Try adjusting your filters'}
           </p>
           {hasActiveFilters && (
             <button onClick={clearFilters} className="mt-3 text-xs text-brand-600 font-bold hover:underline">Clear Filters</button>

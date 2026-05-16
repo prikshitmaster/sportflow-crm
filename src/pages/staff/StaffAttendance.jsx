@@ -21,13 +21,17 @@ const STATUS_STYLE = {
 }
 
 export default function StaffAttendance() {
-  const { user, batches, students, attendanceData, saveAttendance, refreshData } = useApp()
+  const { user, batches, students, attendanceData, saveAttendance, refreshData, loadAttendanceForDate } = useApp()
 
-  useEffect(() => { refreshData?.() }, [])
-
-  const today     = new Date().toISOString().split('T')[0]
+  // LOCAL date (not UTC) — toISOString() returns UTC so it would read previous day's data in IST mornings
+  const pad2      = (n) => String(n).padStart(2, '0')
+  const now       = new Date()
+  const today     = `${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`
   const todayAtt  = attendanceData[today] || {}
-  const dayShort  = new Date().toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2)
+  const dayShort  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()]
+
+  // Always (re)load today's attendance on mount — even if stale data exists in cache
+  useEffect(() => { loadAttendanceForDate?.(today) }, [today])
 
   // Step 1: batch picker state
   const [step,          setStep]          = useState(1)
@@ -40,13 +44,18 @@ export default function StaffAttendance() {
   const [search,        setSearch]        = useState('')
   const [saving,        setSaving]        = useState(false)
 
-  // Batches assigned to this coach (or all if none assigned)
+  // Batches assigned to this coach (or all if none assigned), sorted today's-first
+  const batchTrainsToday = (b) =>
+    !b.days || b.days.length === 0 ||
+    b.days.some(d => d.toLowerCase().startsWith(dayShort.toLowerCase().slice(0, 2)))
+
   const myBatches = useMemo(() => {
     const assigned = batches.filter(b =>
       b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
     )
-    return assigned.length > 0 ? assigned : batches
-  }, [batches, user])
+    const pool = assigned.length > 0 ? assigned : batches
+    return [...pool].sort((a, b) => (batchTrainsToday(b) ? 1 : 0) - (batchTrainsToday(a) ? 1 : 0))
+  }, [batches, user, dayShort])
 
   // Students in the selected batch (primary + multi-batch)
   const batchStudents = useMemo(() => {
@@ -84,11 +93,13 @@ export default function StaffAttendance() {
       const rows = await fetchBatchEnrolments(batch.id)
       setMbStudentIds(new Set(rows.map(r => r.student_id)))
     } catch {/* table may not exist yet */}
-    // Pre-load existing today's marks
+    // Pre-load batch-specific marks for today (not aggregate — avoids cross-batch bleed)
+    let batchMarks = {}
+    try { batchMarks = await db.fetchAttendanceForDate(today, batch.id) } catch {}
     const existing = {}
     students
       .filter(s => s.status === 'Active' && (s.batchId === batch.id || s.batch === batch.name))
-      .forEach(s => { existing[s.id] = todayAtt[s.id] || '' })
+      .forEach(s => { existing[s.id] = batchMarks[s.id] || '' })
     setMarks(existing)
     setReasons({})
     setSearch('')
@@ -107,10 +118,8 @@ export default function StaffAttendance() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      // Merge existing today's data with new marks. Empty marks are kept
-      // so DB layer can DELETE them — that's how coach's undo persists.
-      const merged = { ...todayAtt, ...marks }
-      await saveAttendance(today, merged)
+      // Save only this batch's marks — no merging with other batches
+      await saveAttendance(today, marks, selectedBatch?.id ?? null)
       setStep(3)
     } finally {
       setSaving(false)
@@ -143,34 +152,38 @@ export default function StaffAttendance() {
               const activeCount    = students.filter(s => s.status === 'Active'    && (s.batchId === b.id || s.batch === b.name)).length
               const suspendedCount = students.filter(s => s.status === 'Suspended' && (s.batchId === b.id || s.batch === b.name)).length
               const count = activeCount
-              // Is this batch scheduled today?
-              const runsToday = !b.days || b.days.length === 0 ||
-                b.days.some(d => d.toLowerCase().startsWith(dayShort.toLowerCase()))
-              const alreadyMarked = students
+              const runsToday = batchTrainsToday(b)
+              // Only count Alternate students who train today + all Daily students
+              const alreadyMarked = runsToday ? students
                 .filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name))
-                .filter(s => todayAtt[s.id]).length
+                .filter(s => s.trainingType !== 'Alternate' || (b.days || []).includes(dayShort))
+                .filter(s => todayAtt[s.id]).length : 0
 
               return (
                 <button key={b.id}
                   onClick={() => pickBatch(b)}
-                  className="w-full bg-white rounded-2xl p-4 border border-gray-100 active:bg-gray-50 text-left flex items-center gap-4">
+                  className={`w-full rounded-2xl p-4 border text-left flex items-center gap-4 transition ${
+                    runsToday
+                      ? 'bg-white border-gray-100 active:bg-gray-50'
+                      : 'bg-gray-50 border-gray-100 opacity-55 active:opacity-70'
+                  }`}>
                   {/* Sport icon placeholder */}
-                  <div className="w-12 h-12 bg-brand-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${runsToday ? 'bg-brand-50' : 'bg-gray-100'}`}>
                     <span className="text-xl">{getSportEmoji(b.sports?.[0])}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-bold text-gray-900 text-sm truncate">{b.name}</p>
-                      {runsToday && (
-                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold flex-shrink-0">Today</span>
-                      )}
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <p className={`font-bold text-sm truncate ${runsToday ? 'text-gray-900' : 'text-gray-500'}`}>{b.name}</p>
+                      {runsToday
+                        ? <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold flex-shrink-0">Today</span>
+                        : <span className="text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-bold flex-shrink-0">Off</span>}
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
                       {b.startTime && <span className="flex items-center gap-1"><Clock size={10} />{b.startTime}</span>}
                       <span className="flex items-center gap-1"><Users size={10} />{count} students{suspendedCount > 0 ? ` · ${suspendedCount} suspended` : ''}</span>
-                      {alreadyMarked > 0 && (
-                        <span className="text-emerald-600 font-semibold">{alreadyMarked} marked</span>
-                      )}
+                      {runsToday
+                        ? alreadyMarked > 0 && <span className="text-emerald-600 font-semibold">{alreadyMarked} marked</span>
+                        : b.days?.length > 0 && <span>· {b.days.join(', ')}</span>}
                     </div>
                   </div>
                   <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
@@ -187,6 +200,7 @@ export default function StaffAttendance() {
   // Step 2: Mark attendance
   // ─────────────────────────────────────────────────────
   if (step === 2) {
+    const selectedRunsToday = selectedBatch ? batchTrainsToday(selectedBatch) : true
     return (
       <div className="flex flex-col h-[calc(100vh-8rem)]">
         {/* Header */}
@@ -206,6 +220,13 @@ export default function StaffAttendance() {
               <p className="text-[10px] text-gray-400 leading-tight">present<br/>of {batchStudents.length}</p>
             </div>
           </div>
+          {/* Off-day warning */}
+          {!selectedRunsToday && (
+            <div className="mb-3 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-800">
+              <span>⚠</span>
+              <span><strong>Off day</strong> — this batch doesn't train today{selectedBatch?.days?.length > 0 && <> (trains {selectedBatch.days.join(', ')})</>}</span>
+            </div>
+          )}
           {/* Search */}
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />

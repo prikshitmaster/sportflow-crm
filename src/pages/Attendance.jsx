@@ -68,10 +68,11 @@ async function exportToExcel({ students, fromDate, toDate, showToast }) {
 
 export default function Attendance() {
   const { students, batches, showToast, selectedSport } = useApp()
-  const now        = new Date()
-  const todayDay   = now.getDate()
-  const todayMonth = now.getMonth()
-  const todayYear  = now.getFullYear()
+  const now           = new Date()
+  const todayDay      = now.getDate()
+  const todayMonth    = now.getMonth()
+  const todayYear     = now.getFullYear()
+  const todayDayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()]
 
   const [year,           setYear]           = useState(todayYear)
   const [month,          setMonth]          = useState(todayMonth)
@@ -105,10 +106,10 @@ export default function Attendance() {
 
   const loadMonth = useCallback(async () => {
     setLoading(true)
-    try { setMonthData(await db.fetchAttendanceForMonth(year, month)) }
+    try { setMonthData(await db.fetchAttendanceForMonth(year, month, selectedBatch?.id ?? null)) }
     catch { showToast('Failed to load attendance', 'error') }
     finally { setLoading(false) }
-  }, [year, month])
+  }, [year, month, selectedBatch?.id])
 
   useEffect(() => { loadMonth() }, [loadMonth])
 
@@ -136,6 +137,8 @@ export default function Attendance() {
 
   const cycle = (sid, day) => {
     if (isFuture(day)) return
+    const student = students.find(s => s.id === sid)
+    if (student && isOffDay(student, day)) return
     const cur  = getStatus(sid, day)
     const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length]
     setMonthData(prev => ({ ...prev, [sid]: { ...(prev[sid] || {}), [day]: next } }))
@@ -146,14 +149,17 @@ export default function Attendance() {
     if (isFuture(d)) return
     setMonthData(prev => {
       const next = { ...prev }
-      displayed.forEach(s => { next[s.id] = { ...(next[s.id] || {}), [d]: status } })
+      displayed.forEach(s => {
+        if (isOffDay(s, d)) return
+        next[s.id] = { ...(next[s.id] || {}), [d]: status }
+      })
       return next
     })
   }
 
   const handleSave = async () => {
     setSaving(true)
-    try { await db.saveAttendanceMonth(year, month, monthData); showToast('Attendance saved') }
+    try { await db.saveAttendanceMonth(year, month, monthData, selectedBatch?.id ?? null); showToast('Attendance saved') }
     catch { showToast('Save failed', 'error') }
     finally { setSaving(false) }
   }
@@ -184,11 +190,32 @@ export default function Attendance() {
     return { present, absent, late, total, avg: total>0 ? Math.round((present/total)*100) : 0 }
   }, [monthData, displayed, days])
 
+  // Student → primary batch lookup (for Alternate off-day cross-out)
+  const batchByStudent = useMemo(() => {
+    const byId   = Object.fromEntries(batches.map(b => [b.id, b]))
+    const byName = Object.fromEntries(batches.map(b => [b.name, b]))
+    const map = {}
+    students.forEach(s => {
+      const b = byId[s.batchId] || byName[s.batch]
+      if (b) map[s.id] = b
+    })
+    return map
+  }, [students, batches])
+
+  // Is this date an off-day for this student? (Alternate students only, requires batch days)
+  const isOffDay = (student, day) => {
+    if (student.trainingType !== 'Alternate') return false
+    const b = batchByStudent[student.id]
+    if (!b?.days?.length) return false
+    return !b.days.includes(dayName(year, month, day))
+  }
+
   const batchStats = useMemo(() => batches.map(b => {
     const mbIds = allEnrolments[b.id] || new Set()
     const bs = activeStudents.filter(s => s.batchId === b.id || s.batch === b.name || mbIds.has(s.id))
-    return { ...b, studentCount: bs.length, presentToday: isCurrentMonth ? bs.filter(s => getStatus(s.id, todayDay)==='Present').length : 0 }
-  }), [batches, activeStudents, monthData, todayDay, isCurrentMonth, allEnrolments])
+    const trainsToday = b.days?.length > 0 ? b.days.includes(todayDayShort) : true
+    return { ...b, studentCount: bs.length, presentToday: isCurrentMonth ? bs.filter(s => getStatus(s.id, todayDay)==='Present').length : 0, trainsToday }
+  }), [batches, activeStudents, monthData, todayDay, isCurrentMonth, allEnrolments, todayDayShort])
 
   // Branch list derived from batches' sports arrays
   const branchList = useMemo(() => {
@@ -197,12 +224,13 @@ export default function Attendance() {
     return ['All', ...Array.from(set).sort()]
   }, [batches])
 
-  // Batches filtered by selected branch
-  const visibleBatches = useMemo(() =>
-    selectedBranch === 'All'
+  // Batches filtered by selected branch, today's training batches sorted first
+  const visibleBatches = useMemo(() => {
+    const filtered = selectedBranch === 'All'
       ? batchStats
       : batchStats.filter(b => (b.sports || []).includes(selectedBranch))
-  , [batchStats, selectedBranch])
+    return [...filtered].sort((a, b) => (b.trainsToday ? 1 : 0) - (a.trainsToday ? 1 : 0))
+  }, [batchStats, selectedBranch])
 
   // Mobile day stats
   const mobileDayStats = useMemo(() => {
@@ -265,9 +293,10 @@ export default function Attendance() {
         </button>
 
         {visibleBatches.map(b => {
-          const isActive = selectedBatch?.id === b.id
-          const pct = b.studentCount > 0 ? Math.round((b.presentToday / b.studentCount) * 100) : null
-          const pctColor = pct === null ? '' : pct >= 80 ? 'text-emerald-600 bg-emerald-50' : pct >= 60 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50'
+          const isActive  = selectedBatch?.id === b.id
+          const dimmed    = isCurrentMonth && !b.trainsToday
+          const pct       = b.studentCount > 0 ? Math.round((b.presentToday / b.studentCount) * 100) : null
+          const pctColor  = pct === null ? '' : pct >= 80 ? 'text-emerald-600 bg-emerald-50' : pct >= 60 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50'
           return (
             <button
               key={b.id}
@@ -276,10 +305,15 @@ export default function Attendance() {
                 isActive
                   ? 'border-brand-500 bg-brand-50 text-brand-700'
                   : 'border-gray-200 bg-white text-gray-700 active:bg-gray-50'
-              }`}
+              } ${dimmed ? 'opacity-45' : ''}`}
             >
               <div className="text-left">
-                <p className="text-xs font-bold whitespace-nowrap leading-tight">{b.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-bold whitespace-nowrap leading-tight">{b.name}</p>
+                  {isCurrentMonth && b.trainsToday && (
+                    <span className="text-[9px] font-black px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 leading-none">Today</span>
+                  )}
+                </div>
                 <p className="text-[10px] text-gray-400 whitespace-nowrap leading-tight">{b.time}</p>
               </div>
               <div className="flex flex-col items-end gap-0.5">
@@ -294,6 +328,17 @@ export default function Attendance() {
           )
         })}
       </div>
+
+      {/* ── Warning: selected batch doesn't train today ── */}
+      {isCurrentMonth && selectedBatch && !selectedBatch.trainsToday && (
+        <div className="flex items-center gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+          <span className="text-base">⚠</span>
+          <span>
+            <strong>{selectedBatch.name}</strong> doesn't train today ({todayDayShort})
+            {selectedBatch.days?.length > 0 && <> — trains on {selectedBatch.days.join(', ')}</>}
+          </span>
+        </div>
+      )}
 
       {/* ── Month nav + bulk actions ──────────────────── */}
       <div className="card p-3 flex flex-wrap gap-2 items-center">
@@ -404,11 +449,13 @@ export default function Attendance() {
             {displayed.map((s, idx) => {
               const st  = getStatus(s.id, mobileDay)
               const cfg = st ? S[st] : null
+              const off = isOffDay(s, mobileDay)
               return (
                 <button
                   key={s.id}
                   onClick={() => cycle(s.id, mobileDay)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 active:bg-gray-50 transition text-left"
+                  disabled={off}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 transition text-left ${off ? 'opacity-50 bg-gray-50/60' : 'active:bg-gray-50'}`}
                 >
                   <span className="text-xs text-gray-400 w-5 flex-shrink-0 font-medium">{idx+1}</span>
                   <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center text-sm font-bold text-brand-700 flex-shrink-0">
@@ -418,7 +465,11 @@ export default function Attendance() {
                     <p className="font-semibold text-gray-900 text-sm truncate">{s.name}</p>
                     <p className="text-xs text-gray-400 truncate">{s.sport} · {s.batch}</p>
                   </div>
-                  {cfg ? (
+                  {off ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border border-gray-200 text-gray-400">
+                      ✕ Off day
+                    </span>
+                  ) : cfg ? (
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${cfg.light} ${cfg.text}`}>
                       <span>{cfg.icon}</span> {cfg.label}
                     </span>
@@ -489,17 +540,27 @@ export default function Attendance() {
                     {days.map(d => {
                       const st      = getStatus(s.id, d)
                       const cfg     = st ? S[st] : null
-                      const locked  = isFuture(d)
+                      const off     = isOffDay(s, d)
+                      const future  = isFuture(d)
+                      const locked  = future || off
                       return (
                         <td key={d}
                           onClick={() => cycle(s.id, d)}
                           className={`py-2 text-center select-none transition
-                            ${locked ? 'cursor-not-allowed opacity-30' : 'cursor-pointer'}
+                            ${locked ? 'cursor-not-allowed' : 'cursor-pointer'}
+                            ${future ? 'opacity-30' : ''}
+                            ${off ? 'bg-gray-100/70' : ''}
                             ${isCurrentMonth && d===todayDay ? 'bg-brand-50/60' : ''}
                             ${isSun(year,month,d) ? 'bg-red-50/30' : ''}`}
-                          title={locked ? 'Future date — cannot mark' : `${s.name} — ${dayName(year,month,d)} ${d} — ${st||'Not marked'}`}
+                          title={
+                            off    ? `${s.name} — off day (alternate, not in batch days)` :
+                            future ? 'Future date — cannot mark' :
+                                     `${s.name} — ${dayName(year,month,d)} ${d} — ${st||'Not marked'}`
+                          }
                         >
-                          {cfg ? (
+                          {off ? (
+                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-gray-300 text-[12px] font-bold">✕</span>
+                          ) : cfg ? (
                             <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold text-white ${cfg.bg} ${!locked && 'hover:opacity-80'} transition`}>{cfg.icon}</span>
                           ) : (
                             <span className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-gray-200 text-gray-300 hover:border-gray-300 transition">–</span>

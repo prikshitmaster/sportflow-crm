@@ -2,10 +2,13 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
+import { supabase } from '../../lib/supabase'
 import {
   QrCode, CalendarCheck, CreditCard, Megaphone, CheckCircle2, XCircle,
-  Clock, ChevronRight, Trophy, Camera,
+  Clock, ChevronRight, Trophy, Camera, Ban,
 } from 'lucide-react'
+
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 export default function StudentDashboard() {
   const { studentUser, updateStudentPhoto } = useApp()
@@ -15,6 +18,7 @@ export default function StudentDashboard() {
   const [notices,       setNotices]       = useState([])
   const [loadingData,   setLoadingData]   = useState(true)
   const [uploading,     setUploading]     = useState(false)
+  const [batchInfo,     setBatchInfo]     = useState(null) // { trainsToday, startTime }
   const fileRef = useRef(null)
 
   const handlePhotoChange = async (e) => {
@@ -42,20 +46,38 @@ export default function StudentDashboard() {
 
   const loadData = async () => {
     try {
-      const today = new Date()
-      const todayStr = today.toISOString().split('T')[0]
-      const year  = today.getFullYear()
-      const month = today.getMonth()
+      const now   = new Date()
+      const pad   = n => String(n).padStart(2, '0')
+      const todayStr     = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
+      const todayDayName = DAYS[now.getDay()]
+      const year  = now.getFullYear()
+      const month = now.getMonth()
 
-      const [monthAtt, pays] = await Promise.all([
+      const batchId = studentUser?.batch_id || studentUser?.batchId
+      const [monthAtt, pays, batchRes] = await Promise.all([
         db.fetchStudentOwnAttendance(studentUser.id, year, month),
         db.fetchStudentOwnPayments(studentUser.id),
+        batchId
+          ? supabase.from('batches').select('days, start_time').eq('id', batchId).maybeSingle()
+          : Promise.resolve({ data: null }),
       ])
 
-      const todayRow = monthAtt.find(r => r.date === todayStr)
-      setTodayStatus(todayRow ? (todayRow.status || (todayRow.present ? 'Present' : 'Absent')) : null)
-      const present = monthAtt.filter(r => r.present || r.status === 'Present').length
-      setMonthStats({ present, total: monthAtt.length })
+      const batchDays  = batchRes?.data?.days || []
+      const trainsToday = batchDays.length === 0 || batchDays.includes(todayDayName)
+      setBatchInfo({ trainsToday, startTime: batchRes?.data?.start_time || null })
+
+      // Deduplicate per date (best-status wins) — Daily students have MWF + TTS batch records
+      const STATUS_PRI = { Present: 4, Late: 3, Leave: 2, Absent: 1 }
+      const byDate = {}
+      monthAtt.forEach(r => {
+        const st = r.status || (r.present ? 'Present' : 'Absent')
+        const cur = byDate[r.date]
+        if (!cur || (STATUS_PRI[st] || 0) > (STATUS_PRI[cur] || 0)) byDate[r.date] = st
+      })
+
+      setTodayStatus(byDate[todayStr] || null)
+      const presentDays = Object.values(byDate).filter(s => s === 'Present').length
+      setMonthStats({ present: presentDays, total: Object.keys(byDate).length })
       setPayments(pays)
     } catch (err) {
       console.error(err)
@@ -115,23 +137,31 @@ export default function StudentDashboard() {
       {/* Today's Scan button */}
       <Link
         to="/student/scan"
-        className="block w-full bg-gray-900 hover:bg-gray-800 transition rounded-2xl p-5 text-white group"
+        className={`block w-full transition rounded-2xl p-5 text-white group ${
+          batchInfo?.trainsToday === false
+            ? 'bg-gray-400 cursor-default pointer-events-none'
+            : 'bg-gray-900 hover:bg-gray-800'
+        }`}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-brand-600 rounded-xl flex items-center justify-center">
-              <QrCode size={24} />
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              batchInfo?.trainsToday === false ? 'bg-gray-300' : 'bg-brand-600'
+            }`}>
+              {batchInfo?.trainsToday === false ? <Ban size={24} /> : <QrCode size={24} />}
             </div>
             <div>
               <p className="font-black text-lg leading-tight">Scan Gate QR</p>
-              <p className="text-gray-400 text-xs mt-0.5">
-                {todayStatus === 'Present'
+              <p className="text-white/60 text-xs mt-0.5">
+                {batchInfo?.trainsToday === false
+                  ? 'No training today'
+                  : todayStatus === 'Present'
                   ? '✓ Already marked present today'
                   : 'Mark your attendance at the gate'}
               </p>
             </div>
           </div>
-          <ChevronRight size={20} className="text-gray-500 group-hover:text-white transition" />
+          <ChevronRight size={20} className="text-white/30 group-hover:text-white transition" />
         </div>
       </Link>
 
@@ -154,7 +184,9 @@ export default function StudentDashboard() {
 
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
           <div className="flex items-center gap-2 mb-2">
-            {todayStatus === 'Present'
+            {batchInfo?.trainsToday === false
+              ? <Ban size={16} className="text-gray-400" />
+              : todayStatus === 'Present'
               ? <CheckCircle2 size={16} className="text-emerald-500" />
               : todayStatus === null
               ? <Clock size={16} className="text-amber-500" />
@@ -163,11 +195,12 @@ export default function StudentDashboard() {
             <span className="text-xs font-semibold text-gray-500">Today</span>
           </div>
           <p className={`text-xl font-black ${
-            todayStatus === 'Present' ? 'text-emerald-600'
+            batchInfo?.trainsToday === false ? 'text-gray-400'
+            : todayStatus === 'Present' ? 'text-emerald-600'
             : todayStatus === null ? 'text-amber-500'
             : 'text-red-500'
           }`}>
-            {todayStatus ?? 'Not Marked'}
+            {batchInfo?.trainsToday === false ? 'No Training' : (todayStatus ?? 'Not Marked')}
           </p>
         </div>
       </div>
