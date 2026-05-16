@@ -1,7 +1,10 @@
 -- ============================================================
 -- 0001 — Missing indexes (perf only, additive, zero behaviour change)
 -- ============================================================
--- Closes AUDIT.md M2-bis. Safe to run anytime; idempotent.
+-- Closes AUDIT.md M2-bis. Safe to run anytime; idempotent and
+-- DEFENSIVE — every index creation first verifies the column exists,
+-- so partial-schema databases just skip with a NOTICE instead of
+-- aborting the whole transaction.
 --
 -- Why each one:
 --   *_academy_id        — every query in db.js filters by academy_id; without
@@ -9,59 +12,105 @@
 --   payments.student_id — student portal `fetchStudentOwnPayments` joins here
 --   payments.date       — Reports group-by-month and Payments period filters
 --   attendance.(student_id, date) — unique-per-day lookup in markAttendance*
---   attendance.(batch_id, date)   — Attendance page month view
 --   student_batches.(student_id, batch_id) — pitch / batchmates queries
 --   *_sessions.token    — every authenticated request validates by token
 -- ============================================================
 
-CREATE INDEX IF NOT EXISTS idx_students_academy_id      ON students(academy_id);
-CREATE INDEX IF NOT EXISTS idx_students_academy_status  ON students(academy_id, status);
-CREATE INDEX IF NOT EXISTS idx_students_paid_till       ON students(paid_till);
-CREATE INDEX IF NOT EXISTS idx_students_batch_id        ON students(batch_id);
-
-CREATE INDEX IF NOT EXISTS idx_payments_academy_id      ON payments(academy_id);
-CREATE INDEX IF NOT EXISTS idx_payments_student_id      ON payments(student_id);
-CREATE INDEX IF NOT EXISTS idx_payments_date            ON payments(date);
-CREATE INDEX IF NOT EXISTS idx_payments_status          ON payments(status);
-
-CREATE INDEX IF NOT EXISTS idx_attendance_student_date  ON attendance(student_id, date);
-CREATE INDEX IF NOT EXISTS idx_attendance_batch_date    ON attendance(batch_id, date);
-
-CREATE INDEX IF NOT EXISTS idx_batches_academy_id       ON batches(academy_id);
-CREATE INDEX IF NOT EXISTS idx_staff_academy_id         ON staff(academy_id);
-CREATE INDEX IF NOT EXISTS idx_trials_academy_id        ON trials(academy_id);
-CREATE INDEX IF NOT EXISTS idx_announcements_academy_id ON announcements(academy_id);
-CREATE INDEX IF NOT EXISTS idx_events_academy_id        ON events(academy_id);
-CREATE INDEX IF NOT EXISTS idx_feeplans_academy_id      ON fee_plans(academy_id);
-
--- student_batches: depends on whether table exists (created in schema_student_batches.sql)
-DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'student_batches') THEN
-    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_student_batches_student ON student_batches(student_id)';
-    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_student_batches_batch   ON student_batches(batch_id)';
-    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_student_batches_pair    ON student_batches(student_id, batch_id)';
+-- Helper: create an index only if the table AND all referenced columns exist.
+-- Uses pg_temp so the function lives only for this session and never pollutes
+-- the public schema.
+CREATE OR REPLACE FUNCTION pg_temp.idx_if_cols(
+  idx_name text,
+  tbl      text,
+  cols     text[]
+) RETURNS void
+LANGUAGE plpgsql AS $$
+DECLARE
+  c text;
+  missing boolean := false;
+  col_list text;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = tbl
+  ) THEN
+    RAISE NOTICE 'skip %: table % missing', idx_name, tbl;
+    RETURN;
   END IF;
+
+  FOREACH c IN ARRAY cols LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = tbl AND column_name = c
+    ) THEN
+      RAISE NOTICE 'skip %: column %.% missing', idx_name, tbl, c;
+      missing := true;
+    END IF;
+  END LOOP;
+
+  IF missing THEN RETURN; END IF;
+
+  SELECT string_agg(quote_ident(col), ', ') INTO col_list
+    FROM unnest(cols) AS col;
+
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON public.%I (%s)',
+                 idx_name, tbl, col_list);
 END $$;
 
--- Session token lookups: every authenticated request from staff/student portal validates by token
-CREATE INDEX IF NOT EXISTS idx_staff_sessions_token     ON staff_sessions(token);
-CREATE INDEX IF NOT EXISTS idx_staff_sessions_expires   ON staff_sessions(expires_at);
-CREATE INDEX IF NOT EXISTS idx_student_sessions_token   ON student_sessions(token);
-CREATE INDEX IF NOT EXISTS idx_student_sessions_expires ON student_sessions(expires_at);
+-- ── Students ────────────────────────────────────────────────
+SELECT pg_temp.idx_if_cols('idx_students_academy_id',     'students', ARRAY['academy_id']);
+SELECT pg_temp.idx_if_cols('idx_students_academy_status', 'students', ARRAY['academy_id','status']);
+SELECT pg_temp.idx_if_cols('idx_students_paid_till',      'students', ARRAY['paid_till']);
+SELECT pg_temp.idx_if_cols('idx_students_batch_id',       'students', ARRAY['batch_id']);
 
-CREATE INDEX IF NOT EXISTS idx_audit_logs_academy_time  ON audit_logs(academy_id, created_at DESC);
+-- ── Payments ────────────────────────────────────────────────
+SELECT pg_temp.idx_if_cols('idx_payments_academy_id',     'payments', ARRAY['academy_id']);
+SELECT pg_temp.idx_if_cols('idx_payments_student_id',     'payments', ARRAY['student_id']);
+SELECT pg_temp.idx_if_cols('idx_payments_date',           'payments', ARRAY['date']);
+SELECT pg_temp.idx_if_cols('idx_payments_status',         'payments', ARRAY['status']);
 
--- Verification — list new indexes
--- SELECT indexname FROM pg_indexes WHERE indexname LIKE 'idx_%' ORDER BY indexname;
+-- ── Attendance ──────────────────────────────────────────────
+-- NOTE: attendance has no batch_id column (batch is derived through students),
+-- so we skip the batch_date index intentionally.
+SELECT pg_temp.idx_if_cols('idx_attendance_student_date', 'attendance', ARRAY['student_id','date']);
+SELECT pg_temp.idx_if_cols('idx_attendance_date',         'attendance', ARRAY['date']);
 
--- ROLLBACK (paste to revert):
--- DROP INDEX IF EXISTS idx_students_academy_id, idx_students_academy_status,
---   idx_students_paid_till, idx_students_batch_id,
---   idx_payments_academy_id, idx_payments_student_id, idx_payments_date, idx_payments_status,
---   idx_attendance_student_date, idx_attendance_batch_date,
---   idx_batches_academy_id, idx_staff_academy_id, idx_trials_academy_id,
---   idx_announcements_academy_id, idx_events_academy_id, idx_feeplans_academy_id,
---   idx_student_batches_student, idx_student_batches_batch, idx_student_batches_pair,
---   idx_staff_sessions_token, idx_staff_sessions_expires,
---   idx_student_sessions_token, idx_student_sessions_expires,
---   idx_audit_logs_academy_time;
+-- ── Domain tables ───────────────────────────────────────────
+SELECT pg_temp.idx_if_cols('idx_batches_academy_id',       'batches',       ARRAY['academy_id']);
+SELECT pg_temp.idx_if_cols('idx_staff_academy_id',         'staff',         ARRAY['academy_id']);
+SELECT pg_temp.idx_if_cols('idx_trials_academy_id',        'trials',        ARRAY['academy_id']);
+SELECT pg_temp.idx_if_cols('idx_announcements_academy_id', 'announcements', ARRAY['academy_id']);
+SELECT pg_temp.idx_if_cols('idx_events_academy_id',        'events',        ARRAY['academy_id']);
+SELECT pg_temp.idx_if_cols('idx_feeplans_academy_id',      'fee_plans',     ARRAY['academy_id']);
+SELECT pg_temp.idx_if_cols('idx_leaverequests_academy_id', 'leave_requests', ARRAY['academy_id']);
+
+-- ── Student-batches junction ────────────────────────────────
+SELECT pg_temp.idx_if_cols('idx_student_batches_student',  'student_batches', ARRAY['student_id']);
+SELECT pg_temp.idx_if_cols('idx_student_batches_batch',    'student_batches', ARRAY['batch_id']);
+SELECT pg_temp.idx_if_cols('idx_student_batches_pair',     'student_batches', ARRAY['student_id','batch_id']);
+
+-- ── Session tokens (auth hot path) ──────────────────────────
+SELECT pg_temp.idx_if_cols('idx_staff_sessions_token',     'staff_sessions',   ARRAY['token']);
+SELECT pg_temp.idx_if_cols('idx_staff_sessions_expires',   'staff_sessions',   ARRAY['expires_at']);
+SELECT pg_temp.idx_if_cols('idx_student_sessions_token',   'student_sessions', ARRAY['token']);
+SELECT pg_temp.idx_if_cols('idx_student_sessions_expires', 'student_sessions', ARRAY['expires_at']);
+
+-- ── Audit log retrieval ─────────────────────────────────────
+SELECT pg_temp.idx_if_cols('idx_audit_logs_academy_time',  'audit_logs', ARRAY['academy_id','created_at']);
+SELECT pg_temp.idx_if_cols('idx_audit_logs_actor',         'audit_logs', ARRAY['actor_id']);
+
+-- Verification — list the indexes that were actually created:
+-- SELECT indexname, tablename FROM pg_indexes
+--  WHERE schemaname = 'public' AND indexname LIKE 'idx_%'
+--  ORDER BY tablename, indexname;
+
+-- ROLLBACK (paste to revert — only drops indexes that exist, so safe):
+-- DO $$
+-- DECLARE n text;
+-- BEGIN
+--   FOR n IN SELECT indexname FROM pg_indexes
+--             WHERE schemaname = 'public' AND indexname LIKE 'idx_%'
+--   LOOP
+--     EXECUTE format('DROP INDEX IF EXISTS public.%I', n);
+--   END LOOP;
+-- END $$;

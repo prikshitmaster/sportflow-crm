@@ -8,12 +8,35 @@
 -- Strategy: if there is exactly ONE academy in `academies`, assign
 -- every NULL row to that academy. If there are multiple academies,
 -- the script ABORTS (raises notice) so a human can decide.
+--
+-- DEFENSIVE: checks each table + column exists before updating.
 -- ============================================================
+
+CREATE OR REPLACE FUNCTION pg_temp.backfill_if_col(
+  tbl text, target uuid
+) RETURNS void
+LANGUAGE plpgsql AS $$
+DECLARE updated int;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = tbl AND column_name = 'academy_id'
+  ) THEN
+    RAISE NOTICE 'skip %: no academy_id column', tbl;
+    RETURN;
+  END IF;
+
+  EXECUTE format('UPDATE public.%I SET academy_id = $1 WHERE academy_id IS NULL', tbl)
+    USING target;
+  GET DIAGNOSTICS updated = ROW_COUNT;
+  RAISE NOTICE 'backfilled %: % rows', tbl, updated;
+END $$;
 
 DO $$
 DECLARE
   academy_count INT;
   target_academy UUID;
+  tbl text;
 BEGIN
   SELECT COUNT(*) INTO academy_count FROM academies;
 
@@ -30,32 +53,26 @@ BEGIN
   SELECT id INTO target_academy FROM academies LIMIT 1;
   RAISE NOTICE 'Backfilling academy_id = % on legacy rows', target_academy;
 
-  UPDATE students         SET academy_id = target_academy WHERE academy_id IS NULL;
-  UPDATE batches          SET academy_id = target_academy WHERE academy_id IS NULL;
-  UPDATE staff            SET academy_id = target_academy WHERE academy_id IS NULL;
-  UPDATE payments         SET academy_id = target_academy WHERE academy_id IS NULL;
-  UPDATE trials           SET academy_id = target_academy WHERE academy_id IS NULL;
-  UPDATE announcements    SET academy_id = target_academy WHERE academy_id IS NULL;
-  UPDATE events           SET academy_id = target_academy WHERE academy_id IS NULL;
-  UPDATE leave_requests   SET academy_id = target_academy WHERE academy_id IS NULL;
-  UPDATE fee_plans        SET academy_id = target_academy WHERE academy_id IS NULL;
-
-  -- attendance / staff_attendance / student_batches inherit through student/staff/batch FKs;
-  -- if you have an academy_id column on them too, repeat the pattern.
+  FOREACH tbl IN ARRAY ARRAY[
+    'students','batches','staff','payments','trials',
+    'announcements','events','leave_requests','fee_plans',
+    'audit_logs','student_batches','academy_branches'
+  ] LOOP
+    PERFORM pg_temp.backfill_if_col(tbl, target_academy);
+  END LOOP;
 
   RAISE NOTICE 'Backfill complete';
 END $$;
 
--- Verification — should all be 0
--- SELECT 'students'         AS table, COUNT(*) FROM students         WHERE academy_id IS NULL
--- UNION ALL SELECT 'batches',         COUNT(*) FROM batches          WHERE academy_id IS NULL
--- UNION ALL SELECT 'staff',           COUNT(*) FROM staff            WHERE academy_id IS NULL
--- UNION ALL SELECT 'payments',        COUNT(*) FROM payments         WHERE academy_id IS NULL
--- UNION ALL SELECT 'trials',          COUNT(*) FROM trials           WHERE academy_id IS NULL
--- UNION ALL SELECT 'announcements',   COUNT(*) FROM announcements    WHERE academy_id IS NULL
--- UNION ALL SELECT 'events',          COUNT(*) FROM events           WHERE academy_id IS NULL
--- UNION ALL SELECT 'leave_requests',  COUNT(*) FROM leave_requests   WHERE academy_id IS NULL
--- UNION ALL SELECT 'fee_plans',       COUNT(*) FROM fee_plans        WHERE academy_id IS NULL;
+-- Verification — should all be 0 for tables that have academy_id:
+-- SELECT t.table_name, (
+--   SELECT COUNT(*) FROM information_schema.columns c
+--    WHERE c.table_name = t.table_name AND c.column_name = 'academy_id'
+-- ) AS has_col
+-- FROM information_schema.tables t
+-- WHERE t.table_schema = 'public'
+--   AND t.table_name IN ('students','batches','staff','payments','trials',
+--                        'announcements','events','leave_requests','fee_plans');
 
--- ROLLBACK: this is a data backfill, not reversible without a snapshot.
+-- ROLLBACK: data backfill, not reversible without a snapshot.
 -- If something goes wrong, restore from your Supabase point-in-time backup.
