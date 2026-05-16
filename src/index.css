@@ -108,12 +108,12 @@
 .press-scale { transition: transform 0.1s ease; }
 .press-scale:active { transform: scale(0.97); }
 
-/* Page enter animation */
-@keyframes fadeSlideUp {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* Page enter animation — opacity-only so it doesn't break position: fixed on modal children */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
-.page-enter { animation: fadeSlideUp 0.2s ease forwards; }
+.page-enter { animation: fadeIn 0.2s ease forwards; }
 
 /* Responsive grid helpers */
 @layer utilities {

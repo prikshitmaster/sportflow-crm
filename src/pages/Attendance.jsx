@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import * as db from '../lib/db'
+import { fetchBatchEnrolments, fetchAllBatchEnrolments } from '../lib/db'
 import * as XLSX from 'xlsx'
 
 const STATUS_CYCLE = ['Present', 'Absent', 'Late', 'Leave']
@@ -75,7 +76,9 @@ export default function Attendance() {
   const [year,           setYear]           = useState(todayYear)
   const [month,          setMonth]          = useState(todayMonth)
   const [selectedBranch, setSelectedBranch] = useState('All')
-  const [selectedBatch,  setSelectedBatch]  = useState(null)
+  const [selectedBatch,  setSelectedBatch]  = useState(null)  // batch object
+  const [mbStudentIds,   setMbStudentIds]   = useState(new Set())
+  const [allEnrolments,  setAllEnrolments]  = useState({}) // { batchId: Set<studentId> }
   const [monthData,     setMonthData]     = useState({})
   const [saving,        setSaving]        = useState(false)
   const [loading,       setLoading]       = useState(false)
@@ -94,11 +97,10 @@ export default function Attendance() {
 
   const activeStudents     = students.filter(s => s.status === 'Active')
   const displayed          = selectedBatch
-    ? activeStudents.filter(s => s.batch === selectedBatch)
+    ? activeStudents.filter(s => s.batchId === selectedBatch.id || s.batch === selectedBatch.name || mbStudentIds.has(s.id))
     : activeStudents
-  // Suspended students shown read-only so coach knows they're out
   const suspendedDisplayed = selectedBatch
-    ? students.filter(s => s.status === 'Suspended' && (s.batch === selectedBatch || s.lastBatchName === selectedBatch))
+    ? students.filter(s => s.status === 'Suspended' && (s.batchId === selectedBatch.id || s.batch === selectedBatch.name || s.lastBatchName === selectedBatch.name))
     : students.filter(s => s.status === 'Suspended')
 
   const loadMonth = useCallback(async () => {
@@ -109,6 +111,26 @@ export default function Attendance() {
   }, [year, month])
 
   useEffect(() => { loadMonth() }, [loadMonth])
+
+  useEffect(() => {
+    fetchAllBatchEnrolments()
+      .then(rows => {
+        const map = {}
+        rows.forEach(r => {
+          if (!map[r.batch_id]) map[r.batch_id] = new Set()
+          map[r.batch_id].add(r.student_id)
+        })
+        setAllEnrolments(map)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!selectedBatch?.id) { setMbStudentIds(new Set()); return }
+    fetchBatchEnrolments(selectedBatch.id)
+      .then(rows => setMbStudentIds(new Set(rows.map(r => r.student_id))))
+      .catch(() => setMbStudentIds(new Set()))
+  }, [selectedBatch?.id])
 
   const getStatus = (sid, day) => monthData[sid]?.[day] || ''
 
@@ -163,9 +185,10 @@ export default function Attendance() {
   }, [monthData, displayed, days])
 
   const batchStats = useMemo(() => batches.map(b => {
-    const bs = activeStudents.filter(s => s.batch === b.name)
+    const mbIds = allEnrolments[b.id] || new Set()
+    const bs = activeStudents.filter(s => s.batchId === b.id || s.batch === b.name || mbIds.has(s.id))
     return { ...b, studentCount: bs.length, presentToday: isCurrentMonth ? bs.filter(s => getStatus(s.id, todayDay)==='Present').length : 0 }
-  }), [batches, activeStudents, monthData, todayDay, isCurrentMonth])
+  }), [batches, activeStudents, monthData, todayDay, isCurrentMonth, allEnrolments])
 
   // Branch list derived from batches' sports arrays
   const branchList = useMemo(() => {
@@ -242,13 +265,13 @@ export default function Attendance() {
         </button>
 
         {visibleBatches.map(b => {
-          const isActive = selectedBatch === b.name
+          const isActive = selectedBatch?.id === b.id
           const pct = b.studentCount > 0 ? Math.round((b.presentToday / b.studentCount) * 100) : null
           const pctColor = pct === null ? '' : pct >= 80 ? 'text-emerald-600 bg-emerald-50' : pct >= 60 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50'
           return (
             <button
               key={b.id}
-              onClick={() => setSelectedBatch(isActive ? null : b.name)}
+              onClick={() => setSelectedBatch(isActive ? null : b)}
               className={`flex-shrink-0 flex items-center gap-2.5 pl-3 pr-3 py-2.5 rounded-xl border transition ${
                 isActive
                   ? 'border-brand-500 bg-brand-50 text-brand-700'
@@ -279,7 +302,7 @@ export default function Attendance() {
           <span className="px-3 text-sm font-semibold text-gray-700 whitespace-nowrap">{MONTH_NAMES[month]} {year}</span>
           <button onClick={nextMonth} className="px-2.5 py-2 hover:bg-gray-50 transition"><ChevronRight size={15} className="text-gray-600"/></button>
         </div>
-        {selectedBatch && <span className="badge badge-blue">{selectedBatch}</span>}
+        {selectedBatch && <span className="badge badge-blue">{selectedBatch.name}</span>}
         <div className="flex gap-2 ml-auto flex-wrap">
           <button onClick={() => markAll('Present')} className="px-3 py-2 text-xs font-semibold border-2 border-emerald-500 text-emerald-600 rounded-lg hover:bg-emerald-50 transition">✓ All Present</button>
           <button onClick={() => markAll('Absent')}  className="px-3 py-2 text-xs font-semibold border-2 border-red-400 text-red-600 rounded-lg hover:bg-red-50 transition">✗ All Absent</button>
@@ -611,8 +634,8 @@ export default function Attendance() {
 
       {/* ── Export Modal ──────────────────────────────── */}
       {showExport && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowExport(false)} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowExport(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-slide-up p-6">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2.5">
@@ -638,7 +661,7 @@ export default function Attendance() {
                 <input type="date" className="input" value={exportTo} min={exportFrom} onChange={e => setExportTo(e.target.value)} />
               </div>
               <div className="bg-gray-50 rounded-xl p-3">
-                <p className="text-xs text-gray-500">Exports: <strong>{selectedBatch || 'All batches'}</strong> · {displayed.length} students</p>
+                <p className="text-xs text-gray-500">Exports: <strong>{selectedBatch?.name || 'All batches'}</strong> · {displayed.length} students</p>
               </div>
             </div>
             <div className="flex gap-3 mt-5">

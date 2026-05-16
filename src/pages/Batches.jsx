@@ -475,7 +475,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white h-full w-full max-w-lg shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
         <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-5 pt-5 pb-6 sm:px-6 sm:pt-6 sm:pb-8">
           <div className="flex items-start justify-between mb-4">

@@ -46,7 +46,8 @@
       "WebFetch(domain:www.arketa.com)",
       "WebFetch(domain:sportzy.in)",
       "WebFetch(domain:www.sporteasy.net)",
-      "WebFetch(domain:www.coach-logic.com)"
+      "WebFetch(domain:www.coach-logic.com)",
+      "Bash(node *)"
     ]
   }
 }

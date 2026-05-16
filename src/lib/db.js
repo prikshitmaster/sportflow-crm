@@ -1721,6 +1721,14 @@ export async function fetchBatchEnrolments(batchId) {
   return data || []
 }
 
+export async function fetchAllBatchEnrolments() {
+  const { data, error } = await supabase
+    .from('student_batches')
+    .select('batch_id, student_id')
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
 export async function assignStudentToBatch(studentId, batchId, batchName, academyId) {
   const { error } = await supabase
     .from('student_batches')
