@@ -321,6 +321,7 @@ export default function Payments() {
           students={students}
           batches={batches}
           feePlans={feePlans}
+          payments={payments}
         />
       )}
       {payForStudent && (
@@ -330,6 +331,7 @@ export default function Payments() {
           students={students}
           batches={batches}
           feePlans={feePlans}
+          payments={payments}
           initialStudentId={payForStudent.id}
         />
       )}
@@ -348,7 +350,7 @@ function SummaryCard({ label, value, count, color, period }) {
   )
 }
 
-export function RecordPaymentModal({ onClose, onSave, students, batches = [], feePlans = [], initialStudentId }) {
+export function RecordPaymentModal({ onClose, onSave, students, batches = [], feePlans = [], payments = [], initialStudentId }) {
   const initStudent = initialStudentId
     ? (students.find(s => s.id === initialStudentId) || {})
     : {}
@@ -371,6 +373,8 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const [customMonths,   setCustomMonths]  = useState(2)
   const [lateFee,        setLateFee]       = useState(0)
   const [showLateFee,    setShowLateFee]   = useState(false)
+  // Required when amount is >30% off the expected total — staff must type CONFIRM
+  const [confirmText,    setConfirmText]   = useState('')
 
   const months = form.paymentType === 'quarterly' ? 3
                : form.paymentType === 'yearly'    ? 12
@@ -515,6 +519,34 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     Math.abs(form.baseAmount - referenceRate) / referenceRate > 0.20
   )
 
+  // Recent payments timeline — show this student's last 3 payments so staff
+  // can spot duplicates / wrong-month entries visually before saving.
+  const studentRecentPayments = form.studentId
+    ? payments
+        .filter(p => String(p.studentId) === String(form.studentId))
+        .slice()
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        .slice(0, 3)
+    : []
+
+  // Sanity check — block save if amount is >30% off the expected total.
+  // Catches typos (₹800 vs ₹8,000) and wrong-plan amounts that the soft
+  // warnings above let through. Custom plan and plans without a reference
+  // rate are excluded since we can't reliably compute "expected".
+  const expectedSubtotal = (form.paymentType === 'monthly' || form.paymentType === 'custom')
+    ? referenceRate * months
+    : referenceRate
+  const expectedTotal = expectedSubtotal - Math.round(expectedSubtotal * form.discountPct / 100) + lateFeeAmt
+  const sanityMismatch = !!(
+    form.studentId &&
+    referenceRate > 0 &&
+    expectedTotal > 0 &&
+    form.paymentType !== 'custom' &&
+    Math.abs(finalAmount - expectedTotal) / expectedTotal > 0.30
+  )
+  const sanityRatio = sanityMismatch ? (finalAmount / expectedTotal) : 1
+  const confirmOk = !sanityMismatch || confirmText.trim().toUpperCase() === 'CONFIRM'
+
   const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const coverageBase = advanceStart ? new Date(advanceStart + 'T00:00:00') : new Date(paymentDate + 'T00:00:00')
 
@@ -613,6 +645,27 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                 <strong>Possible duplicate</strong> — {form.student} is already paid through <strong>{new Date(selectedStudent.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</strong>.
                 Add a note below if this is intentional.
               </span>
+            </div>
+          )}
+          {form.studentId && studentRecentPayments.length > 0 && (
+            <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1.5">
+                Last {studentRecentPayments.length} payment{studentRecentPayments.length === 1 ? '' : 's'}
+              </p>
+              <div className="space-y-1">
+                {studentRecentPayments.map(p => (
+                  <div key={p.id} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-700">
+                      <span className="font-mono text-[10px] text-gray-400 mr-1.5">{p.id}</span>
+                      <span className="font-semibold">{p.month}</span>
+                      <span className="text-gray-400 mx-1">·</span>
+                      <span className="text-gray-500">{p.date}</span>
+                      {p.mode && <><span className="text-gray-400 mx-1">·</span><span className="text-gray-500">{p.mode}</span></>}
+                    </span>
+                    <span className="font-bold text-gray-800">₹{Number(p.amount || 0).toLocaleString('en-IN')}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -825,12 +878,34 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         </div>
 
       </div>
+      {sanityMismatch && (
+        <div className="mt-5 bg-red-50 border-2 border-red-300 rounded-xl p-3.5">
+          <div className="flex items-start gap-2 mb-2">
+            <span className="text-lg leading-none mt-0.5">⚠️</span>
+            <div className="text-xs text-red-800">
+              <p className="font-bold mb-0.5">Amount looks unusual</p>
+              <p>
+                Entered <strong>₹{finalAmount.toLocaleString('en-IN')}</strong> is
+                {' '}<strong>{sanityRatio < 1 ? `${Math.round((1 - sanityRatio) * 100)}% lower` : `${Math.round((sanityRatio - 1) * 100)}% higher`}</strong>
+                {' '}than the expected <strong>₹{expectedTotal.toLocaleString('en-IN')}</strong> for this student.
+                Type <strong>CONFIRM</strong> below to record anyway.
+              </p>
+            </div>
+          </div>
+          <input
+            className="input border-red-300 focus:border-red-500 font-mono uppercase tracking-wider"
+            placeholder="Type CONFIRM to proceed"
+            value={confirmText}
+            onChange={e => setConfirmText(e.target.value)}
+          />
+        </div>
+      )}
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
         <button
-          className={isDuplicate ? 'px-5 py-2.5 rounded-xl font-bold text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50' : 'btn-primary'}
+          className={isDuplicate || sanityMismatch ? 'px-5 py-2.5 rounded-xl font-bold text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed' : 'btn-primary'}
           onClick={handleSave}
-          disabled={loading || finalAmount <= 0}
+          disabled={loading || finalAmount <= 0 || !confirmOk}
         >
           {loading ? '…' : isDuplicate ? `Record Anyway · ₹${finalAmount.toLocaleString('en-IN')}` : `Confirm · ₹${finalAmount.toLocaleString('en-IN')}`}
         </button>

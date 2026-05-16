@@ -159,6 +159,23 @@ export async function insertPayment(p, invoiceId) {
   if (error) throw error
 }
 
+// Returns the most recent payment for (studentId, amount) within the given window, or null.
+// Used by addPayment to refuse duplicates from double-click or simultaneous staff submissions.
+export async function findRecentDuplicatePayment(studentId, amount, withinSeconds = 60) {
+  if (!studentId || !amount) return null
+  const sinceIso = new Date(Date.now() - withinSeconds * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id, student, amount, created_at, mode')
+    .eq('student_id', studentId)
+    .eq('amount', Number(amount))
+    .gte('created_at', sinceIso)
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (error) return null
+  return data?.[0] || null
+}
+
 export async function updateStudentPosition(id, position) {
   const { error } = await supabase.from('students').update({ position }).eq('id', id)
   if (error) throw error
@@ -840,6 +857,42 @@ export async function createStudentAccount(s) {
     .single()
   if (error) throw error
   return data
+}
+
+// Atomic version: student INSERT + (optional) batch counter bump
+// + (optional) initial payment INSERT, all in one transaction.
+// Calls the 0005_transactional_rpcs.sql function.
+// Returns the new student id (number).
+export async function createStudentWithPayment(s) {
+  const { data, error } = await supabase.rpc('create_student_with_payment', {
+    p_name:           s.name,
+    p_parent:         s.parent || '',
+    p_phone:          s.phone || '',
+    p_parent_phone:   s.parentPhone || '',
+    p_age:            Number(s.age) || null,
+    p_dob:            s.dob || null,
+    p_sport:          s.sport || '',
+    p_batch:          s.batchName || '',
+    p_batch_id:       s.batchId || null,
+    p_join_date:      s.joinDate || new Date().toISOString().split('T')[0],
+    p_fees:           Number(s.fees) || 0,
+    p_fee_amount:     Number(s.feeAmount) || Number(s.fees) || 0,
+    p_fee_due_day:    Number(s.feeDueDay) || null,
+    p_paid_till:      s.paidTill || null,
+    p_training_type:  s.trainingType || 'Daily',
+    p_fee_plan:       s.feePlan || 'monthly',
+    p_student_code:   s.studentCode,
+    p_join_code:      s.joinCode,
+    p_academy_id:     s.academyId || null,
+    p_suspend_now:    !!s.suspendNow,
+    p_invoice_id:     s.payment?.invoiceId    || null,
+    p_payment_amount: s.payment?.amount       ?? null,
+    p_payment_month:  s.payment?.label        || null,
+    p_payment_date:   s.payment?.startDate    || null,
+    p_months_covered: s.payment?.monthsCovered ?? null,
+  })
+  if (error) throw error
+  return data  // BIGINT student id
 }
 
 export async function activateStudentAccount(studentCode, joinCode, passwordHash) {
@@ -1754,9 +1807,13 @@ export async function fetchAllStudentBatches(academyId) {
   return data || []
 }
 
-export async function fetchAuditLogs(academyId, limit = 300) {
+export async function fetchAuditLogs(academyId, limit = 300, sport = null) {
   let q = supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(limit)
   if (academyId) q = q.eq('academy_id', academyId)
+  // Include un-tagged (NULL) entries in every sport view — they are historical
+  // pre-branch entries. Going forward, every new action is tagged so branch
+  // views will naturally isolate themselves over time.
+  if (sport) q = q.or(`sport.eq.${sport},sport.is.null`)
   const { data, error } = await q
   if (error) { if (error.code === '42P01') return []; throw error }
   return data || []

@@ -4,8 +4,9 @@
 
 import { useApp } from '../../context/AppContext'
 import { useNavigate } from 'react-router-dom'
-import { CalendarCheck, Users, ChevronRight, QrCode, CreditCard, UserPlus, Layers, BarChart2, Megaphone, Trophy, UserCog, Settings, Search, ClipboardList } from 'lucide-react'
+import { CalendarCheck, Users, ChevronRight, QrCode, CreditCard, UserPlus, Layers, BarChart2, Megaphone, Trophy, UserCog, Settings, Search, ClipboardList, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import * as db from '../../lib/db'
 import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getOverallScore, getTier, currentMonth } from '../../lib/performance'
 
@@ -25,6 +26,22 @@ const WORK_TILES = [
 export default function StaffDashboard() {
   const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, hasPermission } = useApp()
   const navigate = useNavigate()
+
+  const [gateQRToken,   setGateQRToken]   = useState(null)
+  const [gateQROpen,    setGateQROpen]    = useState(false)
+  const [gateQRLoading, setGateQRLoading] = useState(false)
+
+  const openGateQR = async () => {
+    setGateQROpen(true)
+    if (gateQRToken) return
+    setGateQRLoading(true)
+    try {
+      const qr = await db.getOrCreateGateQR(user?.academy || 'Academy Gate')
+      setGateQRToken(qr.token)
+    } finally {
+      setGateQRLoading(false)
+    }
+  }
 
   const isCoach = !user?.accessRole || ['coach', 'staff'].includes(user?.accessRole)
 
@@ -92,11 +109,20 @@ export default function StaffDashboard() {
               <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">present</p>
             </div>
           </div>
-          {pendingLeaves > 0 && (
-            <span className="text-[10px] bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-bold">
-              {pendingLeaves} leave
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {pendingLeaves > 0 && (
+              <span className="text-[10px] bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-bold">
+                {pendingLeaves} leave
+              </span>
+            )}
+            <button
+              onClick={openGateQR}
+              className="p-2 rounded-xl bg-white border border-gray-200 text-gray-500 active:bg-gray-50 transition"
+              title="Show Gate QR"
+            >
+              <QrCode size={16} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -187,6 +213,41 @@ export default function StaffDashboard() {
         </div>
         <ChevronRight size={16} className="text-gray-300" />
       </button>
+
+      {/* Gate QR fullscreen overlay */}
+      {gateQROpen && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col items-center justify-center p-8">
+          <button
+            onClick={() => setGateQROpen(false)}
+            className="absolute top-5 right-5 w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition"
+          >
+            <X size={20} className="text-gray-600" />
+          </button>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-8">Gate Entry</p>
+          {gateQRLoading ? (
+            <div className="w-64 h-64 bg-gray-100 rounded-2xl animate-pulse flex items-center justify-center">
+              <QrCode size={40} className="text-gray-300" />
+            </div>
+          ) : gateQRToken ? (
+            <div className="p-5 bg-white rounded-2xl border-4 border-gray-900 shadow-xl">
+              <QRCodeSVG
+                value={gateQRToken}
+                size={240}
+                bgColor="#ffffff"
+                fgColor="#111827"
+                level="H"
+                includeMargin={false}
+              />
+            </div>
+          ) : (
+            <div className="w-64 h-64 bg-gray-50 rounded-2xl flex items-center justify-center">
+              <p className="text-gray-400 text-sm">QR unavailable</p>
+            </div>
+          )}
+          <p className="text-xl font-black text-gray-900 mt-8">{user?.academy}</p>
+          <p className="text-sm text-gray-400 mt-1">Scan to mark attendance</p>
+        </div>
+      )}
 
     </div>
   )

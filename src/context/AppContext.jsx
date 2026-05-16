@@ -15,6 +15,10 @@ import { ALL_PERMISSIONS, ROLE_PRESETS } from '../lib/permissions'
 import { logAudit, ACTIONS, diffObjects } from '../lib/audit'
 import { logger } from '../lib/logger'
 
+// Module-level in-flight payment lock — survives across renders, isolated per tab.
+// Used to refuse rapid duplicate submissions before any network round-trip.
+const _paymentInFlight = new Set()
+
 const SPORT_KEY   = 'sf_selected_sport'
 const SUSPEND_KEY = 'sf_suspend_days'
 const getSuspendDays = () => Number(localStorage.getItem(SUSPEND_KEY) || 3)
@@ -64,6 +68,11 @@ export function AppProvider({ children }) {
       else       localStorage.removeItem(SPORT_KEY)
     } catch {}
   }, [])
+
+  // Wrapper: auto-injects the active sport so every audit entry is branch-scoped.
+  const logAuditSport = useCallback((args) =>
+    logAudit({ ...args, sport: selectedSport || null })
+  , [selectedSport])
 
   const [suspendAfterDays, setSuspendAfterDaysState] = useState(getSuspendDays)
   const updateSuspendAfterDays = useCallback((n) => {
@@ -466,79 +475,94 @@ export function AppProvider({ children }) {
     try {
       const studentCode = await db.fetchNextStudentCode()
       const joinCode    = generateJoinCode()
+
+      // Normalise paidTill ("2026-05" → "2026-05-31")
       let paidTill = s.paidTill || null
       if (paidTill && paidTill.length === 7) {
         const [yr, mo] = paidTill.split('-').map(Number)
         paidTill = new Date(yr, mo, 0).toISOString().split('T')[0]
       }
-      const created = await db.createStudentAccount({ ...s, studentCode, joinCode, paidTill, academyId: user?.academyId })
-      if (s.batchId) {
-        await db.updateBatchEnrolled(s.batchId, 1)
-        setBatches(prev => prev.map(b => b.id === s.batchId ? { ...b, enrolled: (b.enrolled || 0) + 1 } : b))
-      }
-      const mapped = {
-        id:             created.id,
-        name:           created.name,
-        parent:         created.parent,
-        phone:          created.phone,
-        parentPhone:    created.parent_phone,
-        age:            created.age,
-        sport:          created.sport,
-        batch:          created.batch,
-        batchId:        created.batch_id,
-        joinDate:       created.join_date,
-        status:         created.status,
-        accountStatus:  created.account_status,
-        fees:           created.fees,
-        paidTill:       created.paid_till || paidTill,
-        studentCode:    created.student_code,
-        joinCode:       created.join_code,
-        feeAmount:      created.fee_amount,
-        feeDueDay:      created.fee_due_day,
-        lastBatchId:    null,
-        lastBatchName:  null,
-        suspendedSince: null,
-        trainingType:   created.training_type || 'Daily',
-        feePlan:        created.fee_plan || 'monthly',
-      }
-      // Immediately suspend if paidTill is already past the grace period
-      const addNow  = new Date()
-      const addDiff = paidTill ? Math.floor((addNow - new Date(paidTill + 'T00:00:00')) / 86400000) : 0
-      if (addDiff >= getSuspendDays()) {
-        try {
-          await db.suspendStudent(created.id)
-          mapped.status = 'Suspended'
-          mapped.suspendedSince = addNow.toISOString().split('T')[0]
-          if (s.batchId) {
-            await db.updateBatchEnrolled(s.batchId, -1)
-            setBatches(prev => prev.map(b => b.id === s.batchId
-              ? { ...b, enrolled: Math.max(0, (b.enrolled || 0) - 1) } : b))
-          }
-        } catch (suspErr) {
-          console.warn('Immediate auto-suspend on add failed:', suspErr)
-        }
-      }
-      setStudents(prev => [...prev, mapped])
 
-      // Auto-create historical payment if paidTill + fees are set
-      if (paidTill && created.fees > 0) {
-        const joinDateStr = s.joinDate || created.join_date || new Date().toISOString().split('T')[0]
-        const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, created.fees, s.feePlan || 'monthly')
+      // Decide suspend-now BEFORE the write, so the RPC can apply it atomically
+      const addNow    = new Date()
+      const addDiff   = paidTill ? Math.floor((addNow - new Date(paidTill + 'T00:00:00')) / 86400000) : 0
+      const suspendNow = addDiff >= getSuspendDays()
+
+      // Pre-compute historical payment fields if applicable
+      const fees = Number(s.fees) || 0
+      let payment = null
+      if (paidTill && fees > 0) {
+        const joinDateStr = s.joinDate || new Date().toISOString().split('T')[0]
+        const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, fees, s.feePlan || 'monthly')
         const pt = new Date(paidTill + 'T00:00:00')
         const invNum = await db.fetchNextInvoiceNum()
         const invoiceId = `INV-${pt.getFullYear()}-${String(invNum).padStart(3, '0')}`
-        const payRow = {
-          studentId: created.id, student: created.name,
-          amount, month: label, date: startDate,
-          status: 'Paid', mode: 'Cash', monthsCovered,
-          academyId: user?.academyId,
-        }
-        await db.insertPayment(payRow, invoiceId)
-        setPayments(prev => [{ ...payRow, id: invoiceId, paymentType: 'monthly', discountPct: 0 }, ...prev])
+        payment = { invoiceId, amount, label, startDate, monthsCovered }
+      }
+
+      // ONE atomic write: student + (optional) batch counter + (optional) payment
+      const newId = await db.createStudentWithPayment({
+        ...s,
+        studentCode, joinCode, paidTill, fees,
+        suspendNow, payment,
+        academyId: user?.academyId,
+      })
+
+      // Build local state from inputs (the RPC returns only the id)
+      const todayStr = addNow.toISOString().split('T')[0]
+      const mapped = {
+        id:             newId,
+        name:           s.name,
+        parent:         s.parent || '',
+        phone:          s.phone || '',
+        parentPhone:    s.parentPhone || '',
+        age:            Number(s.age) || null,
+        sport:          s.sport || '',
+        batch:          s.batchName || '',
+        batchId:        s.batchId || null,
+        joinDate:       s.joinDate || todayStr,
+        status:         suspendNow ? 'Suspended' : 'Active',
+        accountStatus:  'pending',
+        fees:           fees,
+        paidTill:       paidTill,
+        studentCode,
+        joinCode,
+        feeAmount:      Number(s.feeAmount) || fees,
+        feeDueDay:      Number(s.feeDueDay) || null,
+        lastBatchId:    null,
+        lastBatchName:  null,
+        suspendedSince: suspendNow ? todayStr : null,
+        trainingType:   s.trainingType || 'Daily',
+        feePlan:        s.feePlan || 'monthly',
+      }
+      setStudents(prev => [...prev, mapped])
+
+      // Optimistic batch counter update (RPC already bumped DB if not suspended)
+      if (s.batchId && !suspendNow) {
+        setBatches(prev => prev.map(b => b.id === s.batchId
+          ? { ...b, enrolled: (b.enrolled || 0) + 1 } : b))
+      }
+
+      // Optimistic payment row (RPC already inserted it in DB)
+      if (payment) {
+        setPayments(prev => [{
+          id:             payment.invoiceId,
+          studentId:      newId,
+          student:        s.name,
+          amount:         payment.amount,
+          month:          payment.label,
+          date:           payment.startDate,
+          status:         'Paid',
+          mode:           'Cash',
+          paymentType:    'monthly',
+          discountPct:    0,
+          monthsCovered:  payment.monthsCovered,
+          academyId:      user?.academyId,
+        }, ...prev])
       }
 
       showToast(`Student created — Code: ${studentCode} · Join: ${joinCode}`, 'success')
-      logAudit({ actor: user, action: ACTIONS.STUDENT_ADD, entityType: 'student', entityId: mapped.id, entityName: mapped.name, changes: { batch: mapped.batch || '—', sport: mapped.sport, fees: String(mapped.fees) }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.STUDENT_ADD, entityType: 'student', entityId: mapped.id, entityName: mapped.name, changes: { batch: mapped.batch || '—', sport: mapped.sport, fees: String(mapped.fees) }, academyId: user?.academyId })
       return mapped
     } catch (err) {
       showToast(err.message || 'Failed to add student', 'error')
@@ -620,7 +644,7 @@ export function AppProvider({ children }) {
           { key: 'feePlan', label: 'Fee Plan' }, { key: 'phone', label: 'Phone' },
         ]
       )
-      logAudit({ actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student', entityId: id, entityName: s.name || oldStudent?.name, changes: diff, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student', entityId: id, entityName: s.name || oldStudent?.name, changes: diff, academyId: user?.academyId })
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
       throw err
@@ -639,7 +663,7 @@ export function AppProvider({ children }) {
         ...s, status: 'Active', suspendedSince: null,
       } : s))
       showToast(`${student.name} reactivated`)
-      logAudit({ actor: user, action: ACTIONS.STUDENT_REACTIVATE, entityType: 'student', entityId: student.id, entityName: student.name, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.STUDENT_REACTIVATE, entityType: 'student', entityId: student.id, entityName: student.name, academyId: user?.academyId })
     } catch (err) {
       showToast(err.message || 'Reactivate failed', 'error')
     }
@@ -655,7 +679,7 @@ export function AppProvider({ children }) {
       }
       setStudents(prev => prev.filter(s => s.id !== student.id))
       setPayments(prev => prev.filter(p => p.studentId !== student.id))
-      logAudit({ actor: user, action: ACTIONS.STUDENT_DELETE, entityType: 'student', entityId: student.id, entityName: student.name, changes: { batch: student.batch || '—', sport: student.sport }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.STUDENT_DELETE, entityType: 'student', entityId: student.id, entityName: student.name, changes: { batch: student.batch || '—', sport: student.sport }, academyId: user?.academyId })
       showToast(`${student.name} deleted`)
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
@@ -675,7 +699,7 @@ export function AppProvider({ children }) {
         ...s, status: 'Suspended', suspendedSince: today,
       } : s))
       showToast(`${student.name} suspended`)
-      logAudit({ actor: user, action: ACTIONS.STUDENT_SUSPEND, entityType: 'student', entityId: student.id, entityName: student.name, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.STUDENT_SUSPEND, entityType: 'student', entityId: student.id, entityName: student.name, academyId: user?.academyId })
     } catch (err) {
       showToast(err.message || 'Suspend failed', 'error')
     }
@@ -700,7 +724,7 @@ export function AppProvider({ children }) {
       ))
       showToast(`Reset done — New Join Code: ${newJoin}`, 'info')
       const resetS = students.find(x => x.id === id)
-      logAudit({ actor: user, action: ACTIONS.STUDENT_RESET, entityType: 'student', entityId: id, entityName: resetS?.name, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.STUDENT_RESET, entityType: 'student', entityId: id, entityName: resetS?.name, academyId: user?.academyId })
       return newJoin
     } catch (err) {
       showToast(err.message || 'Reset failed', 'error')
@@ -715,7 +739,24 @@ export function AppProvider({ children }) {
   // ── Payments ──────────────────────────────────────────
 
   const addPayment = async (p) => {
+    // Idempotency guard #1: in-memory lock against double-click / rapid resubmit
+    // on the same browser session (kicks in before any network round-trip).
+    const lockKey = `${p.studentId}-${Number(p.amount)}-${p.monthsCovered || 1}`
+    if (_paymentInFlight.has(lockKey)) {
+      showToast('Already recording this payment — please wait', 'error')
+      return
+    }
+    _paymentInFlight.add(lockKey)
     try {
+      // Idempotency guard #2: server-side check for any payment with the same
+      // (student, amount) inserted in the last 60s — catches duplicates from
+      // a different tab/device or a network retry that bypassed the local lock.
+      const recent = await db.findRecentDuplicatePayment(p.studentId, p.amount, 60)
+      if (recent) {
+        const secsAgo = Math.max(1, Math.round((Date.now() - new Date(recent.created_at).getTime()) / 1000))
+        showToast(`Duplicate blocked — ${recent.id} for ₹${Number(recent.amount).toLocaleString('en-IN')} was just recorded ${secsAgo}s ago`, 'error')
+        return
+      }
       const collectionDate = p.paymentDate ? new Date(p.paymentDate + 'T00:00:00') : new Date()
       // For advance payments, coverage starts from the month after the student's current paidTill
       const baseDate  = p.advanceStart ? new Date(p.advanceStart + 'T00:00:00') : collectionDate
@@ -762,10 +803,13 @@ export function AppProvider({ children }) {
         ...paymentRow, id: invoiceId,
         date: payDate, status: 'Paid', month: monthLabel,
       }, ...prev])
-      logAudit({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId })
       showToast('Payment recorded')
     } catch (err) {
       showToast(err.message || 'Payment failed', 'error')
+    } finally {
+      // Hold the lock briefly past completion so a stale click can't slip through
+      setTimeout(() => _paymentInFlight.delete(lockKey), 1500)
     }
   }
 
@@ -799,7 +843,7 @@ export function AppProvider({ children }) {
         await db.updateStudentPaidTill(student.id, newPaidTill, null)
         setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
       }
-      logAudit({ actor: user, action: ACTIONS.PAYMENT_REMOVE, entityType: 'payment', entityId: payment.id, entityName: payment.student, changes: { amount: String(payment.amount), month: payment.month || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.PAYMENT_REMOVE, entityType: 'payment', entityId: payment.id, entityName: payment.student, changes: { amount: String(payment.amount), month: payment.month || '—' }, academyId: user?.academyId })
       showToast('Payment deleted')
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
@@ -813,7 +857,7 @@ export function AppProvider({ children }) {
         p.id === id ? { ...p, status: 'Paid', mode, date: new Date().toISOString().split('T')[0] } : p
       ))
       const paidPay = payments.find(p => p.id === id)
-      logAudit({ actor: user, action: ACTIONS.PAYMENT_PAID, entityType: 'payment', entityId: id, entityName: paidPay?.student, changes: { mode }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.PAYMENT_PAID, entityType: 'payment', entityId: id, entityName: paidPay?.student, changes: { mode }, academyId: user?.academyId })
       showToast('Payment marked as paid')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
@@ -826,7 +870,7 @@ export function AppProvider({ children }) {
     try {
       const created = await db.insertTrial({ ...t, academyId: user?.academyId })
       setTrials(prev => [created, ...prev])
-      logAudit({ actor: user, action: ACTIONS.TRIAL_ADD, entityType: 'trial', entityId: created.id, entityName: t.name, changes: { sport: t.sport || '—', source: t.source || '—', date: t.trialDate || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.TRIAL_ADD, entityType: 'trial', entityId: created.id, entityName: t.name, changes: { sport: t.sport || '—', source: t.source || '—', date: t.trialDate || '—' }, academyId: user?.academyId })
       showToast('Trial lead added')
     } catch (err) {
       showToast(err.message || 'Failed to add trial', 'error')
@@ -840,7 +884,7 @@ export function AppProvider({ children }) {
       const isConvert = updates.converted === true
       const action = isConvert ? ACTIONS.TRIAL_CONVERT : ACTIONS.TRIAL_UPDATE
       setTrials(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
-      logAudit({ actor: user, action, entityType: 'trial', entityId: id, entityName: trial?.name, changes: updates.status ? { status: { old: trial?.status, new: updates.status } } : {}, academyId: user?.academyId })
+      logAuditSport({ actor: user, action, entityType: 'trial', entityId: id, entityName: trial?.name, changes: updates.status ? { status: { old: trial?.status, new: updates.status } } : {}, academyId: user?.academyId })
       showToast('Trial updated')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
@@ -861,7 +905,7 @@ export function AppProvider({ children }) {
         ground: created.ground || null,
         defaultFee: created.default_fee || 0, defaultPlan: created.default_plan || 'monthly',
       }])
-      logAudit({ actor: user, action: ACTIONS.BATCH_ADD, entityType: 'batch', entityId: created.id, entityName: created.name, changes: { sport: (b.sports || []).join(', '), capacity: String(b.capacity), coach: b.coach || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.BATCH_ADD, entityType: 'batch', entityId: created.id, entityName: created.name, changes: { sport: (b.sports || []).join(', '), capacity: String(b.capacity), coach: b.coach || '—' }, academyId: user?.academyId })
       showToast('Batch created')
     } catch (err) {
       showToast(err.message || 'Failed to create batch', 'error')
@@ -910,7 +954,7 @@ export function AppProvider({ children }) {
       const oldBatch = batches.find(b => b.id === batchId)
       await db.updateBatchCoach(batchId, coachName)
       setBatches(prev => prev.map(b => b.id === batchId ? { ...b, coach: coachName } : b))
-      logAudit({ actor: user, action: ACTIONS.BATCH_COACH, entityType: 'batch', entityId: batchId, entityName: oldBatch?.name, changes: { Coach: { old: oldBatch?.coach || '—', new: coachName || '—' } }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.BATCH_COACH, entityType: 'batch', entityId: batchId, entityName: oldBatch?.name, changes: { Coach: { old: oldBatch?.coach || '—', new: coachName || '—' } }, academyId: user?.academyId })
       showToast('Coach assigned')
     } catch (err) {
       showToast(err.message || 'Failed', 'error')
@@ -934,7 +978,7 @@ export function AppProvider({ children }) {
       const batchDiff = diffObjects(oldBatch, { name: b.name, coach: b.coach, capacity: b.capacity }, [
         { key: 'name' }, { key: 'coach', label: 'Coach' }, { key: 'capacity', label: 'Capacity' },
       ])
-      logAudit({ actor: user, action: ACTIONS.BATCH_EDIT, entityType: 'batch', entityId: batchId, entityName: b.name || oldBatch?.name, changes: batchDiff, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.BATCH_EDIT, entityType: 'batch', entityId: batchId, entityName: b.name || oldBatch?.name, changes: batchDiff, academyId: user?.academyId })
       showToast('Batch updated')
       return updated
     } catch (err) {
@@ -946,7 +990,7 @@ export function AppProvider({ children }) {
     const delBatch = batches.find(b => b.id === id)
     await db.deleteBatch(id)
     setBatches(prev => prev.filter(b => b.id !== id))
-    logAudit({ actor: user, action: ACTIONS.BATCH_DELETE, entityType: 'batch', entityId: id, entityName: delBatch?.name, academyId: user?.academyId })
+    logAuditSport({ actor: user, action: ACTIONS.BATCH_DELETE, entityType: 'batch', entityId: id, entityName: delBatch?.name, academyId: user?.academyId })
     showToast('Batch deleted')
   }
 
@@ -956,7 +1000,7 @@ export function AppProvider({ children }) {
     try {
       const created = await db.insertEvent({ ...e, academyId: user?.academyId })
       setEvents(prev => [...prev, created].sort((a, b) => a.date.localeCompare(b.date)))
-      logAudit({ actor: user, action: ACTIONS.EVENT_ADD, entityType: 'event', entityId: created.id, entityName: e.title, changes: { type: e.type || '—', date: e.date || '—', venue: e.venue || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.EVENT_ADD, entityType: 'event', entityId: created.id, entityName: e.title, changes: { type: e.type || '—', date: e.date || '—', venue: e.venue || '—' }, academyId: user?.academyId })
       showToast('Event added')
       return created
     } catch (err) {
@@ -970,7 +1014,7 @@ export function AppProvider({ children }) {
       const ev = events.find(e => e.id === id)
       await db.updateEventStatus(id, status)
       setEvents(prev => prev.map(e => e.id === id ? { ...e, status } : e))
-      logAudit({ actor: user, action: ACTIONS.EVENT_UPDATE, entityType: 'event', entityId: id, entityName: ev?.title, changes: { status: { old: ev?.status, new: status } }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.EVENT_UPDATE, entityType: 'event', entityId: id, entityName: ev?.title, changes: { status: { old: ev?.status, new: status } }, academyId: user?.academyId })
       showToast('Event updated')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
@@ -981,7 +1025,7 @@ export function AppProvider({ children }) {
     try {
       await db.updateEvent(id, fields)
       const ev = events.find(e => e.id === id)
-      logAudit({ actor: user, action: ACTIONS.EVENT_UPDATE, entityType: 'event', entityId: id, entityName: ev?.title || fields.title, changes: fields.title ? { title: { old: ev?.title, new: fields.title } } : {}, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.EVENT_UPDATE, entityType: 'event', entityId: id, entityName: ev?.title || fields.title, changes: fields.title ? { title: { old: ev?.title, new: fields.title } } : {}, academyId: user?.academyId })
       setEvents(prev => prev.map(e => e.id === id ? {
         ...e,
         ...(fields.title        !== undefined && { title:         fields.title }),
@@ -1009,7 +1053,7 @@ export function AppProvider({ children }) {
       const ev = events.find(e => e.id === id)
       await db.deleteEvent(id)
       setEvents(prev => prev.filter(e => e.id !== id))
-      logAudit({ actor: user, action: ACTIONS.EVENT_DELETE, entityType: 'event', entityId: id, entityName: ev?.title, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.EVENT_DELETE, entityType: 'event', entityId: id, entityName: ev?.title, academyId: user?.academyId })
       showToast('Event deleted')
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
@@ -1033,7 +1077,7 @@ export function AppProvider({ children }) {
       staffType:     s.staffType || 'coach',
       accountStatus: 'pending',
     }])
-    logAudit({ actor: user, action: ACTIONS.STAFF_ADD, entityType: 'staff', entityId: created.id, entityName: s.name, changes: { role: s.role || '—', sport: (s.sports || []).join(', ') || '—' }, academyId: user?.academyId })
+    logAuditSport({ actor: user, action: ACTIONS.STAFF_ADD, entityType: 'staff', entityId: created.id, entityName: s.name, changes: { role: s.role || '—', sport: (s.sports || []).join(', ') || '—' }, academyId: user?.academyId })
     showToast('Staff member added')
     return { staffCode, joinCode }
   }
@@ -1043,7 +1087,7 @@ export function AppProvider({ children }) {
       const member = staff.find(s => s.id === id)
       await db.deleteStaff(id)
       setStaff(prev => prev.filter(s => s.id !== id))
-      logAudit({ actor: user, action: ACTIONS.STAFF_REMOVE, entityType: 'staff', entityId: id, entityName: member?.name, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.STAFF_REMOVE, entityType: 'staff', entityId: id, entityName: member?.name, academyId: user?.academyId })
       showToast('Staff member removed')
     } catch (err) {
       showToast(err.message || 'Failed to delete', 'error')
@@ -1123,7 +1167,7 @@ export function AppProvider({ children }) {
   const inviteStaff = async (name, accessRole, permissions) => {
     try {
       const invite = await db.createInvite(user.academyId, user.academy, name, accessRole, permissions)
-      logAudit({ actor: user, action: ACTIONS.STAFF_INVITE, entityType: 'staff', entityName: name, changes: { role: accessRole, permissions: permissions.join(', ') || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.STAFF_INVITE, entityType: 'staff', entityName: name, changes: { role: accessRole, permissions: permissions.join(', ') || '—' }, academyId: user?.academyId })
       return `${window.location.origin}/invite/${invite.token}`
     } catch (err) {
       showToast(err.message || 'Failed to create invite', 'error')
@@ -1215,7 +1259,7 @@ export function AppProvider({ children }) {
       const ann     = { ...a, author: user?.name || 'Owner', academyId: user?.academyId }
       const created = await db.insertAnnouncement(ann)
       setAnnouncements(prev => [created, ...prev])
-      logAudit({ actor: user, action: ACTIONS.ANNOUNCEMENT_ADD, entityType: 'announcement', entityId: created.id, entityName: a.title, changes: { type: a.type || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.ANNOUNCEMENT_ADD, entityType: 'announcement', entityId: created.id, entityName: a.title, changes: { type: a.type || '—' }, academyId: user?.academyId })
       showToast('Announcement posted')
     } catch (err) {
       showToast(err.message || 'Failed', 'error')
@@ -1233,9 +1277,17 @@ export function AppProvider({ children }) {
     isAllSports ? students : students.filter(s => s.sport === selectedSport)
   , [students, selectedSport, isAllSports])
 
-  const filteredBatches = useMemo(() =>
-    isAllSports ? batches : batches.filter(b => b.sports?.includes(selectedSport))
-  , [batches, selectedSport, isAllSports])
+  const filteredBatches = useMemo(() => {
+    if (isAllSports) return batches
+    return batches.filter(b => {
+      // Normalise to array (sports can be string or array depending on DB driver)
+      const sports = Array.isArray(b.sports) ? b.sports : (b.sports ? [String(b.sports)] : [])
+      // Most-specific sport = longest name wins. A batch with both 'Football' and
+      // 'Football_ARA_branch 2' belongs exclusively to the branch, not the parent sport.
+      const primarySport = sports.slice().sort((a, z) => z.length - a.length)[0]
+      return primarySport === selectedSport
+    })
+  }, [batches, selectedSport, isAllSports])
 
   // Coaches with sports[] filtered by selectedSport;
   // Non-coach staff (empty sports[]) are kept visible everywhere — they're not sport-bound

@@ -586,6 +586,7 @@ export default function Students() {
           onSave={async (data) => { await addPayment(data); setShowPayModal(false); setPayStudent(null) }}
           students={students}
           batches={batches}
+          payments={payments}
           initialStudentId={payStudent?.id}
         />
       )}
@@ -1119,6 +1120,13 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Edit action */}
+          <button
+            onClick={() => onEdit(s)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 active:scale-95 transition"
+          >
+            <Pencil size={14} /> Edit Profile
+          </button>
           {/* Personal Info */}
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Personal Info</p>
@@ -1292,7 +1300,6 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     const e = {}
     if (!form.name.trim())            e.name  = 'Required'
     if (!/^\d{10}$/.test(form.phone)) e.phone = 'Enter 10-digit number'
-    if (!form.dob)                    e.dob   = 'Required'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -1300,7 +1307,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
   const handleSave = async () => {
     if (!validate()) return
     setLoading(true)
-    try { await onSave({ ...form, age: calcAge(form.dob) }) } finally { setLoading(false) }
+    try { await onSave({ ...form, age: form.dob ? calcAge(form.dob) : (s.age || null) }) } finally { setLoading(false) }
   }
 
   const preview = coveragePreview(form.joinDate, form.paidTill)
@@ -1319,7 +1326,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <input className="input" value={form.parent} onChange={e => set('parent', e.target.value)} />
         </div>
         <div>
-          <label className="label">Date of Birth *</label>
+          <label className="label">Date of Birth</label>
           <div className="relative">
             <DobInput value={form.dob} onChange={v => set('dob', v)} hasError={!!errors.dob} />
             {form.dob && calcAge(form.dob) !== null && (
@@ -1431,32 +1438,6 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
             )}
           </div>
         )}
-        {/* Position */}
-        <div className="sm:col-span-2">
-          <label className="label">Position</label>
-          <input
-            className="input text-sm mb-2"
-            placeholder="Type any position… (e.g. False 9, Sweeper) or pick below"
-            value={form.position}
-            onChange={e => set('position', e.target.value)}
-            maxLength={40}
-          />
-          <div className="flex flex-wrap gap-2">
-            {FOOTBALL_POSITIONS.map(p => {
-              const col    = POSITION_COLORS[p.id]
-              const active = form.position === p.id
-              return (
-                <button key={p.id} type="button"
-                  onClick={() => set('position', active ? '' : p.id)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-black border transition active:scale-95 ${
-                    active ? `${col.bg} ${col.text} border-current` : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
-                  }`}>
-                  {p.id} <span className="font-normal opacity-60">· {p.label}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
       </div>
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6">
         <button className="btn-secondary justify-center py-3 sm:py-2" onClick={onClose}>Cancel</button>
