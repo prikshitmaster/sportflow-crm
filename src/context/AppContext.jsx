@@ -295,7 +295,13 @@ export function AppProvider({ children }) {
   const loginOwner = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
-    const profile = await db.fetchProfile(data.user.id)
+    // First request after a new JWT can be silently blocked by PostgREST before the
+    // token propagates — retry once with a short delay to avoid the 1-second error flash
+    let profile = await db.fetchProfile(data.user.id)
+    if (!profile) {
+      await new Promise(r => setTimeout(r, 200))
+      profile = await db.fetchProfile(data.user.id)
+    }
     if (!profile) throw new Error('Account setup incomplete. Please contact support.')
     if (profile.role !== 'owner') throw new Error('This account is not an owner account.')
     const academy = await db.fetchAcademy(profile.academy_id)
