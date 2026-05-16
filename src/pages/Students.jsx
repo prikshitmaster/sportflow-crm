@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { SPORTS, BATCH_NAMES } from '../data/mockData'
 import {
@@ -116,29 +116,34 @@ export default function Students() {
   // Has a batch but no paid_till (historical import) → show "No Payment" badge, never auto-suspended
   const isNoPayment = (s) => s.status === 'Active' && s.batchId && !s.paidTill
 
-  const activeStudents    = students.filter(s => s.status !== 'Suspended')
-  const suspendedStudents = students.filter(s => s.status === 'Suspended')
+  const activeStudents    = useMemo(() => students.filter(s => s.status !== 'Suspended'), [students])
+  const suspendedStudents = useMemo(() => students.filter(s => s.status === 'Suspended'), [students])
 
-  const filtered = activeStudents.filter(s => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase()
-    const matchQ = !q ||
-      s.name.toLowerCase().includes(q) ||
-      (s.parent || '').toLowerCase().includes(q) ||
-      (s.phone || '').includes(q) ||
-      (s.studentCode || '').toLowerCase().includes(q)
-    const matchSport = sportFilter === 'All' || s.sport  === sportFilter
-    const matchBatch = batchFilter === 'All' || String(s.batchId) === batchFilter || mbStudentIds.has(s.id)
-    const matchAcc   = accFilter   === 'All' || s.accountStatus === accFilter
-    return matchQ && matchSport && matchBatch && matchAcc
-  })
+    return activeStudents.filter(s => {
+      const matchQ = !q ||
+        s.name.toLowerCase().includes(q) ||
+        (s.parent || '').toLowerCase().includes(q) ||
+        (s.phone || '').includes(q) ||
+        (s.studentCode || '').toLowerCase().includes(q)
+      const matchSport = sportFilter === 'All' || s.sport  === sportFilter
+      const matchBatch = batchFilter === 'All' || String(s.batchId) === batchFilter || mbStudentIds.has(s.id)
+      const matchAcc   = accFilter   === 'All' || s.accountStatus === accFilter
+      return matchQ && matchSport && matchBatch && matchAcc
+    })
+  }, [activeStudents, search, sportFilter, batchFilter, accFilter, mbStudentIds])
 
   const suspBatchName  = (s) => s.lastBatchName || s.batch || ''
-  const suspBatches    = [...new Set(suspendedStudents.map(suspBatchName).filter(Boolean))].sort()
-  const suspSports     = [...new Set(suspendedStudents.map(s => s.sport).filter(Boolean))].sort()
-  const suspFiltered   = suspendedStudents
-    .filter(s => suspBatchFilter === 'All' || suspBatchName(s) === suspBatchFilter)
-    .filter(s => suspSportFilter === 'All' || s.sport === suspSportFilter)
-    .filter(s => !suspSearch || s.name.toLowerCase().includes(suspSearch.toLowerCase()) || (s.studentCode || '').toLowerCase().includes(suspSearch.toLowerCase()))
+  const suspBatches    = useMemo(() => [...new Set(suspendedStudents.map(suspBatchName).filter(Boolean))].sort(), [suspendedStudents])
+  const suspSports     = useMemo(() => [...new Set(suspendedStudents.map(s => s.sport).filter(Boolean))].sort(), [suspendedStudents])
+  const suspFiltered   = useMemo(() => {
+    const q = suspSearch.toLowerCase()
+    return suspendedStudents
+      .filter(s => suspBatchFilter === 'All' || suspBatchName(s) === suspBatchFilter)
+      .filter(s => suspSportFilter === 'All' || s.sport === suspSportFilter)
+      .filter(s => !q || s.name.toLowerCase().includes(q) || (s.studentCode || '').toLowerCase().includes(q))
+  }, [suspendedStudents, suspBatchFilter, suspSportFilter, suspSearch])
 
   const pendingCount   = students.filter(s => s.accountStatus === 'pending').length
   const activeCount    = students.filter(s => s.accountStatus === 'active').length

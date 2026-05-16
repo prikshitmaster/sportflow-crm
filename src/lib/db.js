@@ -1412,22 +1412,26 @@ export async function deleteBranch(academyId, name) {
 
 // ── Leave Requests ────────────────────────────────────────
 
-// Staff submits a leave request
-export async function createLeaveRequest(staffId, staffName, startDate, endDate, reason) {
+// Staff submits a leave request — academyId scopes to current tenant
+export async function createLeaveRequest(staffId, staffName, startDate, endDate, reason, academyId = null) {
+  const row = { staff_id: staffId, staff_name: staffName, start_date: startDate, end_date: endDate, reason, status: 'Pending' }
+  if (academyId) row.academy_id = academyId
   const { data, error } = await supabase
     .from('leave_requests')
-    .insert({ staff_id: staffId, staff_name: staffName, start_date: startDate, end_date: endDate, reason, status: 'Pending' })
+    .insert(row)
     .select()
   if (error) throw error
-  return data?.[0] || { staff_id: staffId, staff_name: staffName, start_date: startDate, end_date: endDate, reason, status: 'Pending' }
+  return data?.[0] || row
 }
 
-// Owner fetches all leave requests (all staff)
-export async function fetchLeaveRequests() {
-  const { data, error } = await supabase
-    .from('leave_requests')
-    .select('*')
-    .order('created_at', { ascending: false })
+// Owner fetches all leave requests (all staff) — scoped to academy when academyId is provided.
+// Legacy rows with NULL academy_id are included so pre-migration data stays visible;
+// once backfilled (UPDATE leave_requests SET academy_id = ... WHERE academy_id IS NULL),
+// the .or() clause becomes inert and isolation tightens automatically.
+export async function fetchLeaveRequests(academyId = null) {
+  let q = supabase.from('leave_requests').select('*')
+  if (academyId) q = q.or(`academy_id.eq.${academyId},academy_id.is.null`)
+  const { data, error } = await q.order('created_at', { ascending: false })
   if (error) return []
   return data
 }

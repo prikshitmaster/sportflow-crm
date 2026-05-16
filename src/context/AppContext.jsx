@@ -1141,7 +1141,7 @@ export function AppProvider({ children }) {
   const submitLeave = async (startDate, endDate, reason) => {
     if (!user?.id) return
     try {
-      const created = await db.createLeaveRequest(user.id, user.name, startDate, endDate, reason)
+      const created = await db.createLeaveRequest(user.id, user.name, startDate, endDate, reason, user.academyId)
       setLeaveRequests(prev => [created, ...prev])
       showToast('Leave request submitted')
       return created
@@ -1155,7 +1155,7 @@ export function AppProvider({ children }) {
     if (!user?.id) return
     try {
       const data = role === 'owner'
-        ? await db.fetchLeaveRequests()
+        ? await db.fetchLeaveRequests(user.academyId)
         : await db.fetchMyLeaveRequests(user.id)
       setLeaveRequests(data)
     } catch { /* silent */ }
