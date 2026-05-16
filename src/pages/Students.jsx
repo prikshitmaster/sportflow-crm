@@ -10,6 +10,7 @@ import { RecordPaymentModal } from './Payments'
 import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition } from '../lib/db'
 import StudentAvatar from '../components/StudentAvatar'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
+import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment } from '../lib/studentRules'
 
 const accountBadge = {
   pending: 'badge-yellow',
@@ -111,10 +112,11 @@ export default function Students() {
   const now     = new Date()
   const today   = now.toISOString().split('T')[0]
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-  // Show Overdue immediately when paidTill < today
-  const isOverdue   = (s) => s.status === 'Active' && s.paidTill && s.paidTill < today
-  // Has a batch but no paid_till (historical import) → show "No Payment" badge, never auto-suspended
-  const isNoPayment = (s) => s.status === 'Active' && s.batchId && !s.paidTill
+  // Show Overdue immediately when paidTill < today.
+  // Has a batch but no paid_till (historical import) → show "No Payment" badge, never auto-suspended.
+  // Logic moved to lib/studentRules; locals are thin wrappers so JSX call sites stay untouched.
+  const isOverdue   = (s) => ruleIsOverdue(s, today)
+  const isNoPayment = ruleIsNoPayment
 
   const activeStudents    = useMemo(() => students.filter(s => s.status !== 'Suspended'), [students])
   const suspendedStudents = useMemo(() => students.filter(s => s.status === 'Suspended'), [students])
@@ -1031,8 +1033,7 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
   const pending = payments.filter(p => p.status !== 'Paid')
   const totalPaid = paid.reduce((sum, p) => sum + p.amount, 0)
 
-  const today2 = new Date().toISOString().split('T')[0]
-  const isProfileOverdue = s.status === 'Active' && s.paidTill && s.paidTill < today2
+  const isProfileOverdue = ruleIsOverdue(s)
 
   const infoRow = (label, value, mono = false) => (
     <div className="flex justify-between items-start gap-4 py-2.5 border-b border-gray-50 last:border-0">

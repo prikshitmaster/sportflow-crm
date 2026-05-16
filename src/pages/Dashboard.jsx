@@ -6,6 +6,7 @@ import {
   BarChart3, Layers,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { isOutstanding } from '../lib/studentRules'
 
 export default function Dashboard() {
   const {
@@ -44,12 +45,7 @@ export default function Dashboard() {
     payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => String(p.studentId))
   )
   const virtualOverdue = students
-    .filter(s =>
-      (s.status === 'Active' || s.status === 'Suspended') &&
-      s.paidTill &&
-      s.paidTill < firstOfMonth &&
-      !studentsWithRecord.has(String(s.id))
-    )
+    .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithRecord.has(String(s.id)))
     .map(s => ({
       id:        `DUE-${s.id}`,
       studentId: s.id,

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import * as db from '../lib/db'
 import { ACTION_LABELS, ACTION_CATEGORY, ENTITY_COLORS, ROLE_COLORS } from '../lib/audit'
+import { isOutstanding, daysOverdue as ruleDaysOverdue, ageingBucket, ageingBucketOrder } from '../lib/studentRules'
 import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel, FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 
 // ── Utilities ─────────────────────────────────────────────
@@ -223,7 +224,7 @@ function OverviewTab({ students, payments, trials, batches }) {
   const prevCollected = prevPay.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
   const firstOfMonthStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
   const outstanding   = students
-    .filter(s => (s.status === 'Active' || s.status === 'Suspended') && s.paidTill && s.paidTill < firstOfMonthStr)
+    .filter(s => isOutstanding(s, firstOfMonthStr))
     .reduce((sum, s) => sum + (s.fees || 0), 0)
   const convRate      = trials.length ? pct(trials.filter(t => t.converted).length, trials.length) : 0
   const forecast      = students.filter(s => s.status === 'Active').reduce((s, st) => s + (st.fees || 0), 0)
@@ -245,7 +246,7 @@ function OverviewTab({ students, payments, trials, batches }) {
   const overdueStudents = useMemo(() => {
     const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
     return students
-      .filter(s => (s.status === 'Active' || s.status === 'Suspended') && s.paidTill && s.paidTill < firstOfMonth)
+      .filter(s => isOutstanding(s, firstOfMonth))
       .sort((a, b) => (a.paidTill || '').localeCompare(b.paidTill || ''))
       .slice(0, 8)
   }, [students])
@@ -332,7 +333,7 @@ function OverviewTab({ students, payments, trials, batches }) {
           </div>
           <div className="divide-y divide-gray-50">
             {overdueStudents.map(s => {
-              const daysOverdue = s.paidTill ? Math.floor((today - new Date(s.paidTill + 'T00:00:00')) / 86400000) : null
+              const daysOverdue = ruleDaysOverdue(s, today)
               return (
                 <div key={s.id} className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-3 px-5 py-3 hover:bg-gray-50/50 items-center">
                   <div>
@@ -939,14 +940,12 @@ function AgeingTab({ students, payments }) {
   const ageing = useMemo(() => {
     const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
     const overdueStudents = students.filter(s =>
-      (s.status === 'Active' || s.status === 'Suspended') && s.paidTill && s.paidTill < firstOfMonth &&
+      isOutstanding(s, firstOfMonth) &&
       (batchFilter === 'All' || s.batch === batchFilter)
     )
     return overdueStudents.map(s => {
-      const days = Math.floor((today - new Date(s.paidTill+'T00:00:00')) / 86400000)
-      const bucket = days <= 30 ? '1–30 days' : days <= 60 ? '31–60 days' : days <= 90 ? '61–90 days' : '90+ days'
-      const bucketOrder = days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3
-      return { ...s, daysOverdue: days, bucket, bucketOrder }
+      const days = ruleDaysOverdue(s, today)
+      return { ...s, daysOverdue: days, bucket: ageingBucket(days), bucketOrder: ageingBucketOrder(days) }
     }).sort((a, b) => b.daysOverdue - a.daysOverdue)
   }, [students, batchFilter])
 

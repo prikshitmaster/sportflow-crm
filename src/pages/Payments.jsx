@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import { CreditCard, Plus, Search, Download, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2 } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { isOutstanding } from '../lib/studentRules'
 
 const STATUS_MAP = {
   Paid:    { cls: 'badge-green',  icon: CheckCircle, iconCls: 'text-emerald-500' },
@@ -67,12 +68,7 @@ export default function Payments() {
       payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => p.studentId)
     )
     return students
-      .filter(s =>
-        (s.status === 'Active' || s.status === 'Suspended') &&
-        s.paidTill &&
-        s.paidTill < firstOfMonth &&
-        !studentsWithPendingRecord.has(s.id)
-      )
+      .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithPendingRecord.has(s.id))
       .map(s => ({
         id:          `DUE-${s.id}`,
         studentId:   s.id,
