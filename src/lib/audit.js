@@ -37,6 +37,14 @@ export const ACTIONS = {
   // Assessments
   ASSESSMENT_ADD:     'assessment.add',
   ASSESSMENT_UPDATE:  'assessment.update',
+  // Auth & attendance (audit trail for accountability — see AUDIT.md M6)
+  AUTH_STAFF_LOGIN:      'auth.staff_login',
+  AUTH_STAFF_LOGOUT:     'auth.staff_logout',
+  AUTH_STAFF_ACTIVATE:   'auth.staff_activate',
+  AUTH_STUDENT_LOGIN:    'auth.student_login',
+  AUTH_STUDENT_LOGOUT:   'auth.student_logout',
+  AUTH_STUDENT_ACTIVATE: 'auth.student_activate',
+  ATTENDANCE_QR_SCAN:    'attendance.qr_scan',
 }
 
 export const ACTION_LABELS = {
@@ -76,6 +84,14 @@ export const ACTION_LABELS = {
   // Assessments
   'assessment.add':         'Submitted player assessment',
   'assessment.update':      'Updated player assessment',
+  // Auth & attendance
+  'auth.staff_login':       'Staff signed in',
+  'auth.staff_logout':      'Staff signed out',
+  'auth.staff_activate':    'Staff account activated',
+  'auth.student_login':     'Student signed in',
+  'auth.student_logout':    'Student signed out',
+  'auth.student_activate':  'Student account activated',
+  'attendance.qr_scan':     'Marked attendance via gate QR',
 }
 
 export const ENTITY_COLORS = {
@@ -87,6 +103,8 @@ export const ENTITY_COLORS = {
   staff:        { bg: 'bg-indigo-100',  text: 'text-indigo-700'  },
   announcement: { bg: 'bg-yellow-100',  text: 'text-yellow-700'  },
   assessment:   { bg: 'bg-teal-100',    text: 'text-teal-700'    },
+  auth:         { bg: 'bg-slate-100',   text: 'text-slate-700'   },
+  attendance:   { bg: 'bg-cyan-100',    text: 'text-cyan-700'    },
 }
 
 export const ROLE_COLORS = {
@@ -126,6 +144,13 @@ export const ACTION_CATEGORY = {
   'announcement.add':       'add',
   'assessment.add':         'add',
   'assessment.update':      'edit',
+  'auth.staff_login':       'edit',
+  'auth.staff_logout':      'edit',
+  'auth.staff_activate':    'add',
+  'auth.student_login':     'edit',
+  'auth.student_logout':    'edit',
+  'auth.student_activate':  'add',
+  'attendance.qr_scan':     'add',
 }
 
 // Compare two objects across specified fields, return only changed fields

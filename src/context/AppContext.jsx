@@ -13,6 +13,7 @@ import {
 } from '../lib/auth'
 import { ALL_PERMISSIONS, ROLE_PRESETS } from '../lib/permissions'
 import { logAudit, ACTIONS, diffObjects } from '../lib/audit'
+import { logger } from '../lib/logger'
 
 const SPORT_KEY   = 'sf_selected_sport'
 const SUSPEND_KEY = 'sf_suspend_days'
@@ -162,7 +163,7 @@ export function AppProvider({ children }) {
       const att = await db.fetchAttendanceForDate(today)
       setAttendanceData({ [today]: att })
     } catch (err) {
-      console.error('Data load failed:', err)
+      logger.error('loadAll failed', err, { role, academyId: user?.academyId })
       showToast('Could not connect to database', 'error')
     } finally {
       setDataLoading(false)
@@ -358,10 +359,22 @@ export function AppProvider({ children }) {
     setPermissions(perms)
     setSelectedSport(null)
     setRole('staff')
+    logAudit({
+      actor: { id: member.id, name: member.name, role: 'Staff', accessRole: member.access_role },
+      action: ACTIONS.AUTH_STAFF_LOGIN, entityType: 'auth',
+      entityId: member.id, entityName: member.name, academyId,
+    })
   }
 
   const logoutStaff = async () => {
     const sess = getStaffSession()
+    if (user?.id) {
+      logAudit({
+        actor: { id: user.id, name: user.name, role: 'Staff', accessRole: user.accessRole },
+        action: ACTIONS.AUTH_STAFF_LOGOUT, entityType: 'auth',
+        entityId: user.id, entityName: user.name, academyId: user.academyId,
+      })
+    }
     if (sess?.token) await db.deleteStaffSession(sess.token).catch(() => {})
     clearStaffSession()
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
@@ -373,6 +386,11 @@ export function AppProvider({ children }) {
   const activateStaff = async (staffCode, joinCode, password, profileData) => {
     const hash   = await hashPassword(password)
     const member = await db.activateStaffAccount(staffCode, joinCode, hash, profileData)
+    logAudit({
+      actor: { id: member.id, name: member.name, role: 'Staff', accessRole: member.access_role },
+      action: ACTIONS.AUTH_STAFF_ACTIVATE, entityType: 'auth',
+      entityId: member.id, entityName: member.name, academyId: member.academy_id,
+    })
     return member
   }
 
@@ -388,11 +406,23 @@ export function AppProvider({ children }) {
     })
     setStudentUser(student)
     setRole('student')
+    logAudit({
+      actor: { id: student.id, name: student.name, role: 'Student' },
+      action: ACTIONS.AUTH_STUDENT_LOGIN, entityType: 'auth',
+      entityId: student.id, entityName: student.name, academyId: student.academy_id,
+    })
     return student
   }
 
   const logoutStudent = async () => {
     const sess = getStudentSession()
+    if (studentUser?.id) {
+      logAudit({
+        actor: { id: studentUser.id, name: studentUser.name, role: 'Student' },
+        action: ACTIONS.AUTH_STUDENT_LOGOUT, entityType: 'auth',
+        entityId: studentUser.id, entityName: studentUser.name, academyId: studentUser.academy_id,
+      })
+    }
     if (sess?.token) await db.deleteStudentSession(sess.token).catch(() => {})
     clearStudentSession()
     setRole(null)
@@ -401,7 +431,14 @@ export function AppProvider({ children }) {
 
   const activateStudent = async (studentCode, joinCode, password) => {
     const hash = await hashPassword(password)
-    return db.activateStudentAccount(studentCode, joinCode, hash)
+    const result = await db.activateStudentAccount(studentCode, joinCode, hash)
+    logAudit({
+      actor: { id: result?.id || null, name: result?.name || studentCode, role: 'Student' },
+      action: ACTIONS.AUTH_STUDENT_ACTIVATE, entityType: 'auth',
+      entityId: result?.id || studentCode, entityName: result?.name || studentCode,
+      academyId: result?.academy_id || null,
+    })
+    return result
   }
 
   const updateStudentPhoto = async (file) => {

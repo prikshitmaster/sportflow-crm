@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
 import { QrCode, CheckCircle2, XCircle, Camera, ArrowLeft, Lock, CreditCard } from 'lucide-react'
 import jsQR from 'jsqr'
+import { logAudit, ACTIONS } from '../../lib/audit'
 
 export default function StudentScan() {
   const { studentUser } = useApp()
@@ -140,6 +141,12 @@ export default function StudentScan() {
   const processQR = async (token) => {
     try {
       await db.markAttendanceViaQR(studentUser.id, token.trim())
+      logAudit({
+        actor: { id: studentUser.id, name: studentUser.name, role: 'Student' },
+        action: ACTIONS.ATTENDANCE_QR_SCAN, entityType: 'attendance',
+        entityId: studentUser.id, entityName: studentUser.name,
+        academyId: studentUser.academy_id, note: 'gate QR',
+      })
       setPhase('success')
     } catch (err) {
       if (err.message?.includes('already marked')) {
