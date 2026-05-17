@@ -1,9 +1,134 @@
 import { useState, useMemo, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { CreditCard, Plus, Search, Download, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2 } from 'lucide-react'
+import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { isOutstanding } from '../lib/studentRules'
+
+// ── Payment Receipt Printer ───────────────────────────────────
+
+function buildReceiptHTML(p, student, academyName, logoUrl) {
+  const logo     = logoUrl || ''
+  const fmtDate  = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'
+  const today    = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+  const initials = (academyName || 'A').charAt(0).toUpperCase()
+
+  const rows = [
+    ['Receipt No.',   p.id || '—'],
+    ['Student Name',  p.student || '—'],
+    ['Student ID',    student?.studentCode || '—'],
+    ['Sport',         student?.sport || '—'],
+    ['Batch',         student?.batch || '—'],
+    ['Period',        p.month || '—'],
+    ['Months Covered', p.monthsCovered > 1 ? `${p.monthsCovered} months` : '1 month'],
+    ['Payment Mode',  p.mode || 'Cash'],
+    ['Payment Date',  fmtDate(p.date)],
+    ['Receipt Date',  today],
+  ]
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Receipt — ${p.id}</title>
+<style>
+  @page { size: A5; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #fff; color: #1a1a2e; }
+  .page { width: 148mm; min-height: 210mm; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+
+  .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%); padding: 20px 24px 16px; color: #fff; display: flex; align-items: center; gap: 16px; }
+  .logo-wrap { width: 60px; height: 60px; background: rgba(255,255,255,0.12); border-radius: 10px; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(255,255,255,0.2); flex-shrink: 0; overflow: hidden; }
+  .logo-wrap img { width: 100%; height: 100%; object-fit: contain; }
+  .logo-init { font-size: 22px; font-weight: 900; color: rgba(255,255,255,0.75); }
+  .acad-name { font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+  .acad-sub { font-size: 9px; color: rgba(255,255,255,0.5); margin-top: 2px; text-transform: uppercase; letter-spacing: 1px; }
+
+  .title-band { background: #16a34a; padding: 7px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .band-title { color: #fff; font-size: 12px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+  .band-inv { color: rgba(255,255,255,0.8); font-size: 10px; font-family: monospace; }
+
+  .body { flex: 1; padding: 20px 24px; }
+
+  .info-box { border: 1.5px solid #e8eaf0; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+  .info-box-hd { background: #f5f6fa; padding: 5px 14px; font-size: 8.5px; font-weight: 700; color: #6b7280; letter-spacing: 1.5px; text-transform: uppercase; border-bottom: 1px solid #e8eaf0; }
+  .row { display: flex; border-bottom: 1px solid #f0f0f5; }
+  .row:last-child { border-bottom: none; }
+  .lbl { width: 110px; padding: 7px 14px; font-size: 9.5px; color: #6b7280; font-weight: 600; background: #fafafa; border-right: 1px solid #f0f0f5; flex-shrink: 0; display: flex; align-items: center; }
+  .val { flex: 1; padding: 7px 14px; font-size: 10.5px; font-weight: 700; color: #1a1a2e; display: flex; align-items: center; }
+
+  .amt-box { background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1.5px solid #86efac; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+  .amt-lbl { font-size: 9px; color: #166534; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+  .amt-val { font-size: 26px; font-weight: 900; color: #15803d; }
+  .paid-badge { background: #15803d; color: #fff; font-size: 10px; font-weight: 900; padding: 4px 14px; border-radius: 20px; letter-spacing: 1px; }
+
+  .sig-row { display: flex; gap: 14px; margin-bottom: 10px; }
+  .sig-block { flex: 1; text-align: center; }
+  .sig-space { height: 32px; border-bottom: 1.5px solid #374151; margin-bottom: 3px; }
+  .sig-lbl { font-size: 8.5px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .footer { background: #1a1a2e; padding: 7px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .ft-txt { font-size: 8px; color: rgba(255,255,255,0.4); }
+  .ft-official { font-size: 8px; color: #4ade80; font-weight: 700; letter-spacing: 1px; }
+
+  .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-30deg); font-size: 72px; font-weight: 900; color: rgba(0,0,0,0.025); pointer-events: none; white-space: nowrap; z-index: 0; text-transform: uppercase; }
+</style>
+</head><body>
+<div class="page">
+  <div class="watermark">${(academyName || '').split(' ')[0]}</div>
+
+  <div class="header">
+    <div class="logo-wrap">
+      ${logo ? `<img src="${logo}" />` : `<span class="logo-init">${initials}</span>`}
+    </div>
+    <div>
+      <div class="acad-name">${academyName || 'Academy'}</div>
+      <div class="acad-sub">Payment Receipt</div>
+    </div>
+  </div>
+
+  <div class="title-band">
+    <span class="band-title">Payment Receipt</span>
+    <span class="band-inv">${p.id || '—'}</span>
+  </div>
+
+  <div class="body">
+    <div class="info-box">
+      <div class="info-box-hd">Payment Details</div>
+      ${rows.map(([l, v]) => `
+      <div class="row">
+        <div class="lbl">${l}</div>
+        <div class="val">${v}</div>
+      </div>`).join('')}
+    </div>
+
+    <div class="amt-box">
+      <div>
+        <div class="amt-lbl">Amount Received</div>
+        <div class="amt-val">₹${(p.amount ?? 0).toLocaleString('en-IN')}</div>
+      </div>
+      <div class="paid-badge">PAID</div>
+    </div>
+
+    <div class="sig-row">
+      <div class="sig-block"><div class="sig-space"></div><div class="sig-lbl">Received By</div></div>
+      <div class="sig-block"><div class="sig-space"></div><div class="sig-lbl">Parent / Guardian</div></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span class="ft-txt">Thank you for your payment. Please retain this receipt.</span>
+    <span class="ft-official">OFFICIAL RECEIPT</span>
+  </div>
+</div>
+</body></html>`
+}
+
+function printReceipt(p, student, academyName, logoUrl) {
+  const html = buildReceiptHTML(p, student, academyName, logoUrl)
+  const w = window.open('', '_blank', 'width=600,height=850')
+  w.document.write(html)
+  w.document.close()
+  w.focus()
+  setTimeout(() => { w.print() }, 400)
+}
 
 const STATUS_MAP = {
   Paid:    { cls: 'badge-green',  icon: CheckCircle, iconCls: 'text-emerald-500' },
@@ -12,7 +137,7 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport } = useApp()
+  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, user } = useApp()
   const [editingDate, setEditingDate] = useState(null) // paymentId being edited
   const [markingPaid, setMarkingPaid] = useState(null) // paymentId currently being marked Paid
 
@@ -290,8 +415,10 @@ export default function Payments() {
                         </button>
                       ) : (
                         <div className="flex items-center gap-3">
-                          <button className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
-                            <Download size={12} /> Receipt
+                          <button
+                            onClick={() => printReceipt(p, studentMap[p.studentId], user?.academy, user?.academyLogo)}
+                            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                            <Printer size={12} /> Receipt
                           </button>
                           <button
                             onClick={() => {

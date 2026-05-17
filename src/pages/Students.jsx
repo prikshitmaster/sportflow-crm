@@ -4,8 +4,9 @@ import { SPORTS, BATCH_NAMES } from '../data/mockData'
 import {
   Search, Plus, MoreVertical, UserCheck, UserX, X, Users as UsersIcon,
   Copy, KeyRound, CheckCheck, RefreshCw, Phone, Calendar, IndianRupee,
-  ShieldCheck, Award, ChevronRight, Pencil, Ban, Trash2,
+  ShieldCheck, Award, ChevronRight, Pencil, Ban, Trash2, UserPlus,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from './Payments'
 import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition } from '../lib/db'
 import StudentAvatar from '../components/StudentAvatar'
@@ -57,6 +58,7 @@ function DobInput({ value, onChange, hasError }) {
 }
 
 export default function Students() {
+  const navigate = useNavigate()
   const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment, selectedSport, user } = useApp()
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
@@ -176,9 +178,14 @@ export default function Students() {
         </div>
         <div className="flex items-center gap-2">
           {activeTab === 'students' && (
-            <button className="btn-primary" onClick={() => setShowModal(true)}>
-              <Plus size={16} /> Add Student
-            </button>
+            <>
+              <button className="btn-secondary" onClick={() => navigate('/trials')}>
+                <UserPlus size={16} /> Trial
+              </button>
+              <button className="btn-primary" onClick={() => setShowModal(true)}>
+                <Plus size={16} /> Add Student
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -408,7 +415,12 @@ export default function Students() {
                     <button onClick={() => setProfile(s)} className="flex items-center gap-3 text-left hover:opacity-80 transition">
                       <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={32} />
                       <div>
-                        <p className="font-semibold text-gray-900 hover:text-brand-600 transition">{s.name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-semibold text-gray-900 hover:text-brand-600 transition">{s.name}</p>
+                          {s.fromTrial && (
+                            <span className="text-[9px] bg-amber-400 text-amber-900 font-black px-1.5 py-0.5 rounded-full">Trial</span>
+                          )}
+                        </div>
                         {s.studentCode && <p className="text-[10px] font-mono text-gray-400">{s.studentCode}</p>}
                       </div>
                     </button>
@@ -1033,6 +1045,8 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
   const paid    = payments.filter(p => p.status === 'Paid')
   const pending = payments.filter(p => p.status !== 'Paid')
   const totalPaid = paid.reduce((sum, p) => sum + p.amount, 0)
+  // Oldest payment ID (payments are newest-first from DB) — used for "1st Month" badge
+  const firstPayId = s.fromTrial && payments.length > 0 ? payments[payments.length - 1]?.id : null
 
   const isProfileOverdue = ruleIsOverdue(s)
 
@@ -1097,6 +1111,11 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
               <h2 className="text-xl font-black text-white">{s.name}</h2>
               <p className="text-brand-200 text-sm">{s.sport} · {s.batch || 'No batch'}</p>
               {s.studentCode && <p className="text-brand-300 text-xs font-mono mt-0.5">{s.studentCode}</p>}
+              {s.fromTrial && (
+                <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 bg-amber-400/90 text-amber-900 text-[10px] font-black rounded-full uppercase tracking-wide">
+                  ★ New Student · Trial
+                </span>
+              )}
             </div>
           </div>
           {/* Quick stats */}
@@ -1162,19 +1181,42 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
                   <span className="text-xs text-emerald-700 font-medium">Total Paid</span>
                   <span className="text-sm font-black text-emerald-700">₹{totalPaid.toLocaleString('en-IN')}</span>
                 </div>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {payments.slice(0, 8).map(p => (
-                    <div key={p.id} className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs font-semibold text-gray-700">{p.month}</p>
-                        <p className="text-[10px] text-gray-400">{p.date || 'Unpaid'} · {p.mode || '—'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-bold text-gray-800">₹{p.amount.toLocaleString('en-IN')}</p>
-                        <span className={`badge text-[10px] ${p.status === 'Paid' ? 'badge-green' : p.status === 'Overdue' ? 'badge-red' : 'badge-yellow'}`}>{p.status}</span>
-                      </div>
+                {/* Trial deduction note — shown for converted-from-trial students */}
+                {s.fromTrial && payments.length > 0 && (
+                  <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2">
+                    <span className="text-amber-600 text-base">★</span>
+                    <div>
+                      <p className="text-[10px] font-black text-amber-800 uppercase tracking-wide">Trial Conversion</p>
+                      <p className="text-[10px] text-amber-700">First month includes trial fee deduction</p>
                     </div>
-                  ))}
+                  </div>
+                )}
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {payments.slice(0, 10).map((p) => {
+                    const isFirst = p.id === firstPayId
+                    return (
+                      <div key={p.id} className={`flex items-start justify-between rounded-xl p-2.5 ${isFirst ? 'bg-amber-50 border border-amber-100' : ''}`}>
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs font-semibold text-gray-700">{p.month}</p>
+                            {isFirst && (
+                              <span className="text-[9px] bg-amber-400 text-amber-900 font-black px-1.5 py-0.5 rounded-full">1st Month</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-gray-400">{p.date || 'Unpaid'} · {p.mode || '—'}</p>
+                          {(p.notes || isFirst) && (
+                            <p className="text-[9px] text-amber-600 mt-0.5">
+                              {p.notes || 'Trial fee deducted from this month'}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-xs font-bold text-gray-800">₹{p.amount.toLocaleString('en-IN')}</p>
+                          <span className={`badge text-[10px] ${p.status === 'Paid' ? 'badge-green' : p.status === 'Overdue' ? 'badge-red' : 'badge-yellow'}`}>{p.status}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </>
             )}

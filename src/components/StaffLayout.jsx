@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { Suspense, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut, ClipboardList } from 'lucide-react'
+import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut, ClipboardList, UserPlus } from 'lucide-react'
 
 function PageSkeleton() {
   return (
@@ -16,7 +16,7 @@ function PageSkeleton() {
   )
 }
 
-const coachTabs = [
+const BASE_COACH_TABS = [
   { to: '/staff/home',       label: 'Home',   icon: Home },
   { to: '/staff/attendance', label: 'Attend', icon: CalendarCheck },
   { to: '/staff/assess',     label: 'Assess', icon: ClipboardList },
@@ -24,15 +24,17 @@ const coachTabs = [
   { to: '/staff/profile',    label: 'Me',     icon: UserCircle },
 ]
 
-const officeTabs = [
+const BASE_OFFICE_TABS = [
   { to: '/staff/home',       label: 'Home',    icon: Home },
   { to: '/staff/scan-in',    label: 'Scan In', icon: QrCode },
   { to: '/staff/notices',    label: 'Notices', icon: Bell },
   { to: '/staff/profile',    label: 'Me',      icon: UserCircle },
 ]
 
+const TRIALS_TAB = { to: '/staff/trials', label: 'Trials', icon: UserPlus }
+
 export default function StaffLayout() {
-  const { user, logoutStaff } = useApp()
+  const { user, logoutStaff, hasPermission } = useApp()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -45,10 +47,17 @@ export default function StaffLayout() {
     import('../pages/staff/StaffScanIn')
     import('../pages/staff/StaffAssess')
     import('../pages/staff/StaffPulse')
+    import('../pages/staff/StaffTrials')
   }, [])
 
   const isOffice = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)
-  const tabs = isOffice ? officeTabs : coachTabs
+  const hasTrials = hasPermission('trials.manage')
+  const baseTabs  = isOffice ? BASE_OFFICE_TABS : BASE_COACH_TABS
+  const tabs = hasTrials
+    ? isOffice
+      ? [baseTabs[0], TRIALS_TAB, ...baseTabs.slice(1)]
+      : [...baseTabs.slice(0, 3), TRIALS_TAB, ...baseTabs.slice(3)]
+    : baseTabs
   const badge = isOffice ? 'Office' : 'Coach'
   const badgeColor = isOffice ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'
 

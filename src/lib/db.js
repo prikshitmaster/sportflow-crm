@@ -36,6 +36,7 @@ export async function fetchStudents(academyId) {
     feePlan:        row.fee_plan || 'monthly',
     position:       row.position || null,
     photoUrl:       row.photo_url || null,
+    fromTrial:      row.from_trial  || false,
   }))
 }
 
@@ -358,16 +359,32 @@ export async function fetchTrials(academyId) {
     throw error
   }
   return data.map(row => ({
-    id:        row.id,
-    name:      row.name,
-    parent:    row.parent,
-    phone:     row.phone,
-    sport:     row.sport,
-    trialDate: row.trial_date,
-    source:    row.source,
-    status:    row.status,
-    converted: row.converted,
-    followUp:  row.follow_up,
+    id:             row.id,
+    name:           row.name,
+    parent:         row.parent,
+    phone:          row.phone,
+    age:            row.age            || null,
+    sport:          row.sport,
+    trialDate:      row.trial_date,
+    source:         row.source,
+    status:         row.status,
+    stage:          row.stage          || 'scheduled',
+    batchId:        row.batch_id       || null,
+    trialSessions:  row.trial_sessions || 1,
+    sessionsDone:   row.sessions_done  || 0,
+    coachNote:      row.coach_note     || null,
+    coachRec:       row.coach_rec      || null,
+    notes:          row.notes          || null,
+    quotedFee:      row.quoted_fee     || null,
+    sessionStart:   row.session_start  || null,
+    sessionEnd:     row.session_end    || null,
+    dob:            row.dob            || null,
+    ageGroup:       row.age_group      || null,
+    programType:    row.program_type   || 'academy',
+    trialFeePaid:   row.trial_fee_paid ?? 590,
+    converted:      row.converted,
+    followUp:       row.follow_up,
+    createdAt:      row.created_at,
   }))
 }
 
@@ -375,29 +392,101 @@ export async function insertTrial(t) {
   const { data, error } = await supabase
     .from('trials')
     .insert({
-      name:       t.name,
-      parent:     t.parent,
-      phone:      t.phone,
-      sport:      t.sport,
-      trial_date: t.trialDate,
-      source:     t.source,
-      status:     t.status || 'Scheduled',
-      converted:  false,
-      follow_up:  t.followUp || null,
-      academy_id: t.academyId || null,
+      name:           t.name,
+      parent:         t.parent         || '',
+      phone:          t.phone,
+      age:            t.age            || null,
+      sport:          t.sport,
+      trial_date:     t.trialDate,
+      source:         t.source         || null,
+      status:         'Scheduled',
+      stage:          'scheduled',
+      batch_id:       t.batchId        || null,
+      trial_sessions: t.trialSessions  || 1,
+      sessions_done:  0,
+      converted:      false,
+      follow_up:      t.followUp       || null,
+      notes:          t.notes          || null,
+      quoted_fee:     t.quotedFee      || null,
+      session_start:  t.sessionStart   || null,
+      session_end:    t.sessionEnd     || null,
+      dob:            t.dob            || null,
+      age_group:      t.ageGroup       || null,
+      program_type:   t.programType    || 'academy',
+      trial_fee_paid: t.trialFeePaid   ?? 590,
+      academy_id:     t.academyId      || null,
     })
     .select()
     .single()
   if (error) throw error
-  return { ...t, id: data.id, converted: false }
+  return {
+    ...t,
+    id: data.id,
+    stage: 'scheduled',
+    converted: false,
+    sessionsDone: 0,
+  }
 }
 
 export async function updateTrial(id, updates) {
   const dbUpdates = {}
-  if (updates.status    !== undefined) dbUpdates.status    = updates.status
-  if (updates.converted !== undefined) dbUpdates.converted = updates.converted
-  if (updates.followUp  !== undefined) dbUpdates.follow_up = updates.followUp
+  if (updates.name          !== undefined) dbUpdates.name          = updates.name
+  if (updates.phone         !== undefined) dbUpdates.phone         = updates.phone
+  if (updates.parent        !== undefined) dbUpdates.parent        = updates.parent
+  if (updates.age           !== undefined) dbUpdates.age           = updates.age
+  if (updates.sport         !== undefined) dbUpdates.sport         = updates.sport
+  if (updates.status        !== undefined) dbUpdates.status        = updates.status
+  if (updates.stage         !== undefined) dbUpdates.stage         = updates.stage
+  if (updates.converted     !== undefined) dbUpdates.converted     = updates.converted
+  if (updates.followUp      !== undefined) dbUpdates.follow_up     = updates.followUp
+  if (updates.batchId       !== undefined) dbUpdates.batch_id      = updates.batchId
+  if (updates.trialDate     !== undefined) dbUpdates.trial_date    = updates.trialDate
+  if (updates.trialSessions !== undefined) dbUpdates.trial_sessions= updates.trialSessions
+  if (updates.sessionsDone  !== undefined) dbUpdates.sessions_done = updates.sessionsDone
+  if (updates.coachNote     !== undefined) dbUpdates.coach_note    = updates.coachNote
+  if (updates.coachRec      !== undefined) dbUpdates.coach_rec     = updates.coachRec
+  if (updates.notes         !== undefined) dbUpdates.notes         = updates.notes
+  if (updates.quotedFee     !== undefined) dbUpdates.quoted_fee    = updates.quotedFee
+  if (updates.sessionStart  !== undefined) dbUpdates.session_start  = updates.sessionStart
+  if (updates.sessionEnd    !== undefined) dbUpdates.session_end    = updates.sessionEnd
+  if (updates.dob           !== undefined) dbUpdates.dob            = updates.dob
+  if (updates.ageGroup      !== undefined) dbUpdates.age_group      = updates.ageGroup
+  if (updates.programType   !== undefined) dbUpdates.program_type   = updates.programType
+  if (updates.trialFeePaid  !== undefined) dbUpdates.trial_fee_paid = updates.trialFeePaid
   const { error } = await supabase.from('trials').update(dbUpdates).eq('id', id)
+  if (error) throw error
+}
+
+// ── Trial sources (replaces hardcoded SOURCES list) ─────────
+
+export async function fetchTrialSources(academyId) {
+  const { data, error } = await supabase
+    .from('trial_sources')
+    .select('*')
+    .eq('academy_id', academyId)
+    .order('sort_order')
+    .order('id')
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function insertTrialSource(academyId, label) {
+  const { data, error } = await supabase
+    .from('trial_sources')
+    .insert({ academy_id: academyId, label: label.trim() })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteTrial(id) {
+  const { error } = await supabase.from('trials').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteTrialSource(id) {
+  const { error } = await supabase.from('trial_sources').delete().eq('id', id)
   if (error) throw error
 }
 

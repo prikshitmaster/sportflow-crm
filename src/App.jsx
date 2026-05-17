@@ -43,6 +43,7 @@ const StaffAttendance  = lazy(() => import('./pages/staff/StaffAttendance'))
 const StaffScanIn      = lazy(() => import('./pages/staff/StaffScanIn'))
 const StaffAssess      = lazy(() => import('./pages/staff/StaffAssess'))
 const StaffPulse       = lazy(() => import('./pages/staff/StaffPulse'))
+const StaffTrials      = lazy(() => import('./pages/staff/StaffTrials'))
 
 // Student pages — lazy loaded
 const StudentDashboard     = lazy(() => import('./pages/student/StudentDashboard'))
@@ -192,7 +193,7 @@ function AppRoutes() {
         {/* Permission-gated admin pages rendered inside staff portal */}
         <Route path="students"  element={<PermRequired perm="students.view">  <Students />  </PermRequired>} />
         <Route path="payments"  element={<PermRequired perm="payments.view">  <Payments />  </PermRequired>} />
-        <Route path="trials"    element={<PermRequired perm="trials.manage">  <Trials />    </PermRequired>} />
+        <Route path="trials"    element={<PermRequired perm="trials.manage">  <StaffTrials /></PermRequired>} />
         <Route path="batches"   element={<PermRequired perm="batches.view">   <Batches />   </PermRequired>} />
         <Route path="reports"   element={<PermRequired perm="reports.view">   <Reports />   </PermRequired>} />
         <Route path="community" element={<PermRequired perm="community.manage"><Community /></PermRequired>} />

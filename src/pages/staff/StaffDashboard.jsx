@@ -23,7 +23,7 @@ const WORK_TILES = [
 ]
 
 export default function StaffDashboard() {
-  const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, hasPermission } = useApp()
+  const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, hasPermission, trials } = useApp()
   const navigate = useNavigate()
 
   const [gateQRToken,   setGateQRToken]   = useState(null)
@@ -220,6 +220,39 @@ export default function StaffDashboard() {
           </div>
         </div>
       )}
+
+      {/* Coach — upcoming trial schedule */}
+      {isCoach && (() => {
+        const fmtD = iso => iso ? new Date(iso).toLocaleDateString('en-IN', { day:'numeric', month:'short' }) : '—'
+        const myBatchIds = new Set(myBatches.map(b => b.id))
+        const upcoming = (trials || [])
+          .filter(t => t.batchId && myBatchIds.has(t.batchId) && !['converted','rejected'].includes(t.stage))
+          .sort((a, b) => (a.trialDate || '') > (b.trialDate || '') ? 1 : -1)
+          .slice(0, 5)
+        if (!upcoming.length) return null
+        return (
+          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <div className="px-4 pt-3.5 pb-2 flex items-center justify-between">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-wide">Trial Schedule</p>
+              <span className="text-[10px] text-brand-600 font-bold">{upcoming.length} upcoming</span>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {upcoming.map(t => (
+                <div key={t.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{t.name}</p>
+                    <p className="text-[11px] text-gray-400">{t.sport}{t.ageGroup ? ` · ${t.ageGroup}` : ''}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-bold text-brand-600">{fmtD(t.trialDate)}</p>
+                    {t.sessionStart && <p className="text-[10px] text-gray-400">{t.sessionStart.slice(0,5)}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Clock In — always */}
       <button onClick={() => navigate('/staff/scan-in')}

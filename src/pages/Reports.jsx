@@ -901,19 +901,36 @@ function StudentLedgerTab({ students, payments }) {
               <div className="py-12 text-center text-sm text-gray-400">No payment records found</div>
             ) : (
               <div className="divide-y divide-gray-50">
-                {ledgerWithBalance.map((p, i) => (
-                  <div key={p.id || i}
-                    className="grid gap-3 px-4 py-3 items-center hover:bg-brand-50/20 transition"
-                    style={{ gridTemplateColumns: cols.map(c => c.w || '1fr').join(' ') }}>
-                    <span className="text-xs text-gray-500 font-mono">{p.date ? new Date(p.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}) : '—'}</span>
-                    <span className="text-xs text-gray-400 font-mono truncate">{p.id || '—'}</span>
-                    <span className="text-xs text-gray-600">{p.month || '—'}</span>
-                    <span className="text-xs text-gray-500">{p.mode || '—'}</span>
-                    <span className="text-sm font-bold text-gray-900 text-right tabular-nums">{INR(p.amount)}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit ${STATUS_CHIP[p.status] || 'bg-gray-100 text-gray-500'}`}>{p.status}</span>
-                    <span className="text-xs font-bold text-emerald-700 text-right tabular-nums">{INR(p.runningPaid)}</span>
-                  </div>
-                ))}
+                {ledgerWithBalance.map((p, i) => {
+                  const isFirstPayment = student?.fromTrial && i === ledgerWithBalance.length - 1
+                  const hasNote = p.notes && p.notes.includes('Trial fee')
+                  return (
+                    <div key={p.id || i}
+                      className={`grid gap-3 px-4 py-3 items-center hover:bg-brand-50/20 transition ${isFirstPayment ? 'bg-amber-50/40' : ''}`}
+                      style={{ gridTemplateColumns: cols.map(c => c.w || '1fr').join(' ') }}>
+                      <span className="text-xs text-gray-500 font-mono">{p.date ? new Date(p.date+'T00:00:00').toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'2-digit'}) : '—'}</span>
+                      <span className="text-xs text-gray-400 font-mono truncate">{p.id || '—'}</span>
+                      <div>
+                        <span className="text-xs text-gray-600">{p.month || '—'}</span>
+                        {isFirstPayment && (
+                          <span className="ml-2 text-[9px] bg-amber-400 text-amber-900 font-black px-1.5 py-0.5 rounded-full">★ New Student</span>
+                        )}
+                        {hasNote && (
+                          <p className="text-[10px] text-emerald-600 mt-0.5">{p.notes}</p>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-500">{p.mode || '—'}</span>
+                      <div className="text-right">
+                        <span className="text-sm font-bold text-gray-900 tabular-nums">{INR(p.amount)}</span>
+                        {isFirstPayment && student?.fees && (
+                          <p className="text-[10px] text-emerald-600 tabular-nums">of ₹{student.fees.toLocaleString('en-IN')}</p>
+                        )}
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit ${STATUS_CHIP[p.status] || 'bg-gray-100 text-gray-500'}`}>{p.status}</span>
+                      <span className="text-xs font-bold text-emerald-700 text-right tabular-nums">{INR(p.runningPaid)}</span>
+                    </div>
+                  )
+                })}
               </div>
             )}
             <div className="grid gap-3 px-4 py-3 bg-gray-800 text-white"

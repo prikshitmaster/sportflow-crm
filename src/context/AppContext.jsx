@@ -131,6 +131,7 @@ export function AppProvider({ children }) {
   const [feePlans,       setFeePlans]       = useState([])
   const [branches,       setBranches]       = useState([])
   const [leaveRequests,  setLeaveRequests]  = useState([])
+  const [trialSources,   setTrialSources]   = useState([])
   const [toast,          setToast]          = useState(null)
   const [dataLoading,    setDataLoading]    = useState(false)
 
@@ -153,7 +154,7 @@ export function AppProvider({ children }) {
     if (!academyId) return
     setDataLoading(true)
     try {
-      const [s, p, t, b, st, a, ev, fp] = await Promise.all([
+      const [s, p, t, b, st, a, ev, fp, ts] = await Promise.all([
         db.fetchStudents(academyId),
         db.fetchPayments(academyId),
         db.fetchTrials(academyId),
@@ -162,10 +163,11 @@ export function AppProvider({ children }) {
         db.fetchAnnouncements(academyId),
         db.fetchEvents(academyId),
         db.fetchFeePlans(academyId),
+        db.fetchTrialSources(academyId).catch(() => []),
       ])
       setStudents(s); setPayments(p); setTrials(t)
       setBatches(b);  setStaff(st);   setAnnouncements(a)
-      setEvents(ev);  setFeePlans(fp)
+      setEvents(ev);  setFeePlans(fp); setTrialSources(ts)
 
       // Auto-suspend overdue students after configurable grace period
       const now = new Date()
@@ -546,15 +548,17 @@ export function AppProvider({ children }) {
       const suspendNow = addDiff >= getSuspendDays()
 
       // Pre-compute historical payment fields if applicable
-      const fees = Number(s.fees) || 0
+      const fees        = Number(s.fees) || 0
+      const trialDeduct = s.fromTrial ? (Number(s.trialFeePaid) || 0) : 0
       let payment = null
       if (paidTill && fees > 0) {
         const joinDateStr = s.joinDate || new Date().toISOString().split('T')[0]
         const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, fees, s.feePlan || 'monthly')
+        const payAmount = Math.max(0, amount - trialDeduct)
         const pt = new Date(paidTill + 'T00:00:00')
         const invNum = await db.fetchNextInvoiceNum()
         const invoiceId = `INV-${pt.getFullYear()}-${String(invNum).padStart(3, '0')}`
-        payment = { invoiceId, amount, label, startDate, monthsCovered }
+        payment = { invoiceId, amount: payAmount, label, startDate, monthsCovered }
       }
 
       // ONE atomic write: student + (optional) batch counter + (optional) payment
@@ -564,6 +568,19 @@ export function AppProvider({ children }) {
         suspendNow, payment,
         academyId: user?.academyId,
       })
+
+      // Mark from_trial on student record (fire-and-forget, column added via migration 0013)
+      if (s.fromTrial) {
+        ;(async () => {
+          try { await supabase.from('students').update({ from_trial: true }).eq('id', newId) } catch {}
+        })()
+      }
+      // Persist trial deduction note to payment record
+      if (payment && trialDeduct > 0) {
+        ;(async () => {
+          try { await supabase.from('payments').update({ notes: `Trial fee deducted: −₹${trialDeduct}` }).eq('id', payment.invoiceId) } catch {}
+        })()
+      }
 
       // Build local state from inputs (the RPC returns only the id)
       const todayStr = addNow.toISOString().split('T')[0]
@@ -591,6 +608,8 @@ export function AppProvider({ children }) {
         suspendedSince: suspendNow ? todayStr : null,
         trainingType:   s.trainingType || 'Daily',
         feePlan:        s.feePlan || 'monthly',
+        fromTrial:      s.fromTrial   || false,
+        trialDeduct:    trialDeduct,
       }
       setStudents(prev => [...prev, mapped])
 
@@ -615,6 +634,7 @@ export function AppProvider({ children }) {
           discountPct:    0,
           monthsCovered:  payment.monthsCovered,
           academyId:      user?.academyId,
+          notes:          trialDeduct > 0 ? `Trial fee deducted: −₹${trialDeduct}` : '',
         }, ...prev])
       }
 
@@ -935,17 +955,42 @@ export function AppProvider({ children }) {
   }
 
   const updateTrialStatus = async (id, updates) => {
+    const oldTrial = trials.find(t => t.id === id)
+    // Optimistic: update UI immediately so the Convert button disappears before the DB round-trip
+    setTrials(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
     try {
       await db.updateTrial(id, updates)
-      const trial = trials.find(t => t.id === id)
       const isConvert = updates.converted === true
       const action = isConvert ? ACTIONS.TRIAL_CONVERT : ACTIONS.TRIAL_UPDATE
-      setTrials(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
-      logAuditSport({ actor: user, action, entityType: 'trial', entityId: id, entityName: trial?.name, changes: updates.status ? { status: { old: trial?.status, new: updates.status } } : {}, academyId: user?.academyId })
+      logAuditSport({ actor: user, action, entityType: 'trial', entityId: id, entityName: oldTrial?.name, changes: updates.stage ? { stage: { old: oldTrial?.stage, new: updates.stage } } : {}, academyId: user?.academyId })
       showToast('Trial updated')
     } catch (err) {
+      // Revert optimistic update on failure
+      if (oldTrial) setTrials(prev => prev.map(t => t.id === id ? oldTrial : t))
       showToast(err.message || 'Update failed', 'error')
     }
+  }
+
+  const deleteTrial = async (id) => {
+    try {
+      await db.deleteTrial(id)
+      setTrials(prev => prev.filter(t => t.id !== id))
+      showToast('Trial lead deleted')
+    } catch (err) { showToast(err.message || 'Delete failed', 'error') }
+  }
+
+  const addTrialSource = async (label) => {
+    try {
+      const src = await db.insertTrialSource(user?.academyId, label)
+      setTrialSources(prev => [...prev, src])
+    } catch (err) { showToast(err.message || 'Failed to add source', 'error') }
+  }
+
+  const removeTrialSource = async (id) => {
+    try {
+      await db.deleteTrialSource(id)
+      setTrialSources(prev => prev.filter(s => s.id !== id))
+    } catch (err) { showToast(err.message || 'Failed to remove source', 'error') }
   }
 
   // ── Batches ───────────────────────────────────────────
@@ -1402,7 +1447,8 @@ export function AppProvider({ children }) {
       // data — auto-filtered by selectedSport
       students: filteredStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments: filteredPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
-      trials: filteredTrials, addTrial, updateTrialStatus,
+      trials: filteredTrials, addTrial, updateTrialStatus, deleteTrial,
+      trialSources, addTrialSource, removeTrialSource,
       refreshData: loadAll,
       batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee, deleteBatch,
       feePlans, addFeePlan, editFeePlan, removeFeePlan,
