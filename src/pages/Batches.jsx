@@ -455,6 +455,12 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
 
   const handleAssign = async (student) => {
     if (isAlternateBlocked(student)) return
+    // Guard: assignStudentToBatch is an UPSERT — silent no-op if already enrolled.
+    // Without this check, the UI counter bumped +1 even on no-op, inflating `enrolled` beyond reality.
+    if (primaryIds.has(student.id) || mbStudentIds.has(student.id)) {
+      setAssignSearch('')
+      return
+    }
     setAssigning(student.id)
     try {
       await assignStudentToBatch(student.id, b.id, b.name, user?.academyId)

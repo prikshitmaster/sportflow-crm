@@ -1362,10 +1362,12 @@ export default function Trials() {
 
   async function handleConvert(form) {
     const trial = active  // capture before clearing
-    // Close modal and mark converted immediately — prevents any re-click duplication
+    // Close modal and mark converted immediately — prevents any re-click duplication.
+    // `silent: true` because `addStudent` below will already toast "Student created" —
+    // a separate "Trial updated" toast would be redundant and confusing.
     setModal(null)
     setActive(null)
-    updateTrialStatus(trial.id, { stage: 'converted', converted: true })
+    updateTrialStatus(trial.id, { stage: 'converted', converted: true }, { silent: true })
 
     try {
       await addStudent({
@@ -1387,8 +1389,8 @@ export default function Trials() {
         trialFeePaid: trial.trialFeePaid || 0,
       })
     } catch {
-      // Revert trial stage if student creation failed
-      updateTrialStatus(trial.id, { stage: 'accepted' })
+      // Revert trial stage if student creation failed (silent — addStudent already toasted the failure)
+      updateTrialStatus(trial.id, { stage: 'accepted' }, { silent: true })
     }
   }
 

@@ -4,5 +4,7 @@ dist
 .env.local
 .env.*.local
 *.local
+*.local
 .DS_Store
 Thumbs.db
+.crm_backup.spl

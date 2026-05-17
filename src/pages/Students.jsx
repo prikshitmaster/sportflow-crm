@@ -126,10 +126,13 @@ export default function Students() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return activeStudents.filter(s => {
+      // Search now also matches parent phone — front-desk staff often have only
+      // the parent's number when a student walks in, not the student's own.
       const matchQ = !q ||
         s.name.toLowerCase().includes(q) ||
         (s.parent || '').toLowerCase().includes(q) ||
         (s.phone || '').includes(q) ||
+        (s.parentPhone || '').includes(q) ||
         (s.studentCode || '').toLowerCase().includes(q)
       const matchSport = sportFilter === 'All' || s.sport  === sportFilter
       const matchBatch = batchFilter === 'All' || String(s.batchId) === batchFilter || mbStudentIds.has(s.id)
@@ -574,6 +577,7 @@ export default function Students() {
               }
             }
             setShowModal(false)
+            if (newStudent) { setPayStudent(newStudent); setShowPayModal(true) }
           }}
         />
       )}
@@ -698,12 +702,11 @@ const FEE_PLAN_OPTIONS = [
 const FEE_LABEL = { monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *', custom: 'Plan Fee (₹) *' }
 
 function AddStudentModal({ onClose, onSave }) {
-  const { batches, selectedSport, feePlans } = useApp()
+  const { batches, selectedSport } = useApp()
   const defaultSport = selectedSport && selectedSport !== 'All' ? selectedSport : SPORTS[0]
   const [form, setForm] = useState({
     name: '', parent: '', phone: '', parentPhone: '', dob: '', sport: defaultSport,
-    paidTill: '', joinDate: '', fees: '', batchId: '', batchName: '',
-    trainingType: 'Daily', feePlan: 'monthly', feePlanId: '',
+    joinDate: '', paidTill: '', batchId: '', batchName: '', trainingType: 'Daily',
   })
   const [additionalBatchIds, setAdditionalBatchIds] = useState([])
   const [errors,  setErrors]  = useState({})
@@ -718,55 +721,14 @@ function AddStudentModal({ onClose, onSave }) {
 
   const handleBatch = (id) => {
     const b = batches.find(b => String(b.id) === id)
-    const batchPlans = feePlans.filter(p => p.batchId === Number(id))
-    setForm(f => ({
-      ...f,
-      batchId:    id ? Number(id) : '',
-      batchName:  b ? b.name : '',
-      feePlanId:  '',
-      // fall back to batch defaults only if no named plans exist
-      ...(batchPlans.length === 0 && b?.defaultFee  ? { fees: b.defaultFee }    : {}),
-      ...(batchPlans.length === 0 && b?.defaultPlan ? { feePlan: b.defaultPlan } : {}),
-    }))
-  }
-
-  const handleFeePlanPick = (planId) => {
-    const plan = feePlans.find(p => String(p.id) === String(planId))
-    if (!plan) { setForm(f => ({ ...f, feePlanId: '' })); return }
-    const feeMap = { monthly: plan.monthlyFee, quarterly: plan.quarterlyFee, yearly: plan.yearlyFee }
-    setForm(f => ({
-      ...f,
-      feePlanId:   plan.id,
-      trainingType: plan.trainingType === 'alternate' ? 'Alternate' : 'Daily',
-      fees:         feeMap[f.feePlan] || plan.monthlyFee || '',
-    }))
-  }
-
-  const handleJoinDate = (date) => {
-    setForm(f => ({
-      ...f, joinDate: date,
-      paidTill: f.feePlan !== 'custom' ? calcPaidTill(date, f.feePlan) : f.paidTill,
-    }))
-  }
-
-  const handleFeePlan = (plan) => {
-    setForm(f => {
-      const selectedPlan = f.feePlanId ? feePlans.find(p => String(p.id) === String(f.feePlanId)) : null
-      const feeMap = selectedPlan ? { monthly: selectedPlan.monthlyFee, quarterly: selectedPlan.quarterlyFee, yearly: selectedPlan.yearlyFee } : null
-      return {
-        ...f, feePlan: plan,
-        paidTill: plan !== 'custom' ? calcPaidTill(f.joinDate, plan) : '',
-        ...(feeMap && feeMap[plan] ? { fees: feeMap[plan] } : {}),
-      }
-    })
+    setForm(f => ({ ...f, batchId: id ? Number(id) : '', batchName: b ? b.name : '' }))
   }
 
   const validate = () => {
     const e = {}
-    if (!form.name.trim())                    e.name   = 'Required'
-    if (!/^\d{10}$/.test(form.phone))         e.phone  = 'Enter 10-digit number'
-    if (!form.fees || Number(form.fees) <= 0) e.fees   = 'Required'
-    if (!form.batchId)                        e.batchId = 'Select a batch'
+    if (!form.name.trim())            e.name    = 'Required'
+    if (!/^\d{10}$/.test(form.phone)) e.phone   = 'Enter 10-digit number'
+    if (!form.batchId)                e.batchId = 'Select a batch'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -777,14 +739,12 @@ function AddStudentModal({ onClose, onSave }) {
     try { await onSave({ ...form, age: calcAge(form.dob), additionalBatchIds }) } finally { setLoading(false) }
   }
 
-  const preview = coveragePreview(form.joinDate, form.paidTill)
-
   return (
     <Modal title="Add New Student" onClose={onClose}>
       <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 mb-5">
         <p className="text-xs text-blue-700">
           A <strong>Student ID</strong> and <strong>Join Code</strong> will be auto-generated.
-          Assign a batch and record the first payment after adding.
+          Record the first payment from the Payments page after adding.
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -859,16 +819,32 @@ function AddStudentModal({ onClose, onSave }) {
           {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
         </div>
 
-        {/* Additional Batches */}
-        {batches.length > 1 && (
+        {/* Training Type */}
+        <div>
+          <label className="label">Training Type</label>
+          <div className="flex gap-2">
+            {['Daily', 'Alternate'].map(t => (
+              <button key={t} type="button"
+                onClick={() => { set('trainingType', t); if (t === 'Alternate') setAdditionalBatchIds([]) }}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition active:scale-95 ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Additional Batches — Daily only, max 1 extra */}
+        {batches.length > 1 && form.trainingType === 'Daily' && (
           <div className="sm:col-span-2">
-            <label className="label">Additional Batches <span className="text-gray-400 font-normal">(optional)</span></label>
+            <label className="label">Additional Batch <span className="text-gray-400 font-normal">(optional, max 1)</span></label>
             <div className="flex flex-wrap gap-2 mt-1">
               {batches.filter(b => form.batchId ? b.id !== Number(form.batchId) : true).map(b => {
                 const sel = additionalBatchIds.includes(b.id)
+                const disabled = !sel && additionalBatchIds.length >= 1
                 return (
-                  <button key={b.id} type="button" onClick={() => toggleAdditionalBatch(b.id)}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold border transition active:scale-95 ${sel ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                  <button key={b.id} type="button"
+                    onClick={() => !disabled && toggleAdditionalBatch(b.id)}
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold border transition active:scale-95 ${sel ? 'bg-purple-600 text-white border-purple-600' : disabled ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                     {sel ? '✓ ' : ''}{b.name}{b.code ? ` (${b.code})` : ''}
                   </button>
                 )
@@ -876,154 +852,29 @@ function AddStudentModal({ onClose, onSave }) {
             </div>
             {additionalBatchIds.length > 0 && (
               <p className="text-[11px] text-purple-600 mt-1.5 font-medium">
-                +{additionalBatchIds.length} additional batch{additionalBatchIds.length > 1 ? 'es' : ''} selected
+                +1 additional batch selected
               </p>
             )}
           </div>
         )}
 
-        {/* Fee Plan picker — shown only when batch has named plans */}
-        {form.batchId && feePlans.some(p => p.batchId === Number(form.batchId)) ? (
-          <div className="sm:col-span-2">
-            <label className="label">Fee Plan</label>
-            <select className="input" value={form.feePlanId} onChange={e => handleFeePlanPick(e.target.value)}>
-              <option value="">— Select Plan —</option>
-              {feePlans.filter(p => p.batchId === Number(form.batchId)).map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.trainingType === 'alternate' ? 'Alternate' : 'Daily'})
-                </option>
-              ))}
-            </select>
-            {form.feePlanId && (() => {
-              const pl = feePlans.find(p => String(p.id) === String(form.feePlanId))
-              if (!pl) return null
-              const expectedFee = { monthly: pl.monthlyFee, quarterly: pl.quarterlyFee, yearly: pl.yearlyFee }[form.feePlan] || pl.monthlyFee
-              return (
-                <div className="mt-1.5 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 text-xs text-brand-700 flex items-center justify-between gap-2">
-                  <span className="flex-1 min-w-0">
-                    <span className="font-semibold">{pl.name}</span>
-                    <span className="text-brand-400 mx-1.5">·</span>
-                    {pl.trainingType === 'alternate' ? 'Alternate Day' : 'Daily'}
-                    <span className="text-brand-400 mx-1.5">·</span>
-                    M ₹{pl.monthlyFee.toLocaleString('en-IN')}
-                    {pl.quarterlyFee > 0 && <> · Q ₹{pl.quarterlyFee.toLocaleString('en-IN')}</>}
-                    {pl.yearlyFee > 0 && <> · Y ₹{pl.yearlyFee.toLocaleString('en-IN')}</>}
-                  </span>
-                  <button type="button"
-                    className="text-brand-600 font-bold hover:underline whitespace-nowrap flex-shrink-0"
-                    onClick={() => set('fees', expectedFee)}>
-                    Use this rate
-                  </button>
-                </div>
-              )
-            })()}
-          </div>
-        ) : (
-          /* Training Type — manual fallback when no named plans */
-          <div>
-            <label className="label">Training Type</label>
-            <div className="flex gap-2">
-              {['Daily','Alternate'].map(t => (
-                <button key={t} type="button"
-                  onClick={() => set('trainingType', t)}
-                  className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition active:scale-95 ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Fee Plan duration */}
-        <div className="sm:col-span-2">
-          <label className="label">Fee Plan</label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {FEE_PLAN_OPTIONS.map(p => (
-              <button key={p.key} type="button" onClick={() => handleFeePlan(p.key)}
-                className={`py-3 rounded-xl text-xs font-bold border transition active:scale-95 ${form.feePlan === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                <div>{p.label}</div>
-                <div className={`font-normal mt-0.5 ${form.feePlan === p.key ? 'text-brand-200' : 'text-gray-400'}`}>{p.sub}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Fee amount */}
+        {/* Join Date */}
         <div>
-          <label className="label">{FEE_LABEL[form.feePlan] || 'Fee (₹) *'}</label>
-          <input
-            className={`input ${errors.fees ? 'border-red-400' : ''} ${
-              (() => {
-                if (!form.feePlanId) return ''
-                const pl = feePlans.find(p => String(p.id) === String(form.feePlanId))
-                if (!pl) return ''
-                const expected = { monthly: pl.monthlyFee, quarterly: pl.quarterlyFee, yearly: pl.yearlyFee }[form.feePlan] || pl.monthlyFee
-                return expected > 0 && Number(form.fees) !== expected ? 'border-amber-400' : ''
-              })()
-            }`}
-            type="number" inputMode="numeric" placeholder="e.g. 2000" value={form.fees}
-            onChange={e => set('fees', e.target.value)} />
-          {errors.fees && <p className="text-[11px] text-red-500 mt-1">{errors.fees}</p>}
-          {(() => {
-            if (!form.feePlanId || !form.fees) return null
-            const pl = feePlans.find(p => String(p.id) === String(form.feePlanId))
-            if (!pl) return null
-            const expected = { monthly: pl.monthlyFee, quarterly: pl.quarterlyFee, yearly: pl.yearlyFee }[form.feePlan] || pl.monthlyFee
-            if (!expected || Number(form.fees) === expected) return null
-            return (
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-[11px] text-amber-600">⚠ Fee plan rate is ₹{expected.toLocaleString('en-IN')}</p>
-                <button type="button" className="text-[11px] text-amber-700 font-bold hover:underline"
-                  onClick={() => set('fees', expected)}>
-                  Fix
-                </button>
-              </div>
-            )
-          })()}
+          <label className="label">Join Date</label>
+          <input className="input" type="date" value={form.joinDate}
+            max={new Date().toISOString().split('T')[0]}
+            onChange={e => set('joinDate', e.target.value)} />
         </div>
 
-        {/* Join Date (non-custom) */}
-        {form.feePlan !== 'custom' && (
-          <div>
-            <label className="label">Join Date</label>
-            <input className="input" type="date" value={form.joinDate}
-              max={new Date().toISOString().split('T')[0]}
-              onChange={e => handleJoinDate(e.target.value)} />
-          </div>
-        )}
-
-        {/* Paid Till (non-custom) — month picker */}
-        {form.feePlan !== 'custom' && (
-          <div className="sm:col-span-2">
-            <label className="label">Paid Till</label>
-            <input className="input" type="month" value={form.paidTill}
-              onChange={e => set('paidTill', e.target.value)} />
-            {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
-          </div>
-        )}
-
-        {/* Custom plan: date range */}
-        {form.feePlan === 'custom' && (
-          <div className="sm:col-span-2 bg-brand-50 border border-brand-100 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label text-brand-700">Join / Start Date</label>
-              <input className="input" type="date"
-                max={new Date().toISOString().split('T')[0]}
-                value={form.joinDate}
-                onChange={e => set('joinDate', e.target.value)} />
-            </div>
-            <div>
-              <label className="label text-brand-700">Paid Till (End Date)</label>
-              <input className="input" type="date"
-                min={form.joinDate || undefined}
-                value={form.paidTill}
-                onChange={e => set('paidTill', e.target.value)} />
-            </div>
-            {preview && (
-              <p className="sm:col-span-2 text-xs text-brand-600 font-semibold -mt-2">Covers: {preview}</p>
-            )}
-          </div>
-        )}
+        {/* Paid Till */}
+        <div>
+          <label className="label">Paid Till <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input className="input" type="date" value={form.paidTill}
+            onChange={e => set('paidTill', e.target.value)} />
+          {form.paidTill && new Date(form.paidTill) < new Date() && (
+            <p className="text-[11px] text-amber-600 mt-1">Past date — student will show as Overdue</p>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6">

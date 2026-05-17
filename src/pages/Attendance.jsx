@@ -81,6 +81,10 @@ export default function Attendance() {
   const [mbStudentIds,   setMbStudentIds]   = useState(new Set())
   const [allEnrolments,  setAllEnrolments]  = useState({}) // { batchId: Set<studentId> }
   const [monthData,     setMonthData]     = useState({})
+  // Dirty cells the current user has actually touched this session — keys are `${sid}-${day}`.
+  // Save only sends these to the DB, so two tabs editing different days of the same batch
+  // don't overwrite each other's untouched cells.
+  const [dirty,         setDirty]         = useState(new Set())
   const [saving,        setSaving]        = useState(false)
   const [loading,       setLoading]       = useState(false)
   const [showExport,    setShowExport]    = useState(false)
@@ -106,12 +110,23 @@ export default function Attendance() {
 
   const loadMonth = useCallback(async () => {
     setLoading(true)
-    try { setMonthData(await db.fetchAttendanceForMonth(year, month, selectedBatch?.id ?? null)) }
+    try {
+      setMonthData(await db.fetchAttendanceForMonth(year, month, selectedBatch?.id ?? null))
+      setDirty(new Set())  // fresh load = no pending changes
+    }
     catch { showToast('Failed to load attendance', 'error') }
     finally { setLoading(false) }
   }, [year, month, selectedBatch?.id])
 
   useEffect(() => { loadMonth() }, [loadMonth])
+
+  // Warn before tab close / refresh if there are unsaved attendance changes.
+  useEffect(() => {
+    if (dirty.size === 0) return
+    const handler = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty.size])
 
   useEffect(() => {
     fetchAllBatchEnrolments()
@@ -142,6 +157,7 @@ export default function Attendance() {
     const cur  = getStatus(sid, day)
     const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length]
     setMonthData(prev => ({ ...prev, [sid]: { ...(prev[sid] || {}), [day]: next } }))
+    setDirty(prev => new Set(prev).add(`${sid}-${day}`))
   }
 
   const markAll = (status, day) => {
@@ -155,11 +171,33 @@ export default function Attendance() {
       })
       return next
     })
+    setDirty(prev => {
+      const nextDirty = new Set(prev)
+      displayed.forEach(s => { if (!isOffDay(s, d)) nextDirty.add(`${s.id}-${d}`) })
+      return nextDirty
+    })
   }
 
   const handleSave = async () => {
+    if (dirty.size === 0) { showToast('No changes to save', 'info'); return }
     setSaving(true)
-    try { await db.saveAttendanceMonth(year, month, monthData, selectedBatch?.id ?? null); showToast('Attendance saved') }
+    try {
+      // Build a partial monthData containing only cells the user actually touched.
+      // Prevents two-tab edit destruction: untouched cells in this tab won't overwrite
+      // whatever another tab saved for those same cells.
+      const dirtyData = {}
+      dirty.forEach(key => {
+        const sepIdx = key.lastIndexOf('-')
+        const sid    = key.slice(0, sepIdx)
+        const day    = key.slice(sepIdx + 1)
+        const status = monthData[sid]?.[day] ?? null
+        if (!dirtyData[sid]) dirtyData[sid] = {}
+        dirtyData[sid][day] = status  // null/empty means "clear this cell"
+      })
+      await db.saveAttendanceMonth(year, month, dirtyData, selectedBatch?.id ?? null)
+      setDirty(new Set())
+      showToast(`Attendance saved (${dirty.size} ${dirty.size === 1 ? 'change' : 'changes'})`)
+    }
     catch { showToast('Save failed', 'error') }
     finally { setSaving(false) }
   }
@@ -351,10 +389,10 @@ export default function Attendance() {
         <div className="flex gap-2 ml-auto flex-wrap">
           <button onClick={() => markAll('Present')} className="px-3 py-2 text-xs font-semibold border-2 border-emerald-500 text-emerald-600 rounded-lg hover:bg-emerald-50 transition">✓ All Present</button>
           <button onClick={() => markAll('Absent')}  className="px-3 py-2 text-xs font-semibold border-2 border-red-400 text-red-600 rounded-lg hover:bg-red-50 transition">✗ All Absent</button>
-          <button onClick={handleSave} disabled={saving} className="btn-primary text-xs">
+          <button onClick={handleSave} disabled={saving || dirty.size === 0} className="btn-primary text-xs">
             {saving
               ? <span className="flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Saving…</span>
-              : <><Save size={13}/> Save</>
+              : <><Save size={13}/> Save{dirty.size > 0 ? ` (${dirty.size})` : ''}</>
             }
           </button>
         </div>

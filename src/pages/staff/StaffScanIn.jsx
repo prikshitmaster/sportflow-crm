@@ -96,10 +96,19 @@ export default function StaffScanIn() {
       return
     }
     const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-    try { localStorage.setItem(CHECKIN_KEY(user?.id, today), timeStr) } catch (_) {}
+    // DB write FIRST — only mark localStorage if persistence succeeded.
+    // Previously, a DB failure (offline, RLS, table missing) still set localStorage,
+    // which locked the coach out of retrying the next day if the bad write was near midnight.
     if (user?.academyId && user?.id) {
-      try { await db.logStaffAttendance(user.academyId, user.id, user.name, today, timeStr) } catch (_) {}
+      try {
+        await db.logStaffAttendance(user.academyId, user.id, user.name, today, timeStr)
+      } catch (err) {
+        setErrMsg('Clock-in failed — please try again. (' + (err?.message || 'network error') + ')')
+        setPhase('error')
+        return
+      }
     }
+    try { localStorage.setItem(CHECKIN_KEY(user?.id, today), timeStr) } catch (_) {}
     setCheckinTime(timeStr)
     setPhase('success')
   }

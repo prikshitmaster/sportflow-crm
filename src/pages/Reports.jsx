@@ -166,6 +166,26 @@ export default function Reports() {
   const { user, students, payments, trials, batches, attendanceData, selectedSport } = useApp()
   const [activeTab, setActiveTab] = useState('overview')
 
+  // Multi-batch enrolments — without this, students who train in a non-primary batch
+  // had their payments invisible to that batch's "collected" total. (QA_AUDIT H2)
+  // We fetch once on mount; if the table doesn't exist, the lookup gracefully returns []
+  // so the report falls back to primary-batch-only counting.
+  const [mbRows, setMbRows] = useState([])
+  useEffect(() => {
+    if (!user?.academyId) return
+    db.fetchAllStudentBatches(user.academyId).then(setMbRows).catch(() => setMbRows([]))
+  }, [user?.academyId])
+
+  // batchId → Set<studentId> for fast "who's in this batch" lookups, including multi-batch.
+  const batchToStudents = useMemo(() => {
+    const map = {}
+    mbRows.forEach(r => {
+      if (!map[r.batch_id]) map[r.batch_id] = new Set()
+      map[r.batch_id].add(r.student_id)
+    })
+    return map
+  }, [mbRows])
+
   const generatedAt = today.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
   return (
@@ -195,9 +215,9 @@ export default function Reports() {
 
       {/* Tab panels */}
       <div>
-        {activeTab === 'overview'     && <OverviewTab   students={students} payments={payments} trials={trials} batches={batches} />}
+        {activeTab === 'overview'     && <OverviewTab   students={students} payments={payments} trials={trials} batches={batches} batchToStudents={batchToStudents} />}
         {activeTab === 'financial'    && <FinancialTab  payments={payments} students={students} />}
-        {activeTab === 'by_batch'     && <BatchTab      batches={batches} students={students} payments={payments} attendanceData={attendanceData} />}
+        {activeTab === 'by_batch'     && <BatchTab      batches={batches} students={students} payments={payments} attendanceData={attendanceData} batchToStudents={batchToStudents} />}
         {activeTab === 'students'     && <StudentLedgerTab students={students} payments={payments} />}
         {activeTab === 'ageing'       && <AgeingTab     students={students} payments={payments} />}
         {activeTab === 'attendance'   && <AttendanceTab students={students} batches={batches} attendanceData={attendanceData} />}
@@ -210,7 +230,7 @@ export default function Reports() {
 
 // ── Overview ──────────────────────────────────────────────
 
-function OverviewTab({ students, payments, trials, batches }) {
+function OverviewTab({ students, payments, trials, batches, batchToStudents = {} }) {
   const [period, setPeriod] = useState(MONTH_OPTS[0].value)
 
   const prevPeriod = MONTH_OPTS[1]?.value
@@ -243,22 +263,26 @@ function OverviewTab({ students, payments, trials, batches }) {
   }, [payments])
 
   // Top overdue (Active = grace period, Suspended = already auto-suspended for non-payment)
-  const overdueStudents = useMemo(() => {
+  // Keep full count for KPI subtitle; only slice when rendering the list.
+  const overdueAll = useMemo(() => {
     const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
     return students
       .filter(s => isOutstanding(s, firstOfMonth))
       .sort((a, b) => (a.paidTill || '').localeCompare(b.paidTill || ''))
-      .slice(0, 8)
   }, [students])
+  const overdueStudents = overdueAll.slice(0, 8)
 
-  // Batch performance
+  // Batch performance — includes multi-batch students so non-primary batches
+  // don't get credit-erased for collected payments.
   const batchPerf = useMemo(() => batches.map(b => {
-    const bs = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name))
+    const mbIds = batchToStudents[b.id] || new Set()
+    const bs = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name || mbIds.has(s.id)))
     const exp = bs.reduce((s, st) => s + (st.fees || 0), 0)
-    const col = payments.filter(p => bs.some(s => s.id === p.studentId) && p.status === 'Paid' && monthKey(p.date) === period)
+    const bsIdSet = new Set(bs.map(s => s.id))
+    const col = payments.filter(p => bsIdSet.has(p.studentId) && p.status === 'Paid' && monthKey(p.date) === period)
       .reduce((s, p) => s + p.amount, 0)
     return { name: b.name, count: bs.length, expected: exp, collected: col }
-  }).filter(r => r.count > 0).sort((a, b) => b.expected - a.expected).slice(0, 5), [batches, students, payments, period])
+  }).filter(r => r.count > 0).sort((a, b) => b.expected - a.expected).slice(0, 5), [batches, students, payments, period, batchToStudents])
 
   return (
     <div className="space-y-6">
@@ -279,7 +303,7 @@ function OverviewTab({ students, payments, trials, batches }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard label="Active Students"    value={activeCount}      sub={`${suspCount} suspended`}  icon={Users}       color="text-brand-700"    bg="bg-brand-50" />
         <KpiCard label={`Collected — ${MONTH_OPTS.find(m=>m.value===period)?.label}`} value={INR(collected)} sub={`${collRate}% of forecast`} icon={TrendingUp}  color="text-emerald-700" bg="bg-emerald-50" trend={collected} prevValue={prevCollected} />
-        <KpiCard label="Total Outstanding"  value={INR(outstanding)} sub={`${overdueStudents.length} students overdue`} icon={CreditCard}  color="text-red-600"     bg="bg-red-50" />
+        <KpiCard label="Total Outstanding"  value={INR(outstanding)} sub={`${overdueAll.length} students overdue`} icon={CreditCard}  color="text-red-600"     bg="bg-red-50" />
         <KpiCard label="Monthly Forecast"   value={INR(forecast)}    sub="active students × fee"    icon={Target}      color="text-purple-700"  bg="bg-purple-50" />
       </div>
 
@@ -329,7 +353,7 @@ function OverviewTab({ students, payments, trials, batches }) {
               <AlertTriangle size={14} className="text-red-500" />
               <p className="text-sm font-black text-gray-800 uppercase tracking-wide">Overdue Students</p>
             </div>
-            <span className="text-xs text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded-full">{overdueStudents.length} students</span>
+            <span className="text-xs text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded-full">{overdueAll.length} students{overdueAll.length > overdueStudents.length ? ` — showing top ${overdueStudents.length}` : ''}</span>
           </div>
           <div className="divide-y divide-gray-50">
             {overdueStudents.map(s => {
@@ -683,21 +707,25 @@ function FinancialTab({ payments, students }) {
 
 // ── By Batch ──────────────────────────────────────────────
 
-function BatchTab({ batches, students, payments, attendanceData }) {
+function BatchTab({ batches, students, payments, attendanceData, batchToStudents = {} }) {
   const [period, setPeriod] = useState(MONTH_OPTS[0].value)
   const todayAtt = attendanceData[todayStr] || {}
 
+  // Each batch's roster is primary-assigned students UNION multi-batch enrolments.
+  // Without the union, multi-batch students' fees and payments were invisible to non-primary batches.
   const rows = useMemo(() => batches.map(b => {
-    const bs  = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name))
+    const mbIds = batchToStudents[b.id] || new Set()
+    const bs  = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name || mbIds.has(s.id)))
     const exp = bs.reduce((s, st) => s + (st.fees || 0), 0)
-    const bPay = payments.filter(p => bs.some(s => s.id === p.studentId) && monthKey(p.date) === period)
+    const bsIdSet = new Set(bs.map(s => s.id))
+    const bPay = payments.filter(p => bsIdSet.has(p.studentId) && monthKey(p.date) === period)
     const col = bPay.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
     const pend = bPay.filter(p => p.status !== 'Paid').reduce((s, p) => s + p.amount, 0)
     const present = bs.filter(s => todayAtt[s.id] === 'Present').length
     return { batch: b, count: bs.length, expected: exp, collected: col, pending: pend, attPct: bs.length ? pct(present, bs.length) : 0 }
   }).filter(r => r.count > 0 || r.batch.capacity > 0)
     .sort((a, b) => b.expected - a.expected)
-  , [batches, students, payments, period, todayAtt])
+  , [batches, students, payments, period, todayAtt, batchToStudents])
 
   const totExp = rows.reduce((s, r) => s + r.expected, 0)
   const totCol = rows.reduce((s, r) => s + r.collected, 0)
@@ -1203,7 +1231,9 @@ function PerformanceTab({ students, batches, academyId }) {
   const leaderboard = assessments
     .map(a => {
       const student = studentMap[a.student_id]
-      if (!student) return null
+      // Exclude deleted students AND suspended ones — suspended players shouldn't
+      // sit on the leaderboard; coaches assess them but they're not currently in the program.
+      if (!student || student.status !== 'Active') return null
       const cats  = SPORT_CATEGORIES[a.sport] || FOOTBALL_CATEGORIES
       const score = getOverallScore(a.scores, cats)
       return { student, score, tier: getTier(score) }

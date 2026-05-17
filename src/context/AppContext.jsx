@@ -58,8 +58,10 @@ async function _endOps() {
   await db.endActivitySession(u).catch(() => {})
 }
 
-const SPORT_KEY   = 'sf_selected_sport'
-const SUSPEND_KEY = 'sf_suspend_days'
+const SPORT_KEY        = 'sf_selected_sport'
+const SUSPEND_KEY      = 'sf_suspend_days'
+const SUSPEND_RUN_KEY  = 'sf_last_auto_suspend_at'  // throttle per-tab to avoid audit spam
+const SUSPEND_THROTTLE_MS = 60 * 60 * 1000  // 1 hour
 const getSuspendDays = () => Number(localStorage.getItem(SUSPEND_KEY) || 3)
 
 const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -169,9 +171,17 @@ export function AppProvider({ children }) {
       setBatches(b);  setStaff(st);   setAnnouncements(a)
       setEvents(ev);  setFeePlans(fp); setTrialSources(ts)
 
-      // Auto-suspend overdue students after configurable grace period
+      // Auto-suspend overdue students after configurable grace period.
+      // Throttled to once per hour per browser so re-mounting AppProvider (sport switch,
+      // logout/login, manual refresh) doesn't re-run the whole loop and spam the audit log.
       const now = new Date()
+      let lastRunAt = 0
+      try { lastRunAt = Number(localStorage.getItem(SUSPEND_RUN_KEY)) || 0 } catch {}
+      const sinceLastRun = now.getTime() - lastRunAt
       try {
+        if (sinceLastRun < SUSPEND_THROTTLE_MS) {
+          // Skipped — recently ran. Don't even compute the list.
+        } else {
         const graceDays = getSuspendDays()
         const todayStr  = now.toISOString().split('T')[0]
         const toSuspend = s.filter(x => {
@@ -180,6 +190,9 @@ export function AppProvider({ children }) {
           const diffDays = Math.floor(diffMs / 86400000)
           return diffDays >= graceDays
         })
+        // Mark the run timestamp regardless of whether anyone was suspended —
+        // empty pass also means "we checked, nothing to do for an hour."
+        try { localStorage.setItem(SUSPEND_RUN_KEY, String(now.getTime())) } catch {}
         if (toSuspend.length > 0) {
           // Suspend students in parallel — safe, each touches a different student row
           await Promise.all(toSuspend.map(s => db.suspendStudent(s.id)))
@@ -204,6 +217,7 @@ export function AppProvider({ children }) {
           }))
           showToast(`${toSuspend.length} student${toSuspend.length > 1 ? 's' : ''} auto-suspended for overdue fees`, 'info')
         }
+        }  // end throttle else
       } catch (suspendErr) {
         console.error('Auto-suspend failed:', suspendErr)
         showToast(`Auto-suspend error: ${suspendErr.message}`, 'error')
@@ -555,9 +569,8 @@ export function AppProvider({ children }) {
         const joinDateStr = s.joinDate || new Date().toISOString().split('T')[0]
         const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, fees, s.feePlan || 'monthly')
         const payAmount = Math.max(0, amount - trialDeduct)
-        const pt = new Date(paidTill + 'T00:00:00')
-        const invNum = await db.fetchNextInvoiceNum()
-        const invoiceId = `INV-${pt.getFullYear()}-${String(invNum).padStart(3, '0')}`
+        // fetchNextInvoiceId uses migration 0014's atomic sequence — no collision race.
+        const invoiceId = await db.fetchNextInvoiceId()
         payment = { invoiceId, amount: payAmount, label, startDate, monthsCovered }
       }
 
@@ -694,9 +707,7 @@ export function AppProvider({ children }) {
           p.studentId === id && p.month === label && (p.status === 'Paid' || p.status === 'Pending')
         )
         if (!existing) {
-          const pt = new Date(paidTill + 'T00:00:00')
-          const invNum = await db.fetchNextInvoiceNum()
-          const invoiceId = `INV-${pt.getFullYear()}-${String(invNum).padStart(3, '0')}`
+          const invoiceId = await db.fetchNextInvoiceId()
           const payRow = {
             studentId: id, student: updated.name,
             amount, month: label, date: startDate,
@@ -850,10 +861,16 @@ export function AppProvider({ children }) {
               : `${baseDate.getFullYear()}/${String(endDate.getFullYear()).slice(2)}`
           }`
       const payDate   = collectionDate.toISOString().split('T')[0]
-      const nextNum   = await db.fetchNextInvoiceNum()
-      const invoiceId = `INV-${collectionDate.getFullYear()}-${String(nextNum).padStart(3, '0')}`
+      const invoiceId = await db.fetchNextInvoiceId()
       const paymentRow = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, academyId: user?.academyId }
+      // DB insert first — if it fails (PK collision, RLS reject), no optimistic row gets left behind.
       await db.insertPayment(paymentRow, invoiceId)
+
+      // Optimistic state update — only runs if DB insert succeeded above.
+      setPayments(prev => [{
+        ...paymentRow, id: invoiceId,
+        date: payDate, status: 'Paid', month: monthLabel,
+      }, ...prev])
 
       const student = students.find(s => String(s.id) === String(p.studentId))
       if (student) {
@@ -876,10 +893,6 @@ export function AppProvider({ children }) {
           } : s))
         }
       }
-      setPayments(prev => [{
-        ...paymentRow, id: invoiceId,
-        date: payDate, status: 'Paid', month: monthLabel,
-      }, ...prev])
       logAuditSport({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId })
       showToast('Payment recorded')
     } catch (err) {
@@ -954,7 +967,7 @@ export function AppProvider({ children }) {
     }
   }
 
-  const updateTrialStatus = async (id, updates) => {
+  const updateTrialStatus = async (id, updates, opts = {}) => {
     const oldTrial = trials.find(t => t.id === id)
     // Optimistic: update UI immediately so the Convert button disappears before the DB round-trip
     setTrials(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
@@ -963,11 +976,13 @@ export function AppProvider({ children }) {
       const isConvert = updates.converted === true
       const action = isConvert ? ACTIONS.TRIAL_CONVERT : ACTIONS.TRIAL_UPDATE
       logAuditSport({ actor: user, action, entityType: 'trial', entityId: id, entityName: oldTrial?.name, changes: updates.stage ? { stage: { old: oldTrial?.stage, new: updates.stage } } : {}, academyId: user?.academyId })
-      showToast('Trial updated')
+      // `silent: true` suppresses the toast — used by handleConvert so the user only
+      // sees the final "Student created" toast, not a redundant "Trial updated" prefix.
+      if (!opts.silent) showToast('Trial updated')
     } catch (err) {
       // Revert optimistic update on failure
       if (oldTrial) setTrials(prev => prev.map(t => t.id === id ? oldTrial : t))
-      showToast(err.message || 'Update failed', 'error')
+      if (!opts.silent) showToast(err.message || 'Update failed', 'error')
     }
   }
 

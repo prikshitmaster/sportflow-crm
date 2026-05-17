@@ -136,7 +136,7 @@ CREATE POLICY "user_permissions_access" ON user_permissions FOR ALL TO authentic
   WITH CHECK (academy_id = get_my_academy_id());
 
 -- ── STAFF INVITES ─────────────────────────────────────────
--- Anon read: invited staff accept the invite before they have a session
+-- Anon read: invited staff accept the invite ok they have a session
 CREATE POLICY "staff_invites_auth"       ON staff_invites FOR ALL    TO authenticated USING (academy_id = get_my_academy_id()) WITH CHECK (academy_id = get_my_academy_id());
 CREATE POLICY "staff_invites_anon_read"  ON staff_invites FOR SELECT TO anon          USING (true);
 -- Anon update: mark invite as used on acceptance

@@ -99,7 +99,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'leave_requests'
-      AND column_name = 'staff_id'
+      AND column_name = 'staff_id'  1
   ) THEN
     ALTER TABLE leave_requests ADD COLUMN staff_id BIGINT REFERENCES staff(id) ON DELETE SET NULL;
   END IF;
@@ -131,15 +131,10 @@ ALTER TABLE staff_attendance ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "staff_auth_all"               ON staff;
 DROP POLICY IF EXISTS "staff_anon_read"              ON staff;
 
--- Anon read: login flow resolves staff(*) from staff_auth join
+-- Anon read: required so the login flow can resolve staff(*) from staff_auth join
 CREATE POLICY "staff_anon_read"
   ON staff FOR SELECT TO anon
   USING (true);
-
--- Anon update: staff edit their own profile (custom auth = anon role, no JWT)
-CREATE POLICY "staff_anon_update"
-  ON staff FOR UPDATE TO anon
-  USING (true) WITH CHECK (true);
 
 -- Authenticated full access: admin dashboard CRUD
 CREATE POLICY "staff_auth_all"

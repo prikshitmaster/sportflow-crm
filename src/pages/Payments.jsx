@@ -672,7 +672,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     Math.abs(finalAmount - expectedTotal) / expectedTotal > 0.30
   )
   const sanityRatio = sanityMismatch ? (finalAmount / expectedTotal) : 1
-  const confirmOk = !sanityMismatch || confirmText.trim().toUpperCase() === 'CONFIRM'
 
   const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   const coverageBase = advanceStart ? new Date(advanceStart + 'T00:00:00') : new Date(paymentDate + 'T00:00:00')
@@ -680,6 +679,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // Duplicate guard: paidTill already covers the start of the new coverage period
   const coverageStartStr = `${coverageBase.getFullYear()}-${String(coverageBase.getMonth() + 1).padStart(2, '0')}-01`
   const isDuplicate = !!(form.studentId && selectedStudent?.paidTill && selectedStudent.paidTill >= coverageStartStr)
+  // CONFIRM gate covers BOTH soft duplicate (paidTill already covers this period) and sanity mismatch.
+  // Without this, the duplicate warning was visual-only — server-side 60s dedupe only catches rapid double-clicks.
+  const confirmTyped = confirmText.trim().toUpperCase() === 'CONFIRM'
+  const confirmOk = (!sanityMismatch && !isDuplicate) || confirmTyped
   const coverageEnd  = new Date(coverageBase.getFullYear(), coverageBase.getMonth() + months, 0)
   const coverageLabel = months === 1
     ? `${MO[coverageBase.getMonth()]} ${coverageBase.getFullYear()}`
@@ -1005,18 +1008,32 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         </div>
 
       </div>
-      {sanityMismatch && (
+      {(sanityMismatch || isDuplicate) && (
         <div className="mt-5 bg-red-50 border-2 border-red-300 rounded-xl p-3.5">
           <div className="flex items-start gap-2 mb-2">
             <span className="text-lg leading-none mt-0.5">⚠️</span>
             <div className="text-xs text-red-800">
-              <p className="font-bold mb-0.5">Amount looks unusual</p>
-              <p>
-                Entered <strong>₹{finalAmount.toLocaleString('en-IN')}</strong> is
-                {' '}<strong>{sanityRatio < 1 ? `${Math.round((1 - sanityRatio) * 100)}% lower` : `${Math.round((sanityRatio - 1) * 100)}% higher`}</strong>
-                {' '}than the expected <strong>₹{expectedTotal.toLocaleString('en-IN')}</strong> for this student.
-                Type <strong>CONFIRM</strong> below to record anyway.
-              </p>
+              {sanityMismatch && (
+                <>
+                  <p className="font-bold mb-0.5">Amount looks unusual</p>
+                  <p>
+                    Entered <strong>₹{finalAmount.toLocaleString('en-IN')}</strong> is
+                    {' '}<strong>{sanityRatio < 1 ? `${Math.round((1 - sanityRatio) * 100)}% lower` : `${Math.round((sanityRatio - 1) * 100)}% higher`}</strong>
+                    {' '}than the expected <strong>₹{expectedTotal.toLocaleString('en-IN')}</strong> for this student.
+                  </p>
+                </>
+              )}
+              {isDuplicate && (
+                <>
+                  <p className="font-bold mb-0.5">Possible duplicate payment</p>
+                  <p>
+                    <strong>{form.student}</strong> is already paid through{' '}
+                    <strong>{new Date(selectedStudent.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}</strong>.
+                    This new payment would overlap their current coverage.
+                  </p>
+                </>
+              )}
+              <p className="mt-1">Type <strong>CONFIRM</strong> below to record anyway.</p>
             </div>
           </div>
           <input

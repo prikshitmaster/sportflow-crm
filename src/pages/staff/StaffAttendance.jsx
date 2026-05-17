@@ -8,6 +8,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { ArrowLeft, Check, Users, Clock, Search, ChevronRight } from 'lucide-react'
 import { fetchBatchEnrolments } from '../../lib/db'
+import * as db from '../../lib/db'   // pickBatch needs db.fetchAttendanceForDate — was missing, marks weren't pre-loading
 import StudentAvatar from '../../components/StudentAvatar'
 
 // Status cycle: blank → Present → Absent → Late → blank (tap again to clear mistake)
@@ -40,6 +41,9 @@ export default function StaffAttendance() {
 
   // Step 2: mark attendance state
   const [marks,         setMarks]         = useState({})  // { studentId: 'Present'|'Absent'|'Late'|'' }
+  // Dirty tracks which student IDs the coach has actually tapped this session.
+  // Used to (a) warn before discarding on back-nav, (b) only save touched marks.
+  const [dirty,         setDirty]         = useState(new Set())
   const [reasons,       setReasons]       = useState({})  // { studentId: 'reason text' }
   const [search,        setSearch]        = useState('')
   const [saving,        setSaving]        = useState(false)
@@ -101,9 +105,20 @@ export default function StaffAttendance() {
       .filter(s => s.status === 'Active' && (s.batchId === batch.id || s.batch === batch.name))
       .forEach(s => { existing[s.id] = batchMarks[s.id] || '' })
     setMarks(existing)
+    setDirty(new Set())  // fresh load = nothing dirty yet
     setReasons({})
     setSearch('')
     setStep(2)
+  }
+
+  // ── Back to batch picker — warn if there are unsaved marks ───────────
+  const goBackToBatches = () => {
+    if (dirty.size > 0 && !window.confirm(`You have ${dirty.size} unsaved mark${dirty.size > 1 ? 's' : ''}. Discard them and go back?`)) {
+      return
+    }
+    setStep(1)
+    setMarks({})
+    setDirty(new Set())
   }
 
   // ── Tap student → cycle status ────────────────────────
@@ -112,19 +127,32 @@ export default function StaffAttendance() {
       const cur = prev[studentId] || ''
       return { ...prev, [studentId]: NEXT_STATUS[cur] }
     })
+    setDirty(prev => new Set(prev).add(studentId))
   }
 
   // ── Save attendance to DB ─────────────────────────────
   const handleSave = async () => {
     setSaving(true)
     try {
-      // Save only this batch's marks — no merging with other batches
-      await saveAttendance(today, marks, selectedBatch?.id ?? null)
+      // Save only the marks the coach actually touched — prevents wiping cells
+      // saved from another tab (or QR scans done after pickBatch loaded).
+      const dirtyMarks = {}
+      dirty.forEach(sid => { dirtyMarks[sid] = marks[sid] ?? '' })
+      await saveAttendance(today, dirtyMarks, selectedBatch?.id ?? null)
+      setDirty(new Set())
       setStep(3)
     } finally {
       setSaving(false)
     }
   }
+
+  // ── Warn before refresh / tab close with unsaved marks ───────────────
+  useEffect(() => {
+    if (dirty.size === 0) return
+    const handler = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty.size])
 
   // ─────────────────────────────────────────────────────
   // Step 1: Batch picker
@@ -206,7 +234,7 @@ export default function StaffAttendance() {
         {/* Header */}
         <div className="px-4 pt-4 pb-3 bg-white border-b border-gray-100">
           <div className="flex items-center gap-3 mb-3">
-            <button onClick={() => setStep(1)}
+            <button onClick={goBackToBatches}
               className="p-1.5 rounded-xl bg-gray-100 text-gray-600">
               <ArrowLeft size={16} />
             </button>
@@ -322,7 +350,7 @@ export default function StaffAttendance() {
         <div className="px-4 py-4 bg-white border-t border-gray-100">
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || dirty.size === 0}
             className="w-full btn-primary justify-center py-3.5 text-base"
           >
             {saving ? (
@@ -335,7 +363,7 @@ export default function StaffAttendance() {
               </span>
             ) : (
               <span className="flex items-center gap-2">
-                <Check size={18} /> Save & Sync
+                <Check size={18} /> Save{dirty.size > 0 ? ` (${dirty.size} change${dirty.size > 1 ? 's' : ''})` : ' & Sync'}
               </span>
             )}
           </button>

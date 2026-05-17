@@ -312,6 +312,13 @@ export async function activateStudentWithBatch(id, batchId, batchName, paidTill,
 }
 
 export async function updateBatchEnrolled(batchId, delta) {
+  // Prefer the atomic RPC from migration 0014 — no read-modify-write race.
+  // Falls back to the legacy SELECT-then-UPDATE if the RPC isn't deployed yet.
+  const { error: rpcErr } = await supabase.rpc('bump_batch_enrolled', { p_batch_id: batchId, p_delta: delta })
+  if (!rpcErr) return
+  // 42883 = function does not exist (migration 0014 not applied)
+  if (rpcErr.code !== '42883' && rpcErr.code !== 'PGRST202') throw rpcErr
+  // Legacy fallback — still race-prone but keeps the app working until migration runs
   const { data, error } = await supabase
     .from('batches').select('enrolled').eq('id', batchId).maybeSingle()
   if (error || !data) return
@@ -904,6 +911,12 @@ export async function fetchStudentCount() {
 }
 
 export async function fetchNextStudentCode() {
+  // Prefer the atomic sequence-backed RPC from migration 0014 — no race window.
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('next_student_code')
+  if (!rpcErr && rpcData) return rpcData
+  if (rpcErr && rpcErr.code !== '42883' && rpcErr.code !== 'PGRST202') throw rpcErr
+  // Legacy fallback — race-prone (two concurrent creates can collide on the same SA code)
+  // but keeps the app working until migration 0014 is applied.
   const { data } = await supabase
     .from('students')
     .select('student_code')
@@ -924,6 +937,20 @@ export async function fetchPaymentCount() {
   return count || 0
 }
 
+// Returns full 'INV-YYYY-NNN' string from the atomic RPC (migration 0014).
+// Falls back to the legacy regex-max-client pattern if the RPC isn't deployed.
+// Returning a full string lets callers skip the year/padding logic and removes the race window entirely.
+export async function fetchNextInvoiceId() {
+  const { data, error } = await supabase.rpc('next_invoice_id')
+  if (!error && data) return data
+  if (error && error.code !== '42883' && error.code !== 'PGRST202') throw error
+  // Fallback: build the string from the legacy num + current year, race-prone.
+  const num = await fetchNextInvoiceNum()
+  return `INV-${new Date().getFullYear()}-${String(num).padStart(3, '0')}`
+}
+
+// Legacy number-only helper — kept for back-compat with existing callers.
+// New code should call fetchNextInvoiceId() above.
 export async function fetchNextInvoiceNum() {
   const { data } = await supabase.from('payments').select('id')
   if (!data || data.length === 0) return 1
@@ -1117,12 +1144,50 @@ export async function validateGateToken(token) {
 
 export async function markAttendanceDirect(studentId) {
   const today = new Date().toISOString().split('T')[0]
+  // QA_AUDIT C1 fix: resolve student's primary batch_id so the row aligns with
+  // the same composite (date, student_id, batch_id) unique key the coach/admin
+  // paths use. Without this, QR (NULL batch_id) and coach (real batch_id) both
+  // wrote rows for the same student/day and the UNIQUE constraint didn't catch it.
+  let batchId = null
+  try {
+    const { data } = await supabase
+      .from('students').select('batch_id').eq('id', studentId).maybeSingle()
+    batchId = data?.batch_id ?? null
+  } catch { /* ignore — proceed with NULL batch */ }
+
+  if (batchId != null) {
+    // Common path — student has a primary batch; UPSERT on the composite key.
+    const { error } = await supabase
+      .from('attendance')
+      .upsert(
+        { date: today, student_id: studentId, batch_id: batchId, present: true, status: 'Present' },
+        { onConflict: 'date,student_id,batch_id' }
+      )
+    if (error) throw error
+    return
+  }
+
+  // Rare path — student with no primary batch. Partial unique index from migration
+  // 0015b prevents duplicates but PostgREST can't target it via onConflict (no WHERE
+  // clause support). Use SELECT-then-INSERT — race-safe enough for the rare case.
+  const { data: existing } = await supabase
+    .from('attendance')
+    .select('id, status')
+    .eq('date', today).eq('student_id', studentId).is('batch_id', null)
+    .maybeSingle()
+  if (existing) {
+    // Already marked today — only escalate from Absent/Leave to Present, never downgrade.
+    if (existing.status === 'Present' || existing.status === 'Late') return
+    const { error } = await supabase
+      .from('attendance')
+      .update({ present: true, status: 'Present' })
+      .eq('id', existing.id)
+    if (error) throw error
+    return
+  }
   const { error } = await supabase
     .from('attendance')
-    .upsert(
-      { date: today, student_id: studentId, present: true, status: 'Present' },
-      { onConflict: 'date,student_id' }
-    )
+    .insert({ date: today, student_id: studentId, batch_id: null, present: true, status: 'Present' })
   if (error) throw error
 }
 

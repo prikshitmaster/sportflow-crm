@@ -25,3 +25,4 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS open_access ON audit_logs;
 CREATE POLICY open_access ON audit_logs
   FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+is t
