@@ -1,6 +1,6 @@
-import { Bell, Search, Menu } from 'lucide-react'
+import { Bell, Search, Menu, Trophy, RefreshCw } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 const titles = {
   '/dashboard':  'Dashboard',
@@ -17,19 +17,36 @@ const titles = {
 }
 
 export default function Header({ onMenuClick }) {
-  const { user } = useApp()
+  const { user, role, selectedSport, selectedBranch, sportBranches } = useApp()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const title = titles[pathname] || 'SportFlow CRM'
 
+  const branchName = selectedBranch
+    ? sportBranches.find(b => b.id === selectedBranch)?.branchName
+    : null
+
   return (
-    <header className="h-16 bg-white border-b border-gray-100 flex items-center px-6 gap-4 sticky top-0 z-30">
+    <header className="h-16 bg-white border-b border-gray-100 flex items-center px-4 gap-3 sticky top-0 z-30">
       <button onClick={onMenuClick} className="p-2 rounded-lg hover:bg-gray-100 transition lg:hidden">
         <Menu size={20} className="text-gray-600" />
       </button>
 
-      <div>
-        <h1 className="text-lg font-bold text-gray-900">{title}</h1>
+      <div className="min-w-0">
+        <h1 className="text-lg font-bold text-gray-900 truncate">{title}</h1>
       </div>
+
+      {/* Sport/branch chip — mobile only (desktop sidebar handles this) */}
+      {role === 'owner' && selectedSport && selectedSport !== 'All' && (
+        <button
+          onClick={() => navigate('/sport-select')}
+          className="lg:hidden flex items-center gap-1.5 bg-brand-50 border border-brand-200 text-brand-700 rounded-full px-3 py-1 text-xs font-semibold flex-shrink-0 max-w-[130px]"
+        >
+          <Trophy size={11} className="flex-shrink-0" />
+          <span className="truncate">{branchName || selectedSport}</span>
+          <RefreshCw size={10} className="flex-shrink-0 text-brand-500" />
+        </button>
+      )}
 
       <div className="ml-auto flex items-center gap-3">
         {/* Search */}

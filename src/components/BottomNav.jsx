@@ -8,7 +8,7 @@ import { useApp } from '../context/AppContext'
 import {
   LayoutDashboard, Users, CalendarCheck, CreditCard,
   MoreHorizontal, X, LogOut,
-  UserPlus, Layers, UserCog, BarChart3, Megaphone, Settings, QrCode, Trophy,
+  UserPlus, Layers, UserCog, BarChart3, Megaphone, Settings, QrCode, Trophy, RefreshCw,
 } from 'lucide-react'
 
 // Primary bar items
@@ -33,8 +33,13 @@ const moreItems = [
 
 export default function BottomNav() {
   const [showMore, setShowMore] = useState(false)
-  const { isFeatureOn, logoutOwner, role, hasPermission } = useApp()
+  const { isFeatureOn, logoutOwner, role, hasPermission, selectedSport, selectedBranch, sportBranches } = useApp()
   const navigate = useNavigate()
+
+  const branchName = selectedBranch
+    ? sportBranches.find(b => b.id === selectedBranch)?.branchName
+    : null
+  const sportLabel = branchName || selectedSport
 
   const allow = item => {
     const featureOk = item.feature === null || isFeatureOn(item.feature)
@@ -60,6 +65,24 @@ export default function BottomNav() {
                 <X size={16} className="text-gray-500" />
               </button>
             </div>
+
+            {/* Sport / branch switcher */}
+            {role === 'owner' && sportLabel && sportLabel !== 'All' && (
+              <button
+                onClick={() => { setShowMore(false); navigate('/sport-select') }}
+                className="w-full flex items-center gap-3 px-4 py-3 mb-3 rounded-xl bg-brand-50 border border-brand-100 text-brand-700"
+              >
+                <Trophy size={16} className="text-brand-500 flex-shrink-0" />
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-xs text-brand-500 font-medium leading-none mb-0.5">Currently viewing</p>
+                  <p className="text-sm font-bold truncate">{sportLabel}</p>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-semibold text-brand-600">
+                  <RefreshCw size={12} /> Switch
+                </div>
+              </button>
+            )}
+
             <div className="grid grid-cols-3 gap-3">
               {more.map(({ to, label, icon: Icon }) => (
                 <NavLink key={to} to={to} onClick={() => setShowMore(false)}
