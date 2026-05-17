@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
-import { fetchBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch, updateBatchEnrolled } from '../lib/db'
+import { fetchBatchEnrolments, fetchAllBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch, updateBatchEnrolled } from '../lib/db'
 import { logAudit, ACTIONS } from '../lib/audit'
 import StudentAvatar from '../components/StudentAvatar'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
@@ -18,11 +18,34 @@ export default function Batches() {
   const [editingBatch, setEditingBatch] = useState(null)
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [activeBranch, setActiveBranch] = useState('All')
-  const [enrolledAdj, setEnrolledAdj] = useState({}) // { [batchId]: cumulative delta }
+  const [allBatchEnrolments, setAllBatchEnrolments] = useState([])
 
-  const adjustEnrolled = (batchId, delta) => {
-    updateBatchEnrolled(batchId, delta).catch(() => {})
-    setEnrolledAdj(prev => ({ ...prev, [batchId]: (prev[batchId] || 0) + delta }))
+  useEffect(() => {
+    fetchAllBatchEnrolments().then(setAllBatchEnrolments).catch(() => {})
+  }, [])
+
+  const activeStudents = useMemo(() => students.filter(s => s.status === 'Active'), [students])
+
+  const liveCountByBatch = useMemo(() => {
+    // Build { batchId: Set<studentId> } from student_batches (same as Attendance)
+    const mbByBatch = {}
+    allBatchEnrolments.forEach(e => {
+      if (!mbByBatch[e.batch_id]) mbByBatch[e.batch_id] = new Set()
+      mbByBatch[e.batch_id].add(e.student_id)
+    })
+    const counts = {}
+    batches.forEach(b => {
+      const mbIds = mbByBatch[b.id] || new Set()
+      // Filter activeStudents exactly like Attendance does — never add raw DB IDs
+      counts[b.id] = activeStudents.filter(
+        s => s.batchId === b.id || s.batch === b.name || mbIds.has(s.id)
+      ).length
+    })
+    return counts
+  }, [batches, activeStudents, allBatchEnrolments])
+
+  const refreshEnrolments = () => {
+    fetchAllBatchEnrolments().then(setAllBatchEnrolments).catch(() => {})
   }
 
   // Return the single "home" sport for a batch: the longest entry in its sports array.
@@ -105,9 +128,9 @@ export default function Batches() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { val: visibleBatches.length, label: 'Batches', color: 'text-gray-900' },
-          { val: visibleBatches.reduce((s,b) => s + (b.enrolled || 0), 0), label: 'Enrolled', color: 'text-brand-600' },
+          { val: visibleBatches.reduce((s,b) => s + (liveCountByBatch[b.id] || 0), 0), label: 'Enrolled', color: 'text-brand-600' },
           { val: visibleBatches.reduce((s,b) => s + (b.waitlist || 0), 0), label: 'Waitlist', color: 'text-amber-600' },
-          { val: visibleBatches.reduce((s,b) => s + Math.max(0, b.capacity - (b.enrolled || 0)), 0), label: 'Seats Free', color: 'text-gray-400' },
+          { val: visibleBatches.reduce((s,b) => s + Math.max(0, b.capacity - (liveCountByBatch[b.id] || 0)), 0), label: 'Seats Free', color: 'text-gray-400' },
         ].map(({ val, label, color }) => (
           <div key={label} className="card p-3 text-center">
             <p className={`text-2xl font-black ${color}`}>{val}</p>
@@ -126,12 +149,12 @@ export default function Batches() {
                 <div className="w-2 h-6 bg-brand-600 rounded-full" />
                 <h3 className="text-base font-black text-gray-900">{branch}</h3>
                 <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">
-                  {branchBatches.length} batch{branchBatches.length !== 1 ? 'es' : ''} · {branchBatches.reduce((s,b) => s+b.enrolled, 0)} enrolled
+                  {branchBatches.length} batch{branchBatches.length !== 1 ? 'es' : ''} · {branchBatches.reduce((s,b) => s + (liveCountByBatch[b.id] || 0), 0)} enrolled
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {branchBatches.map((b, idx) => (
-                  <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />
+                  <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />
                 ))}
               </div>
             </div>
@@ -146,7 +169,7 @@ export default function Batches() {
         /* Single branch selected — flat grid */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {visibleBatches.map((b, idx) => (
-            <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />
+            <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />
           ))}
         </div>
       )}
@@ -154,7 +177,7 @@ export default function Batches() {
       {/* Fallback flat grid when no branches configured */}
       {!grouped && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} enrolledAdj={enrolledAdj} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />)}
+          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />)}
         </div>
       )}
 
@@ -171,7 +194,7 @@ export default function Batches() {
 
       {selectedBatch && (
         <BatchDetailPanel
-          batch={{ ...selectedBatch, enrolled: (selectedBatch.enrolled || 0) + (enrolledAdj[selectedBatch.id] || 0) }}
+          batch={selectedBatch}
           students={students}
           staff={staff}
           onClose={() => setSelectedBatch(null)}
@@ -181,15 +204,15 @@ export default function Batches() {
             await updateBatchCoach(id, name)
             setSelectedBatch(prev => ({ ...prev, coach: name }))
           }}
-          onEnrolledChange={adjustEnrolled}
+          onEnrolledChange={refreshEnrolments}
         />
       )}
     </div>
   )
 }
 
-function BatchCard({ b, idx, enrolledAdj = {}, staff = [], onSelect, onEdit }) {
-  const enrolled = (b.enrolled || 0) + (enrolledAdj[b.id] || 0)
+function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit }) {
+  const enrolled = liveCount
   const pct      = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
   const isFull   = enrolled >= b.capacity
   const hex      = COLOR_HEX[idx % COLOR_HEX.length]
@@ -442,7 +465,6 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
     setPosSaving(false)
   }
   const coaches = staff.filter(s => s.role !== 'Admin')
-  const pct = Math.round((b.enrolled / b.capacity) * 100)
 
   useEffect(() => {
     fetchBatchEnrolments(b.id).then(rows => setMbEnrolments(rows)).catch(() => {})
@@ -549,11 +571,11 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
               <p className="text-[10px] text-brand-200">Enrolled</p>
             </div>
             <div className="bg-white/15 rounded-xl p-3 text-center">
-              <p className="text-lg font-black text-white">{b.capacity - b.enrolled}</p>
+              <p className="text-lg font-black text-white">{Math.max(0, b.capacity - allEnrolled.length)}</p>
               <p className="text-[10px] text-brand-200">Seats Left</p>
             </div>
             <div className="bg-white/15 rounded-xl p-3 text-center">
-              <p className="text-lg font-black text-white">{pct}%</p>
+              <p className="text-lg font-black text-white">{b.capacity > 0 ? Math.round((allEnrolled.length / b.capacity) * 100) : 0}%</p>
               <p className="text-[10px] text-brand-200">Filled</p>
             </div>
           </div>
@@ -670,6 +692,10 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <p className="text-sm font-semibold text-gray-800 truncate">{s.name}</p>
+                            {s.trainingType === 'Alternate'
+                              ? <span className="text-[9px] font-bold bg-violet-100 text-violet-600 px-1 py-0.5 rounded leading-none flex-shrink-0">ALT</span>
+                              : <span className="text-[9px] font-bold bg-brand-100 text-brand-600 px-1 py-0.5 rounded leading-none flex-shrink-0">DAY</span>
+                            }
                             {!primaryIds.has(s.id) && (
                               <span className="text-[9px] font-bold bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full flex-shrink-0">Multi</span>
                             )}

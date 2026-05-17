@@ -500,7 +500,13 @@ export default function Attendance() {
                     {s.name[0]}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 text-sm truncate">{s.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-semibold text-gray-900 text-sm truncate">{s.name}</p>
+                      {s.trainingType === 'Alternate'
+                        ? <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-violet-100 text-violet-600 leading-none flex-shrink-0">ALT</span>
+                        : <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-brand-100 text-brand-600 leading-none flex-shrink-0">DAY</span>
+                      }
+                    </div>
                     <p className="text-xs text-gray-400 truncate">{s.sport} · {s.batch}</p>
                   </div>
                   {off ? (
@@ -571,8 +577,12 @@ export default function Attendance() {
                     <td className="sticky left-0 bg-white group-hover:bg-gray-50/50 z-10 text-center px-2 py-2.5 text-gray-400 border-r border-gray-100 font-medium">{idx+1}</td>
                     <td className="sticky left-8 bg-white group-hover:bg-gray-50/50 z-10 px-3 py-2.5 border-r border-gray-100">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 bg-brand-100 rounded-full flex items-center justify-center text-[10px] font-bold text-brand-700 flex-shrink-0">{s.name[0]}</div>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${s.trainingType === 'Alternate' ? 'bg-violet-100 text-violet-700' : 'bg-brand-100 text-brand-700'}`}>{s.name[0]}</div>
                         <span className="font-semibold text-gray-900 whitespace-nowrap">{s.name}</span>
+                        {s.trainingType === 'Alternate'
+                          ? <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-violet-100 text-violet-600 leading-none flex-shrink-0">ALT</span>
+                          : <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-brand-100 text-brand-600 leading-none flex-shrink-0">DAY</span>
+                        }
                       </div>
                     </td>
                     {days.map(d => {

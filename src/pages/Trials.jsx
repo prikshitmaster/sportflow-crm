@@ -415,11 +415,10 @@ const selectCls = fieldCls + ' appearance-none cursor-pointer'
 
 function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, selectedSport = null }) {
   const [form, setForm] = useState({
-    name: '', phone: '', parent: '', age: '', dob: '',
+    name: '', parent: '', age: '', dob: '',
     ageGroup: '', programType: 'academy',
     sport: selectedSport || '',
-    trialDate: todayStr(), batchId: '', trialSessions: 1,
-    trialFeePaid: 590, quotedFee: '', notes: '',
+    trialDate: todayStr(), quotedFee: '', notes: '',
     sessionStart: '', sessionEnd: '',
     ...initial,
     trialSessions: initial.trialSessions || 1,
