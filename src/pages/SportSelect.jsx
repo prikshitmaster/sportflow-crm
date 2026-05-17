@@ -109,10 +109,10 @@ export default function SportSelect() {
       return
     }
     const list = branchesOf(sport)
-    // No branches yet for this sport → enter dashboard at sport-level (legacy)
+    // No branches yet → show branch picker so owner can add the first one
     if (list.length === 0) {
-      setSelectedSportAndBranch(sport, null)
-      navigate('/dashboard')
+      setDrillSport(sport)
+      setView('branches')
       return
     }
     // Single branch → auto-select it
