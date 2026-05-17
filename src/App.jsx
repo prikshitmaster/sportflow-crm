@@ -58,11 +58,17 @@ class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(err) { return { error: err } }
   componentDidCatch(err) {
-    // Stale chunk after a new deployment — silently reload to get fresh assets
-    if (err?.message?.includes('dynamically imported module') || err?.message?.includes('Failed to fetch')) {
-      window.location.reload()
+    const isChunkError = err?.message?.includes('dynamically imported module') || err?.message?.includes('Failed to fetch')
+    if (isChunkError) {
+      const reloads = Number(sessionStorage.getItem('_eb_reloads') || 0)
+      if (reloads < 2) {
+        sessionStorage.setItem('_eb_reloads', String(reloads + 1))
+        window.location.reload()
+        return
+      }
     }
   }
+  componentDidMount() { sessionStorage.removeItem('_eb_reloads') }
   render() {
     if (this.state.error) {
       return (
