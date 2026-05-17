@@ -57,6 +57,12 @@ const StudentProgress      = lazy(() => import('./pages/student/StudentProgress'
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(err) { return { error: err } }
+  componentDidCatch(err) {
+    // Stale chunk after a new deployment — silently reload to get fresh assets
+    if (err?.message?.includes('dynamically imported module') || err?.message?.includes('Failed to fetch')) {
+      window.location.reload()
+    }
+  }
   render() {
     if (this.state.error) {
       return (
