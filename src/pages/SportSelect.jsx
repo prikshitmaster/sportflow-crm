@@ -6,6 +6,7 @@ import {
   X, Check, Trash2, Download, AlertTriangle, Loader2, IndianRupee,
 } from 'lucide-react'
 import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImport'
+import { SPORT_CATALOG } from '../lib/sportCatalog'
 
 export default function SportSelect() {
   const navigate = useNavigate()
@@ -76,10 +77,24 @@ export default function SportSelect() {
     navigate('/dashboard')
   }
 
+  // Catalog sports not yet added (case-insensitive comparison against existing)
+  const existingLower = useMemo(
+    () => new Set((branches || []).map(b => String(b).toLowerCase())),
+    [branches]
+  )
+  const availableCatalog = useMemo(
+    () => SPORT_CATALOG.filter(s => !existingLower.has(s.toLowerCase())),
+    [existingLower]
+  )
+
   const handleAddSport = async () => {
     const v = newSport.trim()
     if (!v) { setAdding(false); return }
-    if (branches.includes(v)) {
+    if (!SPORT_CATALOG.includes(v)) {
+      showToast('Pick a sport from the catalog', 'error')
+      return
+    }
+    if (existingLower.has(v.toLowerCase())) {
       showToast(`${v} already exists`, 'info')
       setNewSport(''); setAdding(false); return
     }
@@ -324,20 +339,27 @@ export default function SportSelect() {
                     <Plus size={20} className="text-brand-600" />
                   </div>
                 </div>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={newSport}
-                  onChange={(e) => setNewSport(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAddSport()
-                    if (e.key === 'Escape') { setNewSport(''); setAdding(false) }
-                  }}
-                  placeholder="e.g. Football, Tennis…"
-                  className="input mb-3 text-base font-bold"
-                />
+                {availableCatalog.length === 0 ? (
+                  <p className="text-xs text-gray-500 mb-3">All catalog sports already added.</p>
+                ) : (
+                  <select
+                    ref={inputRef}
+                    value={newSport}
+                    onChange={(e) => setNewSport(e.target.value)}
+                    className="input mb-3 text-base font-bold"
+                  >
+                    <option value="">— Pick a sport —</option>
+                    {availableCatalog.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                )}
                 <div className="flex gap-2">
-                  <button onClick={handleAddSport} className="flex-1 btn-primary py-2 text-sm justify-center">
+                  <button
+                    onClick={handleAddSport}
+                    disabled={!newSport || availableCatalog.length === 0}
+                    className="flex-1 btn-primary py-2 text-sm justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <Check size={14} /> Add
                   </button>
                   <button
@@ -357,7 +379,7 @@ export default function SportSelect() {
                   <Plus size={22} className="text-gray-400 group-hover:text-brand-600 transition" />
                 </div>
                 <p className="text-sm font-bold text-gray-700 group-hover:text-brand-700 transition">Add Sport</p>
-                <p className="text-[11px] text-gray-400 mt-1">Football, Tennis, Cricket…</p>
+                <p className="text-[11px] text-gray-400 mt-1">Pick from catalog</p>
               </button>
             )}
           </div>

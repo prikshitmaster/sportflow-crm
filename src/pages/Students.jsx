@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { SPORTS, BATCH_NAMES } from '../data/mockData'
+import { SPORT_CATALOG } from '../lib/sportCatalog'
 import {
   Search, Plus, MoreVertical, UserCheck, UserX, X, Users as UsersIcon,
   Copy, KeyRound, CheckCheck, RefreshCw, Phone, Calendar, IndianRupee,
@@ -702,8 +703,18 @@ const FEE_PLAN_OPTIONS = [
 const FEE_LABEL = { monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *', custom: 'Plan Fee (₹) *' }
 
 function AddStudentModal({ onClose, onSave }) {
-  const { batches, selectedSport } = useApp()
-  const defaultSport = selectedSport && selectedSport !== 'All' ? selectedSport : SPORTS[0]
+  const { batches, selectedSport, branches } = useApp()
+  // Only catalog-valid sports show in the dropdown — legacy free-text entries
+  // (e.g. "Football _ARA _ branch 2") are filtered out. Match is case-insensitive
+  // and we emit the canonical Title Case label from the catalog.
+  const catalogLower = SPORT_CATALOG.map(s => s.toLowerCase())
+  const configuredCatalogSports = (branches || [])
+    .filter(b => catalogLower.includes(String(b).toLowerCase()))
+    .map(b => SPORT_CATALOG[catalogLower.indexOf(String(b).toLowerCase())])
+  const sportOptions = configuredCatalogSports.length > 0 ? configuredCatalogSports : SPORTS
+  const defaultSport = selectedSport && catalogLower.includes(String(selectedSport).toLowerCase())
+    ? SPORT_CATALOG[catalogLower.indexOf(String(selectedSport).toLowerCase())]
+    : ''
   const [form, setForm] = useState({
     name: '', parent: '', phone: '', parentPhone: '', dob: '', sport: defaultSport,
     joinDate: '', paidTill: '', batchId: '', batchName: '', trainingType: 'Daily',
@@ -728,6 +739,7 @@ function AddStudentModal({ onClose, onSave }) {
     const e = {}
     if (!form.name.trim())            e.name    = 'Required'
     if (!/^\d{10}$/.test(form.phone)) e.phone   = 'Enter 10-digit number'
+    if (!form.sport)                  e.sport   = 'Select a sport'
     if (!form.batchId)                e.batchId = 'Select a batch'
     setErrors(e)
     return Object.keys(e).length === 0
@@ -807,6 +819,17 @@ function AddStudentModal({ onClose, onSave }) {
               onChange={e => set('parentPhone', e.target.value.replace(/\D/g, '').slice(0, 10))}
             />
           </div>
+        </div>
+
+        {/* Sport */}
+        <div>
+          <label className="label">Sport *</label>
+          <select className={`input ${errors.sport ? 'border-red-400' : ''}`}
+            value={form.sport} onChange={e => set('sport', e.target.value)}>
+            <option value="">— Select Sport —</option>
+            {sportOptions.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {errors.sport && <p className="text-[11px] text-red-500 mt-1">{errors.sport}</p>}
         </div>
 
         {/* Batch */}
