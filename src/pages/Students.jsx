@@ -703,7 +703,7 @@ const FEE_PLAN_OPTIONS = [
 const FEE_LABEL = { monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *', custom: 'Plan Fee (₹) *' }
 
 function AddStudentModal({ onClose, onSave }) {
-  const { batches, selectedSport, branches } = useApp()
+  const { batches, selectedSport, selectedBranch, sportBranches, branches } = useApp()
   // Only catalog-valid sports show in the dropdown — legacy free-text entries
   // (e.g. "Football _ARA _ branch 2") are filtered out. Match is case-insensitive
   // and we emit the canonical Title Case label from the catalog.
@@ -715,6 +715,11 @@ function AddStudentModal({ onClose, onSave }) {
   const defaultSport = selectedSport && catalogLower.includes(String(selectedSport).toLowerCase())
     ? SPORT_CATALOG[catalogLower.indexOf(String(selectedSport).toLowerCase())]
     : ''
+  // When scoped to a specific sport (not "All"), lock sport + branch — no need to pick
+  const sportLocked = Boolean(defaultSport && selectedSport !== 'All')
+  const branchName = selectedBranch
+    ? sportBranches.find(b => b.id === selectedBranch)?.branchName
+    : null
   const [form, setForm] = useState({
     name: '', parent: '', phone: '', parentPhone: '', dob: '', sport: defaultSport,
     joinDate: '', paidTill: '', batchId: '', batchName: '', trainingType: 'Daily',
@@ -824,11 +829,22 @@ function AddStudentModal({ onClose, onSave }) {
         {/* Sport */}
         <div>
           <label className="label">Sport *</label>
-          <select className={`input ${errors.sport ? 'border-red-400' : ''}`}
-            value={form.sport} onChange={e => set('sport', e.target.value)}>
-            <option value="">— Select Sport —</option>
-            {sportOptions.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
+          {sportLocked ? (
+            <div className="flex items-center gap-2">
+              <div className="input flex items-center gap-2 bg-gray-50 cursor-default">
+                <span className="text-sm font-semibold text-gray-800">{form.sport}</span>
+                {branchName && (
+                  <span className="text-xs text-gray-400 font-medium">· {branchName}</span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <select className={`input ${errors.sport ? 'border-red-400' : ''}`}
+              value={form.sport} onChange={e => set('sport', e.target.value)}>
+              <option value="">— Select Sport —</option>
+              {sportOptions.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
           {errors.sport && <p className="text-[11px] text-red-500 mt-1">{errors.sport}</p>}
         </div>
 
