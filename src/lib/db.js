@@ -1644,14 +1644,28 @@ export async function deleteBranch(academyId, name) {
 }
 
 // ── Sport Branches (proper branches under a sport) ───────────
-// Sourced from sport_branches table (created in migration 0016b/0017b)
+// Sourced from sport_branches table (created in migration 0016b/0017b).
+// Resilient to the 0018 `address` column not yet existing — falls back to a
+// reduced select so the rest of the branch picker still works.
 export async function fetchSportBranches(academyId) {
-  const { data, error } = await supabase
+  const baseColumns = 'id, sport_name, branch_name, created_at'
+  // Try with address first; if the column doesn't exist (42703), retry without it
+  let { data, error } = await supabase
     .from('sport_branches')
-    .select('id, sport_name, branch_name, created_at')
+    .select(`${baseColumns}, address`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
+  if (error && error.code === '42703') {
+    const retry = await supabase
+      .from('sport_branches')
+      .select(baseColumns)
+      .eq('academy_id', academyId)
+      .order('sport_name')
+      .order('branch_name')
+    data  = retry.data
+    error = retry.error
+  }
   if (error) {
     if (error.code === '42P01') return []   // table doesn't exist yet
     throw error
@@ -1660,23 +1674,46 @@ export async function fetchSportBranches(academyId) {
     id:         r.id,
     sportName:  r.sport_name,
     branchName: r.branch_name,
+    address:    r.address || '',
     createdAt:  r.created_at,
   }))
 }
 
-export async function insertSportBranch(academyId, sportName, branchName) {
-  const { data, error } = await supabase
-    .from('sport_branches')
-    .insert({ academy_id: academyId, sport_name: sportName, branch_name: branchName })
-    .select()
-    .single()
+export async function insertSportBranch(academyId, sportName, branchName, address = '') {
+  const payload = { academy_id: academyId, sport_name: sportName, branch_name: branchName }
+  if (address) payload.address = address
+  let { data, error } = await supabase.from('sport_branches').insert(payload).select().single()
+  if (error && error.code === '42703' && payload.address !== undefined) {
+    // address column doesn't exist yet — retry without it
+    delete payload.address
+    const retry = await supabase.from('sport_branches').insert(payload).select().single()
+    data  = retry.data
+    error = retry.error
+  }
   if (error) throw error
   return {
     id:         data.id,
     sportName:  data.sport_name,
     branchName: data.branch_name,
+    address:    data.address || '',
     createdAt:  data.created_at,
   }
+}
+
+export async function updateSportBranch(branchId, { branchName, address }) {
+  const fields = {}
+  if (branchName !== undefined) fields.branch_name = branchName
+  if (address    !== undefined) fields.address     = address || null
+  if (Object.keys(fields).length === 0) return
+  let { error } = await supabase.from('sport_branches').update(fields).eq('id', branchId)
+  if (error && error.code === '42703' && 'address' in fields) {
+    // address column doesn't exist yet — retry without it
+    delete fields.address
+    if (Object.keys(fields).length === 0) return
+    const retry = await supabase.from('sport_branches').update(fields).eq('id', branchId)
+    error = retry.error
+  }
+  if (error) throw error
 }
 
 export async function deleteSportBranch(branchId) {

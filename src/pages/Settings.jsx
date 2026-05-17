@@ -182,7 +182,10 @@ const TT_LABEL = { daily: 'Daily', alternate: 'Alternate Day' }
 const BLANK_PLAN = { name: '', trainingType: 'daily', monthlyFee: 0, quarterlyFee: 0, yearlyFee: 0 }
 
 function FeePlansTab({ onSave, saved }) {
-  const { suspendAfterDays, updateSuspendAfterDays, allBatches, feePlans, addFeePlan, editFeePlan, removeFeePlan } = useApp()
+  // Use `batches` (scope-filtered by current sport + branch) instead of allBatches
+  // so the Fee Plans tab only shows batches — and therefore plans — in the
+  // currently-selected sport/branch. Fee plans inherit scope via their batch_id.
+  const { suspendAfterDays, updateSuspendAfterDays, batches: allBatches, feePlans, addFeePlan, editFeePlan, removeFeePlan } = useApp()
   const [adding,  setAdding]  = useState({})   // batchId → form state
   const [editing, setEditing] = useState({})   // planId  → form state
   const [dueDay,  setDueDay]  = useState('10')

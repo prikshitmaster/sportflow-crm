@@ -8,3 +8,5 @@ dist
 .DS_Store
 Thumbs.db
 .crm_backup.spl
+crm_backup.sql
+supabase/.temp/

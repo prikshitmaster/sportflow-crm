@@ -612,6 +612,16 @@ export function AppProvider({ children }) {
         academyId: user?.academyId,
       })
 
+      // Inherit current branch scope so the new student appears in the
+      // branch the owner is currently viewing. If no branch is selected
+      // (All Branches / All Sports), leave branch_id as NULL.
+      // Fire-and-forget — the optimistic state below already has branchId.
+      if (selectedBranch) {
+        ;(async () => {
+          try { await supabase.from('students').update({ branch_id: selectedBranch }).eq('id', newId) } catch {}
+        })()
+      }
+
       // Mark from_trial on student record (fire-and-forget, column added via migration 0013)
       if (s.fromTrial) {
         ;(async () => {
@@ -653,6 +663,7 @@ export function AppProvider({ children }) {
         feePlan:        s.feePlan || 'monthly',
         fromTrial:      s.fromTrial   || false,
         trialDeduct:    trialDeduct,
+        branchId:       selectedBranch || null,
       }
       setStudents(prev => [...prev, mapped])
 
@@ -1494,6 +1505,14 @@ export function AppProvider({ children }) {
     hasBranchScope ? sportTrials.filter(t => t.branchId === selectedBranch) : sportTrials
   , [sportTrials, selectedBranch, hasBranchScope])
 
+  // Fee plans inherit scope through their batch_id. If we can see the batch,
+  // we can see its fee plans. Outside any sport scope → show everything.
+  const filteredFeePlans = useMemo(() => {
+    if (isAllSports && !hasBranchScope) return feePlans
+    const visibleBatchIds = new Set(filteredBatches.map(b => b.id))
+    return feePlans.filter(p => visibleBatchIds.has(p.batchId))
+  }, [feePlans, filteredBatches, isAllSports, hasBranchScope])
+
   return (
     <AppContext.Provider value={{
       // auth
@@ -1523,11 +1542,13 @@ export function AppProvider({ children }) {
       trialSources, addTrialSource, removeTrialSource,
       refreshData: loadAll,
       batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee, deleteBatch,
-      feePlans, addFeePlan, editFeePlan, removeFeePlan,
+      feePlans: filteredFeePlans, addFeePlan, editFeePlan, removeFeePlan,
       events, addEvent, updateEvent, updateEventStatus, removeEvent,
       staff: filteredStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,
       updateStaffProfile,
       branches, addBranch, removeBranch,
+      // raw fee plans (unfiltered) for places that need everything
+      allFeePlans: feePlans,
       attendanceData, loadAttendanceForDate, saveAttendance,
       announcements, addAnnouncement,
       leaveRequests, submitLeave, loadLeaveRequests, updateLeave,

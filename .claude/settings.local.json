@@ -47,7 +47,10 @@
       "WebFetch(domain:sportzy.in)",
       "WebFetch(domain:www.sporteasy.net)",
       "WebFetch(domain:www.coach-logic.com)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(rtk lint *)",
+      "Bash(powershell *)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

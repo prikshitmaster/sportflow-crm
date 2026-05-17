@@ -5,7 +5,7 @@ import * as db from '../lib/db'
 import {
   Zap, LogOut, Trophy, Users, UserCog, Layers, Plus, Sparkles,
   X, Check, Trash2, Download, AlertTriangle, Loader2, IndianRupee,
-  ArrowLeft, MapPin,
+  ArrowLeft, MapPin, Pencil,
 } from 'lucide-react'
 import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImport'
 import { SPORT_CATALOG } from '../lib/sportCatalog'
@@ -24,6 +24,9 @@ export default function SportSelect() {
   const [drillSport, setDrillSport]   = useState(null)   // sport_name being drilled into
   const [addingBranch, setAddingBranch] = useState(false)
   const [newBranch,    setNewBranch]    = useState('')
+  const [newBranchAddress, setNewBranchAddress] = useState('')
+  const [editingBranch, setEditingBranch] = useState(null)   // { id, branchName, address } when editing
+  const [deletingBranch, setDeletingBranch] = useState(null) // 3-step delete state
 
   const [adding,       setAdding]       = useState(false)
   const [newSport,     setNewSport]     = useState('')
@@ -140,26 +143,49 @@ export default function SportSelect() {
       showToast(`${v} already exists in ${drillSport}`, 'info'); return
     }
     try {
-      await db.insertSportBranch(user.academyId, drillSport, v)
+      await db.insertSportBranch(user.academyId, drillSport, v, newBranchAddress.trim())
       await refreshSportBranches()
       showToast(`${v} added to ${drillSport}`, 'success')
       setNewBranch('')
+      setNewBranchAddress('')
       setAddingBranch(false)
     } catch (err) {
       showToast(err.message || 'Failed to add branch', 'error')
     }
   }
 
-  const handleRemoveBranch = async (branch) => {
-    const studentsInBranch = allStudents.filter(s => s.branchId === branch.id).length
+  const handleSaveEditBranch = async (fields) => {
+    if (!editingBranch) return
+    const newName = (fields.branchName ?? '').trim()
+    if (!newName) { showToast('Branch name required', 'error'); return }
+    // Block duplicate names within the same sport (ignoring own row, case-insensitive)
+    const dup = branchesOf(drillSport).some(b =>
+      b.id !== editingBranch.id && b.branchName.toLowerCase() === newName.toLowerCase()
+    )
+    if (dup) { showToast(`${newName} already exists in ${drillSport}`, 'info'); return }
+    try {
+      await db.updateSportBranch(editingBranch.id, { branchName: newName, address: fields.address ?? '' })
+      await refreshSportBranches()
+      showToast('Branch updated', 'success')
+      setEditingBranch(null)
+    } catch (err) {
+      showToast(err.message || 'Failed to update branch', 'error')
+    }
+  }
+
+  // Confirmed 3-step delete (called only from the final step of the dialog)
+  const handleConfirmDeleteBranch = async () => {
+    if (!deletingBranch) return
+    const studentsInBranch = allStudents.filter(s => s.branchId === deletingBranch.id).length
     if (studentsInBranch > 0) {
-      showToast(`Cannot remove ${branch.branchName}: ${studentsInBranch} students assigned. Reassign them first.`, 'error')
+      showToast(`Cannot remove: ${studentsInBranch} students still assigned. Reassign them first.`, 'error')
       return
     }
     try {
-      await db.deleteSportBranch(branch.id)
+      await db.deleteSportBranch(deletingBranch.id)
       await refreshSportBranches()
-      showToast(`${branch.branchName} removed`, 'success')
+      showToast(`${deletingBranch.branchName} removed`, 'success')
+      setDeletingBranch(null)
     } catch (err) {
       showToast(err.message || 'Failed to remove branch', 'error')
     }
@@ -186,10 +212,25 @@ export default function SportSelect() {
       showToast(`${v} already exists`, 'info')
       setNewSport(''); setAdding(false); return
     }
+    // 1. Legacy registry (academy_branches) — keeps backward compat
     await addBranch(v)
-    showToast(`${v} added`, 'success')
+    // 2. Auto-create "Branch 1" under the new sport so fee plans / students
+    //    always live in a branch.
+    if (user?.academyId) {
+      try {
+        await db.insertSportBranch(user.academyId, v, 'Branch 1')
+        await refreshSportBranches()
+      } catch (err) {
+        showToast(`Added ${v}, but couldn't create Branch 1: ${err.message || 'error'}`, 'error')
+      }
+    }
+    showToast(`${v} added — set up its branches`, 'success')
     setNewSport('')
     setAdding(false)
+    // 3. Drill straight into the new sport's branch view so the owner can
+    //    rename Branch 1, add more branches, etc. before adding any data.
+    setDrillSport(v)
+    setView('branches')
   }
 
   const handleDownloadBackup = async (sport) => {
@@ -243,16 +284,26 @@ export default function SportSelect() {
             sportName={drillSport}
             branches={branchesOf(drillSport)}
             counts={branchCounts}
-            onBack={() => { setView('sports'); setDrillSport(null); setAddingBranch(false); setNewBranch('') }}
+            studentsInBranch={(id) => allStudents.filter(s => s.branchId === id).length}
+            onBack={() => { setView('sports'); setDrillSport(null); setAddingBranch(false); setNewBranch(''); setNewBranchAddress('') }}
             onPickBranch={(id) => pickBranch(drillSport, id)}
             onPickAll={() => pickAllBranchesOfSport(drillSport)}
             adding={addingBranch}
             newBranch={newBranch}
             setNewBranch={setNewBranch}
+            newBranchAddress={newBranchAddress}
+            setNewBranchAddress={setNewBranchAddress}
             onStartAdd={() => setAddingBranch(true)}
-            onCancelAdd={() => { setAddingBranch(false); setNewBranch('') }}
+            onCancelAdd={() => { setAddingBranch(false); setNewBranch(''); setNewBranchAddress('') }}
             onConfirmAdd={handleAddBranch}
-            onRemove={handleRemoveBranch}
+            editingBranch={editingBranch}
+            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '' })}
+            onCancelEdit={() => setEditingBranch(null)}
+            onSaveEdit={handleSaveEditBranch}
+            deletingBranch={deletingBranch}
+            onStartDelete={(b) => setDeletingBranch({ ...b, step: 1, typed: '', finalCheck: false })}
+            setDeletingBranch={setDeletingBranch}
+            onConfirmDelete={handleConfirmDeleteBranch}
           />
         ) : (<>
         {/* Heading */}
@@ -269,35 +320,27 @@ export default function SportSelect() {
           </p>
         </div>
 
-        {/* All Sports card */}
-        <button
-          onClick={() => pickSport('All')}
-          className="w-full mb-5 bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600 transition rounded-2xl p-5 text-left flex items-center justify-between text-white shadow-md hover:shadow-lg"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-              <Trophy size={22} />
-            </div>
-            <div>
-              <p className="text-lg font-black">All Sports</p>
-              <p className="text-xs text-white/80">View everything across your academy</p>
-            </div>
+        {/* Academy summary strip (informational, not clickable) */}
+        <div className="mb-5 bg-white border border-gray-100 rounded-2xl px-5 py-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Academy</p>
+            <p className="text-sm font-black text-gray-900 mt-0.5">{user?.academy}</p>
           </div>
           <div className="flex items-center gap-5 text-xs">
             <div className="text-right">
-              <p className="font-black text-base">{totalCounts.students}</p>
-              <p className="text-white/70">Students</p>
+              <p className="font-black text-base text-gray-900">{totalCounts.students}</p>
+              <p className="text-gray-400">Students</p>
             </div>
             <div className="text-right">
-              <p className="font-black text-base">{totalCounts.staff}</p>
-              <p className="text-white/70">Staff</p>
+              <p className="font-black text-base text-gray-900">{totalCounts.staff}</p>
+              <p className="text-gray-400">Staff</p>
             </div>
             <div className="text-right">
-              <p className="font-black text-base">{totalCounts.batches}</p>
-              <p className="text-white/70">Batches</p>
+              <p className="font-black text-base text-gray-900">{totalCounts.batches}</p>
+              <p className="text-gray-400">Batches</p>
             </div>
           </div>
-        </button>
+        </div>
 
         {/* Sport cards grid */}
         {dataLoading ? (
@@ -503,10 +546,12 @@ export default function SportSelect() {
 
 // ── Branch picker view (rendered when user drills into a sport) ─────
 function BranchView({
-  sportName, branches, counts,
+  sportName, branches, counts, studentsInBranch,
   onBack, onPickBranch, onPickAll,
-  adding, newBranch, setNewBranch,
-  onStartAdd, onCancelAdd, onConfirmAdd, onRemove,
+  adding, newBranch, setNewBranch, newBranchAddress, setNewBranchAddress,
+  onStartAdd, onCancelAdd, onConfirmAdd,
+  editingBranch, onStartEdit, onCancelEdit, onSaveEdit,
+  deletingBranch, onStartDelete, setDeletingBranch, onConfirmDelete,
 }) {
   return (<>
     <div className="mb-8">
@@ -543,13 +588,24 @@ function BranchView({
         const c = counts[b.id] || {}
         return (
           <div key={b.id} className="group relative bg-white border border-gray-100 hover:border-brand-200 hover:shadow-md rounded-2xl p-5 transition">
-            <button
-              onClick={(e) => { e.stopPropagation(); onRemove(b) }}
-              className="absolute top-3 right-3 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
-              title="Remove branch"
-            >
-              <Trash2 size={14} />
-            </button>
+            {/* Action buttons — shown on hover */}
+            <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+              <button
+                onClick={(e) => { e.stopPropagation(); onStartEdit(b) }}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition"
+                title="Edit branch"
+              >
+                <Pencil size={13} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onStartDelete(b) }}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
+                title="Delete branch"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+
             <button onClick={() => onPickBranch(b.id)} className="w-full text-left">
               <div className="flex items-start justify-between mb-3">
                 <div className="w-11 h-11 bg-purple-50 rounded-xl flex items-center justify-center group-hover:bg-purple-100 transition">
@@ -557,7 +613,13 @@ function BranchView({
                 </div>
                 <span className="text-[10px] font-bold text-gray-400 group-hover:text-brand-600 uppercase tracking-wider transition">Open →</span>
               </div>
-              <p className="text-lg font-black text-gray-900 mb-1">{b.branchName}</p>
+              <p className="text-lg font-black text-gray-900 mb-0.5">{b.branchName}</p>
+              {b.address && (
+                <p className="flex items-start gap-1 text-[11px] text-gray-500 mb-2 leading-snug">
+                  <MapPin size={10} className="mt-0.5 flex-shrink-0" />
+                  <span className="line-clamp-2">{b.address}</span>
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
                 <div>
                   <div className="flex items-center gap-1 text-gray-400 text-[10px] mb-0.5"><Users size={10} /> Students</div>
@@ -587,9 +649,15 @@ function BranchView({
             type="text"
             value={newBranch}
             onChange={e => setNewBranch(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') onConfirmAdd(); if (e.key === 'Escape') onCancelAdd() }}
-            placeholder="e.g. Branch 3 or Andheri"
-            className="input mb-3 text-base font-bold"
+            placeholder="Branch name (e.g. Andheri)"
+            className="input mb-2 text-base font-bold"
+          />
+          <input
+            type="text"
+            value={newBranchAddress}
+            onChange={e => setNewBranchAddress(e.target.value)}
+            placeholder="Address (optional)"
+            className="input mb-3 text-sm"
           />
           <div className="flex gap-2">
             <button onClick={onConfirmAdd} disabled={!newBranch.trim()} className="flex-1 btn-primary py-2 text-sm justify-center disabled:opacity-50">
@@ -611,5 +679,171 @@ function BranchView({
         </button>
       )}
     </div>
+
+    {/* Edit modal */}
+    {editingBranch && (
+      <EditBranchModal
+        initial={editingBranch}
+        onCancel={onCancelEdit}
+        onSave={onSaveEdit}
+      />
+    )}
+
+    {/* 3-step delete dialog */}
+    {deletingBranch && (
+      <DeleteBranchDialog
+        branch={deletingBranch}
+        studentCount={studentsInBranch(deletingBranch.id)}
+        setDeletingBranch={setDeletingBranch}
+        onConfirm={onConfirmDelete}
+      />
+    )}
   </>)
+}
+
+// ── Edit branch modal ───────────────────────────────────────────────
+function EditBranchModal({ initial, onCancel, onSave }) {
+  const [name,    setName]    = useState(initial.branchName || '')
+  const [address, setAddress] = useState(initial.address    || '')
+  const [saving,  setSaving]  = useState(false)
+  const submit = async () => {
+    setSaving(true)
+    try { await onSave({ branchName: name, address }) } finally { setSaving(false) }
+  }
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-black text-gray-900">Edit branch</h2>
+          <button onClick={onCancel} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="label">Branch name *</label>
+            <input className="input" value={name} onChange={e => setName(e.target.value)} autoFocus />
+          </div>
+          <div>
+            <label className="label">Address <span className="text-gray-400 font-normal">(optional)</span></label>
+            <input className="input" value={address} onChange={e => setAddress(e.target.value)} placeholder="Street, city, landmark…" />
+          </div>
+        </div>
+        <div className="flex gap-2 mt-6">
+          <button onClick={onCancel} className="flex-1 btn-secondary py-2 justify-center">Cancel</button>
+          <button onClick={submit} disabled={!name.trim() || saving} className="flex-1 btn-primary py-2 justify-center disabled:opacity-50">
+            {saving ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── 3-step delete confirmation dialog ───────────────────────────────
+function DeleteBranchDialog({ branch, studentCount, setDeletingBranch, onConfirm }) {
+  const close = () => setDeletingBranch(null)
+  const next  = () => setDeletingBranch({ ...branch, step: branch.step + 1 })
+  const back  = () => setDeletingBranch({ ...branch, step: branch.step - 1 })
+
+  // Step 1 — initial warning
+  // Step 2 — type-to-confirm (must type the branch name exactly)
+  // Step 3 — final "hold to confirm" with explicit checkbox
+  const typedMatch = (branch.typed || '').trim() === branch.branchName
+  const finalReady = branch.finalCheck === true
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+        {/* Header */}
+        <div className="bg-red-50 border-b border-red-100 px-5 py-4 flex items-start gap-3">
+          <AlertTriangle size={20} className="text-red-500 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-black text-red-900">Delete branch — step {branch.step} of 3</p>
+            <p className="text-[11px] text-red-700 mt-0.5">This action is permanent.</p>
+          </div>
+          <button onClick={close} className="text-red-400 hover:text-red-600"><X size={16} /></button>
+        </div>
+
+        {/* Body — switches per step */}
+        <div className="p-5">
+          {branch.step === 1 && (
+            <>
+              <p className="text-sm text-gray-700 mb-2">
+                You're about to delete <strong>{branch.branchName}</strong> from <strong>{branch.sportName}</strong>.
+              </p>
+              {studentCount > 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                  <strong>Blocked:</strong> {studentCount} student{studentCount !== 1 ? 's' : ''} {studentCount !== 1 ? 'are' : 'is'} still assigned to this branch. Reassign them before deleting.
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  No students are assigned. Batches and trials linked to this branch will also lose their branch tag (their data is not deleted).
+                </p>
+              )}
+            </>
+          )}
+          {branch.step === 2 && (
+            <>
+              <p className="text-sm text-gray-700 mb-3">
+                Type <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-bold">{branch.branchName}</code> below to confirm:
+              </p>
+              <input
+                autoFocus
+                className={`input font-bold ${branch.typed && !typedMatch ? 'border-red-400' : ''}`}
+                value={branch.typed || ''}
+                onChange={(e) => setDeletingBranch({ ...branch, typed: e.target.value })}
+                placeholder={branch.branchName}
+              />
+              {branch.typed && !typedMatch && (
+                <p className="text-[11px] text-red-500 mt-1">Doesn't match — type the branch name exactly.</p>
+              )}
+            </>
+          )}
+          {branch.step === 3 && (
+            <>
+              <p className="text-sm text-gray-700 mb-3">
+                Last check. Once you click <strong>Delete forever</strong>, <strong>{branch.branchName}</strong> is gone.
+              </p>
+              <label className="flex items-start gap-2 text-xs text-gray-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!branch.finalCheck}
+                  onChange={(e) => setDeletingBranch({ ...branch, finalCheck: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <span>I understand this cannot be undone.</span>
+              </label>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="bg-gray-50 border-t border-gray-100 px-5 py-3 flex gap-2 justify-end">
+          {branch.step > 1 && (
+            <button onClick={back} className="btn-secondary py-2 px-3 text-xs">Back</button>
+          )}
+          <button onClick={close} className="btn-secondary py-2 px-3 text-xs">Cancel</button>
+          {branch.step < 3 ? (
+            <button
+              onClick={next}
+              disabled={
+                (branch.step === 1 && studentCount > 0) ||
+                (branch.step === 2 && !typedMatch)
+              }
+              className="btn-primary py-2 px-4 text-xs disabled:opacity-50"
+            >
+              Continue
+            </button>
+          ) : (
+            <button
+              onClick={onConfirm}
+              disabled={!finalReady}
+              className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg py-2 px-4 text-xs transition"
+            >
+              <Trash2 size={12} className="inline mr-1" /> Delete forever
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
