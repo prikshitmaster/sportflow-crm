@@ -4,11 +4,10 @@
 
 import { useApp } from '../../context/AppContext'
 import { useNavigate } from 'react-router-dom'
-import { CalendarCheck, Users, ChevronRight, QrCode, CreditCard, UserPlus, Layers, BarChart2, Megaphone, Trophy, UserCog, Settings, Search, ClipboardList, X } from 'lucide-react'
+import { CalendarCheck, Users, ChevronRight, QrCode, CreditCard, UserPlus, Layers, BarChart2, Megaphone, Trophy, UserCog, Settings, X, Activity } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import * as db from '../../lib/db'
-import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getOverallScore, getTier, currentMonth } from '../../lib/performance'
 
 const WORK_TILES = [
   { perm: 'students.view',     Icon: Users,           label: 'Students',    bg: 'bg-blue-600',    route: '/staff/students'   },
@@ -130,6 +129,25 @@ export default function StaffDashboard() {
         </div>
       )}
 
+      {/* Post-session Pulse — coaches only. Sits between summary and work tiles so it's hard to miss after marking attendance. */}
+      {isCoach && (
+        <button
+          onClick={() => navigate('/staff/pulse')}
+          className="w-full bg-gradient-to-br from-brand-600 to-brand-700 text-white rounded-2xl p-4 flex items-center justify-between active:opacity-90 transition shadow-sm"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
+              <Activity size={20} />
+            </div>
+            <div className="text-left">
+              <p className="font-black text-sm leading-tight">Session Pulse</p>
+              <p className="text-[11px] text-brand-100 mt-0.5">Rate Effort · Execution · Focus — 5 min</p>
+            </div>
+          </div>
+          <ChevronRight size={18} className="text-white/50" />
+        </button>
+      )}
+
       {/* Permission-based work tiles — shown for ALL staff */}
       {myTiles.length > 0 && (
         <div>
@@ -203,9 +221,6 @@ export default function StaffDashboard() {
         </div>
       )}
 
-      {/* Player Stats — coaches only, deferred until data is loaded */}
-      {isCoach && batches.length > 0 && <PlayerStatsSection user={user} batches={batches} students={students} navigate={navigate} />}
-
       {/* Clock In — always */}
       <button onClick={() => navigate('/staff/scan-in')}
         className="w-full bg-emerald-600 active:bg-emerald-700 text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
@@ -270,173 +285,3 @@ export default function StaffDashboard() {
   )
 }
 
-// ── Player Stats section ──────────────────────────────────
-
-function PlayerStatsSection({ user, batches, students, navigate }) {
-  const [query, setQuery]         = useState('')
-  const [topPlayers, setTopPlayers] = useState([])
-  const [loadingTop, setLoadingTop] = useState(false)
-  const [playerData, setPlayerData] = useState({})
-  const [loadingId, setLoadingId]   = useState(null)
-
-  const myBatches = batches.filter(b =>
-    b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
-  )
-  const displayBatches = myBatches.length > 0 ? myBatches : batches
-  const myBatchIds     = displayBatches.map(b => b.id)
-
-  useEffect(() => {
-    if (!myBatchIds.length) return
-    setLoadingTop(true)
-    db.fetchAssessmentsByBatches(myBatchIds, currentMonth())
-      .then(data => {
-        const studentMap = Object.fromEntries(students.map(s => [s.id, s]))
-        const ranked = data
-          .map(a => {
-            const student = studentMap[a.student_id]
-            if (!student) return null
-            const cats  = SPORT_CATEGORIES[a.sport] || FOOTBALL_CATEGORIES
-            const score = getOverallScore(a.scores, cats)
-            return { student, score, tier: getTier(score) }
-          })
-          .filter(Boolean)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 5)
-        setTopPlayers(ranked)
-      })
-      .catch(console.error)
-      .finally(() => setLoadingTop(false))
-  }, [])
-
-  const myStudents   = students.filter(s => s.status === 'Active' && displayBatches.some(b => b.id === s.batchId || b.name === s.batch))
-  const searchResults = query.trim().length >= 2
-    ? students.filter(s => s.name.toLowerCase().includes(query.toLowerCase().trim())).slice(0, 6)
-    : []
-
-  async function loadStats(student) {
-    if (playerData[student.id]) return
-    setLoadingId(student.id)
-    try {
-      const data = await db.fetchStudentAssessments(student.id)
-      const latest = data?.[0]
-      if (latest) {
-        const cats  = SPORT_CATEGORIES[latest.sport] || FOOTBALL_CATEGORIES
-        const score = getOverallScore(latest.scores, cats)
-        setPlayerData(prev => ({ ...prev, [student.id]: { score, tier: getTier(score), month: latest.assessed_month } }))
-      } else {
-        setPlayerData(prev => ({ ...prev, [student.id]: null }))
-      }
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoadingId(null)
-    }
-  }
-
-  useEffect(() => {
-    searchResults.forEach(s => { if (playerData[s.id] === undefined) loadStats(s) })
-  }, [query])
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Player Stats</p>
-        <button onClick={() => navigate('/staff/assess')} className="text-xs text-brand-600 font-bold">
-          Assess all →
-        </button>
-      </div>
-
-      {/* Search */}
-      <div className="relative mb-3">
-        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder="Search any player..."
-          className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-brand-500"
-        />
-      </div>
-
-      {/* Search results */}
-      {query.trim().length >= 2 && (
-        <div className="space-y-2 mb-2">
-          {searchResults.length === 0 && (
-            <p className="text-xs text-gray-400 text-center py-3">No players found</p>
-          )}
-          {searchResults.map(s => {
-            const pd = playerData[s.id]
-            return (
-              <button
-                key={s.id}
-                onClick={() => navigate('/staff/assess')}
-                className="w-full bg-white rounded-2xl border border-gray-100 px-4 py-3 flex items-center justify-between active:bg-gray-50 shadow-sm"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-brand-50 rounded-xl flex items-center justify-center text-xs font-black text-brand-700">{s.name[0]}</div>
-                  <div className="text-left">
-                    <p className="text-sm font-bold text-gray-900">{s.name}</p>
-                    <p className="text-xs text-gray-400">{s.batch || '—'}</p>
-                  </div>
-                </div>
-                {loadingId === s.id ? (
-                  <svg className="animate-spin h-4 w-4 text-brand-600" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                  </svg>
-                ) : pd ? (
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-full border ${pd.tier.bgClass} ${pd.tier.textClass} ${pd.tier.borderClass}`}>
-                    {pd.score} · {pd.tier.label}
-                  </span>
-                ) : pd === null ? (
-                  <span className="text-xs text-gray-300">No data</span>
-                ) : null}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Top performers (shown when not searching) */}
-      {query.trim().length < 2 && (
-        <>
-          {loadingTop ? (
-            <div className="flex justify-center py-6">
-              <svg className="animate-spin h-5 w-5 text-brand-600" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-              </svg>
-            </div>
-          ) : topPlayers.length > 0 ? (
-            <div className="space-y-2">
-              {topPlayers.map(({ student, score, tier }, i) => (
-                <button
-                  key={student.id}
-                  onClick={() => navigate('/staff/assess')}
-                  className="w-full bg-white rounded-2xl border border-gray-100 px-4 py-3 flex items-center gap-3 active:bg-gray-50 shadow-sm"
-                >
-                  <span className={`text-sm font-black w-5 ${i === 0 ? 'text-yellow-500' : 'text-gray-300'}`}>#{i+1}</span>
-                  <div className="w-8 h-8 bg-gray-100 rounded-xl flex items-center justify-center text-xs font-black text-gray-600">{student.name[0]}</div>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-bold text-gray-900">{student.name}</p>
-                    <p className="text-xs text-gray-400">{student.batch || '—'}</p>
-                  </div>
-                  <span className={`text-xs font-black px-2.5 py-1 rounded-full border ${tier.bgClass} ${tier.textClass} ${tier.borderClass}`}>
-                    {score}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <button
-              onClick={() => navigate('/staff/assess')}
-              className="w-full bg-white rounded-2xl border border-dashed border-gray-200 px-4 py-5 flex items-center justify-center gap-2 text-gray-400 active:bg-gray-50"
-            >
-              <ClipboardList size={16} />
-              <span className="text-xs font-semibold">No assessments this month — tap to assess</span>
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  )
-}

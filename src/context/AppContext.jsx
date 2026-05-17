@@ -19,6 +19,45 @@ import { logger } from '../lib/logger'
 // Used to refuse rapid duplicate submissions before any network round-trip.
 const _paymentInFlight = new Set()
 
+// ── Ops activity session tracking (powers /ops/live) ─────────
+const _ops = { uuid: null, interval: null }
+
+function _getDevice() {
+  try {
+    const ua  = navigator.userAgent
+    const mob = /Mobi|Android|iPhone|iPad/i.test(ua)
+    const br  = /Edg/i.test(ua)     ? 'Edge'
+              : /Chrome/i.test(ua)  ? 'Chrome'
+              : /Firefox/i.test(ua) ? 'Firefox'
+              : /Safari/i.test(ua)  ? 'Safari'
+              : 'Browser'
+    return `${mob ? 'Mobile' : 'Desktop'} · ${br}`
+  } catch { return 'Unknown' }
+}
+
+async function _startOps(userType, userId, userName, academyId, academyName) {
+  try {
+    const uuid = await db.startActivitySession({
+      userType, userId: userId ? String(userId) : null,
+      userName, academyId, academyName, device: _getDevice(),
+    })
+    _ops.uuid = uuid
+    clearInterval(_ops.interval)
+    _ops.interval = setInterval(() => {
+      if (_ops.uuid) db.heartbeatActivitySession(_ops.uuid).catch(() => {})
+    }, 90_000)
+  } catch {}
+}
+
+async function _endOps() {
+  if (!_ops.uuid) return
+  clearInterval(_ops.interval)
+  _ops.interval = null
+  const u = _ops.uuid
+  _ops.uuid = null
+  await db.endActivitySession(u).catch(() => {})
+}
+
 const SPORT_KEY   = 'sf_selected_sport'
 const SUSPEND_KEY = 'sf_suspend_days'
 const getSuspendDays = () => Number(localStorage.getItem(SUSPEND_KEY) || 3)
@@ -210,6 +249,7 @@ export function AppProvider({ children }) {
             setFeatures(flags)
             setPermissions(permsData?.permissions || ROLE_PRESETS[permsData?.access_role] || [])
             setRole(ctxRole)
+            _startOps(ctxRole, profile.id, profile.name, academy.id, academy.name)
             setLoading(false)
             return
           }
@@ -245,6 +285,7 @@ export function AppProvider({ children }) {
             setPermissions(perms)
             setSelectedSport(null)
             setRole('staff')
+            _startOps('staff', member.id, member.name, academyId, academyName)
             setLoading(false)
             return
           }
@@ -258,6 +299,7 @@ export function AppProvider({ children }) {
           if (student) {
             setStudentUser(student)
             setRole('student')
+            _startOps('student', student.id, student.name, student.academy_id, '')
             setLoading(false)
             return
           }
@@ -269,6 +311,13 @@ export function AppProvider({ children }) {
       setLoading(false)
     }
     restore()
+  }, [])
+
+  // End ops session on tab close / page unload (best-effort)
+  useEffect(() => {
+    const handler = () => { if (_ops.uuid) db.endActivitySession(_ops.uuid).catch(() => {}) }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
   }, [])
 
   // Load data whenever owner/staff logs in
@@ -322,9 +371,11 @@ export function AppProvider({ children }) {
     setFeatures(flags)
     setSelectedSport(null)
     setRole('owner')
+    _startOps('owner', profile.id, profile.name, academy.id, academy.name)
   }
 
   const logoutOwner = async () => {
+    await _endOps()
     await supabase.auth.signOut().catch(() => {})
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
@@ -375,9 +426,11 @@ export function AppProvider({ children }) {
       action: ACTIONS.AUTH_STAFF_LOGIN, entityType: 'auth',
       entityId: member.id, entityName: member.name, academyId,
     })
+    _startOps('staff', member.id, member.name, academyId, academyName)
   }
 
   const logoutStaff = async () => {
+    await _endOps()
     const sess = getStaffSession()
     if (user?.id) {
       logAudit({
@@ -422,10 +475,12 @@ export function AppProvider({ children }) {
       action: ACTIONS.AUTH_STUDENT_LOGIN, entityType: 'auth',
       entityId: student.id, entityName: student.name, academyId: student.academy_id,
     })
+    _startOps('student', student.id, student.name, student.academy_id, '')
     return student
   }
 
   const logoutStudent = async () => {
+    await _endOps()
     const sess = getStudentSession()
     if (studentUser?.id) {
       logAudit({

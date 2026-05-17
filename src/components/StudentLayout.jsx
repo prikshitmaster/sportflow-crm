@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { Suspense, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import {
-  Home, QrCode, CalendarCheck, CreditCard, Megaphone, LogOut, Zap, TrendingUp,
+  Home, QrCode, CalendarCheck, CreditCard, Megaphone, LogOut, Zap, Target,
 } from 'lucide-react'
 
 function PageSkeleton() {
@@ -20,12 +20,12 @@ function PageSkeleton() {
 }
 
 const tabs = [
-  { to: '/student/dashboard',     label: 'Home',   icon: Home },
-  { to: '/student/scan',          label: 'Scan',   icon: QrCode },
-  { to: '/student/attendance',    label: 'Attend', icon: CalendarCheck },
-  { to: '/student/stats',         label: 'Stats',  icon: TrendingUp },
-  { to: '/student/payments',      label: 'Fees',   icon: CreditCard },
-  { to: '/student/announcements', label: 'Notice', icon: Megaphone },
+  { to: '/student/dashboard',     label: 'Home',     icon: Home },
+  { to: '/student/scan',          label: 'Scan',     icon: QrCode },
+  { to: '/student/attendance',    label: 'Attend',   icon: CalendarCheck },
+  { to: '/student/progress',      label: 'Progress', icon: Target },
+  { to: '/student/payments',      label: 'Fees',     icon: CreditCard },
+  { to: '/student/announcements', label: 'Notice',   icon: Megaphone },
 ]
 
 export default function StudentLayout() {
@@ -38,6 +38,7 @@ export default function StudentLayout() {
     import('../pages/student/StudentPayments')
     import('../pages/student/StudentAnnouncements')
     import('../pages/student/StudentStats')
+    import('../pages/student/StudentProgress')
     import('../pages/student/StudentScan')
   }, [])
 

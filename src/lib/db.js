@@ -1841,3 +1841,208 @@ export async function fetchAuditLogs(academyId, limit = 300, sport = null) {
   return data || []
 }
 
+// ── Player Development: session feedback (pulse + spotlight) ─
+
+// Coach fetches existing feedback rows for a batch on a given date —
+// used to pre-fill the pulse picker so coach can edit, not duplicate.
+export async function fetchSessionFeedback(date, batchId) {
+  let q = supabase.from('session_feedback').select('*').eq('date', date)
+  if (batchId) q = q.eq('batch_id', batchId)
+  const { data, error } = await q
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+// Coach saves pulse for a batch — one upsert per student-rating tuple.
+// `records` shape: [{ studentId, effort, execution, focus }]
+export async function saveSessionPulse({ date, batchId, academyId, staffId, records }) {
+  if (!records?.length) return
+  const rows = records.map(r => ({
+    date,
+    batch_id:   batchId ?? null,
+    student_id: r.studentId,
+    academy_id: academyId ?? null,
+    staff_id:   staffId   ?? null,
+    effort:     r.effort,
+    execution:  r.execution,
+    focus:      r.focus,
+  }))
+  const { error } = await supabase
+    .from('session_feedback')
+    .upsert(rows, { onConflict: 'date,student_id,batch_id' })
+  if (error) throw error
+}
+
+// Coach adds detailed 4-corner spotlight + note for one student — overlays
+// onto the same row as their pulse for that date/batch.
+export async function upsertSpotlight({ date, batchId, academyId, staffId, studentId, technical, tactical, physical, mental, note }) {
+  const { error } = await supabase
+    .from('session_feedback')
+    .upsert({
+      date,
+      batch_id:    batchId ?? null,
+      student_id:  studentId,
+      academy_id:  academyId ?? null,
+      staff_id:    staffId   ?? null,
+      technical, tactical, physical, mental,
+      note:        note || null,
+      spotlight_at: new Date().toISOString(),
+    }, { onConflict: 'date,student_id,batch_id' })
+  if (error) throw error
+}
+
+// Student saves their own post-session reflection. Lives on the same row;
+// keyed by date + student + their current batch (or null when no batch).
+export async function saveSelfReflection({ date, batchId, academyId, studentId, energy, performance, focus }) {
+  const { error } = await supabase
+    .from('session_feedback')
+    .upsert({
+      date,
+      batch_id:         batchId ?? null,
+      student_id:       studentId,
+      academy_id:       academyId ?? null,
+      self_energy:      energy,
+      self_performance: performance,
+      self_focus:       focus,
+      self_at:          new Date().toISOString(),
+    }, { onConflict: 'date,student_id,batch_id' })
+  if (error) throw error
+}
+
+// Student progress page — fetch last N feedback rows for the student,
+// newest first. Includes pulse, spotlight, and own self-reflection.
+export async function fetchStudentFeedback(studentId, limit = 30) {
+  const { data, error } = await supabase
+    .from('session_feedback')
+    .select('*')
+    .eq('student_id', studentId)
+    .order('date', { ascending: false })
+    .limit(limit)
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+// Last spotlight (4-corner + note) entries the coach left for this student.
+export async function fetchStudentSpotlights(studentId, limit = 5) {
+  const { data, error } = await supabase
+    .from('session_feedback')
+    .select('*')
+    .eq('student_id', studentId)
+    .not('spotlight_at', 'is', null)
+    .order('spotlight_at', { ascending: false })
+    .limit(limit)
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+// ── Player Development: monthly focus goals ─────────────────
+
+// Active goal for a student in a given month ('YYYY-MM'). Returns null if none.
+export async function fetchPlayerGoal(studentId, month) {
+  const { data, error } = await supabase
+    .from('player_goals')
+    .select('*')
+    .eq('student_id', studentId)
+    .eq('month', month)
+    .maybeSingle()
+  if (error) { if (error.code === '42P01') return null; throw error }
+  return data
+}
+
+// Coach upserts a goal for a student in a month. Empty/blank text deletes the goal.
+export async function upsertPlayerGoal({ studentId, month, goalText, academyId, staffId }) {
+  const text = (goalText || '').trim()
+  if (!text) {
+    await supabase.from('player_goals').delete().eq('student_id', studentId).eq('month', month)
+    return null
+  }
+  const { data, error } = await supabase
+    .from('player_goals')
+    .upsert({
+      student_id: studentId,
+      month,
+      goal_text:  text,
+      academy_id: academyId ?? null,
+      staff_id:   staffId   ?? null,
+    }, { onConflict: 'student_id,month' })
+    .select()
+  if (error) throw error
+  return data?.[0]
+}
+
+// Coach side — all goals for students in a batch for a given month.
+export async function fetchBatchGoals(studentIds, month) {
+  if (!studentIds?.length) return []
+  const { data, error } = await supabase
+    .from('player_goals')
+    .select('*')
+    .in('student_id', studentIds)
+    .eq('month', month)
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+// ── Activity session tracking (ops dashboard) ───────────────
+
+export async function startActivitySession({ userType, userId, userName, academyId, academyName, device }) {
+  const { data, error } = await supabase
+    .from('activity_sessions')
+    .insert({
+      user_id:      userId       ? String(userId) : null,
+      user_type:    userType,
+      user_name:    userName,
+      academy_id:   academyId   || null,
+      academy_name: academyName || null,
+      device:       device      || null,
+    })
+    .select('session_uuid')
+    .single()
+  if (error) throw error
+  return data.session_uuid
+}
+
+export async function heartbeatActivitySession(sessionUuid) {
+  await supabase
+    .from('activity_sessions')
+    .update({ last_active_at: new Date().toISOString() })
+    .eq('session_uuid', sessionUuid)
+}
+
+export async function endActivitySession(sessionUuid) {
+  const now = new Date().toISOString()
+  const { data } = await supabase
+    .from('activity_sessions')
+    .select('started_at')
+    .eq('session_uuid', sessionUuid)
+    .single()
+  const durationSeconds = data?.started_at
+    ? Math.round((Date.now() - new Date(data.started_at).getTime()) / 1000)
+    : null
+  await supabase
+    .from('activity_sessions')
+    .update({ ended_at: now, last_active_at: now, duration_seconds: durationSeconds })
+    .eq('session_uuid', sessionUuid)
+}
+
+export async function fetchActivitySessions(days = 7) {
+  const since = new Date(Date.now() - days * 86400000).toISOString()
+  const { data, error } = await supabase
+    .from('activity_sessions')
+    .select('*')
+    .gte('started_at', since)
+    .order('started_at', { ascending: false })
+    .limit(500)
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function fetchAllAuditLogs(limit = 500) {
+  const { data, error } = await supabase
+    .from('audit_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+

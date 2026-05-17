@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { Search, CheckCircle, Clock, X, Save, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, CheckCircle, Clock, X, Save, ClipboardList, ChevronDown, ChevronUp, Target, Sparkles } from 'lucide-react'
 import * as db from '../../lib/db'
 import { logAudit, ACTIONS } from '../../lib/audit'
 import {
@@ -25,17 +25,25 @@ export default function StaffAssess() {
             onClick={() => setTab('assess')}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${tab === 'assess' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
           >
-            Assess Players
+            Assess
+          </button>
+          <button
+            onClick={() => setTab('goals')}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${tab === 'goals' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+          >
+            Goals
           </button>
           <button
             onClick={() => setTab('view')}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${tab === 'view' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
           >
-            View Stats
+            View
           </button>
         </div>
       </div>
-      {tab === 'assess' ? <AssessTab user={user} batches={batches} students={students} /> : <ViewTab students={students} user={user} />}
+      {tab === 'assess' && <AssessTab user={user} batches={batches} students={students} />}
+      {tab === 'goals'  && <GoalsTab  user={user} batches={batches} students={students} />}
+      {tab === 'view'   && <ViewTab   students={students} user={user} />}
     </div>
   )
 }
@@ -48,6 +56,7 @@ function AssessTab({ user, batches, students }) {
   const [assessments, setAssessments] = useState([])
   const [loading, setLoading]     = useState(false)
   const [assessing, setAssessing] = useState(null)
+  const [query, setQuery]         = useState('')
 
   const myBatches = batches.filter(b =>
     b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
@@ -70,6 +79,9 @@ function AssessTab({ user, batches, students }) {
     ? students.filter(s => s.status === 'Active' && (s.batchId == selectedBatch.id || s.batch === selectedBatch.name))
     : []
   const assessedMap = Object.fromEntries(assessments.map(a => [a.student_id, a]))
+  const visibleStudents = query.trim().length >= 1
+    ? batchStudents.filter(s => s.name.toLowerCase().includes(query.toLowerCase().trim()))
+    : batchStudents
 
   return (
     <div className="px-4 pt-4 space-y-4">
@@ -134,8 +146,24 @@ function AssessTab({ user, batches, students }) {
             </div>
           )}
 
+          {/* Search */}
+          {batchStudents.length > 5 && (
+            <div className="relative">
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search player..."
+                className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-brand-500"
+              />
+            </div>
+          )}
+
           <div className="space-y-2.5">
-            {batchStudents.map(s => {
+            {query.trim().length >= 1 && visibleStudents.length === 0 && (
+              <p className="text-center text-gray-400 py-6 text-sm">No player found for "{query}"</p>
+            )}
+            {visibleStudents.map(s => {
               const a     = assessedMap[s.id]
               const score = a ? getOverallScore(a.scores, categories) : null
               const tier  = score !== null ? getTier(score) : null
@@ -567,6 +595,259 @@ function ViewTab({ students, user }) {
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+// ── Goals Tab ─────────────────────────────────────────────
+//
+// Coach sets one focus goal per student per month. Goal shows on the
+// student's portal all month and orients their training.
+
+const GOAL_PRESETS = [
+  'Improve weak foot',
+  'Better positioning',
+  'First touch under pressure',
+  'Pass accuracy',
+  'Defensive awareness',
+  'Communication on field',
+  'Fitness & stamina',
+  'Decision making',
+  'Shooting power',
+  'Aerial duels',
+]
+
+function GoalsTab({ user, batches, students }) {
+  const [month, setMonth]     = useState(MONTH_OPTS[0].value)
+  const [batchId, setBatchId] = useState('')
+  const [goals, setGoals]     = useState({})       // { studentId: goal_text }
+  const [loading, setLoading] = useState(false)
+  const [editing, setEditing] = useState(null)     // { student, currentText }
+
+  const myBatches = batches.filter(b =>
+    b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
+  )
+  const displayBatches = myBatches.length > 0 ? myBatches : batches
+  const selectedBatch  = displayBatches.find(b => String(b.id) === batchId)
+  const batchStudents  = selectedBatch
+    ? students.filter(s => s.status === 'Active' && (s.batchId == selectedBatch.id || s.batch === selectedBatch.name))
+    : []
+
+  useEffect(() => {
+    if (!batchId || batchStudents.length === 0) { setGoals({}); return }
+    setLoading(true)
+    db.fetchBatchGoals(batchStudents.map(s => s.id), month)
+      .then(rows => {
+        const map = {}
+        rows.forEach(g => { map[g.student_id] = g.goal_text })
+        setGoals(map)
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [batchId, month])
+
+  async function saveGoal(student, text) {
+    try {
+      await db.upsertPlayerGoal({
+        studentId: student.id,
+        month,
+        goalText:  text,
+        academyId: user?.academyId,
+        staffId:   user?.id,
+      })
+      setGoals(prev => {
+        const next = { ...prev }
+        if ((text || '').trim()) next[student.id] = text.trim()
+        else delete next[student.id]
+        return next
+      })
+      setEditing(null)
+    } catch (e) {
+      alert(`Save failed: ${e.message}`)
+    }
+  }
+
+  return (
+    <div className="px-4 pt-4 space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5">Month</label>
+          <select value={month} onChange={e => setMonth(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold bg-white focus:outline-none focus:border-brand-500">
+            {MONTH_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1.5">Batch</label>
+          <select value={batchId} onChange={e => setBatchId(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-semibold bg-white focus:outline-none focus:border-brand-500">
+            <option value="">Select batch</option>
+            {displayBatches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {!batchId && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-16 h-16 bg-white rounded-2xl border border-gray-100 flex items-center justify-center mb-4 shadow-sm">
+            <Target size={28} className="text-gray-300" />
+          </div>
+          <p className="text-sm font-bold text-gray-500">Pick a batch to set monthly goals</p>
+          <p className="text-xs text-gray-400 mt-1 max-w-xs">Each player sees their focus on the student app all month.</p>
+        </div>
+      )}
+
+      {batchId && loading && (
+        <div className="flex justify-center py-12">
+          <svg className="animate-spin h-6 w-6 text-brand-600" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        </div>
+      )}
+
+      {batchId && !loading && (
+        <>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-black text-gray-400 uppercase tracking-widest">{batchStudents.length} students</p>
+            <span className="text-xs font-bold text-emerald-600">{Object.keys(goals).length} set</span>
+          </div>
+
+          <div className="space-y-2.5">
+            {batchStudents.map(s => {
+              const g = goals[s.id]
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setEditing({ student: s, currentText: g || '' })}
+                  className="w-full bg-white rounded-2xl border border-gray-100 px-4 py-3.5 flex items-start justify-between active:bg-gray-50 shadow-sm text-left"
+                >
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black flex-shrink-0 ${
+                      g ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {s.name[0]}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-gray-900 truncate">{s.name}</p>
+                      {g ? (
+                        <p className="text-xs text-amber-700 mt-1 line-clamp-2 leading-snug">
+                          <Target size={11} className="inline -mt-0.5 mr-1" />{g}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-gray-400 mt-1 italic">No goal set</p>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronDown size={14} className="text-gray-300 mt-1" />
+                </button>
+              )
+            })}
+            {batchStudents.length === 0 && (
+              <p className="text-center text-gray-400 py-10 text-sm">No active students in this batch</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {editing && (
+        <GoalEditor
+          student={editing.student}
+          currentText={editing.currentText}
+          month={month}
+          onClose={() => setEditing(null)}
+          onSave={(text) => saveGoal(editing.student, text)}
+        />
+      )}
+    </div>
+  )
+}
+
+function GoalEditor({ student, currentText, month, onClose, onSave }) {
+  const [text, setText]   = useState(currentText)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave(text)
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex flex-col justify-end">
+      <div className="bg-white rounded-t-3xl flex flex-col" style={{ maxHeight: '85vh' }}>
+        <div className="flex-shrink-0 px-5 pt-5 pb-3 border-b border-gray-100 flex items-start justify-between">
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{monthLabel(month)} Focus</p>
+            <h2 className="text-xl font-black text-gray-900 leading-none">{student.name}</h2>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl bg-gray-100 text-gray-500">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Quick picks</p>
+            <div className="flex flex-wrap gap-1.5">
+              {GOAL_PRESETS.map(p => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setText(p)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+                    text === p
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Or write your own</p>
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              rows={3}
+              maxLength={140}
+              placeholder="e.g., Sharpen first touch with weaker foot in pressure drills"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 resize-none focus:outline-none focus:border-amber-400 bg-white"
+            />
+            <p className="text-[10px] text-gray-400 mt-1 text-right">{text.length}/140</p>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex items-start gap-2">
+            <Sparkles size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] text-amber-700 leading-snug">
+              Student sees this on their portal all month. Keep it actionable — one specific thing to work on.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex-shrink-0 px-5 py-3 border-t border-gray-100 flex gap-2"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+          {currentText && (
+            <button
+              onClick={() => onSave('')}
+              disabled={saving}
+              className="px-4 py-3 rounded-xl bg-red-50 text-red-600 font-bold text-sm"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving || !text.trim()}
+            className="flex-1 bg-amber-500 text-white rounded-xl py-3 font-black text-sm disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save Goal'}
+          </button>
+        </div>
       </div>
     </div>
   )

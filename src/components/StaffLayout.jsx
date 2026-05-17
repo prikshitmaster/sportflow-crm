@@ -44,6 +44,7 @@ export default function StaffLayout() {
     import('../pages/staff/StaffAttendance')
     import('../pages/staff/StaffScanIn')
     import('../pages/staff/StaffAssess')
+    import('../pages/staff/StaffPulse')
   }, [])
 
   const isOffice = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)

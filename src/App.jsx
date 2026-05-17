@@ -5,6 +5,9 @@ import Layout from './components/Layout'
 import StaffLayout from './components/StaffLayout'
 import StudentLayout from './components/StudentLayout'
 
+// Ops monitoring — secret URL, PIN-gated, no nav link
+import OpsActivity from './pages/OpsActivity'
+
 // Auth pages — kept eager (tiny, needed on first render)
 import Login from './pages/Login'
 import Signup from './pages/Signup'
@@ -39,6 +42,7 @@ const StaffNotices     = lazy(() => import('./pages/staff/StaffNotices'))
 const StaffAttendance  = lazy(() => import('./pages/staff/StaffAttendance'))
 const StaffScanIn      = lazy(() => import('./pages/staff/StaffScanIn'))
 const StaffAssess      = lazy(() => import('./pages/staff/StaffAssess'))
+const StaffPulse       = lazy(() => import('./pages/staff/StaffPulse'))
 
 // Student pages — lazy loaded
 const StudentDashboard     = lazy(() => import('./pages/student/StudentDashboard'))
@@ -47,6 +51,7 @@ const StudentPayments      = lazy(() => import('./pages/student/StudentPayments'
 const StudentAnnouncements = lazy(() => import('./pages/student/StudentAnnouncements'))
 const StudentScan          = lazy(() => import('./pages/student/StudentScan'))
 const StudentStats         = lazy(() => import('./pages/student/StudentStats'))
+const StudentProgress      = lazy(() => import('./pages/student/StudentProgress'))
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
@@ -183,6 +188,7 @@ function AppRoutes() {
         <Route path="attendance" element={<StaffAttendance />} />
         <Route path="scan-in"    element={<StaffScanIn />} />
         <Route path="assess"     element={<StaffAssess />} />
+        <Route path="pulse"      element={<StaffPulse />} />
         {/* Permission-gated admin pages rendered inside staff portal */}
         <Route path="students"  element={<PermRequired perm="students.view">  <Students />  </PermRequired>} />
         <Route path="payments"  element={<PermRequired perm="payments.view">  <Payments />  </PermRequired>} />
@@ -202,6 +208,7 @@ function AppRoutes() {
         <Route path="dashboard"   element={<StudentDashboard />} />
         <Route path="attendance"  element={<StudentAttendance />} />
         <Route path="stats"       element={<StudentStats />} />
+        <Route path="progress"    element={<StudentProgress />} />
         <Route path="payments"    element={<StudentPayments />} />
         <Route path="announcements" element={<StudentAnnouncements />} />
         <Route path="scan"        element={<StudentScan />} />
@@ -209,6 +216,9 @@ function AppRoutes() {
 
       {/* Invite — public, no auth required */}
       <Route path="/invite/:token" element={<Invite />} />
+
+      {/* Ops monitor — PIN-gated, secret URL, not linked anywhere */}
+      <Route path="/ops/live" element={<OpsActivity />} />
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

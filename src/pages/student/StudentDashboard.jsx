@@ -5,7 +5,7 @@ import * as db from '../../lib/db'
 import { supabase } from '../../lib/supabase'
 import {
   QrCode, CalendarCheck, CreditCard, Megaphone, CheckCircle2, XCircle,
-  Clock, ChevronRight, Trophy, Camera, Ban,
+  Clock, ChevronRight, Trophy, Camera, Ban, Target,
 } from 'lucide-react'
 
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -19,6 +19,7 @@ export default function StudentDashboard() {
   const [loadingData,   setLoadingData]   = useState(true)
   const [uploading,     setUploading]     = useState(false)
   const [batchInfo,     setBatchInfo]     = useState(null) // { trainsToday, startTime }
+  const [monthGoal,     setMonthGoal]     = useState(null) // coach-set focus for the month
   const fileRef = useRef(null)
 
   const handlePhotoChange = async (e) => {
@@ -42,6 +43,12 @@ export default function StudentDashboard() {
         .then(data => setNotices(data.slice(0, 3)))
         .catch(() => {})
     }
+    // Fetch this month's focus goal — drives the focus banner
+    const n = new Date()
+    const monthStr = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
+    db.fetchPlayerGoal(studentUser.id, monthStr)
+      .then(setMonthGoal)
+      .catch(() => {})
   }, [])
 
   const loadData = async () => {
@@ -133,6 +140,25 @@ export default function StudentDashboard() {
           </div>
         </div>
       </div>
+
+      {/* This month's focus goal — taps through to full progress view */}
+      {monthGoal && (
+        <Link
+          to="/student/progress"
+          className="block bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl p-4 text-white shadow-md active:opacity-90 transition"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Target size={18} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-90">This month's focus</p>
+              <p className="text-sm font-black leading-snug mt-0.5">{monthGoal.goal_text}</p>
+            </div>
+            <ChevronRight size={16} className="text-white/60 flex-shrink-0 mt-1" />
+          </div>
+        </Link>
+      )}
 
       {/* Today's Scan button */}
       <Link
