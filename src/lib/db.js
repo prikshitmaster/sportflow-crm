@@ -1263,7 +1263,8 @@ export async function insertBatchV2(b) {
       ground:       b.ground || null,
       default_fee:  Number(b.defaultFee)  || 0,
       default_plan: b.defaultPlan         || 'monthly',
-      academy_id:   b.academyId || null,
+      academy_id:   b.academyId  || null,
+      branch_id:    b.branchId   || null,
     })
     .select()
   if (error) throw error

@@ -289,9 +289,13 @@ function BatchCard({ b, idx, enrolledAdj = {}, staff = [], onSelect, onEdit }) {
 const ALL_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
 function AddBatchModal({ onClose, onSave, staff, initialData }) {
-  const { selectedSport } = useApp()
+  const { selectedSport, selectedBranch, sportBranches } = useApp()
   const isEdit = !!initialData
   const defaultSports = initialData?.sports ?? (selectedSport && selectedSport !== 'All' ? [selectedSport] : [])
+  const sportLocked = !isEdit && Boolean(selectedSport && selectedSport !== 'All')
+  const branchName = selectedBranch
+    ? sportBranches.find(b => b.id === selectedBranch)?.branchName
+    : null
   const [form, setForm] = useState({
     name:        initialData?.name        || '',
     code:        initialData?.code        || '',
@@ -360,15 +364,22 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
           </div>
         </div>
         <div>
-          <label className="label">Sports</label>
-          <div className="flex flex-wrap gap-2">
-            {SPORTS.map(s => (
-              <button key={s} type="button" onClick={() => toggleSport(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                  form.sports.includes(s) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                }`}>{s}</button>
-            ))}
-          </div>
+          <label className="label">Sport</label>
+          {sportLocked ? (
+            <div className="input flex items-center gap-2 bg-gray-50 cursor-default">
+              <span className="text-sm font-semibold text-gray-800">{selectedSport}</span>
+              {branchName && <span className="text-xs text-gray-400 font-medium">· {branchName}</span>}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {SPORTS.map(s => (
+                <button key={s} type="button" onClick={() => toggleSport(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                    form.sports.includes(s) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}>{s}</button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -394,7 +405,7 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
       </div>
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={() => onSave(form)}>
+        <button className="btn-primary" onClick={() => onSave({ ...form, branchId: isEdit ? (initialData?.branchId || null) : (selectedBranch || null) })}>
           {isEdit ? 'Save Changes' : 'Create Batch'}
         </button>
       </div>

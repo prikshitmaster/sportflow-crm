@@ -1053,7 +1053,7 @@ export function AppProvider({ children }) {
 
   const addBatch = async (b) => {
     try {
-      const created = await db.insertBatchV2({ ...b, academyId: user?.academyId })
+      const created = await db.insertBatchV2({ ...b, academyId: user?.academyId, branchId: selectedBranch || null })
       setBatches(prev => [...prev, {
         id: created.id, name: created.name, code: created.code || null, time: created.time,
         sports: created.sports || [], coach: created.coach,
@@ -1062,6 +1062,7 @@ export function AppProvider({ children }) {
         endTime: created.end_time, ageMin: created.age_min, ageMax: created.age_max,
         ground: created.ground || null,
         defaultFee: created.default_fee || 0, defaultPlan: created.default_plan || 'monthly',
+        branchId: created.branch_id || null,
       }])
       logAuditSport({ actor: user, action: ACTIONS.BATCH_ADD, entityType: 'batch', entityId: created.id, entityName: created.name, changes: { sport: (b.sports || []).join(', '), capacity: String(b.capacity), coach: b.coach || '—' }, academyId: user?.academyId })
       showToast('Batch created')
