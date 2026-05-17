@@ -37,6 +37,7 @@ export async function fetchStudents(academyId) {
     position:       row.position || null,
     photoUrl:       row.photo_url || null,
     fromTrial:      row.from_trial  || false,
+    branchId:       row.branch_id || null,
   }))
 }
 
@@ -392,6 +393,7 @@ export async function fetchTrials(academyId) {
     converted:      row.converted,
     followUp:       row.follow_up,
     createdAt:      row.created_at,
+    branchId:       row.branch_id     || null,
   }))
 }
 
@@ -524,6 +526,7 @@ export async function fetchBatches(academyId) {
     ground:      row.ground      || null,
     defaultFee:  row.default_fee  || 0,
     defaultPlan: row.default_plan || 'monthly',
+    branchId:    row.branch_id    || null,
   }))
 }
 
@@ -579,6 +582,7 @@ export async function fetchStaff(academyId) {
       permissions:   auth?.permissions  || [],
       age:           profile?.age          || null,
       licenceUrl:    profile?.licence_url  || null,
+      branchId:      row.branch_id || null,
     }
   })
 }
@@ -1636,6 +1640,50 @@ export async function deleteBranch(academyId, name) {
     .delete()
     .eq('academy_id', academyId)
     .eq('name', name)
+  if (error) throw error
+}
+
+// ── Sport Branches (proper branches under a sport) ───────────
+// Sourced from sport_branches table (created in migration 0016b/0017b)
+export async function fetchSportBranches(academyId) {
+  const { data, error } = await supabase
+    .from('sport_branches')
+    .select('id, sport_name, branch_name, created_at')
+    .eq('academy_id', academyId)
+    .order('sport_name')
+    .order('branch_name')
+  if (error) {
+    if (error.code === '42P01') return []   // table doesn't exist yet
+    throw error
+  }
+  return (data || []).map(r => ({
+    id:         r.id,
+    sportName:  r.sport_name,
+    branchName: r.branch_name,
+    createdAt:  r.created_at,
+  }))
+}
+
+export async function insertSportBranch(academyId, sportName, branchName) {
+  const { data, error } = await supabase
+    .from('sport_branches')
+    .insert({ academy_id: academyId, sport_name: sportName, branch_name: branchName })
+    .select()
+    .single()
+  if (error) throw error
+  return {
+    id:         data.id,
+    sportName:  data.sport_name,
+    branchName: data.branch_name,
+    createdAt:  data.created_at,
+  }
+}
+
+export async function deleteSportBranch(branchId) {
+  const { error } = await supabase
+    .from('sport_branches')
+    .delete()
+    .eq('id', branchId)
   if (error) throw error
 }
 

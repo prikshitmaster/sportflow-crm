@@ -59,6 +59,7 @@ async function _endOps() {
 }
 
 const SPORT_KEY        = 'sf_selected_sport'
+const BRANCH_KEY       = 'sf_selected_branch'   // sport_branches.id (uuid) or null
 const SUSPEND_KEY      = 'sf_suspend_days'
 const SUSPEND_RUN_KEY  = 'sf_last_auto_suspend_at'  // throttle per-tab to avoid audit spam
 const SUSPEND_THROTTLE_MS = 60 * 60 * 1000  // 1 hour
@@ -109,6 +110,25 @@ export function AppProvider({ children }) {
       else       localStorage.removeItem(SPORT_KEY)
     } catch {}
   }, [])
+
+  // ── Branch scoping (within a sport — owner drill-in or branch manager) ──
+  // Stored as the sport_branches.id (uuid). null = all branches of the sport.
+  const [sportBranches, setSportBranches] = useState([])   // [{id, sportName, branchName, createdAt}]
+  const [selectedBranch, setSelectedBranchState] = useState(() => {
+    try { return localStorage.getItem(BRANCH_KEY) || null } catch { return null }
+  })
+  const setSelectedBranch = useCallback((branchId) => {
+    setSelectedBranchState(branchId)
+    try {
+      if (branchId) localStorage.setItem(BRANCH_KEY, branchId)
+      else          localStorage.removeItem(BRANCH_KEY)
+    } catch {}
+  }, [])
+  // Clearing the sport also clears the branch
+  const setSelectedSportAndBranch = useCallback((sport, branchId = null) => {
+    setSelectedSport(sport)
+    setSelectedBranch(branchId)
+  }, [setSelectedSport, setSelectedBranch])
 
   // Wrapper: auto-injects the active sport so every audit entry is branch-scoped.
   const logAuditSport = useCallback((args) =>
@@ -348,6 +368,16 @@ export function AppProvider({ children }) {
       if (list.length > 0) setBranches(list)
     }).catch(() => {})
   }, [user?.academyId])
+
+  // Load sport_branches (proper branches under sports) when academy is known
+  const refreshSportBranches = useCallback(async () => {
+    if (!user?.academyId) return
+    try {
+      const list = await db.fetchSportBranches(user.academyId)
+      setSportBranches(list)
+    } catch {}
+  }, [user?.academyId])
+  useEffect(() => { refreshSportBranches() }, [refreshSportBranches])
 
   // ── Owner Auth ────────────────────────────────────────
 
@@ -1401,44 +1431,68 @@ export function AppProvider({ children }) {
 
   const isAuthenticated = role !== null
 
-  // ── Sport-scoped filtered views ───────────────────────
-  // When selectedSport is null or 'All', pages get the full raw data (no filtering)
-  // When set to a specific sport, pages see only that sport's slice
+  // ── Sport + Branch scoped filtered views ──────────────
+  // Two layered filters: selectedSport (legacy) and selectedBranch (new).
+  //   • No sport selected → "All Sports" view, raw data
+  //   • Sport selected, no branch → all branches of that sport
+  //   • Sport + branch selected → only that branch's slice (the isolation case)
   const isAllSports = !selectedSport || selectedSport === 'All'
+  const hasBranchScope = Boolean(selectedBranch)
 
-  const filteredStudents = useMemo(() =>
+  // Step 1: sport filter (existing behavior, unchanged)
+  const sportStudents = useMemo(() =>
     isAllSports ? students : students.filter(s => s.sport === selectedSport)
   , [students, selectedSport, isAllSports])
 
-  const filteredBatches = useMemo(() => {
+  const sportBatches = useMemo(() => {
     if (isAllSports) return batches
     return batches.filter(b => {
-      // Normalise to array (sports can be string or array depending on DB driver)
       const sports = Array.isArray(b.sports) ? b.sports : (b.sports ? [String(b.sports)] : [])
-      // Most-specific sport = longest name wins. A batch with both 'Football' and
-      // 'Football_ARA_branch 2' belongs exclusively to the branch, not the parent sport.
       const primarySport = sports.slice().sort((a, z) => z.length - a.length)[0]
       return primarySport === selectedSport
     })
   }, [batches, selectedSport, isAllSports])
 
-  // Coaches with sports[] filtered by selectedSport;
-  // Non-coach staff (empty sports[]) are kept visible everywhere — they're not sport-bound
-  const filteredStaff = useMemo(() =>
-    isAllSports
-      ? staff
-      : staff.filter(s => !s.sports?.length || s.sports.includes(selectedSport))
+  const sportStaff = useMemo(() =>
+    isAllSports ? staff : staff.filter(s => !s.sports?.length || s.sports.includes(selectedSport))
   , [staff, selectedSport, isAllSports])
 
-  const filteredPayments = useMemo(() => {
+  const sportPayments = useMemo(() => {
     if (isAllSports) return payments
-    const sportStudentIds = new Set(students.filter(s => s.sport === selectedSport).map(s => s.id))
-    return payments.filter(p => sportStudentIds.has(p.studentId))
+    const ids = new Set(students.filter(s => s.sport === selectedSport).map(s => s.id))
+    return payments.filter(p => ids.has(p.studentId))
   }, [payments, students, selectedSport, isAllSports])
 
-  const filteredTrials = useMemo(() =>
+  const sportTrials = useMemo(() =>
     isAllSports ? trials : trials.filter(t => t.sport === selectedSport)
   , [trials, selectedSport, isAllSports])
+
+  // Step 2: branch filter on top — only narrows further when selectedBranch is set
+  const filteredStudents = useMemo(() =>
+    hasBranchScope ? sportStudents.filter(s => s.branchId === selectedBranch) : sportStudents
+  , [sportStudents, selectedBranch, hasBranchScope])
+
+  const filteredBatches = useMemo(() =>
+    hasBranchScope ? sportBatches.filter(b => b.branchId === selectedBranch) : sportBatches
+  , [sportBatches, selectedBranch, hasBranchScope])
+
+  const filteredStaff = useMemo(() => {
+    if (!hasBranchScope) return sportStaff
+    // Keep non-branch-bound staff visible (no branchId), filter the rest by branch
+    return sportStaff.filter(s => !s.branchId || s.branchId === selectedBranch)
+  }, [sportStaff, selectedBranch, hasBranchScope])
+
+  const filteredPayments = useMemo(() => {
+    if (!hasBranchScope) return sportPayments
+    const branchStudentIds = new Set(
+      students.filter(s => s.branchId === selectedBranch).map(s => s.id)
+    )
+    return sportPayments.filter(p => branchStudentIds.has(p.studentId))
+  }, [sportPayments, students, selectedBranch, hasBranchScope])
+
+  const filteredTrials = useMemo(() =>
+    hasBranchScope ? sportTrials.filter(t => t.branchId === selectedBranch) : sportTrials
+  , [sportTrials, selectedBranch, hasBranchScope])
 
   return (
     <AppContext.Provider value={{
@@ -1456,6 +1510,9 @@ export function AppProvider({ children }) {
       loginStudent, logoutStudent, activateStudent, updateStudentPhoto,
       // sport scoping
       selectedSport, setSelectedSport, isAllSports,
+      // branch scoping (within a sport)
+      selectedBranch, setSelectedBranch, setSelectedSportAndBranch,
+      sportBranches, refreshSportBranches, hasBranchScope,
       // raw data (for SportSelect page and any page needing unfiltered data)
       allStudents: students, allStaff: staff, allBatches: batches,
       allPayments: payments, allTrials: trials,

@@ -1,9 +1,11 @@
 import { useMemo, useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import * as db from '../lib/db'
 import {
   Zap, LogOut, Trophy, Users, UserCog, Layers, Plus, Sparkles,
   X, Check, Trash2, Download, AlertTriangle, Loader2, IndianRupee,
+  ArrowLeft, MapPin,
 } from 'lucide-react'
 import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImport'
 import { SPORT_CATALOG } from '../lib/sportCatalog'
@@ -14,7 +16,14 @@ export default function SportSelect() {
     user, branches, allStudents, allStaff, allBatches, allPayments,
     setSelectedSport, logoutOwner, dataLoading,
     addBranch, removeBranch, showToast,
+    sportBranches, refreshSportBranches, setSelectedSportAndBranch,
   } = useApp()
+
+  // view: 'sports' (default) | 'branches' (drill-in for a sport)
+  const [view, setView]               = useState('sports')
+  const [drillSport, setDrillSport]   = useState(null)   // sport_name being drilled into
+  const [addingBranch, setAddingBranch] = useState(false)
+  const [newBranch,    setNewBranch]    = useState('')
 
   const [adding,       setAdding]       = useState(false)
   const [newSport,     setNewSport]     = useState('')
@@ -72,9 +81,88 @@ export default function SportSelect() {
     batches:  allBatches.length,
   }), [allStudents, allStaff, allBatches])
 
+  // Branches under a given sport (from sport_branches table)
+  const branchesOf = (sportName) =>
+    (sportBranches || []).filter(b => b.sportName === sportName)
+
+  // Per-branch stats (students/batches in this branch)
+  const branchCounts = useMemo(() => {
+    const map = {}
+    ;(sportBranches || []).forEach(sb => {
+      map[sb.id] = {
+        students: allStudents.filter(s => s.branchId === sb.id).length,
+        active:   allStudents.filter(s => s.branchId === sb.id && s.status === 'Active').length,
+        batches:  allBatches.filter(b => b.branchId === sb.id).length,
+      }
+    })
+    return map
+  }, [sportBranches, allStudents, allBatches])
+
   const pickSport = (sport) => {
-    setSelectedSport(sport)
+    // "All Sports" goes straight to dashboard with no scoping
+    if (sport === 'All') {
+      setSelectedSportAndBranch('All', null)
+      navigate('/dashboard')
+      return
+    }
+    const list = branchesOf(sport)
+    // No branches yet for this sport → enter dashboard at sport-level (legacy)
+    if (list.length === 0) {
+      setSelectedSportAndBranch(sport, null)
+      navigate('/dashboard')
+      return
+    }
+    // Single branch → auto-select it
+    if (list.length === 1) {
+      setSelectedSportAndBranch(sport, list[0].id)
+      navigate('/dashboard')
+      return
+    }
+    // Multiple branches → drill into branch picker
+    setDrillSport(sport)
+    setView('branches')
+  }
+
+  const pickBranch = (sportName, branchId) => {
+    setSelectedSportAndBranch(sportName, branchId)
     navigate('/dashboard')
+  }
+
+  const pickAllBranchesOfSport = (sportName) => {
+    setSelectedSportAndBranch(sportName, null)
+    navigate('/dashboard')
+  }
+
+  const handleAddBranch = async () => {
+    const v = newBranch.trim()
+    if (!v || !drillSport || !user?.academyId) { setAddingBranch(false); return }
+    if (branchesOf(drillSport).some(b => b.branchName.toLowerCase() === v.toLowerCase())) {
+      showToast(`${v} already exists in ${drillSport}`, 'info'); return
+    }
+    try {
+      await db.insertSportBranch(user.academyId, drillSport, v)
+      await refreshSportBranches()
+      showToast(`${v} added to ${drillSport}`, 'success')
+      setNewBranch('')
+      setAddingBranch(false)
+    } catch (err) {
+      showToast(err.message || 'Failed to add branch', 'error')
+    }
+  }
+
+  const handleRemoveBranch = async (branch) => {
+    const studentsInBranch = allStudents.filter(s => s.branchId === branch.id).length
+    if (studentsInBranch > 0) {
+      showToast(`Cannot remove ${branch.branchName}: ${studentsInBranch} students assigned. Reassign them first.`, 'error')
+      return
+    }
+    try {
+      await db.deleteSportBranch(branch.id)
+      await refreshSportBranches()
+      showToast(`${branch.branchName} removed`, 'success')
+    } catch (err) {
+      showToast(err.message || 'Failed to remove branch', 'error')
+    }
   }
 
   // Catalog sports not yet added (case-insensitive comparison against existing)
@@ -150,6 +238,23 @@ export default function SportSelect() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-10">
+        {view === 'branches' && drillSport ? (
+          <BranchView
+            sportName={drillSport}
+            branches={branchesOf(drillSport)}
+            counts={branchCounts}
+            onBack={() => { setView('sports'); setDrillSport(null); setAddingBranch(false); setNewBranch('') }}
+            onPickBranch={(id) => pickBranch(drillSport, id)}
+            onPickAll={() => pickAllBranchesOfSport(drillSport)}
+            adding={addingBranch}
+            newBranch={newBranch}
+            setNewBranch={setNewBranch}
+            onStartAdd={() => setAddingBranch(true)}
+            onCancelAdd={() => { setAddingBranch(false); setNewBranch('') }}
+            onConfirmAdd={handleAddBranch}
+            onRemove={handleRemoveBranch}
+          />
+        ) : (<>
         {/* Heading */}
         <div className="mb-8">
           <div className="flex items-center gap-2 text-brand-600 mb-2">
@@ -390,7 +495,121 @@ export default function SportSelect() {
             No sports yet — tap "Add Sport" above, or pick "All Sports" to continue without filtering.
           </p>
         )}
+        </>)}
       </main>
     </div>
   )
+}
+
+// ── Branch picker view (rendered when user drills into a sport) ─────
+function BranchView({
+  sportName, branches, counts,
+  onBack, onPickBranch, onPickAll,
+  adding, newBranch, setNewBranch,
+  onStartAdd, onCancelAdd, onConfirmAdd, onRemove,
+}) {
+  return (<>
+    <div className="mb-8">
+      <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-brand-600 mb-3">
+        <ArrowLeft size={14} /> Back to sports
+      </button>
+      <div className="flex items-center gap-2 text-brand-600 mb-2">
+        <Trophy size={16} />
+        <span className="text-xs font-bold uppercase tracking-wider">{sportName}</span>
+      </div>
+      <h1 className="text-3xl font-black text-gray-900 mb-1">Pick a branch</h1>
+      <p className="text-gray-500 text-sm">Each branch is isolated — its students, batches, payments and reports are separate.</p>
+    </div>
+
+    {/* All Branches overview */}
+    <button
+      onClick={onPickAll}
+      className="w-full mb-5 bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600 transition rounded-2xl p-5 text-left flex items-center justify-between text-white shadow-md hover:shadow-lg"
+    >
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+          <Layers size={22} />
+        </div>
+        <div>
+          <p className="text-lg font-black">All {sportName} branches</p>
+          <p className="text-xs text-white/80">View everything across branches</p>
+        </div>
+      </div>
+      <span className="text-[10px] font-bold text-white/90 uppercase tracking-wider">Open →</span>
+    </button>
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {branches.map(b => {
+        const c = counts[b.id] || {}
+        return (
+          <div key={b.id} className="group relative bg-white border border-gray-100 hover:border-brand-200 hover:shadow-md rounded-2xl p-5 transition">
+            <button
+              onClick={(e) => { e.stopPropagation(); onRemove(b) }}
+              className="absolute top-3 right-3 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
+              title="Remove branch"
+            >
+              <Trash2 size={14} />
+            </button>
+            <button onClick={() => onPickBranch(b.id)} className="w-full text-left">
+              <div className="flex items-start justify-between mb-3">
+                <div className="w-11 h-11 bg-purple-50 rounded-xl flex items-center justify-center group-hover:bg-purple-100 transition">
+                  <MapPin size={20} className="text-purple-600" />
+                </div>
+                <span className="text-[10px] font-bold text-gray-400 group-hover:text-brand-600 uppercase tracking-wider transition">Open →</span>
+              </div>
+              <p className="text-lg font-black text-gray-900 mb-1">{b.branchName}</p>
+              <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
+                <div>
+                  <div className="flex items-center gap-1 text-gray-400 text-[10px] mb-0.5"><Users size={10} /> Students</div>
+                  <p className="text-sm font-black text-gray-900">
+                    {c.active || 0}
+                    {(c.students || 0) > (c.active || 0) && <span className="text-[10px] text-gray-400 font-normal">/{c.students}</span>}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center gap-1 text-gray-400 text-[10px] mb-0.5"><Layers size={10} /> Batches</div>
+                  <p className="text-sm font-black text-gray-900">{c.batches || 0}</p>
+                </div>
+              </div>
+            </button>
+          </div>
+        )
+      })}
+
+      {/* + Add Branch */}
+      {adding ? (
+        <div className="bg-white border-2 border-brand-300 rounded-2xl p-5 flex flex-col">
+          <div className="w-11 h-11 bg-brand-50 rounded-xl flex items-center justify-center mb-4">
+            <Plus size={20} className="text-brand-600" />
+          </div>
+          <input
+            autoFocus
+            type="text"
+            value={newBranch}
+            onChange={e => setNewBranch(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') onConfirmAdd(); if (e.key === 'Escape') onCancelAdd() }}
+            placeholder="e.g. Branch 3 or Andheri"
+            className="input mb-3 text-base font-bold"
+          />
+          <div className="flex gap-2">
+            <button onClick={onConfirmAdd} disabled={!newBranch.trim()} className="flex-1 btn-primary py-2 text-sm justify-center disabled:opacity-50">
+              <Check size={14} /> Add
+            </button>
+            <button onClick={onCancelAdd} className="btn-secondary py-2 text-sm px-3 justify-center"><X size={14} /></button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={onStartAdd}
+          className="border-2 border-dashed border-gray-200 hover:border-brand-300 hover:bg-brand-50/40 rounded-2xl p-5 flex flex-col items-center justify-center text-center transition min-h-[180px] group"
+        >
+          <div className="w-12 h-12 bg-gray-100 group-hover:bg-brand-100 rounded-2xl flex items-center justify-center mb-2 transition">
+            <Plus size={22} className="text-gray-400 group-hover:text-brand-600 transition" />
+          </div>
+          <p className="text-sm font-bold text-gray-700 group-hover:text-brand-700 transition">Add Branch</p>
+          <p className="text-[11px] text-gray-400 mt-1">Within {sportName}</p>
+        </button>
+      )}
+    </div>
+  </>)
 }
