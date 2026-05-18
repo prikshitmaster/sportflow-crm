@@ -127,6 +127,7 @@ export async function fetchPayments(academyId) {
   return data.map(row => ({
     id:            row.id,
     studentId:     row.student_id,
+    coverageStart: row.coverage_start || null,
     student:       row.student,
     amount:        row.amount,
     month:         row.month,
@@ -154,9 +155,10 @@ export async function insertPayment(p, invoiceId) {
       mode:           p.mode,
       payment_type:   p.paymentType  || 'monthly',
       discount_pct:   p.discountPct  || 0,
-      months_covered: p.monthsCovered || 1,
-      academy_id:     p.academyId    || null,
-      notes:          p.notes        || null,
+      months_covered:  p.monthsCovered  || 1,
+      coverage_start:  p.coverageStart  || null,
+      academy_id:      p.academyId     || null,
+      notes:           p.notes         || null,
     })
   if (error) throw error
 }

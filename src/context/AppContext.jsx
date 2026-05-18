@@ -575,7 +575,12 @@ export function AppProvider({ children }) {
   // ── Students ──────────────────────────────────────────
 
   const addStudent = async (s) => {
+    if (!user?.academyId) {
+      showToast('Session expired — please log out and log in again', 'error')
+      return
+    }
     try {
+      await supabase.auth.refreshSession()
       const studentCode = await db.fetchNextStudentCode()
       const joinCode    = generateJoinCode()
 
@@ -594,12 +599,12 @@ export function AppProvider({ children }) {
       // Pre-compute historical payment fields if applicable
       const fees        = Number(s.fees) || 0
       const trialDeduct = s.fromTrial ? (Number(s.trialFeePaid) || 0) : 0
+      const joiningFee  = Number(s.joiningFee) || 0
       let payment = null
       if (paidTill && fees > 0) {
         const joinDateStr = s.joinDate || new Date().toISOString().split('T')[0]
         const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, fees, s.feePlan || 'monthly')
-        const payAmount = Math.max(0, amount - trialDeduct)
-        // fetchNextInvoiceId uses migration 0014's atomic sequence — no collision race.
+        const payAmount = Math.max(0, amount - trialDeduct + joiningFee)
         const invoiceId = await db.fetchNextInvoiceId()
         payment = { invoiceId, amount: payAmount, label, startDate, monthsCovered }
       }
@@ -628,10 +633,13 @@ export function AppProvider({ children }) {
           try { await supabase.from('students').update({ from_trial: true }).eq('id', newId) } catch {}
         })()
       }
-      // Persist trial deduction note to payment record
-      if (payment && trialDeduct > 0) {
+      // Persist trial deduction / joining fee notes to payment record
+      if (payment && (trialDeduct > 0 || joiningFee > 0)) {
+        const noteParts = []
+        if (trialDeduct > 0) noteParts.push(`Trial fee deducted: −₹${trialDeduct}`)
+        if (joiningFee  > 0) noteParts.push(`Joining fee included: +₹${joiningFee}`)
         ;(async () => {
-          try { await supabase.from('payments').update({ notes: `Trial fee deducted: −₹${trialDeduct}` }).eq('id', payment.invoiceId) } catch {}
+          try { await supabase.from('payments').update({ notes: noteParts.join(' · ') }).eq('id', payment.invoiceId) } catch {}
         })()
       }
 
@@ -682,13 +690,14 @@ export function AppProvider({ children }) {
           amount:         payment.amount,
           month:          payment.label,
           date:           payment.startDate,
+          coverageStart:  payment.startDate,
           status:         'Paid',
           mode:           'Cash',
           paymentType:    'monthly',
           discountPct:    0,
           monthsCovered:  payment.monthsCovered,
           academyId:      user?.academyId,
-          notes:          trialDeduct > 0 ? `Trial fee deducted: −₹${trialDeduct}` : '',
+          notes:          [trialDeduct > 0 ? `Trial fee deducted: −₹${trialDeduct}` : '', joiningFee > 0 ? `Joining fee included: +₹${joiningFee}` : ''].filter(Boolean).join(' · '),
         }, ...prev])
       }
 
@@ -739,28 +748,6 @@ export function AppProvider({ children }) {
           if (b.id === newBatchId) return { ...b, enrolled: (b.enrolled || 0) + 1 }
           return b
         }))
-      }
-
-      if (paidTill && updated.fees > 0) {
-        const joinDateStr = s.joinDate || updated.join_date || new Date().toISOString().split('T')[0]
-        const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, updated.fees, s.feePlan || 'monthly')
-        const existing = payments.find(p =>
-          p.studentId === id && p.month === label && (p.status === 'Paid' || p.status === 'Pending')
-        )
-        if (!existing) {
-          const invoiceId = await db.fetchNextInvoiceId()
-          const payRow = {
-            studentId: id, student: updated.name,
-            amount, month: label, date: startDate,
-            status: 'Paid', mode: 'Cash', monthsCovered,
-            academyId: user?.academyId,
-          }
-          await db.insertPayment(payRow, invoiceId)
-          setPayments(prev => [{ ...payRow, id: invoiceId, paymentType: 'monthly', discountPct: 0 }, ...prev])
-        } else if (existing.amount !== amount) {
-          await db.updatePaymentAmount(existing.id, amount, monthsCovered)
-          setPayments(prev => prev.map(p => p.id === existing.id ? { ...p, amount, monthsCovered } : p))
-        }
       }
 
       showToast('Student updated')
@@ -901,16 +888,17 @@ export function AppProvider({ children }) {
               ? baseDate.getFullYear()
               : `${baseDate.getFullYear()}/${String(endDate.getFullYear()).slice(2)}`
           }`
-      const payDate   = collectionDate.toISOString().split('T')[0]
-      const invoiceId = await db.fetchNextInvoiceId()
-      const paymentRow = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, academyId: user?.academyId }
+      const payDate      = collectionDate.toISOString().split('T')[0]
+      const coverageStart = baseDate.toISOString().split('T')[0]
+      const invoiceId    = await db.fetchNextInvoiceId()
+      const paymentRow   = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, academyId: user?.academyId }
       // DB insert first — if it fails (PK collision, RLS reject), no optimistic row gets left behind.
       await db.insertPayment(paymentRow, invoiceId)
 
       // Optimistic state update — only runs if DB insert succeeded above.
       setPayments(prev => [{
         ...paymentRow, id: invoiceId,
-        date: payDate, status: 'Paid', month: monthLabel,
+        date: payDate, status: 'Paid', month: monthLabel, coverageStart,
       }, ...prev])
 
       const student = students.find(s => String(s.id) === String(p.studentId))
@@ -962,14 +950,20 @@ export function AppProvider({ children }) {
       // Revert student's paid_till to their previous payment
       const student = students.find(s => String(s.id) === String(payment.studentId))
       if (student) {
-        const prevPaid = remaining
-          .filter(p => String(p.studentId) === String(payment.studentId) && p.status === 'Paid' && p.date)
-          .sort((a, b) => new Date(b.date) - new Date(a.date))[0]
+        // Find the previous payment with the highest coverage end date.
+        // Use coverageStart (stored since migration 0020) when available;
+        // fall back to date (collection date) for older rows — correct for non-advance payments.
+        const studentPaid = remaining
+          .filter(p => String(p.studentId) === String(payment.studentId) && p.status === 'Paid')
         let newPaidTill = null
-        if (prevPaid) {
-          const d = new Date(prevPaid.date + 'T00:00:00')
-          const m = prevPaid.monthsCovered || 1
-          newPaidTill = new Date(d.getFullYear(), d.getMonth() + m, 0).toISOString().split('T')[0]
+        if (studentPaid.length > 0) {
+          const withEnd = studentPaid.map(p => {
+            const base = new Date((p.coverageStart || p.date) + 'T00:00:00')
+            const m    = p.monthsCovered || 1
+            const end  = new Date(base.getFullYear(), base.getMonth() + m, 0)
+            return { end, endStr: end.toISOString().split('T')[0] }
+          })
+          newPaidTill = withEnd.sort((a, b) => b.end - a.end)[0].endStr
         }
         await db.updateStudentPaidTill(student.id, newPaidTill, null)
         setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))

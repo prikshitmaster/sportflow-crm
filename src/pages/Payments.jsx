@@ -158,6 +158,7 @@ export default function Payments() {
   const [monthFilter,     setMonthFilter]     = useState(new Date().toISOString().slice(0, 7))
   const [showModal,       setShowModal]       = useState(false)
   const [payForStudent,   setPayForStudent]   = useState(null)
+  const [detailPayment,   setDetailPayment]   = useState(null)
 
   const now          = new Date()
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
@@ -357,7 +358,9 @@ export default function Payments() {
               {filtered.map(p => {
                 const sm = STATUS_MAP[p.status] || STATUS_MAP.Overdue
                 return (
-                  <tr key={p.id} className={`group hover:bg-gray-50/60 transition ${p.isVirtual ? 'bg-red-50/30' : ''}`}>
+                  <tr key={p.id} className={`group hover:bg-gray-50/60 transition cursor-pointer ${p.isVirtual ? 'bg-red-50/30' : ''}`}
+                    onClick={() => !p.isVirtual && setDetailPayment({ payment: p, student: studentMap[p.studentId] })}
+                  >
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.isVirtual ? '—' : p.id}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900">
                       {p.student}
@@ -400,7 +403,7 @@ export default function Payments() {
                     <td className="px-4 py-3">
                       <span className={`badge ${sm.cls}`}>{p.status}</span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       {p.isVirtual ? (
                         <button
                           className="text-xs text-red-600 font-semibold hover:underline"
@@ -425,7 +428,7 @@ export default function Payments() {
                           </button>
                           <button
                             onClick={() => { setDeleteTarget(p); setDeleteNote('') }}
-                            className="opacity-0 group-hover:opacity-100 transition p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500"
+                            className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition"
                             title="Delete payment"
                           >
                             <Trash2 size={13} />
@@ -536,6 +539,121 @@ export default function Payments() {
           </div>
         </div>
       )}
+
+      {detailPayment && (
+        <PaymentDetailModal
+          payment={detailPayment.payment}
+          student={detailPayment.student}
+          onClose={() => setDetailPayment(null)}
+          onPrint={() => printReceipt(detailPayment.payment, detailPayment.student, user?.academy, user?.academyLogo)}
+        />
+      )}
+    </div>
+  )
+}
+
+function PaymentDetailModal({ payment: p, student, onClose, onPrint }) {
+  const fmtDate   = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+  const planLabel = { monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly', custom: 'Custom' }
+
+  // Parse amounts from notes
+  const trialMatch   = (p.notes || '').match(/Trial fee deducted[^₹]*₹([\d,]+)/)
+  const joiningMatch = (p.notes || '').match(/Joining fee included[^₹]*₹([\d,]+)/)
+  const trialAmt   = trialMatch   ? Number(trialMatch[1].replace(/,/g, ''))   : 0
+  const joiningAmt = joiningMatch ? Number(joiningMatch[1].replace(/,/g, '')) : 0
+  const hasBreakdown = trialAmt > 0 || joiningAmt > 0
+  const baseFee = hasBreakdown ? (p.amount ?? 0) + trialAmt - joiningAmt : (p.amount ?? 0)
+
+  const infoRow = (label, value, cls) => value ? (
+    <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+      <span className="text-xs text-gray-400">{label}</span>
+      <span className={`text-sm font-semibold ${cls || 'text-gray-800'}`}>{value}</span>
+    </div>
+  ) : null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl animate-slide-up overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
+          <div>
+            <p className="font-bold text-gray-900 text-base">{p.student}</p>
+            <p className="text-xs text-gray-400 font-mono mt-0.5">{p.id}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onPrint} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-gray-100 transition">
+              <Printer size={13} /> Receipt
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition"><X size={16} /></button>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 max-h-[80vh] overflow-y-auto">
+
+          {/* Amount breakdown */}
+          <div className="rounded-xl border border-emerald-100 overflow-hidden">
+            <div className="bg-emerald-600 px-4 py-2 flex items-center justify-between">
+              <span className="text-[10px] font-black text-white uppercase tracking-widest">Payment Breakdown</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${p.status === 'Paid' ? 'bg-white text-emerald-700' : 'bg-amber-400 text-white'}`}>{p.status}</span>
+            </div>
+            <div className="bg-white px-4 py-3 space-y-1 text-sm">
+              {hasBreakdown ? (<>
+                <div className="flex justify-between text-gray-600">
+                  <span>{planLabel[student?.feePlan] || 'Base'} Fee
+                    {(p.monthsCovered > 1) && <span className="text-xs text-gray-400 ml-1">× {p.monthsCovered} months</span>}
+                  </span>
+                  <span className="font-semibold">₹{baseFee.toLocaleString('en-IN')}</span>
+                </div>
+                {trialAmt > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Trial Fee Deduction</span>
+                    <span className="font-bold">− ₹{trialAmt.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                {joiningAmt > 0 && (
+                  <div className="flex justify-between text-purple-600">
+                    <span>Joining Fee</span>
+                    <span className="font-bold">+ ₹{joiningAmt.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-black text-gray-900 border-t border-gray-100 pt-2 mt-1 text-base">
+                  <span>Total Paid</span>
+                  <span className="text-emerald-700">₹{(p.amount ?? 0).toLocaleString('en-IN')}</span>
+                </div>
+              </>) : (
+                <div className="flex justify-between font-black text-gray-900 text-base">
+                  <span>{planLabel[student?.feePlan] || 'Monthly'} Fee
+                    {(p.monthsCovered > 1) && <span className="text-xs font-normal text-gray-400 ml-1">× {p.monthsCovered} months</span>}
+                  </span>
+                  <span className="text-emerald-700">₹{(p.amount ?? 0).toLocaleString('en-IN')}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Payment details */}
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Payment Info</p>
+            {infoRow('Coverage', p.month)}
+            {infoRow('Mode', p.mode || 'Cash')}
+            {infoRow('Paid Date', fmtDate(p.date))}
+          </div>
+
+          {/* Student details */}
+          {student && (
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Student</p>
+              {infoRow('Sport', student.sport)}
+              {infoRow('Batch', student.batch)}
+              {infoRow('Training', student.trainingType)}
+              {infoRow('Fee Plan', planLabel[student.feePlan] || student.feePlan)}
+              {student.fromTrial && infoRow('Source', 'Converted from Trial', 'text-amber-600')}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -597,7 +715,9 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const getFeePlanRate = (batchId, trainingType, paymentType) => {
     // 1. Named fee plan for batch + training type
     const batchPlans = feePlans.filter(p => String(p.batchId) === String(batchId))
-    const plan = batchPlans.find(p => p.trainingType === trainingType) || batchPlans[0]
+    // Only fall back to first plan if trainingType matches, or there's exactly one plan (no ambiguity).
+    const plan = batchPlans.find(p => p.trainingType === trainingType)
+              || (batchPlans.length === 1 ? batchPlans[0] : null)
     if (plan) {
       const rate = paymentType === 'quarterly' ? plan.quarterlyFee
                  : paymentType === 'yearly'    ? plan.yearlyFee
@@ -987,9 +1107,16 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         {/* Amount breakdown */}
         <div className="bg-gray-50 rounded-xl p-3.5 space-y-1.5">
           {form.studentId && (
-            <div className="flex justify-between text-xs font-semibold text-brand-600 mb-0.5">
+            <div className="flex justify-between items-start text-xs font-semibold text-brand-600 mb-0.5">
               <span>Coverage</span>
-              <span>{coverageLabel}</span>
+              <div className="text-right">
+                <div>{coverageLabel}</div>
+                <div className="text-[10px] font-normal text-gray-400 mt-0.5">
+                  {coverageBase.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {' → '}
+                  {coverageEnd.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </div>
+              </div>
             </div>
           )}
           <div className="flex justify-between text-xs text-gray-500">

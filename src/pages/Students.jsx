@@ -669,6 +669,13 @@ function calcAge(dob) {
   return age >= 0 ? age : null
 }
 
+function calcPaidTillFull(joinDate, feePlan) {
+  if (!joinDate || feePlan === 'custom') return ''
+  const [yr, mo] = joinDate.split('-').map(Number)
+  const months = PLAN_MOS_MAP[feePlan] || 1
+  return new Date(yr, mo - 1 + months, 0).toISOString().split('T')[0]
+}
+
 function calcPaidTill(joinDate, feePlan) {
   if (!joinDate || feePlan === 'custom') return ''
   const [yr, mo] = joinDate.split('-').map(Number)
@@ -722,12 +729,25 @@ function AddStudentModal({ onClose, onSave }) {
     : null
   const [form, setForm] = useState({
     name: '', parent: '', phone: '', parentPhone: '', dob: '', sport: defaultSport,
-    joinDate: '', paidTill: '', batchId: '', batchName: '', trainingType: 'Daily',
+    joinDate: '', paidTill: '', batchId: '', batchName: '', trainingType: '', fees: '', feePlan: 'monthly', joiningFee: '',
   })
   const [additionalBatchIds, setAdditionalBatchIds] = useState([])
   const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleFeePlan = (plan) => {
+    setForm(f => ({
+      ...f, feePlan: plan,
+      paidTill: plan !== 'custom' ? calcPaidTillFull(f.joinDate, plan) : f.paidTill,
+    }))
+  }
+  const handleJoinDateAdd = (date) => {
+    setForm(f => ({
+      ...f, joinDate: date,
+      paidTill: f.feePlan !== 'custom' ? calcPaidTillFull(date, f.feePlan) : f.paidTill,
+    }))
+  }
 
   const toggleAdditionalBatch = (id) => {
     setAdditionalBatchIds(prev =>
@@ -742,10 +762,13 @@ function AddStudentModal({ onClose, onSave }) {
 
   const validate = () => {
     const e = {}
-    if (!form.name.trim())            e.name    = 'Required'
-    if (!/^\d{10}$/.test(form.phone)) e.phone   = 'Enter 10-digit number'
-    if (!form.sport)                  e.sport   = 'Select a sport'
-    if (!form.batchId)                e.batchId = 'Select a batch'
+    if (!form.name.trim())              e.name         = 'Required'
+    if (!/^\d{10}$/.test(form.phone))   e.phone        = 'Enter 10-digit number'
+    if (!form.sport)                    e.sport        = 'Select a sport'
+    if (!form.batchId)                  e.batchId      = 'Select a batch'
+    if (!form.trainingType)             e.trainingType = 'Select a training type'
+    if (!form.fees || Number(form.fees) <= 0) e.fees   = 'Enter fee amount'
+    if (!form.paidTill)                 e.paidTill     = 'Required'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -761,7 +784,7 @@ function AddStudentModal({ onClose, onSave }) {
       <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 mb-5">
         <p className="text-xs text-blue-700">
           A <strong>Student ID</strong> and <strong>Join Code</strong> will be auto-generated.
-          Record the first payment from the Payments page after adding.
+          Fee and Paid Till are required — first payment will be recorded automatically.
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -860,7 +883,7 @@ function AddStudentModal({ onClose, onSave }) {
 
         {/* Training Type */}
         <div>
-          <label className="label">Training Type</label>
+          <label className="label">Training Type *</label>
           <div className="flex gap-2">
             {['Daily', 'Alternate'].map(t => (
               <button key={t} type="button"
@@ -870,6 +893,7 @@ function AddStudentModal({ onClose, onSave }) {
               </button>
             ))}
           </div>
+          {errors.trainingType && <p className="text-[11px] text-red-500 mt-1">{errors.trainingType}</p>}
         </div>
 
         {/* Additional Batches — Daily only, max 1 extra */}
@@ -897,20 +921,62 @@ function AddStudentModal({ onClose, onSave }) {
           </div>
         )}
 
+        {/* Payment Plan */}
+        <div className="sm:col-span-2">
+          <label className="label">Payment Plan <span className="text-gray-400 font-normal">(optional)</span></label>
+          <div className="flex gap-2">
+            {FEE_PLAN_OPTIONS.map(p => (
+              <button key={p.key} type="button"
+                onClick={() => handleFeePlan(p.key)}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold border transition active:scale-95 ${form.feePlan === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                {p.label}
+                <span className={`block text-[10px] font-normal mt-0.5 ${form.feePlan === p.key ? 'text-brand-200' : 'text-gray-400'}`}>{p.sub}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Fee Amount */}
+        <div>
+          <label className="label">{FEE_LABEL[form.feePlan]?.replace(' *', '') || 'Fee (₹)'} *</label>
+          <input className={`input ${errors.fees ? 'border-red-400' : ''}`} type="number" inputMode="numeric" min="0"
+            placeholder="e.g. 9000"
+            value={form.fees}
+            onChange={e => set('fees', e.target.value)} />
+          {errors.fees && <p className="text-[11px] text-red-500 mt-1">{errors.fees}</p>}
+        </div>
+
+        {/* Joining Fee */}
+        <div>
+          <label className="label">Joining Fee (₹) <span className="text-gray-400 font-normal">(one-time, optional)</span></label>
+          <input className="input" type="number" inputMode="numeric" min="0"
+            placeholder="e.g. 500"
+            value={form.joiningFee}
+            onChange={e => set('joiningFee', e.target.value)} />
+          {form.joiningFee > 0 && (
+            <p className="text-[11px] text-purple-500 mt-1">Added to first payment · shown in payment detail</p>
+          )}
+        </div>
+
         {/* Join Date */}
         <div>
           <label className="label">Join Date</label>
           <input className="input" type="date" value={form.joinDate}
             max={new Date().toISOString().split('T')[0]}
-            onChange={e => set('joinDate', e.target.value)} />
+            onChange={e => handleJoinDateAdd(e.target.value)} />
         </div>
 
         {/* Paid Till */}
         <div>
-          <label className="label">Paid Till <span className="text-gray-400 font-normal">(optional)</span></label>
-          <input className="input" type="date" value={form.paidTill}
+          <label className="label">Paid Till *</label>
+          <input className={`input ${errors.paidTill ? 'border-red-400' : ''}`} type="date" value={form.paidTill}
             onChange={e => set('paidTill', e.target.value)} />
-          {form.paidTill && new Date(form.paidTill) < new Date() && (
+          {errors.paidTill && <p className="text-[11px] text-red-500 mt-1">{errors.paidTill}</p>}
+          {form.paidTill && form.fees > 0 && (() => {
+            const p = coveragePreview(form.joinDate || form.paidTill, form.paidTill)
+            return p ? <p className="text-[11px] text-brand-600 font-semibold mt-1">Covers: {p}</p> : null
+          })()}
+          {form.paidTill && form.fees > 0 && new Date(form.paidTill) < new Date() && (
             <p className="text-[11px] text-amber-600 mt-1">Past date — student will show as Overdue</p>
           )}
         </div>
@@ -952,43 +1018,12 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white h-full w-full max-w-md shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-6 pt-6 pb-8">
-          <div className="flex items-start justify-between mb-4">
-            <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition">
-              <X size={16} className="text-white" />
-            </button>
-            <div className="flex gap-2">
-              <button
-                onClick={() => onEdit(s)}
-                className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-brand-700 hover:bg-brand-50 transition"
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => onStatusChange(s.id, s.status === 'Active' ? 'Inactive' : 'Active')}
-                className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white/15 hover:bg-white/25 text-white transition"
-              >
-                {s.status === 'Active' ? 'Mark Inactive' : 'Mark Active'}
-              </button>
-              {isProfileOverdue && onSuspend && (
-                <button
-                  onClick={() => { onSuspend(s); onClose() }}
-                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition"
-                >
-                  Suspend Now
-                </button>
-              )}
-              {s.studentCode && (
-                <button
-                  onClick={() => onReset(s)}
-                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white/15 hover:bg-white/25 text-white transition"
-                >
-                  Reset Password
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
+        <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-6 pt-5 pb-5 relative">
+          {/* Close button — always visible top-right */}
+          <button onClick={onClose} className="absolute top-4 right-4 p-1.5 rounded-lg bg-white/15 hover:bg-white/25 transition z-10">
+            <X size={16} className="text-white" />
+          </button>
+          <div className="flex items-center gap-4 pr-10">
             {s.photoUrl ? (
               <img src={s.photoUrl} alt={s.name} loading="lazy"
                 className="w-16 h-16 rounded-2xl object-cover border-2 border-white/30 flex-shrink-0" />
@@ -1025,17 +1060,41 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
               <p className="text-[10px] text-brand-200">Status</p>
             </div>
           </div>
+          {/* Action buttons — always visible below stats */}
+          <div className="flex flex-wrap gap-2 mt-4">
+            <button
+              onClick={() => onEdit(s)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-white text-brand-700 hover:bg-brand-50 transition"
+            >
+              <Pencil size={12} /> Edit Profile
+            </button>
+            <button
+              onClick={() => onStatusChange(s.id, s.status === 'Active' ? 'Inactive' : 'Active')}
+              className="px-3 py-2 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white border border-white/20 transition"
+            >
+              {s.status === 'Active' ? 'Mark Inactive' : 'Mark Active'}
+            </button>
+            {isProfileOverdue && onSuspend && (
+              <button
+                onClick={() => { onSuspend(s); onClose() }}
+                className="px-3 py-2 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition"
+              >
+                Suspend Now
+              </button>
+            )}
+            {s.studentCode && (
+              <button
+                onClick={() => onReset(s)}
+                className="px-3 py-2 text-xs font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white border border-white/20 transition"
+              >
+                Reset Password
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* Edit action */}
-          <button
-            onClick={() => onEdit(s)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 active:scale-95 transition"
-          >
-            <Pencil size={14} /> Edit Profile
-          </button>
           {/* Personal Info */}
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Personal Info</p>
@@ -1201,7 +1260,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     fees:         s.fees         || '',
     paidTill:     normPaidTill,
     joinDate:     s.joinDate     || '',
-    trainingType: s.trainingType || 'Daily',
+    trainingType: s.trainingType || '',
     feePlan:      s.feePlan      || 'monthly',
     position:     s.position     || '',
   })
@@ -1230,8 +1289,9 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
 
   const validate = () => {
     const e = {}
-    if (!form.name.trim())            e.name  = 'Required'
-    if (!/^\d{10}$/.test(form.phone)) e.phone = 'Enter 10-digit number'
+    if (!form.name.trim())            e.name         = 'Required'
+    if (!/^\d{10}$/.test(form.phone)) e.phone        = 'Enter 10-digit number'
+    if (!form.trainingType)           e.trainingType = 'Select a training type'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -1306,11 +1366,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           </select>
         </div>
         <div>
-          <label className="label">{FEE_LABEL[form.feePlan] || 'Fee (₹)'}</label>
-          <input className="input" type="number" inputMode="numeric" value={form.fees} onChange={e => set('fees', e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Training Type</label>
+          <label className="label">Training Type *</label>
           <div className="flex gap-2">
             {['Daily','Alternate'].map(t => (
               <button key={t} type="button"
@@ -1320,56 +1376,35 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
               </button>
             ))}
           </div>
+          {errors.trainingType && <p className="text-[11px] text-red-500 mt-1">{errors.trainingType}</p>}
         </div>
-        <div className="sm:col-span-2">
-          <label className="label">Fee Plan</label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {FEE_PLAN_OPTIONS.map(p => (
-              <button key={p.key} type="button" onClick={() => handleFeePlan(p.key)}
-                className={`py-3 rounded-xl text-xs font-bold border transition active:scale-95 ${form.feePlan === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                <div>{p.label}</div>
-                <div className={`font-normal mt-0.5 ${form.feePlan === p.key ? 'text-brand-200' : 'text-gray-400'}`}>{p.sub}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {form.feePlan !== 'custom' && (<>
-          <div>
-            <label className="label">Join Date</label>
+        <div>
+          <label className="label">Join Date</label>
+          {s.joinDate ? (
+            <div className="input bg-gray-50 text-gray-700 cursor-default select-none">
+              {new Date(s.joinDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </div>
+          ) : (
             <input className="input" type="date" value={form.joinDate}
               max={new Date().toISOString().split('T')[0]}
-              onChange={e => handleJoinDate(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Paid Till</label>
-            <input className="input" type="month" value={form.paidTill}
-              onChange={e => set('paidTill', e.target.value)} />
-            {preview && <p className="text-xs text-brand-600 font-semibold mt-1">Covers: {preview}</p>}
-          </div>
-        </>)}
+              onChange={e => set('joinDate', e.target.value)} />
+          )}
+        </div>
 
-        {form.feePlan === 'custom' && (
-          <div className="sm:col-span-2 bg-brand-50 border border-brand-100 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label text-brand-700">Join / Start Date</label>
-              <input className="input" type="date"
-                max={new Date().toISOString().split('T')[0]}
-                value={form.joinDate}
-                onChange={e => set('joinDate', e.target.value)} />
-            </div>
-            <div>
-              <label className="label text-brand-700">Paid Till (End Date)</label>
-              <input className="input" type="date"
-                min={form.joinDate || undefined}
-                value={form.paidTill}
-                onChange={e => set('paidTill', e.target.value)} />
-            </div>
-            {preview && (
-              <p className="sm:col-span-2 text-xs text-brand-600 font-semibold -mt-2">Covers: {preview}</p>
-            )}
+        {/* Fee and payment history are managed from the Payments page */}
+        <div className="sm:col-span-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-gray-500">Fee &amp; Payment History</p>
+            <p className="text-sm font-bold text-gray-800 mt-0.5">
+              ₹{(s.fees || 0).toLocaleString('en-IN')}
+              <span className="text-xs font-normal text-gray-400 ml-2">
+                {s.feePlan && s.feePlan !== 'monthly' ? s.feePlan.charAt(0).toUpperCase() + s.feePlan.slice(1) : 'Monthly'}
+                {s.paidTill && ` · Paid till ${new Date(s.paidTill + (s.paidTill.length === 7 ? '-01' : '')).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+              </span>
+            </p>
           </div>
-        )}
+          <p className="text-[11px] text-gray-400">Manage from Payments page</p>
+        </div>
       </div>
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6">
         <button className="btn-secondary justify-center py-3 sm:py-2" onClick={onClose}>Cancel</button>

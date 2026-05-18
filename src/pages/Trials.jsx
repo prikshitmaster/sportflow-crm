@@ -810,6 +810,7 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     feePlanId:   '',
     trainingType:'Daily',
     paidTill:    trial.trialFeePaid > 0 ? autoMonth : '',
+    joiningFee:  '',
   })
   const [errors, setErrors] = useState({})
 
@@ -1047,31 +1048,47 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
             )}
           </div>
 
-          {/* Trial fee deduction banner */}
-          {trialDeduct > 0 && (
-            <div className="mt-4 rounded-xl overflow-hidden border border-emerald-200">
-              <div className="bg-emerald-600 px-4 py-2 flex items-center justify-between">
-                <span className="text-[10px] font-black text-white uppercase tracking-wider">Trial Conversion — First Month</span>
-                <span className="text-[10px] text-emerald-100 font-semibold">₹{trialDeduct} already collected</span>
+          {/* Trial fee deduction banner — always show when converting so joining fee is always accessible */}
+          <div className="mt-4 rounded-xl overflow-hidden border border-emerald-200">
+            <div className="bg-emerald-600 px-4 py-2 flex items-center justify-between">
+              <span className="text-[10px] font-black text-white uppercase tracking-wider">Trial Conversion — First Payment</span>
+              {trialDeduct > 0 && <span className="text-[10px] text-emerald-100 font-semibold">₹{trialDeduct} already collected</span>}
+            </div>
+            <div className="bg-emerald-50 px-4 py-3 space-y-1.5 text-xs">
+              <div className="flex justify-between text-gray-600">
+                <span>{FEE_LABEL[form.feePlan]?.replace(' *','') || 'Fee'}</span>
+                <span className="font-semibold">₹{form.fees ? Number(form.fees).toLocaleString('en-IN') : '—'}</span>
               </div>
-              <div className="bg-emerald-50 px-4 py-3 space-y-1.5 text-xs">
-                <div className="flex justify-between text-gray-600">
-                  <span>{FEE_LABEL[form.feePlan]?.replace(' *','') || 'Fee'}</span>
-                  <span className="font-semibold">₹{form.fees ? Number(form.fees).toLocaleString('en-IN') : '—'}</span>
-                </div>
+              {trialDeduct > 0 && (
                 <div className="flex justify-between text-emerald-700">
                   <span>Trial Fee Deduction</span>
                   <span className="font-bold">− ₹{trialDeduct.toLocaleString('en-IN')}</span>
                 </div>
-                <div className="flex justify-between font-black text-gray-900 border-t border-emerald-200 pt-2 text-sm">
-                  <span>First Payment Due</span>
-                  <span className="text-emerald-700">
-                    ₹{form.fees ? Math.max(0, Number(form.fees) - trialDeduct).toLocaleString('en-IN') : '—'}
-                  </span>
+              )}
+              {/* Joining Fee row */}
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-purple-700 font-semibold">Joining Fee (one-time)</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-purple-600 font-bold text-[11px]">+ ₹</span>
+                  <input
+                    type="number" min="0" inputMode="numeric"
+                    placeholder="0"
+                    value={form.joiningFee}
+                    onChange={e => set('joiningFee', e.target.value)}
+                    className="w-24 px-2 py-1 rounded-lg border border-purple-200 bg-white text-sm font-semibold text-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-300 text-right"
+                  />
                 </div>
               </div>
+              <div className="flex justify-between font-black text-gray-900 border-t border-emerald-200 pt-2 text-sm">
+                <span>First Payment Due</span>
+                <span className="text-emerald-700">
+                  ₹{form.fees
+                    ? Math.max(0, Number(form.fees) - trialDeduct + (Number(form.joiningFee) || 0)).toLocaleString('en-IN')
+                    : '—'}
+                </span>
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Footer */}
@@ -1386,6 +1403,7 @@ export default function Trials() {
         paidTill:     form.paidTill    || null,
         fromTrial:    true,
         trialFeePaid: trial.trialFeePaid || 0,
+        joiningFee:   Number(form.joiningFee) || 0,
       })
     } catch {
       // Revert trial stage if student creation failed (silent — addStudent already toasted the failure)
