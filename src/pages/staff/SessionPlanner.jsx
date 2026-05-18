@@ -15,6 +15,75 @@ import {
   Zap, Package, MapPin, TrendingUp, TrendingDown, Target, ListOrdered,
 } from 'lucide-react'
 
+// ── Pitch SVG presets (mirrors Drills.jsx) ───────────────────────────────────
+const PITCH_BG = '#2D7A3A'
+const W = { stroke: 'white', strokeWidth: '1.5', fill: 'none' }
+function PitchSVG({ type }) {
+  const base = { viewBox: '0 0 100 65', xmlns: 'http://www.w3.org/2000/svg', className: 'w-full h-full' }
+  switch (type) {
+    case 'full_pitch': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="3" y="3" width="94" height="59" {...W}/>
+        <line x1="50" y1="3" x2="50" y2="62" {...W}/>
+        <circle cx="50" cy="32.5" r="8" {...W}/>
+        <rect x="3" y="17" width="16" height="31" {...W}/>
+        <rect x="81" y="17" width="16" height="31" {...W}/>
+        <rect x="3" y="26" width="4" height="13" fill="white" opacity="0.3"/>
+        <rect x="93" y="26" width="4" height="13" fill="white" opacity="0.3"/>
+      </svg>)
+    case 'half_pitch': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="3" y="3" width="94" height="59" {...W}/>
+        <line x1="3" y1="3" x2="97" y2="3" stroke="white" strokeWidth="2.5" fill="none"/>
+        <rect x="18" y="45" width="64" height="17" {...W}/>
+        <rect x="35" y="57" width="30" height="8" fill="white" opacity="0.3"/>
+        <path d="M 35 3 A 15 15 0 0 0 65 3" {...W}/>
+      </svg>)
+    case 'channel': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="25" y="3" width="50" height="59" {...W}/>
+        <line x1="25" y1="32.5" x2="75" y2="32.5" stroke="white" strokeWidth="1" strokeDasharray="3 2" fill="none"/>
+        <rect x="40" y="3" width="20" height="5" fill="white" opacity="0.4"/>
+        <rect x="40" y="57" width="20" height="5" fill="white" opacity="0.4"/>
+      </svg>)
+    case 'penalty_box': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="10" y="8" width="80" height="47" {...W}/>
+        <rect x="30" y="46" width="40" height="9" {...W}/>
+        <circle cx="50" cy="34" r="2" fill="white"/>
+        <rect x="35" y="55" width="30" height="9" fill="white" opacity="0.35" stroke="white" strokeWidth="1.5"/>
+        <path d="M 30 8 A 20 20 0 0 0 70 8" {...W}/>
+      </svg>)
+    case 'thirds': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="3" y="3" width="94" height="59" {...W}/>
+        <line x1="3" y1="23" x2="97" y2="23" stroke="white" strokeWidth="1" strokeDasharray="4 2" fill="none"/>
+        <line x1="3" y1="42" x2="97" y2="42" stroke="white" strokeWidth="1" strokeDasharray="4 2" fill="none"/>
+        <text x="50" y="15" textAnchor="middle" fill="white" fontSize="5" opacity="0.7">Defensive</text>
+        <text x="50" y="34" textAnchor="middle" fill="white" fontSize="5" opacity="0.7">Middle</text>
+        <text x="50" y="53" textAnchor="middle" fill="white" fontSize="5" opacity="0.7">Attacking</text>
+      </svg>)
+    case 'small_grid': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="10" y="5" width="80" height="55" {...W}/>
+        <line x1="10" y1="23.3" x2="90" y2="23.3" stroke="white" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="10" y1="41.7" x2="90" y2="41.7" stroke="white" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="36.7" y1="5" x2="36.7" y2="60" stroke="white" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="63.3" y1="5" x2="63.3" y2="60" stroke="white" strokeWidth="0.8" opacity="0.6"/>
+        <circle cx="10" cy="5" r="2.5" fill="#FFD700"/>
+        <circle cx="90" cy="5" r="2.5" fill="#FFD700"/>
+        <circle cx="10" cy="60" r="2.5" fill="#FFD700"/>
+        <circle cx="90" cy="60" r="2.5" fill="#FFD700"/>
+      </svg>)
+    default: return null
+  }
+}
+function DrillDiagram({ url, preset }) {
+  if (url) return <img src={url} alt="Drill diagram" className="w-full object-contain bg-gray-100" />
+  if (preset) return <div className="w-full aspect-video"><PitchSVG type={preset} /></div>
+  return null
+}
+
 const PHASE_CATEGORIES = [
   { key: 'warm_up',    label: 'Warm Up',      color: 'bg-orange-100 text-orange-700 border-orange-200' },
   { key: 'technical',  label: 'Technical',    color: 'bg-blue-100 text-blue-700 border-blue-200' },
@@ -167,9 +236,10 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
           ) : (
             <div className="space-y-0">
               {/* ── Pitch diagram ── */}
-              {drill?.diagram_url && (
-                <img src={drill.diagram_url} alt="Pitch diagram"
-                  className="w-full object-contain bg-emerald-50 max-h-52" />
+              {(drill?.diagram_url || drill?.diagram_preset) && (
+                <div className="w-full">
+                  <DrillDiagram url={drill.diagram_url} preset={drill.diagram_preset} />
+                </div>
               )}
 
               <div className="px-4 pt-3 pb-4 space-y-3">
