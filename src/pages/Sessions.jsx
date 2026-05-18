@@ -32,8 +32,14 @@ function totalDuration(plan) {
   return phases.reduce((s, p) => s + (p.duration || 0), 0)
 }
 
+function coachName(plan, staff) {
+  if (!plan?.coach_id) return null
+  const member = (staff || []).find(s => String(s.id) === String(plan.coach_id))
+  return member?.name || null
+}
+
 // ── Session Detail Slide-in ───────────────────────────────────────────────────
-function SessionDetail({ planId, batches, batchColorMap, onClose, onDeleted }) {
+function SessionDetail({ planId, batches, batchColorMap, staff, onClose, onDeleted }) {
   const [plan, setPlan]     = useState(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
@@ -83,6 +89,9 @@ function SessionDetail({ planId, batches, batchColorMap, onClose, onDeleted }) {
               <div>
                 <p className="font-bold text-gray-900">{batch?.name || '—'}</p>
                 <p className="text-sm text-gray-500 mt-0.5">{fmt(plan.date)}</p>
+                {coachName(plan, staff) && (
+                  <p className="text-xs text-gray-500 mt-0.5">Coach: <span className="font-medium text-gray-700">{coachName(plan, staff)}</span></p>
+                )}
                 {plan.topic && <p className="text-sm font-medium text-gray-700 mt-1">{plan.topic}</p>}
               </div>
               <div className="flex items-center gap-2">
@@ -180,7 +189,7 @@ function SessionDetail({ planId, batches, batchColorMap, onClose, onDeleted }) {
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
 export default function Sessions() {
-  const { user, batches: ctxBatches } = useApp()
+  const { user, batches: ctxBatches, staff } = useApp()
   const [sessions, setSessions] = useState([])
   const [loading, setLoading]   = useState(true)
   const [today]                 = useState(new Date())
@@ -385,6 +394,7 @@ export default function Sessions() {
                           <p className="font-semibold text-sm text-gray-900 truncate">{b?.name || '—'}</p>
                           {plan.topic && <p className="text-xs text-gray-500 truncate">{plan.topic}</p>}
                           <p className="text-xs text-gray-400 mt-0.5">
+                            {coachName(plan, staff) && <span>{coachName(plan, staff)} · </span>}
                             {(plan.session_phases || []).length} phases
                             {plan.status === 'completed' && ' · ✓ Done'}
                           </p>
@@ -452,6 +462,7 @@ export default function Sessions() {
           planId={detailId}
           batches={batches}
           batchColorMap={batchColorMap}
+          staff={staff}
           onClose={() => setDetailId(null)}
           onDeleted={() => { setDetailId(null); load() }}
         />
