@@ -32,6 +32,7 @@ const AdminQR          = lazy(() => import('./pages/AdminQR'))
 const Events           = lazy(() => import('./pages/Events'))
 const StaffAttendanceQR = lazy(() => import('./pages/StaffAttendanceQR'))
 const SportSelect      = lazy(() => import('./pages/SportSelect'))
+const Drills           = lazy(() => import('./pages/Drills'))
 
 // Staff pages — lazy loaded
 const StaffDashboard   = lazy(() => import('./pages/staff/StaffDashboard'))
@@ -187,6 +188,7 @@ function AppRoutes() {
         <Route path="gate-qr"    element={<AdminQR />} />
         <Route path="staff-qr"   element={<StaffAttendanceQR />} />
         <Route path="events"     element={<Events />} />
+        <Route path="drills"     element={<Drills />} />
       </Route>
 
       {/* Staff */}

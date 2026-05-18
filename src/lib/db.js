@@ -2294,3 +2294,55 @@ export async function fetchAllAuditLogs(limit = 500) {
   return data || []
 }
 
+// ── Session Planner: Drill Library ───────────────────────────
+
+export async function fetchDrills(academyId) {
+  let q = supabase.from('drills').select('*').order('name')
+  if (academyId) q = q.or(`is_global.eq.true,academy_id.eq.${academyId}`)
+  else           q = q.eq('is_global', true)
+  const { data, error } = await q
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function createDrill(drill) {
+  const { data, error } = await supabase.from('drills').insert(drill).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateDrill(id, updates) {
+  const { data, error } = await supabase.from('drills').update(updates).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteDrill(id) {
+  const { error } = await supabase.from('drills').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function fetchDrillFavorites(staffId) {
+  if (!staffId) return []
+  const { data, error } = await supabase
+    .from('drill_favorites').select('drill_id').eq('staff_id', staffId)
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return (data || []).map(r => r.drill_id)
+}
+
+export async function toggleDrillFavorite(drillId, staffId, academyId) {
+  const { data: existing } = await supabase
+    .from('drill_favorites').select('id')
+    .eq('drill_id', drillId).eq('staff_id', staffId).maybeSingle()
+  if (existing) {
+    const { error } = await supabase.from('drill_favorites').delete().eq('id', existing.id)
+    if (error) throw error
+    return false
+  } else {
+    const { error } = await supabase.from('drill_favorites').insert({ drill_id: drillId, staff_id: staffId, academy_id: academyId })
+    if (error) throw error
+    return true
+  }
+}
+
+

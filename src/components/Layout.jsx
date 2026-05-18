@@ -50,6 +50,7 @@ export default function Layout() {
       import('../pages/AdminQR')
       import('../pages/StaffAttendanceQR')
       import('../pages/Events')
+      import('../pages/Drills')
     })
   }, [])
 
