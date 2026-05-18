@@ -114,14 +114,6 @@ function SessionDetail({ planId, batches, batchColorMap, staff, onClose, onDelet
               </div>
             </div>
 
-            {/* Ground photo */}
-            {plan.ground_photo_url && (
-              <div className="px-5 pb-3">
-                <img src={plan.ground_photo_url} alt="Ground setup"
-                  className="w-full h-36 object-cover rounded-xl border border-gray-100" />
-              </div>
-            )}
-
             {/* Stats row */}
             <div className="flex gap-4 px-5 pb-4 border-b border-gray-100">
               <div className="flex items-center gap-1.5 text-sm text-gray-600">

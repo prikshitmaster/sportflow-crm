@@ -1,18 +1,18 @@
 // Staff Session Planner — coaches build and manage training sessions
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '../../context/AppContext'
 import {
   fetchSessionPlans, fetchSessionPlan, createSessionPlan, updateSessionPlan,
   deleteSessionPlan as dbDeleteSessionPlan, activateSessionPlan, completeSessionPlan,
   duplicateSessionPlan, createSessionPhase, updateSessionPhase, deleteSessionPhase,
-  reorderSessionPhases, fetchDrills, uploadGroundPhoto,
+  reorderSessionPhases, fetchDrills,
 } from '../../lib/db'
 import { exportSessionPDF } from '../../lib/sessionPDF'
 import {
   Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Check, Copy,
   Clock, Users, BookOpen, ChevronDown, ChevronUp, X, Save,
   CalendarDays, Trophy, ArrowUp, ArrowDown, FileDown, AlertCircle,
-  Camera, Zap, CheckCircle2,
+  Zap, Package, MapPin, TrendingUp, TrendingDown, Target, ListOrdered,
 } from 'lucide-react'
 
 const PHASE_CATEGORIES = [
@@ -111,8 +111,11 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
     setEditing(false)
   }
 
+  const drill = phase.drills
+
   return (
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      {/* Row header */}
       <div className="flex items-center gap-2 px-3 py-3">
         <span className="text-xs font-bold text-gray-400 w-5 text-center">{index + 1}</span>
         <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${catStyle(phase.phase_name)}`}>
@@ -120,12 +123,12 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
         </span>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm text-gray-900 truncate">
-            {phase.drills?.name || phase.area || 'Custom phase'}
+            {drill?.name || phase.area || 'Custom phase'}
           </p>
-          <p className="text-xs text-gray-400">{phase.duration}m</p>
+          <p className="text-xs text-gray-400">{phase.duration}m{drill?.area ? ` · ${drill.area}` : ''}</p>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={onMoveUp}   disabled={index === 0}     className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-30"><ArrowUp size={13} /></button>
+          <button onClick={onMoveUp}   disabled={index === 0}         className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-30"><ArrowUp size={13} /></button>
           <button onClick={onMoveDown} disabled={index === total - 1} className="p-1 text-gray-300 hover:text-gray-600 disabled:opacity-30"><ArrowDown size={13} /></button>
           <button onClick={() => { setEditing(e => !e); setExpanded(true) }} className="p-1 text-gray-400 hover:text-brand-600"><Edit2 size={13} /></button>
           <button onClick={onDelete} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
@@ -136,9 +139,9 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
       </div>
 
       {expanded && (
-        <div className="border-t border-gray-100 px-4 pb-3 pt-2 space-y-3">
+        <div className="border-t border-gray-100">
           {editing ? (
-            <>
+            <div className="px-4 pb-3 pt-2 space-y-3">
               <div className="flex items-center gap-3">
                 <label className="text-xs text-gray-500 w-16">Duration</label>
                 <input type="number" value={dur} min={1} max={90}
@@ -160,30 +163,120 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
                 </button>
                 <button onClick={() => setEditing(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600">Cancel</button>
               </div>
-            </>
+            </div>
           ) : (
-            <>
-              {phase.drills && (
-                <div className="bg-gray-50 rounded-xl p-3 space-y-1">
-                  <p className="text-xs font-semibold text-gray-700">Drill: {phase.drills.name}</p>
-                  {phase.drills.area && <p className="text-xs text-gray-500">Area: {phase.drills.area}</p>}
-                  {phase.drills.context_ct && <p className="text-xs text-blue-600">CT — {phase.drills.context_ct}</p>}
-                  {phase.drills.context_mt && <p className="text-xs text-red-600">MT — {phase.drills.context_mt}</p>}
-                </div>
+            <div className="space-y-0">
+              {/* ── Pitch diagram ── */}
+              {drill?.diagram_url && (
+                <img src={drill.diagram_url} alt="Pitch diagram"
+                  className="w-full object-contain bg-emerald-50 max-h-52" />
               )}
-              {phase.coaching_points?.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 mb-1">Coaching Notes</p>
-                  <ul className="space-y-1">
-                    {phase.coaching_points.map((cp, i) => (
-                      <li key={i} className="text-xs text-gray-600 flex gap-2">
-                        <span className="text-brand-500">•</span>{cp}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
+
+              <div className="px-4 pt-3 pb-4 space-y-3">
+                {/* Context strips */}
+                {(drill?.context_ct || drill?.context_mt) && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {drill.context_ct && (
+                      <div className="bg-blue-50 rounded-xl px-3 py-2">
+                        <p className="text-[10px] font-bold text-blue-400 uppercase mb-0.5">Your Team (CT)</p>
+                        <p className="text-xs text-blue-700">{drill.context_ct}</p>
+                      </div>
+                    )}
+                    {drill.context_mt && (
+                      <div className="bg-red-50 rounded-xl px-3 py-2">
+                        <p className="text-[10px] font-bold text-red-400 uppercase mb-0.5">Opposition (MT)</p>
+                        <p className="text-xs text-red-700">{drill.context_mt}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Equipment */}
+                {drill?.equipment?.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <Package size={13} className="text-gray-400 mt-0.5 shrink-0" />
+                    <p className="text-xs text-gray-600">{drill.equipment.join(' · ')}</p>
+                  </div>
+                )}
+
+                {/* Area */}
+                {drill?.area && (
+                  <div className="flex items-start gap-2">
+                    <MapPin size={13} className="text-gray-400 mt-0.5 shrink-0" />
+                    <p className="text-xs text-gray-600">{drill.area}</p>
+                  </div>
+                )}
+
+                {/* Step-by-step procedure */}
+                {drill?.procedure?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                      <ListOrdered size={11} /> How to run it
+                    </p>
+                    <ol className="space-y-1.5">
+                      {drill.procedure.map((step, i) => (
+                        <li key={i} className="flex gap-2 text-xs text-gray-700">
+                          <span className="shrink-0 w-4 h-4 rounded-full bg-brand-100 text-brand-700 font-bold flex items-center justify-center text-[10px]">{i + 1}</span>
+                          <span>{step}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {/* Drill coaching points */}
+                {drill?.coaching_points?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                      <Target size={11} /> Coaching points
+                    </p>
+                    <ul className="space-y-1">
+                      {drill.coaching_points.map((cp, i) => (
+                        <li key={i} className="text-xs text-gray-600 flex gap-2">
+                          <span className="text-brand-500 shrink-0">•</span>{cp}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Phase-level coach notes */}
+                {phase.coaching_points?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">My notes</p>
+                    <ul className="space-y-1">
+                      {phase.coaching_points.map((cp, i) => (
+                        <li key={i} className="text-xs text-gray-600 flex gap-2">
+                          <span className="text-amber-500 shrink-0">•</span>{cp}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Progressions / Regressions */}
+                {(drill?.progressions?.length > 0 || drill?.regressions?.length > 0) && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {drill.progressions?.length > 0 && (
+                      <div className="bg-gray-50 rounded-xl px-3 py-2">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase mb-1 flex items-center gap-1"><TrendingUp size={10} /> Harder</p>
+                        {drill.progressions.map((p, i) => (
+                          <p key={i} className="text-[11px] text-gray-600">• {p}</p>
+                        ))}
+                      </div>
+                    )}
+                    {drill.regressions?.length > 0 && (
+                      <div className="bg-gray-50 rounded-xl px-3 py-2">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase mb-1 flex items-center gap-1"><TrendingDown size={10} /> Easier</p>
+                        {drill.regressions.map((r, i) => (
+                          <p key={i} className="text-[11px] text-gray-600">• {r}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -203,8 +296,6 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
   const [duplicateModal, setDuplicateModal] = useState(false)
   const [dupDate, setDupDate] = useState('')
   const [dupBatch, setDupBatch] = useState(plan.batch_id || '')
-  const [photoUploading, setPhotoUploading] = useState(false)
-  const photoInputRef = useRef(null)
 
   const totalDur = phases.reduce((s, p) => s + (p.duration || 0), 0)
 
@@ -283,19 +374,6 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
     }
   }
 
-  const handlePhotoUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setPhotoUploading(true)
-    try {
-      const url = await uploadGroundPhoto(file, plan.id)
-      await updateSessionPlan(plan.id, { ground_photo_url: url })
-      setPlan(prev => ({ ...prev, ground_photo_url: url }))
-    } finally {
-      setPhotoUploading(false)
-      e.target.value = ''
-    }
-  }
 
   const handleDuplicate = async () => {
     if (!dupDate) return
@@ -385,36 +463,6 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
             />
           </div>
 
-          {/* Ground photo */}
-          <div className="flex items-start gap-3">
-            <label className="text-xs text-gray-500 w-16 shrink-0 pt-1">Ground</label>
-            <div className="flex-1">
-              {plan.ground_photo_url ? (
-                <div className="relative">
-                  <img src={plan.ground_photo_url} alt="Ground setup"
-                    className="w-full h-36 object-cover rounded-xl border border-gray-200" />
-                  {plan.status !== 'completed' && (
-                    <button onClick={() => photoInputRef.current?.click()}
-                      className="absolute bottom-2 right-2 flex items-center gap-1 px-2.5 py-1.5 bg-black/60 text-white rounded-lg text-[11px] font-semibold">
-                      <Camera size={11} /> Change
-                    </button>
-                  )}
-                </div>
-              ) : (
-                plan.status !== 'completed' && (
-                  <button onClick={() => photoInputRef.current?.click()} disabled={photoUploading}
-                    className="w-full h-20 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-1.5 text-gray-400 hover:border-brand-400 hover:text-brand-500 transition disabled:opacity-50">
-                    {photoUploading
-                      ? <><div className="w-4 h-4 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" /><span className="text-[11px]">Uploading…</span></>
-                      : <><Camera size={18} /><span className="text-[11px] font-medium">Add ground photo</span></>
-                    }
-                  </button>
-                )
-              )}
-              <input ref={photoInputRef} type="file" accept="image/*" capture="environment"
-                className="hidden" onChange={handlePhotoUpload} />
-            </div>
-          </div>
         </div>
 
         {/* Phases */}

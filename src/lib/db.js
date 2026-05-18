@@ -2440,14 +2440,6 @@ export async function completeSessionPlan(id) {
   return data
 }
 
-export async function uploadGroundPhoto(file, sessionId) {
-  const ext  = file.name.split('.').pop()
-  const path = `ground/${sessionId}.${ext}`
-  const { error } = await supabase.storage.from('session-photos').upload(path, file, { upsert: true })
-  if (error) throw error
-  const { data: { publicUrl } } = supabase.storage.from('session-photos').getPublicUrl(path)
-  return publicUrl
-}
 
 export async function duplicateSessionPlan(id, newDate, newBatchId) {
   // Fetch original with phases
