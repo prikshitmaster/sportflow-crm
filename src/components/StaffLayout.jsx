@@ -34,11 +34,10 @@ const BASE_OFFICE_TABS = [
 const TRIALS_TAB = { to: '/staff/trials', label: 'Trials', icon: UserPlus }
 
 export default function StaffLayout() {
-  const { user, logoutStaff, hasPermission, selectedSport, sportBranches } = useApp()
+  const { user, logoutStaff, hasPermission, selectedSport } = useApp()
   const navigate = useNavigate()
 
-  const currentSportName = (sportBranches || []).find(sb => sb.id === selectedSport)?.sportName || null
-  const isFootball = currentSportName?.toLowerCase() === 'football'
+  const isFootball = selectedSport?.toLowerCase() === 'football'
 
   useEffect(() => {
     // Prefetch all staff page chunks so tab switches are instant

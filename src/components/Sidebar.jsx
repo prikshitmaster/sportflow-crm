@@ -30,16 +30,14 @@ const nav = [
 ]
 
 export default function Sidebar({ collapsed, setCollapsed }) {
-  const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport, sportBranches } = useApp()
+  const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport } = useApp()
   const navigate = useNavigate()
-
-  const currentSportName = (sportBranches || []).find(sb => sb.id === selectedSport)?.sportName || null
 
   // Owner sees all feature-enabled items; admin sees only items they have permission for
   const visible = nav.filter(item => {
     const featureOk  = item.feature === null || isFeatureOn(item.feature)
     const permOk     = role === 'owner' || item.permission === null || hasPermission(item.permission)
-    const footballOk = !item.footballOnly || currentSportName?.toLowerCase() === 'football'
+    const footballOk = !item.footballOnly || selectedSport?.toLowerCase() === 'football'
     return featureOk && permOk && footballOk
   })
 

@@ -43,12 +43,10 @@ export default function BottomNav() {
     : null
   const sportLabel = branchName || selectedSport
 
-  const currentSportName = (sportBranches || []).find(sb => sb.id === selectedSport)?.sportName || null
-
   const allow = item => {
     const featureOk  = item.feature === null || isFeatureOn(item.feature)
     const permOk     = role === 'owner' || item.permission === null || hasPermission(item.permission)
-    const footballOk = !item.footballOnly || currentSportName?.toLowerCase() === 'football'
+    const footballOk = !item.footballOnly || selectedSport?.toLowerCase() === 'football'
     return featureOk && permOk && footballOk
   }
 
