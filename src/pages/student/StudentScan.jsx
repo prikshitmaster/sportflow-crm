@@ -305,7 +305,7 @@ export default function StudentScan() {
                 <Camera size={20} /> Open Camera &amp; Scan QR
               </button>
               <button onClick={markDirect} className="w-full btn-secondary justify-center py-3 text-sm gap-2 mt-2">
-                ✓ Mark Without Scan (Test)
+                ✓ Mark Attendance Manually
               </button>
             </div>
           )}
