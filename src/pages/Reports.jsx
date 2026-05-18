@@ -1557,6 +1557,7 @@ function AuditTab({ academyId, selectedSport }) {
   const [dateTo, setDateTo]         = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [showFilters, setShowFilters] = useState(false)
+  const [auditSection, setAuditSection] = useState('checkins') // 'checkins' | 'all'
 
   const load = () => {
     setLoading(true)
@@ -1567,6 +1568,14 @@ function AuditTab({ academyId, selectedSport }) {
   }
 
   useEffect(() => { load() }, [academyId, selectedSport])
+
+  // Student check-ins: only attendance events
+  const checkIns = useMemo(() => logs
+    .filter(l => l.action === 'attendance.qr_scan' || l.action === 'attendance.manual')
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+    [logs])
+
+  const checkInsByDate = useMemo(() => groupByDate(checkIns), [checkIns])
 
   const actors = useMemo(() => ['All', ...[...new Set(logs.map(l => l.actor_name).filter(Boolean))].sort()], [logs])
 
@@ -1617,6 +1626,75 @@ function AuditTab({ academyId, selectedSport }) {
           </button>
         </div>
       </div>
+
+      {/* Section toggle */}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+        <button onClick={() => setAuditSection('checkins')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition ${auditSection === 'checkins' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          Student Check-ins
+        </button>
+        <button onClick={() => setAuditSection('all')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition ${auditSection === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          All Activity
+        </button>
+      </div>
+
+      {/* ── Check-ins section ── */}
+      {auditSection === 'checkins' && (
+        loading ? (
+          <div className="card p-10 text-center">
+            <RefreshCw size={24} className="animate-spin text-gray-300 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">Loading…</p>
+          </div>
+        ) : checkIns.length === 0 ? (
+          <div className="card p-10 text-center">
+            <span className="text-3xl block mb-3">📱</span>
+            <p className="text-sm font-bold text-gray-500">No student check-ins yet</p>
+            <p className="text-xs text-gray-400 mt-1">Students marking attendance from their phone will appear here</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {checkInsByDate.map(([date, entries]) => (
+              <div key={date}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="h-px flex-1 bg-gray-100" />
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+                    <Calendar size={10}/>
+                    {new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                    <span className="text-gray-300">·</span>
+                    <span className="text-gray-400">{entries.length} check-in{entries.length > 1 ? 's' : ''}</span>
+                  </span>
+                  <div className="h-px flex-1 bg-gray-100" />
+                </div>
+                <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                  {entries.map((log, i) => {
+                    const name = log.entity_name || log.actor_name || '?'
+                    const time = new Date(log.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                    const isQR = log.action === 'attendance.qr_scan'
+                    return (
+                      <div key={log.id} className={`flex items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-gray-50' : ''}`}>
+                        <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center text-sm font-black text-brand-600 flex-shrink-0">
+                          {name[0].toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{name}</p>
+                          <p className="text-xs text-gray-400">{time}</p>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex-shrink-0 ${isQR ? 'bg-cyan-50 text-cyan-700 border border-cyan-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                          {isQR ? 'QR Scan' : 'Manual'}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      {/* ── All activity section ── */}
+      {auditSection === 'all' && <>
 
       {/* Summary KPIs */}
       {!loading && logs.length > 0 && (
@@ -1772,6 +1850,8 @@ function AuditTab({ academyId, selectedSport }) {
           ))}
         </div>
       )}
+
+      </>}
     </div>
   )
 }

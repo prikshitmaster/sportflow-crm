@@ -233,6 +233,12 @@ export default function StudentScan() {
     setPhase('processing')
     try {
       await db.markAttendanceDirect(studentUser.id)
+      logAudit({
+        actor: { id: studentUser.id, name: studentUser.name, role: 'Student' },
+        action: ACTIONS.ATTENDANCE_MANUAL, entityType: 'attendance',
+        entityId: studentUser.id, entityName: studentUser.name,
+        academyId: studentUser.academy_id, note: 'manual (phone)',
+      })
       setPhase('success')
     } catch (err) {
       if (err.message?.includes('already marked')) {

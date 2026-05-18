@@ -45,6 +45,7 @@ export const ACTIONS = {
   AUTH_STUDENT_LOGOUT:   'auth.student_logout',
   AUTH_STUDENT_ACTIVATE: 'auth.student_activate',
   ATTENDANCE_QR_SCAN:    'attendance.qr_scan',
+  ATTENDANCE_MANUAL:     'attendance.manual',
 }
 
 export const ACTION_LABELS = {
@@ -92,6 +93,7 @@ export const ACTION_LABELS = {
   'auth.student_logout':    'Student signed out',
   'auth.student_activate':  'Student account activated',
   'attendance.qr_scan':     'Marked attendance via gate QR',
+  'attendance.manual':      'Marked attendance manually (phone)',
 }
 
 export const ENTITY_COLORS = {
@@ -151,6 +153,7 @@ export const ACTION_CATEGORY = {
   'auth.student_logout':    'edit',
   'auth.student_activate':  'add',
   'attendance.qr_scan':     'add',
+  'attendance.manual':      'add',
 }
 
 // Compare two objects across specified fields, return only changed fields
