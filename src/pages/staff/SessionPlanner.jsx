@@ -453,20 +453,23 @@ function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
     setSaving(true)
     setErr('')
     try {
-      const plan = await createSessionPlan({
-        academy_id: academyId,
-        batch_id: batchId,
-        coach_id: coachId,
+      const payload = {
+        academy_id: academyId || undefined,
+        batch_id:   batchId   || undefined,
+        coach_id:   coachId   || undefined,
         date,
         status: 'draft',
-      })
+      }
+      console.log('Session payload:', payload)
+      const plan = await createSessionPlan(payload)
       onCreated(plan)
     } catch (e) {
       console.error('createSessionPlan error:', e)
+      console.error('Payload:', { academy_id: academyId, batch_id: batchId, coach_id: coachId, date })
       if (e.code === '23505')  setErr('A session already exists for this batch on that date.')
       else if (e.code === '42P01') setErr('Session tables not found — please run migrations 0021–0024 in Supabase.')
       else if (e.code === '23502') setErr('Missing required field. Check academy / batch setup.')
-      else setErr(`Could not create session (${e.code || e.message || 'unknown'}). Try again.`)
+      else setErr(`Error ${e.code || '?'}: ${e.message || 'unknown'}`)
     } finally {
       setSaving(false)
     }
