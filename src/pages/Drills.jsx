@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
-import { BookOpen, Plus, Search, Heart, X, Edit2, Copy, Clock, Users, Check, Trash2 } from 'lucide-react'
+import { BookOpen, Plus, Search, Heart, X, Edit2, Copy, Clock, Users, Check, Trash2, Image, Upload } from 'lucide-react'
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -34,6 +34,102 @@ const EMPTY_FORM = {
   equipment: [], tags: [], area: '', context_ct: '', context_mt: '',
   procedure: [''], coaching_points: [''],
   progressions: [], regressions: [], objectives: [],
+  diagram_preset: '', diagram_url: '',
+}
+
+// ── Pitch preset SVGs ──────────────────────────────────────────
+
+const PITCH_PRESETS = [
+  { key: 'full_pitch',   label: 'Full Pitch' },
+  { key: 'half_pitch',   label: 'Half Pitch' },
+  { key: 'channel',      label: 'Channel' },
+  { key: 'penalty_box',  label: 'Penalty Box' },
+  { key: 'thirds',       label: '3 Thirds' },
+  { key: 'small_grid',   label: 'Small Grid' },
+]
+
+const PITCH_BG = '#2D7A3A'
+const W = { stroke: 'white', strokeWidth: '1.5', fill: 'none' }
+
+function PitchSVG({ type, className = '' }) {
+  const base = { viewBox: '0 0 100 65', xmlns: 'http://www.w3.org/2000/svg', className: `w-full h-full ${className}` }
+  switch (type) {
+    case 'full_pitch': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="3" y="3" width="94" height="59" {...W}/>
+        <line x1="50" y1="3" x2="50" y2="62" {...W}/>
+        <circle cx="50" cy="32.5" r="8" {...W}/>
+        <rect x="3" y="17" width="16" height="31" {...W}/>
+        <rect x="81" y="17" width="16" height="31" {...W}/>
+        <rect x="3" y="26" width="4" height="13" fill="white" opacity="0.3"/>
+        <rect x="93" y="26" width="4" height="13" fill="white" opacity="0.3"/>
+      </svg>
+    )
+    case 'half_pitch': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="3" y="3" width="94" height="59" {...W}/>
+        <line x1="3" y1="3" x2="97" y2="3" stroke="white" strokeWidth="2.5" fill="none"/>
+        <rect x="18" y="45" width="64" height="17" {...W}/>
+        <rect x="35" y="57" width="30" height="8" fill="white" opacity="0.3"/>
+        <path d="M 35 3 A 15 15 0 0 0 65 3" {...W}/>
+      </svg>
+    )
+    case 'channel': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="25" y="3" width="50" height="59" {...W}/>
+        <line x1="25" y1="32.5" x2="75" y2="32.5" stroke="white" strokeWidth="1" strokeDasharray="3 2" fill="none"/>
+        <rect x="40" y="3" width="20" height="5" fill="white" opacity="0.4"/>
+        <rect x="40" y="57" width="20" height="5" fill="white" opacity="0.4"/>
+      </svg>
+    )
+    case 'penalty_box': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="10" y="8" width="80" height="47" {...W}/>
+        <rect x="30" y="46" width="40" height="9" {...W}/>
+        <circle cx="50" cy="34" r="2" fill="white"/>
+        <rect x="35" y="55" width="30" height="9" fill="white" opacity="0.35" stroke="white" strokeWidth="1.5"/>
+        <path d="M 30 8 A 20 20 0 0 0 70 8" {...W}/>
+      </svg>
+    )
+    case 'thirds': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="3" y="3" width="94" height="59" {...W}/>
+        <line x1="3" y1="23" x2="97" y2="23" stroke="white" strokeWidth="1" strokeDasharray="4 2" fill="none"/>
+        <line x1="3" y1="42" x2="97" y2="42" stroke="white" strokeWidth="1" strokeDasharray="4 2" fill="none"/>
+        <text x="50" y="15" textAnchor="middle" fill="white" fontSize="5" opacity="0.7">Defensive</text>
+        <text x="50" y="34" textAnchor="middle" fill="white" fontSize="5" opacity="0.7">Middle</text>
+        <text x="50" y="53" textAnchor="middle" fill="white" fontSize="5" opacity="0.7">Attacking</text>
+      </svg>
+    )
+    case 'small_grid': return (
+      <svg {...base}><rect width="100" height="65" fill={PITCH_BG}/>
+        <rect x="10" y="5" width="80" height="55" {...W}/>
+        <line x1="10" y1="23.3" x2="90" y2="23.3" stroke="white" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="10" y1="41.7" x2="90" y2="41.7" stroke="white" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="36.7" y1="5" x2="36.7" y2="60" stroke="white" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="63.3" y1="5" x2="63.3" y2="60" stroke="white" strokeWidth="0.8" opacity="0.6"/>
+        <circle cx="10" cy="5" r="2.5" fill="#FFD700"/>
+        <circle cx="90" cy="5" r="2.5" fill="#FFD700"/>
+        <circle cx="10" cy="60" r="2.5" fill="#FFD700"/>
+        <circle cx="90" cy="60" r="2.5" fill="#FFD700"/>
+      </svg>
+    )
+    default: return null
+  }
+}
+
+function DiagramDisplay({ url, preset, className = '' }) {
+  if (url) return (
+    <div className={`rounded-xl overflow-hidden bg-gray-100 ${className}`}>
+      <img src={url} alt="Drill diagram" className="w-full h-full object-contain" />
+    </div>
+  )
+  if (preset) return (
+    <div className={`rounded-xl overflow-hidden ${className}`}>
+      <PitchSVG type={preset} />
+    </div>
+  )
+  return null
 }
 
 // ── Shared small components ────────────────────────────────────
@@ -117,11 +213,16 @@ function DrillCard({ drill, isFav, onFavorite, onClick }) {
         </div>
       )}
 
-      {!drill.is_global && (
-        <div className="mt-2">
+      <div className="mt-2 flex flex-wrap gap-1">
+        {!drill.is_global && (
           <span className="text-[10px] font-semibold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">My drill</span>
-        </div>
-      )}
+        )}
+        {(drill.diagram_url || drill.diagram_preset) && (
+          <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <Image size={9}/> Diagram
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -177,6 +278,15 @@ function DrillDetailModal({ drill, isFav, onClose, onFavorite, onEdit, onClone, 
 
         {/* Body */}
         <div className="overflow-y-auto flex-1 p-5 space-y-5">
+
+          {/* Pitch diagram */}
+          {(drill.diagram_url || drill.diagram_preset) && (
+            <DiagramDisplay
+              url={drill.diagram_url}
+              preset={drill.diagram_preset}
+              className="aspect-video max-w-sm mx-auto shadow-sm border border-gray-100"
+            />
+          )}
 
           {drill.equipment?.length > 0 && (
             <div>
@@ -244,14 +354,15 @@ function DrillDetailModal({ drill, isFav, onClose, onFavorite, onEdit, onClone, 
 
 // ── Drill Editor Modal ─────────────────────────────────────────
 
-function DrillEditorModal({ drill, onClose, onSave, saving }) {
+function DrillEditorModal({ drill, onClose, onSave, saving, academyId, staffId }) {
   const isEdit = !!drill?.id
   const [form, setForm] = useState(() => drill
     ? { ...EMPTY_FORM, ...drill }
     : { ...EMPTY_FORM }
   )
-  const [errors, setErrors] = useState({})
-  const [eqInput, setEqInput] = useState('')
+  const [errors, setErrors]       = useState({})
+  const [eqInput, setEqInput]     = useState('')
+  const [uploading, setUploading] = useState(false)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -266,6 +377,23 @@ function DrillEditorModal({ drill, onClose, onSave, saving }) {
     if (!form.name.trim()) e.name = 'Drill name is required'
     setErrors(e)
     return Object.keys(e).length === 0
+  }
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const drillId = form.id || `draft-${Date.now()}`
+      const url = await db.uploadDrillDiagram(file, drillId)
+      set('diagram_url', url)
+      set('diagram_preset', '')
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
   }
 
   const handleSubmit = () => {
@@ -401,6 +529,41 @@ function DrillEditorModal({ drill, onClose, onSave, saving }) {
               <input value={form.context_mt} onChange={e => set('context_mt', e.target.value)}
                 placeholder="Red team role..." className="input w-full text-sm" />
             </div>
+          </div>
+
+          {/* Diagram */}
+          <div>
+            <label className="label mb-2 block">Pitch Diagram</label>
+            {/* Preset picker */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
+              {PITCH_PRESETS.map(p => (
+                <button key={p.key} type="button"
+                  onClick={() => { set('diagram_preset', form.diagram_preset === p.key ? '' : p.key); set('diagram_url', '') }}
+                  className={`rounded-xl overflow-hidden border-2 transition ${
+                    form.diagram_preset === p.key ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200 hover:border-gray-300'
+                  }`}>
+                  <div className="aspect-video"><PitchSVG type={p.key} /></div>
+                  <p className="text-[10px] font-semibold text-gray-600 text-center py-1 bg-white">{p.label}</p>
+                </button>
+              ))}
+            </div>
+            {/* Upload custom image */}
+            <div className="flex items-center gap-3">
+              <label className={`flex items-center gap-2 px-4 py-2 rounded-xl border border-dashed border-gray-300 text-xs font-semibold text-gray-500 cursor-pointer hover:bg-gray-50 transition ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                {uploading ? <><span className="w-3 h-3 border-2 border-gray-400 border-t-brand-600 rounded-full animate-spin"/>Uploading…</> : <><Upload size={13}/> Upload custom image</>}
+                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+              </label>
+              {(form.diagram_url || form.diagram_preset) && (
+                <button type="button" onClick={() => { set('diagram_url', ''); set('diagram_preset', '') }}
+                  className="text-xs text-red-500 hover:underline">Remove diagram</button>
+              )}
+            </div>
+            {/* Preview */}
+            {(form.diagram_preset || form.diagram_url) && (
+              <div className="mt-3 max-w-xs">
+                <DiagramDisplay preset={form.diagram_preset} url={form.diagram_url} className="aspect-video" />
+              </div>
+            )}
           </div>
 
           <ArrayEditor label="Procedure (step by step)" value={form.procedure || []}
@@ -666,6 +829,8 @@ export default function Drills() {
           onClose={() => { setShowEditor(false); setEditing(null) }}
           onSave={handleSave}
           saving={saving}
+          academyId={academyId}
+          staffId={staffId}
         />
       )}
     </div>
