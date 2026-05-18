@@ -433,12 +433,20 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
   )
 }
 
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+const DAY_SHORT = { Sunday:'Sun', Monday:'Mon', Tuesday:'Tue', Wednesday:'Wed', Thursday:'Thu', Friday:'Fri', Saturday:'Sat' }
+
 // ── New Session Modal ─────────────────────────────────────────────────────────
 function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
   const [batchId, setBatchId] = useState(batches[0]?.id || '')
   const [date, setDate]       = useState(new Date().toISOString().split('T')[0])
   const [saving, setSaving]   = useState(false)
   const [err, setErr]         = useState('')
+
+  const batch     = batches.find(b => b.id === batchId)
+  const batchDays = batch?.days || []
+  const selDay    = date ? DAY_NAMES[new Date(date + 'T00:00:00').getDay()] : null
+  const dayWarn   = batchDays.length > 0 && selDay && !batchDays.includes(selDay)
 
   const create = async () => {
     if (!batchId || !date) return
@@ -454,8 +462,11 @@ function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
       })
       onCreated(plan)
     } catch (e) {
-      if (e.code === '23505') setErr('A session already exists for this batch on that date.')
-      else setErr('Could not create session. Try again.')
+      console.error('createSessionPlan error:', e)
+      if (e.code === '23505')  setErr('A session already exists for this batch on that date.')
+      else if (e.code === '42P01') setErr('Session tables not found — please run migrations 0021–0024 in Supabase.')
+      else if (e.code === '23502') setErr('Missing required field. Check academy / batch setup.')
+      else setErr(`Could not create session (${e.code || e.message || 'unknown'}). Try again.`)
     } finally {
       setSaving(false)
     }
@@ -477,6 +488,16 @@ function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
             <label className="text-xs text-gray-500 block mb-1">Date</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400" />
+            {batchDays.length > 0 && (
+              <p className="text-[11px] mt-1 text-gray-400">
+                Trains: {batchDays.map(d => DAY_SHORT[d] || d).join(' · ')}
+              </p>
+            )}
+            {dayWarn && (
+              <p className="text-[11px] mt-1 text-amber-600 font-medium">
+                {selDay} is not a training day for this batch.
+              </p>
+            )}
           </div>
         </div>
         {err && <p className="text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2">{err}</p>}
