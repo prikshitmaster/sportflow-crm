@@ -171,7 +171,7 @@ export function AppProvider({ children }) {
   }, [role, permissions])
 
   // ── Load all academy-scoped data ──────────────────────
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (isRetry = false) => {
     const academyId = user?.academyId
     if (!academyId) return
     setDataLoading(true)
@@ -250,7 +250,12 @@ export function AppProvider({ children }) {
       setAttendanceData({ [today]: att })
     } catch (err) {
       logger.error('loadAll failed', err, { role, academyId: user?.academyId })
-      showToast('Could not connect to database', 'error')
+      if (!isRetry) {
+        // Auto-retry once after 2s — handles mobile network not ready on app wake
+        setTimeout(() => loadAll(true), 2000)
+      } else {
+        showToast('Could not connect to database', 'error')
+      }
     } finally {
       setDataLoading(false)
     }
@@ -359,6 +364,16 @@ export function AppProvider({ children }) {
   // Load data whenever owner/staff logs in
   useEffect(() => {
     if (role === 'owner' || role === 'staff') loadAll()
+  }, [role, loadAll])
+
+  // Re-fetch when app comes back to foreground (mobile PWA wakes from background)
+  useEffect(() => {
+    if (role !== 'owner' && role !== 'staff') return
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') loadAll()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [role, loadAll])
 
   // Load branches when academy is known
