@@ -140,6 +140,9 @@ export default function Payments() {
   const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, user } = useApp()
   const [editingDate, setEditingDate] = useState(null) // paymentId being edited
   const [markingPaid, setMarkingPaid] = useState(null) // paymentId currently being marked Paid
+  const [deleteTarget, setDeleteTarget] = useState(null) // payment pending deletion
+  const [deleteNote,   setDeleteNote]   = useState('')
+  const [deleting,     setDeleting]     = useState(false)
 
   const handleMarkPaid = async (id) => {
     if (markingPaid) return
@@ -421,10 +424,7 @@ export default function Payments() {
                             <Printer size={12} /> Receipt
                           </button>
                           <button
-                            onClick={() => {
-                              if (window.confirm(`Delete ${p.id} for ${p.student}?\n\nThis will revert their paid_till to the previous payment.`))
-                                removePayment(p)
-                            }}
+                            onClick={() => { setDeleteTarget(p); setDeleteNote('') }}
                             className="opacity-0 group-hover:opacity-100 transition p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500"
                             title="Delete payment"
                           >
@@ -461,6 +461,80 @@ export default function Payments() {
           payments={payments}
           initialStudentId={payForStudent.id}
         />
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !deleting && setDeleteTarget(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-slide-up p-6">
+            {/* Header */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Trash2 size={18} className="text-red-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-sm">Delete Payment</h3>
+                  <p className="text-xs text-gray-400">This cannot be undone</p>
+                </div>
+              </div>
+              <button onClick={() => !deleting && setDeleteTarget(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Payment summary */}
+            <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-1.5 text-xs">
+              <div className="flex justify-between"><span className="text-gray-500">Invoice</span><span className="font-mono font-semibold text-gray-800">{deleteTarget.id}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Student</span><span className="font-semibold text-gray-800">{deleteTarget.student}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Amount</span><span className="font-bold text-gray-900">₹{deleteTarget.amount?.toLocaleString('en-IN')}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Month</span><span className="text-gray-700">{deleteTarget.month}</span></div>
+            </div>
+
+            {/* Warning */}
+            <div className="flex gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-4">
+              <span className="text-amber-500 text-sm flex-shrink-0">⚠</span>
+              <p className="text-xs text-amber-800">Deleting this will revert the student's payment status to the previous record.</p>
+            </div>
+
+            {/* Reason / notes */}
+            <div className="mb-5">
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Reason for deletion <span className="font-normal text-gray-400">(optional)</span></label>
+              <textarea
+                value={deleteNote}
+                onChange={e => setDeleteNote(e.target.value)}
+                placeholder="e.g. Entered wrong amount, duplicate entry…"
+                rows={2}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-red-400 resize-none placeholder-gray-400"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="btn-secondary flex-1 justify-center"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true)
+                  try { await removePayment(deleteTarget) }
+                  finally { setDeleting(false); setDeleteTarget(null); setDeleteNote('') }
+                }}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl transition disabled:opacity-50"
+              >
+                {deleting
+                  ? <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Deleting…</>
+                  : <><Trash2 size={13}/> Delete Payment</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

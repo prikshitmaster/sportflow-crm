@@ -424,6 +424,7 @@ export async function insertTrial(t) {
       program_type:   t.programType    || 'academy',
       trial_fee_paid: t.trialFeePaid   ?? 590,
       academy_id:     t.academyId      || null,
+      branch_id:      t.branchId       || null,
     })
     .select()
     .single()

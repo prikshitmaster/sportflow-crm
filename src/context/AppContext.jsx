@@ -999,7 +999,7 @@ export function AppProvider({ children }) {
 
   const addTrial = async (t) => {
     try {
-      const created = await db.insertTrial({ ...t, academyId: user?.academyId })
+      const created = await db.insertTrial({ ...t, academyId: user?.academyId, branchId: selectedBranch || null })
       setTrials(prev => [created, ...prev])
       logAuditSport({ actor: user, action: ACTIONS.TRIAL_ADD, entityType: 'trial', entityId: created.id, entityName: t.name, changes: { sport: t.sport || '—', source: t.source || '—', date: t.trialDate || '—' }, academyId: user?.academyId })
       showToast('Trial lead added')
