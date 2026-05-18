@@ -7,10 +7,11 @@ import {
   createSessionPhase, updateSessionPhase, deleteSessionPhase,
   reorderSessionPhases, fetchDrills, fetchBatches,
 } from '../../lib/db'
+import { exportSessionPDF } from '../../lib/sessionPDF'
 import {
   Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Check, Copy,
   Clock, Users, BookOpen, ChevronDown, ChevronUp, X, Save,
-  CalendarDays, Trophy, ArrowUp, ArrowDown,
+  CalendarDays, Trophy, ArrowUp, ArrowDown, FileDown,
 } from 'lucide-react'
 
 const PHASE_CATEGORIES = [
@@ -295,6 +296,12 @@ function SessionEditor({ plan: initPlan, batches, academyId, onBack, onSaved }) 
           <p className="font-bold text-gray-900 text-sm truncate">{batch?.name || 'Session'}</p>
           <p className="text-xs text-gray-400">{fmt(plan.date)} · {totalDur}m total</p>
         </div>
+        <button
+          onClick={() => exportSessionPDF({ plan, phases, batchName: batch?.name || '—' })}
+          className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition"
+          title="Export PDF">
+          <FileDown size={17} />
+        </button>
         {plan.status !== 'completed' && (
           <button onClick={handleComplete} disabled={completing || phases.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50">

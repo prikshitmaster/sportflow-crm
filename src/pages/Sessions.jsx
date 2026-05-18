@@ -2,9 +2,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { fetchSessionPlans, fetchBatches, fetchSessionPlan, deleteSessionPlan } from '../lib/db'
+import { exportSessionPDF } from '../lib/sessionPDF'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Clock, Users,
-  Trophy, BookOpen, Trash2, X, CheckCircle2,
+  Trophy, BookOpen, Trash2, X, CheckCircle2, FileDown,
 } from 'lucide-react'
 
 // Stable set of colours assigned to batches by index
@@ -52,6 +53,16 @@ function SessionDetail({ planId, batches, batchColorMap, onClose, onDeleted }) {
     setDeleting(true)
     try { await deleteSessionPlan(planId); onDeleted() }
     catch { setDeleting(false) }
+  }
+
+  const handleExportPDF = () => {
+    if (!plan) return
+    exportSessionPDF({
+      plan,
+      phases: plan.session_phases || [],
+      batchName: batch?.name || '—',
+      academyName: plan.academy_id ? undefined : '—',
+    })
   }
 
   return (
@@ -150,6 +161,10 @@ function SessionDetail({ planId, batches, batchColorMap, onClose, onDeleted }) {
                   Done {new Date(plan.completed_at).toLocaleDateString('en-GB', { day:'numeric', month:'short' })}
                 </span>
               )}
+              <button onClick={handleExportPDF}
+                className="flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 px-3 py-1.5 rounded-xl hover:bg-brand-50 transition font-semibold">
+                <FileDown size={13} /> Export PDF
+              </button>
               <div className="flex-1" />
               <button onClick={handleDelete} disabled={deleting}
                 className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 px-3 py-1.5 rounded-xl hover:bg-red-50 transition disabled:opacity-50">
