@@ -601,9 +601,10 @@ function DrillEditorModal({ drill, onClose, onSave, saving, academyId, staffId }
 // ── Main Page ──────────────────────────────────────────────────
 
 export default function Drills() {
-  const { user } = useApp()
+  const { user, selectedSport, sportBranches } = useApp()
   const academyId = user?.academyId
   const staffId   = user?.id
+  const sportName = (sportBranches || []).find(sb => sb.id === selectedSport)?.sportName || null
 
   const [drills,     setDrills]     = useState([])
   const [favorites,  setFavorites]  = useState(new Set())
@@ -626,7 +627,7 @@ export default function Drills() {
     setLoading(true)
     try {
       const [drillData, favData] = await Promise.all([
-        db.fetchDrills(academyId),
+        db.fetchDrills(academyId, sportName),
         db.fetchDrillFavorites(staffId),
       ])
       setDrills(drillData)
@@ -638,7 +639,7 @@ export default function Drills() {
     }
   }
 
-  useEffect(() => { load() }, [academyId])
+  useEffect(() => { load() }, [academyId, sportName])
 
   const filtered = useMemo(() => {
     let d = drills
@@ -678,7 +679,7 @@ export default function Drills() {
         await db.updateDrill(form.id, form)
         showToast('Drill updated')
       } else {
-        await db.createDrill({ ...form, academy_id: academyId, created_by: staffId, is_global: false })
+        await db.createDrill({ ...form, academy_id: academyId, created_by: staffId, is_global: false, sport_name: sportName })
         showToast('Drill added to your library')
       }
       setShowEditor(false)

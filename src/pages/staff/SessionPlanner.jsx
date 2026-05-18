@@ -5,7 +5,7 @@ import {
   fetchSessionPlans, fetchSessionPlan, createSessionPlan, updateSessionPlan,
   deleteSessionPlan, completeSessionPlan, duplicateSessionPlan,
   createSessionPhase, updateSessionPhase, deleteSessionPhase,
-  reorderSessionPhases, fetchDrills, fetchBatches,
+  reorderSessionPhases, fetchDrills,
 } from '../../lib/db'
 import { exportSessionPDF } from '../../lib/sessionPDF'
 import {
@@ -37,13 +37,13 @@ function fmt(dateStr) {
 }
 
 // ── Drill Picker Modal ────────────────────────────────────────────────────────
-function DrillPicker({ category, academyId, onSelect, onClose }) {
+function DrillPicker({ category, academyId, sportName, onSelect, onClose }) {
   const [drills, setDrills] = useState([])
   const [q, setQ] = useState('')
 
   useEffect(() => {
-    fetchDrills(academyId).then(setDrills).catch(() => {})
-  }, [academyId])
+    fetchDrills(academyId, sportName).then(setDrills).catch(() => {})
+  }, [academyId, sportName])
 
   const filtered = drills.filter(d => {
     const matchCat = !category || d.category === category
@@ -191,7 +191,7 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
 }
 
 // ── Session Editor ────────────────────────────────────────────────────────────
-function SessionEditor({ plan: initPlan, batches, academyId, onBack, onSaved }) {
+function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, onSaved }) {
   const [plan, setPlan] = useState(initPlan)
   const [phases, setPhases] = useState([])
   const [loading, setLoading] = useState(true)
@@ -391,6 +391,7 @@ function SessionEditor({ plan: initPlan, batches, academyId, onBack, onSaved }) 
         <DrillPicker
           category={picker}
           academyId={academyId}
+          sportName={sportName}
           onSelect={drill => addPhase(picker, drill)}
           onClose={() => setPicker(null)}
         />
@@ -495,9 +496,8 @@ function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
 
 // ── Main SessionPlanner ───────────────────────────────────────────────────────
 export default function SessionPlanner() {
-  const { user } = useApp()
+  const { user, batches: ctxBatches, selectedSport, sportBranches } = useApp()
   const [sessions, setSessions] = useState([])
-  const [batches, setBatches]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [editing, setEditing]   = useState(null)   // plan object being edited
   const [newModal, setNewModal] = useState(false)
@@ -506,16 +506,19 @@ export default function SessionPlanner() {
   const academyId = user?.academyId
   const coachId   = user?.staffId || user?.id
 
+  const myBatches = (ctxBatches || []).filter(b =>
+    b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
+  )
+  const batches = myBatches.length > 0 ? myBatches : (ctxBatches || [])
+  const sportName = (sportBranches || []).find(sb => sb.id === selectedSport)?.sportName || null
+
   const load = useCallback(() => {
     if (!academyId) return
     setLoading(true)
-    Promise.all([
-      fetchSessionPlans({ academyId, coachId }),
-      fetchBatches(academyId),
-    ]).then(([plans, bats]) => {
-      setSessions(plans)
-      setBatches(bats)
-    }).catch(() => {}).finally(() => setLoading(false))
+    fetchSessionPlans({ academyId, coachId })
+      .then(plans => setSessions(plans))
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [academyId, coachId])
 
   useEffect(() => { load() }, [load])
@@ -526,6 +529,7 @@ export default function SessionPlanner() {
         plan={editing}
         batches={batches}
         academyId={academyId}
+        sportName={sportName}
         onBack={() => { setEditing(null); load() }}
         onSaved={() => { setEditing(null); load() }}
       />
