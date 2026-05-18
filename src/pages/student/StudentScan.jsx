@@ -151,7 +151,9 @@ export default function StudentScan() {
       await videoRef.current.play()
       tickScan()
     } catch (err) {
-      setErrMsg('Camera error: ' + (err?.message || 'Please allow camera access and try again.'))
+      const msg = err?.message || ''
+      const isDenied = msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('denied') || msg.toLowerCase().includes('notallowed')
+      setErrMsg(isDenied ? '__permission__' : 'Camera error: ' + (msg || 'Please allow camera access and try again.'))
       setPhase('error')
     }
   }
@@ -399,12 +401,26 @@ export default function StudentScan() {
           <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-5">
             <XCircle size={44} className="text-red-400" strokeWidth={1.5} />
           </div>
-          <h2 className="text-2xl font-black text-gray-900 mb-2">Error</h2>
-          <p className="text-gray-500 text-sm mb-8">{errMsg || 'Something went wrong. Please try again.'}</p>
-          <div className="flex gap-3">
-            <button onClick={reset} className="flex-1 btn-primary justify-center py-3">Try Again</button>
-            <button onClick={() => navigate('/student/attendance')} className="flex-1 btn-secondary justify-center py-3">Attendance</button>
-          </div>
+          {errMsg === '__permission__' ? (<>
+            <h2 className="text-2xl font-black text-gray-900 mb-2">Camera Blocked</h2>
+            <p className="text-gray-600 text-sm mb-4">Camera permission was denied. To fix this:</p>
+            <ol className="text-left text-sm text-gray-600 space-y-2 mb-6 bg-gray-50 rounded-xl p-4">
+              <li><span className="font-bold text-gray-800">1.</span> Tap the <span className="font-bold">lock / info icon</span> in your browser address bar</li>
+              <li><span className="font-bold text-gray-800">2.</span> Find <span className="font-bold">Camera</span> and set it to <span className="font-bold text-emerald-600">Allow</span></li>
+              <li><span className="font-bold text-gray-800">3.</span> Reload this page and tap <span className="font-bold">Try Again</span></li>
+            </ol>
+            <div className="flex gap-3 w-full">
+              <button onClick={reset} className="flex-1 btn-primary justify-center py-3">Try Again</button>
+              <button onClick={() => navigate('/student/attendance')} className="flex-1 btn-secondary justify-center py-3">Attendance</button>
+            </div>
+          </>) : (<>
+            <h2 className="text-2xl font-black text-gray-900 mb-2">Error</h2>
+            <p className="text-gray-500 text-sm mb-8">{errMsg || 'Something went wrong. Please try again.'}</p>
+            <div className="flex gap-3 w-full">
+              <button onClick={reset} className="flex-1 btn-primary justify-center py-3">Try Again</button>
+              <button onClick={() => navigate('/student/attendance')} className="flex-1 btn-secondary justify-center py-3">Attendance</button>
+            </div>
+          </>)}
         </div>
       )}
     </div>

@@ -66,7 +66,9 @@ export default function StaffScanIn() {
       await videoRef.current.play()
       tickScan()
     } catch (err) {
-      setErrMsg('Camera access denied. Please allow camera and try again.')
+      const msg = err?.message || ''
+      const isDenied = msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('denied') || msg.toLowerCase().includes('notallowed')
+      setErrMsg(isDenied ? '__permission__' : 'Camera error: ' + (msg || 'Please allow camera access and try again.'))
       setPhase('error')
     }
   }
@@ -221,8 +223,17 @@ export default function StaffScanIn() {
           <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto">
             <XCircle size={44} className="text-red-400" strokeWidth={1.5} />
           </div>
-          <h2 className="text-xl font-black text-gray-900">Scan Failed</h2>
-          <p className="text-gray-500 text-sm">{errMsg}</p>
+          {errMsg === '__permission__' ? (<>
+            <h2 className="text-xl font-black text-gray-900">Camera Blocked</h2>
+            <ol className="text-left text-sm text-gray-600 space-y-2 bg-gray-50 rounded-xl p-4">
+              <li><span className="font-bold text-gray-800">1.</span> Tap the <span className="font-bold">lock / info icon</span> in your browser address bar</li>
+              <li><span className="font-bold text-gray-800">2.</span> Set <span className="font-bold">Camera</span> to <span className="font-bold text-emerald-600">Allow</span></li>
+              <li><span className="font-bold text-gray-800">3.</span> Reload and tap Try Again</li>
+            </ol>
+          </>) : (<>
+            <h2 className="text-xl font-black text-gray-900">Scan Failed</h2>
+            <p className="text-gray-500 text-sm">{errMsg}</p>
+          </>)}
           <button onClick={() => { setPhase('ready'); setErrMsg('') }} className="w-full btn-primary justify-center py-3">Try Again</button>
         </div>
       )}
