@@ -1,7 +1,7 @@
 // Owner Sessions — monthly calendar view of all session plans across batches
 import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { fetchSessionPlans, fetchBatches, fetchSessionPlan, deleteSessionPlan } from '../lib/db'
+import { fetchSessionPlans, fetchSessionPlan, deleteSessionPlan } from '../lib/db'
 import { exportSessionPDF } from '../lib/sessionPDF'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Clock, Users,
@@ -180,9 +180,8 @@ function SessionDetail({ planId, batches, batchColorMap, onClose, onDeleted }) {
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
 export default function Sessions() {
-  const { user } = useApp()
+  const { user, batches: ctxBatches } = useApp()
   const [sessions, setSessions] = useState([])
-  const [batches, setBatches]   = useState([])
   const [loading, setLoading]   = useState(true)
   const [today]                 = useState(new Date())
   const [cursor, setCursor]     = useState(() => {
@@ -192,17 +191,16 @@ export default function Sessions() {
   const [detailId, setDetailId]       = useState(null)
 
   const academyId = user?.academyId
+  // Use AppContext batches — already filtered by selectedSport + selectedBranch
+  const batches = ctxBatches || []
 
   const load = () => {
     if (!academyId) return
     setLoading(true)
-    Promise.all([
-      fetchSessionPlans({ academyId }),
-      fetchBatches(academyId),
-    ]).then(([plans, bats]) => {
-      setSessions(plans)
-      setBatches(bats)
-    }).catch(() => {}).finally(() => setLoading(false))
+    fetchSessionPlans({ academyId })
+      .then(setSessions)
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [academyId])
@@ -214,10 +212,15 @@ export default function Sessions() {
     return map
   }, [batches])
 
-  // Sessions grouped by date string
+  // Sessions grouped by date string — only for batches in current sport/branch scope
+  const visibleBatchIds = useMemo(() => new Set(batches.map(b => b.id)), [batches])
+  const visibleSessions = useMemo(() =>
+    sessions.filter(s => !s.batch_id || visibleBatchIds.has(s.batch_id))
+  , [sessions, visibleBatchIds])
+
   const byDate = useMemo(() => {
     const map = {}
-    sessions.forEach(s => {
+    visibleSessions.forEach(s => {
       if (!map[s.date]) map[s.date] = []
       map[s.date].push(s)
     })
@@ -407,7 +410,7 @@ export default function Sessions() {
               {(() => {
                 const { year, month } = cursor
                 const prefix = `${year}-${String(month + 1).padStart(2,'0')}`
-                const monthPlans = sessions.filter(s => s.date?.startsWith(prefix))
+                const monthPlans = visibleSessions.filter(s => s.date?.startsWith(prefix))
                 const done = monthPlans.filter(s => s.status === 'completed').length
                 return (
                   <>

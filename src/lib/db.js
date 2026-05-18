@@ -2296,13 +2296,30 @@ export async function fetchAllAuditLogs(limit = 500) {
 
 // ── Session Planner: Drill Library ───────────────────────────
 
-export async function fetchDrills(academyId) {
-  let q = supabase.from('drills').select('*').order('name')
-  if (academyId) q = q.or(`is_global.eq.true,academy_id.eq.${academyId}`)
-  else           q = q.eq('is_global', true)
-  const { data, error } = await q
-  if (error) { if (error.code === '42P01') return []; throw error }
-  return data || []
+export async function fetchDrills(academyId, sportName) {
+  // Global drills filtered by sport (case-insensitive when sportName provided)
+  let globalQ = supabase.from('drills').select('*').eq('is_global', true).order('name')
+  if (sportName) globalQ = globalQ.ilike('sport_name', sportName)
+
+  const promises = [globalQ]
+
+  // Custom academy drills always included (sport scope is implicit by academy)
+  if (academyId) {
+    promises.push(
+      supabase.from('drills').select('*')
+        .eq('academy_id', academyId).eq('is_global', false).order('name')
+    )
+  }
+
+  const results = await Promise.all(promises)
+  for (const { error } of results) {
+    if (error) { if (error.code === '42P01') return []; throw error }
+  }
+
+  const all = results.flatMap(r => r.data || [])
+  const seen = new Set()
+  return all.filter(d => { if (seen.has(d.id)) return false; seen.add(d.id); return true })
+            .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function createDrill(drill) {

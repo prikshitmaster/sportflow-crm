@@ -21,8 +21,8 @@ const nav = [
   { to: '/gate-qr',    label: 'Gate QR',    icon: QrCode,          feature: 'gate_qr',   permission: 'attendance.manage' },
   { to: '/staff-qr',   label: 'Staff QR',   icon: QrCode,          feature: 'attendance', permission: 'staff.manage' },
   { to: '/events',     label: 'Events',     icon: Trophy,          feature: 'events',     permission: 'events.manage' },
-  { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: null,         permission: 'dashboard.view' },
-  { to: '/sessions',   label: 'Sessions',   icon: CalendarDays,    feature: null,         permission: 'dashboard.view' },
+  { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: null,         permission: 'dashboard.view', footballOnly: true },
+  { to: '/sessions',   label: 'Sessions',   icon: CalendarDays,    feature: null,         permission: 'dashboard.view', footballOnly: true },
   { to: '/coaches',    label: 'Staff',      icon: UserCog,         feature: 'staff',      permission: 'staff.manage' },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,       feature: 'reports',    permission: 'reports.view' },
   { to: '/community',  label: 'Community',  icon: Megaphone,       feature: 'community',  permission: 'community.manage' },
@@ -30,14 +30,17 @@ const nav = [
 ]
 
 export default function Sidebar({ collapsed, setCollapsed }) {
-  const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport } = useApp()
+  const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport, sportBranches } = useApp()
   const navigate = useNavigate()
+
+  const currentSportName = (sportBranches || []).find(sb => sb.id === selectedSport)?.sportName || null
 
   // Owner sees all feature-enabled items; admin sees only items they have permission for
   const visible = nav.filter(item => {
-    const featureOk = item.feature === null || isFeatureOn(item.feature)
-    const permOk    = role === 'owner' || item.permission === null || hasPermission(item.permission)
-    return featureOk && permOk
+    const featureOk  = item.feature === null || isFeatureOn(item.feature)
+    const permOk     = role === 'owner' || item.permission === null || hasPermission(item.permission)
+    const footballOk = !item.footballOnly || currentSportName?.toLowerCase() === 'football'
+    return featureOk && permOk && footballOk
   })
 
   const handleLogout = async () => { await logoutOwner(); navigate('/login') }

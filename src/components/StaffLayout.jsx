@@ -34,8 +34,11 @@ const BASE_OFFICE_TABS = [
 const TRIALS_TAB = { to: '/staff/trials', label: 'Trials', icon: UserPlus }
 
 export default function StaffLayout() {
-  const { user, logoutStaff, hasPermission } = useApp()
+  const { user, logoutStaff, hasPermission, selectedSport, sportBranches } = useApp()
   const navigate = useNavigate()
+
+  const currentSportName = (sportBranches || []).find(sb => sb.id === selectedSport)?.sportName || null
+  const isFootball = currentSportName?.toLowerCase() === 'football'
 
   useEffect(() => {
     // Prefetch all staff page chunks so tab switches are instant
@@ -53,7 +56,8 @@ export default function StaffLayout() {
 
   const isOffice = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)
   const hasTrials = hasPermission('trials.manage')
-  const baseTabs  = isOffice ? BASE_OFFICE_TABS : BASE_COACH_TABS
+  const coachTabs = isFootball ? BASE_COACH_TABS : BASE_COACH_TABS.filter(t => t.to !== '/staff/sessions')
+  const baseTabs  = isOffice ? BASE_OFFICE_TABS : coachTabs
   const tabs = hasTrials
     ? isOffice
       ? [baseTabs[0], TRIALS_TAB, ...baseTabs.slice(1)]

@@ -27,8 +27,8 @@ const moreItems = [
   { to: '/events',    label: 'Events',    icon: Trophy,    feature: 'events',   permission: 'events.manage' },
   { to: '/coaches',   label: 'Staff',     icon: UserCog,   feature: 'staff',    permission: 'staff.manage' },
   { to: '/reports',   label: 'Reports',   icon: BarChart3, feature: 'reports',  permission: 'reports.view' },
-  { to: '/drills',    label: 'Drills',    icon: BookOpen,    feature: null,       permission: 'dashboard.view' },
-  { to: '/sessions',  label: 'Sessions',  icon: CalendarDays,feature: null,       permission: 'dashboard.view' },
+  { to: '/drills',    label: 'Drills',    icon: BookOpen,    feature: null,       permission: 'dashboard.view', footballOnly: true },
+  { to: '/sessions',  label: 'Sessions',  icon: CalendarDays,feature: null,       permission: 'dashboard.view', footballOnly: true },
   { to: '/community', label: 'Community', icon: Megaphone, feature: 'community',permission: 'community.manage' },
   { to: '/settings',  label: 'Settings',  icon: Settings,  feature: null,       permission: 'settings.manage' },
 ]
@@ -43,10 +43,13 @@ export default function BottomNav() {
     : null
   const sportLabel = branchName || selectedSport
 
+  const currentSportName = (sportBranches || []).find(sb => sb.id === selectedSport)?.sportName || null
+
   const allow = item => {
-    const featureOk = item.feature === null || isFeatureOn(item.feature)
-    const permOk    = role === 'owner' || item.permission === null || hasPermission(item.permission)
-    return featureOk && permOk
+    const featureOk  = item.feature === null || isFeatureOn(item.feature)
+    const permOk     = role === 'owner' || item.permission === null || hasPermission(item.permission)
+    const footballOk = !item.footballOnly || currentSportName?.toLowerCase() === 'football'
+    return featureOk && permOk && footballOk
   }
 
   const primary = primaryItems.filter(allow)
