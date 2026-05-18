@@ -37,7 +37,7 @@ export default function StaffLayout() {
   const { user, logoutStaff, hasPermission, selectedSport } = useApp()
   const navigate = useNavigate()
 
-  const isFootball = selectedSport?.toLowerCase() === 'football'
+  const isFootball = !selectedSport || selectedSport.toLowerCase() === 'football'
 
   useEffect(() => {
     // Prefetch all staff page chunks so tab switches are instant

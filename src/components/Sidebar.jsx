@@ -37,7 +37,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   const visible = nav.filter(item => {
     const featureOk  = item.feature === null || isFeatureOn(item.feature)
     const permOk     = role === 'owner' || item.permission === null || hasPermission(item.permission)
-    const footballOk = !item.footballOnly || selectedSport?.toLowerCase() === 'football'
+    const footballOk = !item.footballOnly || !selectedSport || selectedSport.toLowerCase() === 'football'
     return featureOk && permOk && footballOk
   })
 
