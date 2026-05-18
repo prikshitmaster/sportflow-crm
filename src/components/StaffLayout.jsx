@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { Suspense, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut, ClipboardList, UserPlus } from 'lucide-react'
+import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut, ClipboardList, UserPlus, CalendarDays } from 'lucide-react'
 
 function PageSkeleton() {
   return (
@@ -17,11 +17,11 @@ function PageSkeleton() {
 }
 
 const BASE_COACH_TABS = [
-  { to: '/staff/home',       label: 'Home',   icon: Home },
-  { to: '/staff/attendance', label: 'Attend', icon: CalendarCheck },
-  { to: '/staff/assess',     label: 'Assess', icon: ClipboardList },
-  { to: '/staff/notices',    label: 'Notices',icon: Bell },
-  { to: '/staff/profile',    label: 'Me',     icon: UserCircle },
+  { to: '/staff/home',       label: 'Home',    icon: Home },
+  { to: '/staff/sessions',   label: 'Sessions',icon: CalendarDays },
+  { to: '/staff/attendance', label: 'Attend',  icon: CalendarCheck },
+  { to: '/staff/assess',     label: 'Assess',  icon: ClipboardList },
+  { to: '/staff/profile',    label: 'Me',      icon: UserCircle },
 ]
 
 const BASE_OFFICE_TABS = [
@@ -48,6 +48,7 @@ export default function StaffLayout() {
     import('../pages/staff/StaffAssess')
     import('../pages/staff/StaffPulse')
     import('../pages/staff/StaffTrials')
+    import('../pages/staff/SessionPlanner')
   }, [])
 
   const isOffice = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)

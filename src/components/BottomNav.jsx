@@ -8,7 +8,7 @@ import { useApp } from '../context/AppContext'
 import {
   LayoutDashboard, Users, CalendarCheck, CreditCard,
   MoreHorizontal, X, LogOut,
-  UserPlus, Layers, UserCog, BarChart3, Megaphone, Settings, QrCode, Trophy, RefreshCw, BookOpen,
+  UserPlus, Layers, UserCog, BarChart3, Megaphone, Settings, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
 } from 'lucide-react'
 
 // Primary bar items
@@ -27,7 +27,8 @@ const moreItems = [
   { to: '/events',    label: 'Events',    icon: Trophy,    feature: 'events',   permission: 'events.manage' },
   { to: '/coaches',   label: 'Staff',     icon: UserCog,   feature: 'staff',    permission: 'staff.manage' },
   { to: '/reports',   label: 'Reports',   icon: BarChart3, feature: 'reports',  permission: 'reports.view' },
-  { to: '/drills',    label: 'Drills',    icon: BookOpen,  feature: null,       permission: 'dashboard.view' },
+  { to: '/drills',    label: 'Drills',    icon: BookOpen,    feature: null,       permission: 'dashboard.view' },
+  { to: '/sessions',  label: 'Sessions',  icon: CalendarDays,feature: null,       permission: 'dashboard.view' },
   { to: '/community', label: 'Community', icon: Megaphone, feature: 'community',permission: 'community.manage' },
   { to: '/settings',  label: 'Settings',  icon: Settings,  feature: null,       permission: 'settings.manage' },
 ]

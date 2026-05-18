@@ -33,6 +33,7 @@ const Events           = lazy(() => import('./pages/Events'))
 const StaffAttendanceQR = lazy(() => import('./pages/StaffAttendanceQR'))
 const SportSelect      = lazy(() => import('./pages/SportSelect'))
 const Drills           = lazy(() => import('./pages/Drills'))
+const Sessions         = lazy(() => import('./pages/Sessions'))
 
 // Staff pages — lazy loaded
 const StaffDashboard   = lazy(() => import('./pages/staff/StaffDashboard'))
@@ -45,6 +46,7 @@ const StaffScanIn      = lazy(() => import('./pages/staff/StaffScanIn'))
 const StaffAssess      = lazy(() => import('./pages/staff/StaffAssess'))
 const StaffPulse       = lazy(() => import('./pages/staff/StaffPulse'))
 const StaffTrials      = lazy(() => import('./pages/staff/StaffTrials'))
+const SessionPlanner   = lazy(() => import('./pages/staff/SessionPlanner'))
 
 // Student pages — lazy loaded
 const StudentDashboard     = lazy(() => import('./pages/student/StudentDashboard'))
@@ -189,6 +191,7 @@ function AppRoutes() {
         <Route path="staff-qr"   element={<StaffAttendanceQR />} />
         <Route path="events"     element={<Events />} />
         <Route path="drills"     element={<Drills />} />
+        <Route path="sessions"   element={<Sessions />} />
       </Route>
 
       {/* Staff */}
@@ -207,6 +210,7 @@ function AppRoutes() {
         {/* Permission-gated admin pages rendered inside staff portal */}
         <Route path="students"  element={<PermRequired perm="students.view">  <Students />  </PermRequired>} />
         <Route path="payments"  element={<PermRequired perm="payments.view">  <Payments />  </PermRequired>} />
+        <Route path="sessions"   element={<SessionPlanner />} />
         <Route path="trials"    element={<PermRequired perm="trials.manage">  <StaffTrials /></PermRequired>} />
         <Route path="batches"   element={<PermRequired perm="batches.view">   <Batches />   </PermRequired>} />
         <Route path="reports"   element={<PermRequired perm="reports.view">   <Reports />   </PermRequired>} />

@@ -2345,4 +2345,126 @@ export async function toggleDrillFavorite(drillId, staffId, academyId) {
   }
 }
 
+// ── DRILL IMAGE UPLOAD ────────────────────────────────────────────────────────
+
+export async function uploadDrillDiagram(file, drillId) {
+  const ext = file.name.split('.').pop().toLowerCase()
+  const path = `${drillId}-${Date.now()}.${ext}`
+  const { error: upErr } = await supabase.storage
+    .from('drill-diagrams')
+    .upload(path, file, { upsert: true })
+  if (upErr) throw upErr
+  const { data: { publicUrl } } = supabase.storage
+    .from('drill-diagrams')
+    .getPublicUrl(path)
+  return publicUrl
+}
+
+// ── SESSION PLANS ─────────────────────────────────────────────────────────────
+
+export async function fetchSessionPlans({ academyId, batchId, coachId, status } = {}) {
+  let q = supabase.from('session_plans')
+    .select('*, session_phases(*)')
+    .order('date', { ascending: false })
+  if (academyId) q = q.eq('academy_id', academyId)
+  if (batchId)   q = q.eq('batch_id', batchId)
+  if (coachId)   q = q.eq('coach_id', coachId)
+  if (status)    q = q.eq('status', status)
+  const { data, error } = await q
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function fetchSessionPlan(id) {
+  const { data, error } = await supabase.from('session_plans')
+    .select('*, session_phases(*, drills(*))')
+    .eq('id', id)
+    .single()
+  if (error) throw error
+  if (data?.session_phases) {
+    data.session_phases = data.session_phases.sort((a, b) => a.position - b.position)
+  }
+  return data
+}
+
+export async function createSessionPlan(plan) {
+  const { data, error } = await supabase.from('session_plans')
+    .insert(plan).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function updateSessionPlan(id, updates) {
+  const { data, error } = await supabase.from('session_plans')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteSessionPlan(id) {
+  const { error } = await supabase.from('session_plans').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function completeSessionPlan(id) {
+  const { data, error } = await supabase.from('session_plans')
+    .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function duplicateSessionPlan(id, newDate, newBatchId) {
+  // Fetch original with phases
+  const original = await fetchSessionPlan(id)
+  // Create new plan
+  const { id: _id, created_at, updated_at, completed_at, status, ...planData } = original
+  const newPlan = await createSessionPlan({
+    ...planData,
+    date: newDate,
+    batch_id: newBatchId || original.batch_id,
+    status: 'draft',
+  })
+  // Clone phases
+  const phases = (original.session_phases || []).map(({ id: _pid, session_id, created_at: _ca, drills: _d, ...p }) => ({
+    ...p,
+    session_id: newPlan.id,
+  }))
+  if (phases.length > 0) {
+    const { error } = await supabase.from('session_phases').insert(phases)
+    if (error) throw error
+  }
+  return newPlan
+}
+
+// ── SESSION PHASES ────────────────────────────────────────────────────────────
+
+export async function createSessionPhase(phase) {
+  const { data, error } = await supabase.from('session_phases')
+    .insert(phase).select('*, drills(*)').single()
+  if (error) throw error
+  return data
+}
+
+export async function updateSessionPhase(id, updates) {
+  const { data, error } = await supabase.from('session_phases')
+    .update(updates).eq('id', id).select('*, drills(*)').single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteSessionPhase(id) {
+  const { error } = await supabase.from('session_phases').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function reorderSessionPhases(updates) {
+  // updates = [{id, position}]
+  await Promise.all(
+    updates.map(({ id, position }) =>
+      supabase.from('session_phases').update({ position }).eq('id', id)
+    )
+  )
+}
 
