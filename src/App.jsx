@@ -66,7 +66,14 @@ class ErrorBoundary extends Component {
       const reloads = Number(sessionStorage.getItem('_eb_reloads') || 0)
       if (reloads < 2) {
         sessionStorage.setItem('_eb_reloads', String(reloads + 1))
-        window.location.reload()
+        // Wipe SW caches so stale index.html can't serve deleted chunk hashes
+        const nukeAndReload = () => window.location.reload()
+        try {
+          const nukes = []
+          if ('caches' in window) nukes.push(caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k)))))
+          if ('serviceWorker' in navigator) nukes.push(navigator.serviceWorker.getRegistrations().then(rs => Promise.all(rs.map(r => r.unregister()))))
+          Promise.all(nukes).finally(nukeAndReload)
+        } catch { nukeAndReload() }
         return
       }
     }
@@ -84,7 +91,14 @@ class ErrorBoundary extends Component {
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-2">Something went wrong</h2>
             <p className="text-sm text-gray-500 mb-5">{this.state.error?.message || 'An unexpected error occurred.'}</p>
-            <button onClick={() => window.location.reload()}
+            <button onClick={() => {
+              try {
+                const nukes = []
+                if ('caches' in window) nukes.push(caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k)))))
+                if ('serviceWorker' in navigator) nukes.push(navigator.serviceWorker.getRegistrations().then(rs => Promise.all(rs.map(r => r.unregister()))))
+                Promise.all(nukes).finally(() => window.location.reload())
+              } catch { window.location.reload() }
+            }}
               className="px-5 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-700 transition">
               Reload app
             </button>
