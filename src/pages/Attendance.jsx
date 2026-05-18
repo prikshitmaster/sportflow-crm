@@ -198,7 +198,7 @@ export default function Attendance() {
       setDirty(new Set())
       showToast(`Attendance saved (${dirty.size} ${dirty.size === 1 ? 'change' : 'changes'})`)
     }
-    catch { showToast('Save failed', 'error') }
+    catch (err) { console.error('Attendance save error:', err); showToast('Save failed: ' + (err?.message || err?.code || 'unknown error'), 'error') }
     finally { setSaving(false) }
   }
 

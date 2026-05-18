@@ -901,10 +901,15 @@ export async function saveAttendanceMonth(year, month, monthData, batchId = null
     }
   }
   if (rows.length === 0) return
-  const { error } = await supabase
-    .from('attendance')
-    .upsert(rows, { onConflict: 'date,student_id,batch_id' })
-  if (error) throw error
+  // batch_id=null rows: upsert on (date,student_id) only, otherwise NULL!=NULL breaks conflict detection
+  const nullBatch = rows.filter(r => r.batch_id == null)
+  const withBatch = rows.filter(r => r.batch_id != null)
+  const errs = await Promise.all([
+    nullBatch.length ? supabase.from('attendance').upsert(nullBatch, { onConflict: 'date,student_id' }).then(r => r.error) : null,
+    withBatch.length ? supabase.from('attendance').upsert(withBatch, { onConflict: 'date,student_id,batch_id' }).then(r => r.error) : null,
+  ])
+  const err = errs.find(Boolean)
+  if (err) throw err
 }
 
 // ── Student Auth & Onboarding ────────────────────────────
