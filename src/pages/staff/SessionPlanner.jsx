@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useApp } from '../../context/AppContext'
 import {
   fetchSessionPlans, fetchSessionPlan, createSessionPlan, updateSessionPlan,
-  deleteSessionPlan, completeSessionPlan, duplicateSessionPlan,
+  deleteSessionPlan as dbDeleteSessionPlan, completeSessionPlan, duplicateSessionPlan,
   createSessionPhase, updateSessionPhase, deleteSessionPhase,
   reorderSessionPhases, fetchDrills,
 } from '../../lib/db'
@@ -11,7 +11,7 @@ import { exportSessionPDF } from '../../lib/sessionPDF'
 import {
   Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Check, Copy,
   Clock, Users, BookOpen, ChevronDown, ChevronUp, X, Save,
-  CalendarDays, Trophy, ArrowUp, ArrowDown, FileDown,
+  CalendarDays, Trophy, ArrowUp, ArrowDown, FileDown, AlertCircle,
 } from 'lucide-react'
 
 const PHASE_CATEGORIES = [
@@ -436,17 +436,41 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const DAY_SHORT = { Sunday:'Sun', Monday:'Mon', Tuesday:'Tue', Wednesday:'Wed', Thursday:'Thu', Friday:'Fri', Saturday:'Sat' }
 
+function nextValidDate(fromDate, days) {
+  if (!days?.length) return fromDate
+  const d = new Date(fromDate + 'T00:00:00')
+  for (let i = 0; i < 7; i++) {
+    if (days.includes(DAY_NAMES[d.getDay()])) return d.toISOString().split('T')[0]
+    d.setDate(d.getDate() + 1)
+  }
+  return fromDate
+}
+
 // ── New Session Modal ─────────────────────────────────────────────────────────
 function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
   const [batchId, setBatchId] = useState(batches[0]?.id || '')
-  const [date, setDate]       = useState(new Date().toISOString().split('T')[0])
+  const [date, setDate]       = useState(() => {
+    const today = new Date().toISOString().split('T')[0]
+    const first = batches[0]
+    return first?.days?.length ? nextValidDate(today, first.days) : today
+  })
   const [saving, setSaving]   = useState(false)
   const [err, setErr]         = useState('')
 
   const batch     = batches.find(b => b.id === batchId)
   const batchDays = batch?.days || []
   const selDay    = date ? DAY_NAMES[new Date(date + 'T00:00:00').getDay()] : null
-  const dayWarn   = batchDays.length > 0 && selDay && !batchDays.includes(selDay)
+  const dayBlocked = batchDays.length > 0 && selDay && !batchDays.includes(selDay)
+
+  const handleBatchChange = (newBatchId) => {
+    setBatchId(newBatchId)
+    const newBatch = batches.find(b => b.id === newBatchId)
+    if (newBatch?.days?.length) setDate(nextValidDate(date, newBatch.days))
+  }
+
+  const handleDateChange = (newDate) => {
+    setDate(newDate)
+  }
 
   const create = async () => {
     if (!batchId || !date) return
@@ -482,30 +506,37 @@ function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
         <div className="space-y-3">
           <div>
             <label className="text-xs text-gray-500 block mb-1">Batch</label>
-            <select value={batchId} onChange={e => setBatchId(e.target.value)}
+            <select value={batchId} onChange={e => handleBatchChange(e.target.value)}
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400 bg-white">
               {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
+            {batchDays.length > 0 && (
+              <p className="text-[11px] mt-1 text-gray-400">
+                Training days: {batchDays.map(d => DAY_SHORT[d] || d).join(' · ')}
+              </p>
+            )}
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Date</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400" />
-            {batchDays.length > 0 && (
-              <p className="text-[11px] mt-1 text-gray-400">
-                Trains: {batchDays.map(d => DAY_SHORT[d] || d).join(' · ')}
-              </p>
-            )}
-            {dayWarn && (
-              <p className="text-[11px] mt-1 text-amber-600 font-medium">
-                {selDay} is not a training day for this batch.
-              </p>
+            <input type="date" value={date} onChange={e => handleDateChange(e.target.value)}
+              className={`w-full border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400 ${dayBlocked ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
+            {dayBlocked && (
+              <div className="flex items-start gap-1.5 mt-1.5">
+                <AlertCircle size={12} className="text-red-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-[11px] text-red-600 font-medium">{selDay} is not a training day.</p>
+                  <button type="button" onClick={() => setDate(nextValidDate(date, batchDays))}
+                    className="text-[11px] text-brand-600 font-semibold underline mt-0.5">
+                    Jump to next training day →
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
         {err && <p className="text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2">{err}</p>}
         <div className="flex gap-2 pt-1">
-          <button onClick={create} disabled={!batchId || !date || saving}
+          <button onClick={create} disabled={!batchId || !date || saving || dayBlocked}
             className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl font-semibold text-sm disabled:opacity-50">
             {saving ? 'Creating…' : 'Create'}
           </button>
@@ -523,9 +554,10 @@ export default function SessionPlanner() {
   const { user, batches: ctxBatches, selectedSport, sportBranches } = useApp()
   const [sessions, setSessions] = useState([])
   const [loading, setLoading]   = useState(true)
-  const [editing, setEditing]   = useState(null)   // plan object being edited
+  const [editing, setEditing]   = useState(null)
   const [newModal, setNewModal] = useState(false)
-  const [tab, setTab]           = useState('upcoming') // 'upcoming' | 'completed'
+  const [tab, setTab]           = useState('upcoming')
+  const [deletingId, setDeletingId] = useState(null)
 
   const academyId = user?.academyId
   const coachId   = user?.staffId || user?.id
@@ -558,6 +590,14 @@ export default function SessionPlanner() {
         onSaved={() => { setEditing(null); load() }}
       />
     )
+  }
+
+  const handleDelete = async (e, planId) => {
+    e.stopPropagation()
+    if (!confirm('Delete this session plan?')) return
+    setDeletingId(planId)
+    try { await dbDeleteSessionPlan(planId); load() }
+    catch { setDeletingId(null) }
   }
 
   const upcoming  = sessions.filter(s => s.status !== 'completed').sort((a, b) => a.date < b.date ? -1 : 1)
@@ -621,10 +661,10 @@ export default function SessionPlanner() {
           </div>
         ) : (
           list.map(plan => (
-            <button key={plan.id} onClick={() => setEditing(plan)}
-              className="w-full text-left bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition active:scale-[0.99]">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+            <div key={plan.id} className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition">
+              <div className="flex items-start justify-between gap-2"
+                onClick={() => setEditing(plan)} style={{ cursor: 'pointer' }}>
+                <div className="min-w-0 flex-1">
                   <p className="font-bold text-gray-900 text-sm">{batchName(plan.batch_id)}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{fmt(plan.date)}</p>
                   {plan.topic && <p className="text-xs text-gray-600 mt-1 truncate">{plan.topic}</p>}
@@ -640,12 +680,16 @@ export default function SessionPlanner() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-3 mt-2">
+              <div className="flex items-center justify-between mt-2">
                 <span className="flex items-center gap-1 text-xs text-gray-400">
                   <Clock size={11} /> {phaseSummary(plan)}
                 </span>
+                <button onClick={e => handleDelete(e, plan.id)} disabled={deletingId === plan.id}
+                  className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition disabled:opacity-40">
+                  <Trash2 size={12} /> {deletingId === plan.id ? 'Deleting…' : 'Delete'}
+                </button>
               </div>
-            </button>
+            </div>
           ))
         )}
       </div>
