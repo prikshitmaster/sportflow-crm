@@ -1,17 +1,18 @@
 // Staff Session Planner — coaches build and manage training sessions
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '../../context/AppContext'
 import {
   fetchSessionPlans, fetchSessionPlan, createSessionPlan, updateSessionPlan,
-  deleteSessionPlan as dbDeleteSessionPlan, completeSessionPlan, duplicateSessionPlan,
-  createSessionPhase, updateSessionPhase, deleteSessionPhase,
-  reorderSessionPhases, fetchDrills,
+  deleteSessionPlan as dbDeleteSessionPlan, activateSessionPlan, completeSessionPlan,
+  duplicateSessionPlan, createSessionPhase, updateSessionPhase, deleteSessionPhase,
+  reorderSessionPhases, fetchDrills, uploadGroundPhoto,
 } from '../../lib/db'
 import { exportSessionPDF } from '../../lib/sessionPDF'
 import {
   Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Check, Copy,
   Clock, Users, BookOpen, ChevronDown, ChevronUp, X, Save,
   CalendarDays, Trophy, ArrowUp, ArrowDown, FileDown, AlertCircle,
+  Camera, Zap, CheckCircle2,
 } from 'lucide-react'
 
 const PHASE_CATEGORIES = [
@@ -196,11 +197,14 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
   const [phases, setPhases] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [picker, setPicker] = useState(null)    // category for picker
+  const [picker, setPicker] = useState(null)
+  const [activating, setActivating] = useState(false)
   const [completing, setCompleting] = useState(false)
   const [duplicateModal, setDuplicateModal] = useState(false)
   const [dupDate, setDupDate] = useState('')
   const [dupBatch, setDupBatch] = useState(plan.batch_id || '')
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const photoInputRef = useRef(null)
 
   const totalDur = phases.reduce((s, p) => s + (p.duration || 0), 0)
 
@@ -259,6 +263,16 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
     setPlan(prev => ({ ...prev, ...updated }))
   }
 
+  const handleActivate = async () => {
+    setActivating(true)
+    try {
+      await activateSessionPlan(plan.id)
+      setPlan(prev => ({ ...prev, status: 'active' }))
+    } finally {
+      setActivating(false)
+    }
+  }
+
   const handleComplete = async () => {
     setCompleting(true)
     try {
@@ -266,6 +280,20 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
       onSaved()
     } finally {
       setCompleting(false)
+    }
+  }
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPhotoUploading(true)
+    try {
+      const url = await uploadGroundPhoto(file, plan.id)
+      await updateSessionPlan(plan.id, { ground_photo_url: url })
+      setPlan(prev => ({ ...prev, ground_photo_url: url }))
+    } finally {
+      setPhotoUploading(false)
+      e.target.value = ''
     }
   }
 
@@ -302,8 +330,16 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
           title="Export PDF">
           <FileDown size={17} />
         </button>
-        {plan.status !== 'completed' && (
-          <button onClick={handleComplete} disabled={completing || phases.length === 0}
+        {/* Phase 1→2: Draft → Active */}
+        {plan.status === 'draft' && (
+          <button onClick={handleActivate} disabled={activating}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50">
+            <Zap size={13} /> {activating ? 'Starting…' : 'Go Active'}
+          </button>
+        )}
+        {/* Phase 2→3: Active → Complete */}
+        {plan.status === 'active' && (
+          <button onClick={handleComplete} disabled={completing}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50">
             <Check size={13} /> {completing ? 'Saving…' : 'Complete'}
           </button>
@@ -348,6 +384,37 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
               disabled={plan.status === 'completed'}
             />
           </div>
+
+          {/* Ground photo */}
+          <div className="flex items-start gap-3">
+            <label className="text-xs text-gray-500 w-16 shrink-0 pt-1">Ground</label>
+            <div className="flex-1">
+              {plan.ground_photo_url ? (
+                <div className="relative">
+                  <img src={plan.ground_photo_url} alt="Ground setup"
+                    className="w-full h-36 object-cover rounded-xl border border-gray-200" />
+                  {plan.status !== 'completed' && (
+                    <button onClick={() => photoInputRef.current?.click()}
+                      className="absolute bottom-2 right-2 flex items-center gap-1 px-2.5 py-1.5 bg-black/60 text-white rounded-lg text-[11px] font-semibold">
+                      <Camera size={11} /> Change
+                    </button>
+                  )}
+                </div>
+              ) : (
+                plan.status !== 'completed' && (
+                  <button onClick={() => photoInputRef.current?.click()} disabled={photoUploading}
+                    className="w-full h-20 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-1.5 text-gray-400 hover:border-brand-400 hover:text-brand-500 transition disabled:opacity-50">
+                    {photoUploading
+                      ? <><div className="w-4 h-4 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" /><span className="text-[11px]">Uploading…</span></>
+                      : <><Camera size={18} /><span className="text-[11px] font-medium">Add ground photo</span></>
+                    }
+                  </button>
+                )
+              )}
+              <input ref={photoInputRef} type="file" accept="image/*" capture="environment"
+                className="hidden" onChange={handlePhotoUpload} />
+            </div>
+          </div>
         </div>
 
         {/* Phases */}
@@ -364,7 +431,7 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
           />
         ))}
 
-        {plan.status !== 'completed' && (
+        {(plan.status === 'draft' || plan.status === 'active') && (
           <>
             <p className="text-xs font-semibold text-gray-500 px-1">Add phase</p>
             <div className="grid grid-cols-4 gap-2">
@@ -600,7 +667,7 @@ export default function SessionPlanner() {
     catch { setDeletingId(null) }
   }
 
-  const upcoming  = sessions.filter(s => s.status !== 'completed').sort((a, b) => a.date < b.date ? -1 : 1)
+  const upcoming  = sessions.filter(s => s.status === 'draft' || s.status === 'active').sort((a, b) => a.date < b.date ? -1 : 1)
   const completed = sessions.filter(s => s.status === 'completed').sort((a, b) => a.date > b.date ? -1 : 1)
   const list      = tab === 'upcoming' ? upcoming : completed
 
@@ -661,7 +728,13 @@ export default function SessionPlanner() {
           </div>
         ) : (
           list.map(plan => (
-            <div key={plan.id} className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition">
+            <div key={plan.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-sm transition">
+              {plan.ground_photo_url && (
+                <img src={plan.ground_photo_url} alt="Ground"
+                  className="w-full h-24 object-cover cursor-pointer"
+                  onClick={() => setEditing(plan)} />
+              )}
+              <div className="p-4">
               <div className="flex items-start justify-between gap-2"
                 onClick={() => setEditing(plan)} style={{ cursor: 'pointer' }}>
                 <div className="min-w-0 flex-1">
@@ -675,8 +748,13 @@ export default function SessionPlanner() {
                       <Trophy size={10} /> Done
                     </span>
                   )}
+                  {plan.status === 'active' && (
+                    <span className="flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">
+                      <Zap size={10} /> Active
+                    </span>
+                  )}
                   {plan.status === 'draft' && (
-                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Draft</span>
+                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Created</span>
                   )}
                 </div>
               </div>
@@ -688,6 +766,7 @@ export default function SessionPlanner() {
                   className="flex items-center gap-1 text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition disabled:opacity-40">
                   <Trash2 size={12} /> {deletingId === plan.id ? 'Deleting…' : 'Delete'}
                 </button>
+              </div>
               </div>
             </div>
           ))

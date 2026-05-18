@@ -5,7 +5,7 @@ import { fetchSessionPlans, fetchSessionPlan, deleteSessionPlan } from '../lib/d
 import { exportSessionPDF } from '../lib/sessionPDF'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Clock, Users,
-  Trophy, BookOpen, Trash2, X, CheckCircle2, FileDown,
+  Trophy, BookOpen, Trash2, X, CheckCircle2, FileDown, Zap,
 } from 'lucide-react'
 
 // Stable set of colours assigned to batches by index
@@ -95,6 +95,14 @@ function SessionDetail({ planId, batches, batchColorMap, staff, onClose, onDelet
                 {plan.topic && <p className="text-sm font-medium text-gray-700 mt-1">{plan.topic}</p>}
               </div>
               <div className="flex items-center gap-2">
+                {plan.status === 'draft' && (
+                  <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">Created</span>
+                )}
+                {plan.status === 'active' && (
+                  <span className="flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full">
+                    <Zap size={11} /> Active
+                  </span>
+                )}
                 {plan.status === 'completed' && (
                   <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">
                     <Trophy size={11} /> Completed
@@ -105,6 +113,14 @@ function SessionDetail({ planId, batches, batchColorMap, staff, onClose, onDelet
                 </button>
               </div>
             </div>
+
+            {/* Ground photo */}
+            {plan.ground_photo_url && (
+              <div className="px-5 pb-3">
+                <img src={plan.ground_photo_url} alt="Ground setup"
+                  className="w-full h-36 object-cover rounded-xl border border-gray-100" />
+              </div>
+            )}
 
             {/* Stats row */}
             <div className="flex gap-4 px-5 pb-4 border-b border-gray-100">
@@ -339,7 +355,7 @@ export default function Sessions() {
                           {plans.slice(0, 3).map(p => (
                             <span key={p.id}
                               className="w-2 h-2 rounded-full"
-                              style={{ background: p.status === 'completed' ? '#10B981' : (batchColorMap[p.batch_id] || '#3B82F6') }}
+                              style={{ background: p.status === 'completed' ? '#10B981' : p.status === 'active' ? '#3B82F6' : (batchColorMap[p.batch_id] || '#9CA3AF') }}
                             />
                           ))}
                           {plans.length > 3 && (
@@ -389,13 +405,14 @@ export default function Sessions() {
                     return (
                       <button key={plan.id} onClick={() => setDetailId(plan.id)}
                         className="w-full text-left px-4 py-3 hover:bg-gray-50 transition flex items-start gap-3">
-                        <span className="mt-1 w-2.5 h-2.5 rounded-full shrink-0" style={{ background: plan.status === 'completed' ? '#10B981' : col }} />
+                        <span className="mt-1 w-2.5 h-2.5 rounded-full shrink-0" style={{ background: plan.status === 'completed' ? '#10B981' : plan.status === 'active' ? '#3B82F6' : col }} />
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm text-gray-900 truncate">{b?.name || '—'}</p>
                           {plan.topic && <p className="text-xs text-gray-500 truncate">{plan.topic}</p>}
                           <p className="text-xs text-gray-400 mt-0.5">
                             {coachName(plan, staff) && <span>{coachName(plan, staff)} · </span>}
                             {(plan.session_phases || []).length} phases
+                            {plan.status === 'active' && ' · ⚡ Active'}
                             {plan.status === 'completed' && ' · ✓ Done'}
                           </p>
                         </div>

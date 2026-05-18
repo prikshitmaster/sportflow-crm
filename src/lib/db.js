@@ -2424,12 +2424,29 @@ export async function deleteSessionPlan(id) {
   if (error) throw error
 }
 
+export async function activateSessionPlan(id) {
+  const { data, error } = await supabase.from('session_plans')
+    .update({ status: 'active', updated_at: new Date().toISOString() })
+    .eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
 export async function completeSessionPlan(id) {
   const { data, error } = await supabase.from('session_plans')
     .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', id).select().single()
   if (error) throw error
   return data
+}
+
+export async function uploadGroundPhoto(file, sessionId) {
+  const ext  = file.name.split('.').pop()
+  const path = `ground/${sessionId}.${ext}`
+  const { error } = await supabase.storage.from('session-photos').upload(path, file, { upsert: true })
+  if (error) throw error
+  const { data: { publicUrl } } = supabase.storage.from('session-photos').getPublicUrl(path)
+  return publicUrl
 }
 
 export async function duplicateSessionPlan(id, newDate, newBatchId) {
