@@ -735,7 +735,7 @@ VALUES
 
 ('Static Stretching Routine',
  'cool_down', 'All', 8, 4, 30, 'beginner',
- ARRAY[],
+ ARRAY[]::text[],
  ARRAY['cool-down','recovery','stretching'],
  'Any flat area',
  'All players together — coach leads',
@@ -756,7 +756,7 @@ VALUES
 
 ('Debrief Circle and Recovery',
  'cool_down', 'All', 7, 4, 30, 'beginner',
- ARRAY[],
+ ARRAY[]::text[],
  ARRAY['cool-down','debrief','reflection'],
  'Circle on the pitch',
  'Players gather in a circle around the coach',
