@@ -177,22 +177,17 @@ export function AppProvider({ children }) {
     if (!academyId) return
     setDataLoading(true)
     try {
-      // STUDENTS_PAGE_SIZE caps the initial roster pull. 1000 covers ~99% of
-      // single-academy customers — academies that grow past this will see a
-      // console warn and need follow-up to paginate properly (chunked load).
-      // Until then, dashboard sees the first 1000 by name and pages that filter
-      // by sport/branch still work correctly within that slice.
       const STUDENTS_PAGE_SIZE = 1000
-      const [studentsPage, p, t, b, st, a, ev, fp, ts] = await Promise.all([
+
+      // ── Critical fetches: block render until these land ──
+      // Students, batches, and staff are referenced by nearly every page
+      // (Dashboard, Students, Attendance, Batches, Reports) and by the
+      // auto-suspend logic below. Roster is paginated server-side; 1000
+      // covers ~99% of single-academy customers.
+      const [studentsPage, b, st] = await Promise.all([
         db.fetchStudentsPaginated(academyId, { page: 0, pageSize: STUDENTS_PAGE_SIZE }),
-        db.fetchPayments(academyId),
-        db.fetchTrials(academyId),
         db.fetchBatches(academyId),
         db.fetchStaff(academyId),
-        db.fetchAnnouncements(academyId),
-        db.fetchEvents(academyId),
-        db.fetchFeePlans(academyId),
-        db.fetchTrialSources(academyId).catch(() => []),
       ])
       const s = studentsPage.students
       if (studentsPage.total > STUDENTS_PAGE_SIZE) {
@@ -203,9 +198,25 @@ export function AppProvider({ children }) {
           `Increase STUDENTS_PAGE_SIZE or add chunked loading to avoid missing rows.`
         )
       }
-      setStudents(s); setPayments(p); setTrials(t)
-      setBatches(b);  setStaff(st);   setAnnouncements(a)
-      setEvents(ev);  setFeePlans(fp); setTrialSources(ts)
+      setStudents(s); setBatches(b); setStaff(st)
+
+      // ── Non-critical fetches: fire in background, no blocking ──
+      // Each page that consumes these (Payments, Trials, Events, etc.) will
+      // briefly render with an empty array before its data lands ~200-500ms
+      // later. That's acceptable — Dashboard becomes interactive much faster
+      // and on slow mobile networks we save the ~4MB of secondary data
+      // that wasn't needed on initial render.
+      db.fetchPayments(academyId).then(setPayments).catch(err =>
+        logger.warn?.('fetchPayments background failed', err) ?? console.warn('fetchPayments background failed', err))
+      db.fetchTrials(academyId).then(setTrials).catch(err =>
+        logger.warn?.('fetchTrials background failed', err) ?? console.warn('fetchTrials background failed', err))
+      db.fetchAnnouncements(academyId).then(setAnnouncements).catch(err =>
+        logger.warn?.('fetchAnnouncements background failed', err) ?? console.warn('fetchAnnouncements background failed', err))
+      db.fetchEvents(academyId).then(setEvents).catch(err =>
+        logger.warn?.('fetchEvents background failed', err) ?? console.warn('fetchEvents background failed', err))
+      db.fetchFeePlans(academyId).then(setFeePlans).catch(err =>
+        logger.warn?.('fetchFeePlans background failed', err) ?? console.warn('fetchFeePlans background failed', err))
+      db.fetchTrialSources(academyId).then(setTrialSources).catch(() => {})
 
       // Auto-suspend overdue students after configurable grace period.
       // Throttled to once per hour per browser so re-mounting AppProvider (sport switch,
