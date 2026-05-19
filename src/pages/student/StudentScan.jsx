@@ -72,7 +72,8 @@ export default function StudentScan() {
   const { studentUser } = useApp()
   const navigate = useNavigate()
   const [scanWindow, setScanWindow] = useState(null) // null while loading
-  const activeBatchIdRef = useRef(null) // batch that is open for scanning today
+  const activeBatchIdRef  = useRef(null) // batch that is open for scanning today
+  const activeBranchIdRef = useRef(null) // branch_id of that batch (for audit log tagging)
 
   useEffect(() => {
     if (!studentUser?.id) { setScanWindow({ allowed: true }); return }
@@ -80,10 +81,10 @@ export default function StudentScan() {
 
     Promise.all([
       primaryId
-        ? supabase.from('batches').select('id, days, start_time, end_time').eq('id', primaryId).maybeSingle()
+        ? supabase.from('batches').select('id, days, start_time, end_time, branch_id').eq('id', primaryId).maybeSingle()
         : Promise.resolve({ data: null }),
       supabase.from('student_batches')
-        .select('batch_id, batches(id, days, start_time, end_time)')
+        .select('batch_id, batches(id, days, start_time, end_time, branch_id)')
         .eq('student_id', studentUser.id),
     ]).then(([primary, multi]) => {
       const seen = new Set()
@@ -99,7 +100,8 @@ export default function StudentScan() {
       // Find first batch whose scan window is open right now
       const openBatch = all.find(b => checkScanWindow(b.days, b.start_time, b.end_time).allowed)
       if (openBatch) {
-        activeBatchIdRef.current = openBatch.id
+        activeBatchIdRef.current  = openBatch.id
+        activeBranchIdRef.current = openBatch.branch_id || null
         setScanWindow({ allowed: true })
         return
       }
@@ -254,6 +256,7 @@ export default function StudentScan() {
         entityId: studentUser.id, entityName: studentUser.name,
         academyId: studentUser.academy_id,
         sport: studentUser.sport || null,
+        branchId: activeBranchIdRef.current,
         note: 'gate QR',
       })
       setPhase('success')
@@ -284,6 +287,7 @@ export default function StudentScan() {
         entityId: studentUser.id, entityName: studentUser.name,
         academyId: studentUser.academy_id,
         sport: studentUser.sport || null,
+        branchId: activeBranchIdRef.current,
         note: 'manual (phone)',
       })
       setPhase('success')

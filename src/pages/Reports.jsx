@@ -1560,6 +1560,7 @@ function AuditTab({ academyId, selectedSport, selectedBranch, sportBranches }) {
     return m
   }, [sportBranches])
   const [logs, setLogs]             = useState([])
+  const [checkInLogs, setCheckInLogs] = useState([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
   const [entityFilter, setEntityFilter] = useState('All')
@@ -1573,19 +1574,25 @@ function AuditTab({ academyId, selectedSport, selectedBranch, sportBranches }) {
 
   const load = () => {
     setLoading(true)
-    db.fetchAuditLogs(academyId, 500, selectedSport || null, selectedBranch || null)
-      .then(setLogs)
-      .catch(() => setLogs([]))
+    Promise.all([
+      // All Activity: strict branch filter to prevent cross-branch bleed
+      db.fetchAuditLogs(academyId, 500, selectedSport || null, selectedBranch || null),
+      // Student Check-ins: no branch filter — student entries saved with null branch_id
+      // (before fix) and correct branch_id (after fix) both need to appear
+      db.fetchAuditLogs(academyId, 500, selectedSport || null, null),
+    ]).then(([allLogs, ciLogs]) => {
+      setLogs(allLogs)
+      setCheckInLogs(ciLogs.filter(l => l.action === 'attendance.qr_scan' || l.action === 'attendance.manual'))
+    }).catch(() => { setLogs([]); setCheckInLogs([]) })
       .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [academyId, selectedSport, selectedBranch])
 
-  // Student check-ins: only attendance events
-  const checkIns = useMemo(() => logs
-    .filter(l => l.action === 'attendance.qr_scan' || l.action === 'attendance.manual')
-    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
-    [logs])
+  // Student check-ins: sorted by time (already filtered above)
+  const checkIns = useMemo(() =>
+    [...checkInLogs].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
+    [checkInLogs])
 
   const checkInsByDate = useMemo(() => groupByDate(checkIns), [checkIns])
 
