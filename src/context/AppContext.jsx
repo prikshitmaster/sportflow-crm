@@ -2,7 +2,7 @@
 // AppContext — owner-only production auth & global state
 // ============================================================
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import * as db from '../lib/db'
 import {
@@ -367,11 +367,19 @@ export function AppProvider({ children }) {
     if (role === 'owner' || role === 'staff') loadAll()
   }, [role, loadAll])
 
-  // Re-fetch when app comes back to foreground (mobile PWA wakes from background)
+  // Re-fetch when app comes back to foreground (mobile PWA wakes from background).
+  // Throttled to once per 5 min — without this, every tab focus re-downloads the
+  // full students/payments/batches/staff payload (~6MB at 1000 students).
+  const lastRefreshRef = useRef(Date.now())
   useEffect(() => {
     if (role !== 'owner' && role !== 'staff') return
+    const REFRESH_THROTTLE_MS = 5 * 60 * 1000
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') loadAll()
+      if (document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - lastRefreshRef.current < REFRESH_THROTTLE_MS) return
+      lastRefreshRef.current = now
+      loadAll()
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
@@ -1524,8 +1532,7 @@ export function AppProvider({ children }) {
     if (isAllSports) return batches
     return batches.filter(b => {
       const sports = Array.isArray(b.sports) ? b.sports : (b.sports ? [String(b.sports)] : [])
-      const primarySport = sports.slice().sort((a, z) => z.length - a.length)[0]
-      return primarySport === selectedSport
+      return sports.includes(selectedSport)
     })
   }, [batches, selectedSport, isAllSports])
 

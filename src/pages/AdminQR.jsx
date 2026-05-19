@@ -18,7 +18,7 @@ export default function AdminQR() {
   const loadQR = async () => {
     setLoading(true)
     try {
-      const qr = await db.getOrCreateGateQR(user?.academy || 'Academy Gate')
+      const qr = await db.getOrCreateGateQR(user?.academyId, user?.academy || 'Academy Gate')
       setGateQR(qr)
     } catch (err) {
       showToast('Failed to load Gate QR', 'error')
@@ -32,7 +32,7 @@ export default function AdminQR() {
     setLoading(true)
     setRegenConf(false)
     try {
-      const qr = await db.regenerateGateQR(user?.academy || 'Academy Gate')
+      const qr = await db.regenerateGateQR(user?.academyId, user?.academy || 'Academy Gate')
       setGateQR(qr)
       showToast('Gate QR regenerated successfully')
     } catch (err) {

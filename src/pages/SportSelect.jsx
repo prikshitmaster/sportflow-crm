@@ -36,12 +36,20 @@ export default function SportSelect() {
 
   useEffect(() => { if (adding) inputRef.current?.focus() }, [adding])
 
+  // Primary source: sport_branches (new system). Fallback to legacy academy_branches
+  // text array, then to sports inferred from existing students — covers the
+  // migration period where some owners pre-date sport_branches entirely.
   const sportList = useMemo(() => {
-    if (branches && branches.length > 0) return branches
     const set = new Set()
-    allStudents.forEach(s => s.sport && set.add(s.sport))
+    ;(sportBranches || []).forEach(b => b.sportName && set.add(b.sportName))
+    if (set.size === 0 && branches && branches.length > 0) {
+      branches.forEach(b => set.add(b))
+    }
+    if (set.size === 0) {
+      allStudents.forEach(s => s.sport && set.add(s.sport))
+    }
     return Array.from(set).sort()
-  }, [branches, allStudents])
+  }, [sportBranches, branches, allStudents])
 
   // Per-sport stats
   const counts = useMemo(() => {

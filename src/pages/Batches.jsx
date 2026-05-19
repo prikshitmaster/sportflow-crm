@@ -52,11 +52,15 @@ export default function Batches() {
     fetchAllBatchEnrolments().then(setAllBatchEnrolments).catch(() => {})
   }
 
-  // Return the single "home" sport for a batch: the longest entry in its sports array.
-  // Handles both array and string (in case DB returns text instead of text[]).
+  // Pick a single "home" sport for grouping a batch in the UI.
+  // Prefer the currently-selected sport if the batch belongs to it, else first.
+  // Avoids the old length-sort heuristic that grouped "Cricket Advanced" batches
+  // under that label even when the user had selected "Cricket".
   const getBatchSection = (b) => {
     const sports = Array.isArray(b.sports) ? b.sports : (b.sports ? [String(b.sports)] : [])
-    return sports.slice().sort((a, z) => z.length - a.length)[0] ?? null
+    if (sports.length === 0) return null
+    if (selectedSport && sports.includes(selectedSport)) return selectedSport
+    return sports[0]
   }
 
   // Build the branch tab list from primary sports only — no ghost tabs for secondary sports.

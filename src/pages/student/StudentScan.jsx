@@ -263,7 +263,7 @@ export default function StudentScan() {
 
   const processQR = async (token) => {
     try {
-      await db.markAttendanceViaQR(studentUser.id, token.trim(), activeBatchIdRef.current)
+      await db.markAttendanceViaQR(studentUser.id, token.trim(), activeBatchIdRef.current, studentUser.academy_id)
       logAudit({
         actor: { id: studentUser.id, name: studentUser.name, role: 'Student' },
         action: ACTIONS.ATTENDANCE_QR_SCAN, entityType: 'attendance',

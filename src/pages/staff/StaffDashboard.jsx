@@ -35,7 +35,7 @@ export default function StaffDashboard() {
     if (gateQRToken) return
     setGateQRLoading(true)
     try {
-      const qr = await db.getOrCreateGateQR(user?.academy || 'Academy Gate')
+      const qr = await db.getOrCreateGateQR(user?.academyId, user?.academy || 'Academy Gate')
       setGateQRToken(qr.token)
     } finally {
       setGateQRLoading(false)

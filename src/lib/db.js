@@ -1,5 +1,16 @@
 import { supabase } from './supabase'
 
+// Pulls the staff/student session token from localStorage for RPC validation.
+// Returns null when the caller is an owner (JWT path) or unauthenticated —
+// the SECURITY DEFINER function falls back to auth.uid() in that case.
+function _sessionToken() {
+  try {
+    const raw = localStorage.getItem('sf_staff') || localStorage.getItem('sf_student')
+    if (!raw) return null
+    return JSON.parse(raw)?.token || null
+  } catch { return null }
+}
+
 // ── Students ──────────────────────────────────────────────
 export async function fetchStudents(academyId) {
   let query = supabase.from('students').select('*').order('name')
@@ -64,9 +75,13 @@ export async function insertStudent(s) {
 }
 
 export async function deleteStudent(id) {
-  await supabase.from('payments').delete().eq('student_id', id)
-  await supabase.from('student_sessions').delete().eq('student_id', id)
-  const { error } = await supabase.from('students').delete().eq('id', id)
+  // Routed through secure_delete_student (migration 0033) — validates the
+  // caller, enforces same-academy scope, and runs the payments/sessions/student
+  // cascade atomically server-side.
+  const { error } = await supabase.rpc('secure_delete_student', {
+    p_student_id: id,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -316,23 +331,21 @@ export async function activateStudentWithBatch(id, batchId, batchName, paidTill,
 }
 
 export async function updateBatchEnrolled(batchId, delta) {
-  // Prefer the atomic RPC from migration 0014 — no read-modify-write race.
-  // Falls back to the legacy SELECT-then-UPDATE if the RPC isn't deployed yet.
-  const { error: rpcErr } = await supabase.rpc('bump_batch_enrolled', { p_batch_id: batchId, p_delta: delta })
-  if (!rpcErr) return
-  // 42883 = function does not exist (migration 0014 not applied)
-  if (rpcErr.code !== '42883' && rpcErr.code !== 'PGRST202') throw rpcErr
-  // Legacy fallback — still race-prone but keeps the app working until migration runs
-  const { data, error } = await supabase
-    .from('batches').select('enrolled').eq('id', batchId).maybeSingle()
-  if (error || !data) return
-  await supabase.from('batches')
-    .update({ enrolled: Math.max(0, data.enrolled + delta) })
-    .eq('id', batchId)
+  const { error } = await supabase.rpc('bump_batch_enrolled', { p_batch_id: batchId, p_delta: delta })
+  if (error) {
+    if (error.code === '42883' || error.code === 'PGRST202') {
+      throw new Error('bump_batch_enrolled RPC not found. Apply migration 0014 or 0031 first.')
+    }
+    throw error
+  }
 }
 
 export async function deletePayment(id) {
-  const { error } = await supabase.from('payments').delete().eq('id', id)
+  // Routed through secure_delete_payment (migration 0033).
+  const { error } = await supabase.rpc('secure_delete_payment', {
+    p_payment_id: id,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -592,10 +605,12 @@ export async function fetchStaff(academyId) {
 }
 
 export async function deleteStaff(id) {
-  // Clear related records first (cascade handles staff_auth + staff_sessions)
-  await supabase.from('leave_requests').delete().eq('staff_id', id).throwOnError()
-  await supabase.from('staff_attendance').delete().eq('profile_id', id)
-  const { error } = await supabase.from('staff').delete().eq('id', id)
+  // Routed through secure_delete_staff (migration 0033) — owner-only.
+  // Cascade for leave_requests + staff_attendance happens server-side.
+  const { error } = await supabase.rpc('secure_delete_staff', {
+    p_staff_id: id,
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -902,11 +917,13 @@ export async function saveAttendanceMonth(year, month, monthData, batchId = null
     }
   }
   if (rows.length === 0) return
-  // batch_id=null rows: upsert on (date,student_id) only, otherwise NULL!=NULL breaks conflict detection
+  // Both null-batch and with-batch rows now use the same composite conflict key.
+  // The null-batch path is backed by partial unique index att_no_batch_idx (migration 0031)
+  // since Postgres treats NULL != NULL in normal unique constraints.
   const nullBatch = rows.filter(r => r.batch_id == null)
   const withBatch = rows.filter(r => r.batch_id != null)
   const errs = await Promise.all([
-    nullBatch.length ? supabase.from('attendance').upsert(nullBatch, { onConflict: 'date,student_id' }).then(r => r.error) : null,
+    nullBatch.length ? supabase.from('attendance').upsert(nullBatch, { onConflict: 'date,student_id,batch_id' }).then(r => r.error) : null,
     withBatch.length ? supabase.from('attendance').upsert(withBatch, { onConflict: 'date,student_id,batch_id' }).then(r => r.error) : null,
   ])
   const err = errs.find(Boolean)
@@ -924,22 +941,9 @@ export async function fetchStudentCount() {
 }
 
 export async function fetchNextStudentCode() {
-  // Prefer the atomic sequence-backed RPC from migration 0014 — no race window.
-  const { data: rpcData, error: rpcErr } = await supabase.rpc('next_student_code')
-  if (!rpcErr && rpcData) return rpcData
-  if (rpcErr && rpcErr.code !== '42883' && rpcErr.code !== 'PGRST202') throw rpcErr
-  // Legacy fallback — race-prone (two concurrent creates can collide on the same SA code)
-  // but keeps the app working until migration 0014 is applied.
-  const { data } = await supabase
-    .from('students')
-    .select('student_code')
-    .like('student_code', 'SA%')
-    .order('student_code', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (!data?.student_code) return 'SA001'
-  const num = parseInt(data.student_code.slice(2), 10) || 0
-  return 'SA' + String(num + 1).padStart(3, '0')
+  const { data, error } = await supabase.rpc('next_student_code')
+  if (error) throw new Error('next_student_code RPC failed — ensure migration 0014 is applied: ' + error.message)
+  return data
 }
 
 export async function fetchPaymentCount() {
@@ -951,31 +955,10 @@ export async function fetchPaymentCount() {
 }
 
 // Returns full 'INV-YYYY-NNN' string from the atomic RPC (migration 0014).
-// Falls back to the legacy regex-max-client pattern if the RPC isn't deployed.
-// Returning a full string lets callers skip the year/padding logic and removes the race window entirely.
 export async function fetchNextInvoiceId() {
   const { data, error } = await supabase.rpc('next_invoice_id')
-  if (!error && data) return data
-  if (error && error.code !== '42883' && error.code !== 'PGRST202') throw error
-  // Fallback: build the string from the legacy num + current year, race-prone.
-  const num = await fetchNextInvoiceNum()
-  return `INV-${new Date().getFullYear()}-${String(num).padStart(3, '0')}`
-}
-
-// Legacy number-only helper — kept for back-compat with existing callers.
-// New code should call fetchNextInvoiceId() above.
-export async function fetchNextInvoiceNum() {
-  const { data } = await supabase.from('payments').select('id')
-  if (!data || data.length === 0) return 1
-  let maxNum = 0
-  for (const row of data) {
-    const match = row.id?.match(/INV-\d{4}-(\d+)/)
-    if (match) {
-      const n = parseInt(match[1], 10)
-      if (n > maxNum) maxNum = n
-    }
-  }
-  return maxNum + 1
+  if (error) throw new Error('next_invoice_id RPC failed — ensure migration 0014 is applied: ' + error.message)
+  return data
 }
 
 export async function createStudentAccount(s) {
@@ -1117,11 +1100,15 @@ export async function assignStudentBatch(studentId, batchId, batchName) {
 }
 
 // ── Gate QR ───────────────────────────────────────────────
+// All three functions scope by academy_id (column added in migration 0031).
+// academyName is kept for display labelling only; academyId drives isolation.
 
-export async function getOrCreateGateQR(academyName) {
+export async function getOrCreateGateQR(academyId, academyName) {
+  if (!academyId) throw new Error('getOrCreateGateQR requires academyId')
   const { data: existing } = await supabase
     .from('gate_qr')
     .select('*')
+    .eq('academy_id', academyId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -1132,23 +1119,28 @@ export async function getOrCreateGateQR(academyName) {
   const token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
   const { data, error } = await supabase
     .from('gate_qr')
-    .insert({ token, academy_name: academyName || 'Academy Gate' })
+    .insert({ token, academy_name: academyName || 'Academy Gate', academy_id: academyId })
     .select()
     .single()
   if (error) throw error
   return data
 }
 
-export async function regenerateGateQR(academyName) {
-  await supabase.from('gate_qr').delete().neq('id', 0)
-  return getOrCreateGateQR(academyName)
+export async function regenerateGateQR(academyId, academyName) {
+  if (!academyId) throw new Error('regenerateGateQR requires academyId')
+  // Only delete this academy's rows. Previous version used .neq('id', 0)
+  // which wiped every academy's gate QR — cross-tenant data loss.
+  await supabase.from('gate_qr').delete().eq('academy_id', academyId)
+  return getOrCreateGateQR(academyId, academyName)
 }
 
-export async function validateGateToken(token) {
+export async function validateGateToken(token, academyId) {
+  if (!academyId) return false
   const { data } = await supabase
     .from('gate_qr')
     .select('id')
     .eq('token', token)
+    .eq('academy_id', academyId)
     .maybeSingle()
   return !!data
 }
@@ -1204,10 +1196,10 @@ export async function markAttendanceDirect(studentId, batchIdOverride = undefine
   if (error) throw error
 }
 
-export async function markAttendanceViaQR(studentId, gateToken, batchIdOverride = undefined) {
+export async function markAttendanceViaQR(studentId, gateToken, batchIdOverride = undefined, academyId = null) {
   const today = new Date().toISOString().split('T')[0]
 
-  const isValid = await validateGateToken(gateToken)
+  const isValid = await validateGateToken(gateToken, academyId)
   if (!isValid) throw new Error('Invalid gate QR code')
 
   // Resolve batch_id: use override (multi-batch) or fall back to student's primary batch
@@ -1423,9 +1415,12 @@ export async function updateBatch(batchId, b) {
 }
 
 export async function deleteBatch(id) {
-  const { error, count } = await supabase.from('batches').delete({ count: 'exact' }).eq('id', id)
+  // Routed through secure_delete_batch (migration 0033).
+  const { error } = await supabase.rpc('secure_delete_batch', {
+    p_batch_id: id,
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
-  if (count === 0) throw new Error('Delete blocked by database policy — check RLS permissions')
 }
 
 export async function fetchEvents(academyId) {
@@ -1755,13 +1750,12 @@ export async function createLeaveRequest(staffId, staffName, startDate, endDate,
   return data?.[0] || row
 }
 
-// Owner fetches all leave requests (all staff) — scoped to academy when academyId is provided.
-// Legacy rows with NULL academy_id are included so pre-migration data stays visible;
-// once backfilled (UPDATE leave_requests SET academy_id = ... WHERE academy_id IS NULL),
-// the .or() clause becomes inert and isolation tightens automatically.
+// Owner fetches all leave requests for their academy — strict isolation.
+// Migration 0031 backfills any NULL academy_id rows from staff.academy_id so
+// legacy data is preserved before this stricter filter is applied.
 export async function fetchLeaveRequests(academyId = null) {
   let q = supabase.from('leave_requests').select('*')
-  if (academyId) q = q.or(`academy_id.eq.${academyId},academy_id.is.null`)
+  if (academyId) q = q.eq('academy_id', academyId)
   const { data, error } = await q.order('created_at', { ascending: false })
   if (error) return []
   return data
