@@ -7,12 +7,22 @@ import { QrCode, CheckCircle2, XCircle, Camera, ArrowLeft, Lock, CreditCard, Clo
 import jsQR from 'jsqr'
 import { logAudit, ACTIONS } from '../../lib/audit'
 
-const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const DAYS_FULL  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const WINDOW_MINS = 30  // minutes before/after batch start that scanning is allowed
 
-// Parse "HH:MM" into today's Date object
+// Parse "HH:MM" (24h) or "H:MM AM/PM" (12h) into today's Date object
 function parseBatchTime(timeStr) {
   if (!timeStr) return null
+  const ampm = /([ap]m)/i.exec(timeStr)
+  if (ampm) {
+    const clean = timeStr.replace(/\s*(am|pm)/i, '').trim()
+    let [h, m] = clean.split(':').map(Number)
+    if (isNaN(h) || isNaN(m)) return null
+    if (/pm/i.test(ampm[1]) && h !== 12) h += 12
+    if (/am/i.test(ampm[1]) && h === 12) h = 0
+    const d = new Date(); d.setHours(h, m, 0, 0); return d
+  }
   const [h, m] = timeStr.split(':').map(Number)
   if (isNaN(h) || isNaN(m)) return null
   const d = new Date()
@@ -23,13 +33,14 @@ function parseBatchTime(timeStr) {
 // Returns { allowed: bool, reason: string|null, opensAt: string|null }
 function checkScanWindow(batchDays, startTime, endTime) {
   const now = new Date()
-  const todayDay = DAYS[now.getDay()]
+  const todayShort = DAYS_SHORT[now.getDay()]
+  const todayFull  = DAYS_FULL[now.getDay()]
 
   // No batch config — always open
   if (!batchDays?.length && !startTime) return { allowed: true }
 
-  // Off day
-  if (batchDays?.length > 0 && !batchDays.includes(todayDay)) {
+  // Off day — accept both 'Mon' and 'Monday' formats
+  if (batchDays?.length > 0 && !batchDays.includes(todayShort) && !batchDays.includes(todayFull)) {
     return { allowed: false, reason: 'No training today', opensAt: null }
   }
 
