@@ -14,6 +14,7 @@ import {
 import { ALL_PERMISSIONS, ROLE_PRESETS } from '../lib/permissions'
 import { logAudit, ACTIONS, diffObjects } from '../lib/audit'
 import { logger } from '../lib/logger'
+import { notify } from '../lib/notifications'
 
 // Module-level in-flight payment lock — survives across renders, isolated per tab.
 // Used to refuse rapid duplicate submissions before any network round-trip.
@@ -939,6 +940,18 @@ export function AppProvider({ children }) {
       }
       logAuditSport({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId })
       showToast('Payment recorded')
+      // Notify student — fire and forget
+      if (p.studentId) {
+        notify({
+          academyId: user.academyId,
+          recipientType: 'student',
+          recipientId: p.studentId,
+          title: 'Payment Received',
+          body: `₹${p.amount} for ${monthLabel} has been recorded.`,
+          type: 'payment',
+          link: '/student/payments',
+        }).catch(() => {})
+      }
     } catch (err) {
       showToast(err.message || 'Payment failed', 'error')
     } finally {
@@ -1012,6 +1025,16 @@ export function AppProvider({ children }) {
       setTrials(prev => [created, ...prev])
       logAuditSport({ actor: user, action: ACTIONS.TRIAL_ADD, entityType: 'trial', entityId: created.id, entityName: t.name, changes: { sport: t.sport || '—', source: t.source || '—', date: t.trialDate || '—' }, academyId: user?.academyId })
       showToast('Trial lead added')
+      // If staff added the trial, notify the owner
+      if (role === 'staff' && user?.academyId) {
+        supabase.from('academies').select('owner_id').eq('id', user.academyId).single()
+          .then(({ data }) => {
+            if (data?.owner_id) notify({
+              academyId: user.academyId, recipientType: 'owner', recipientId: data.owner_id,
+              title: 'New Trial Lead', body: `${t.name} wants to join${t.sport ? ' ' + t.sport : ''}.`, type: 'trial', link: '/trials',
+            }).catch(() => {})
+          })
+      }
     } catch (err) {
       showToast(err.message || 'Failed to add trial', 'error')
     }
@@ -1445,6 +1468,16 @@ export function AppProvider({ children }) {
       setAnnouncements(prev => [created, ...prev])
       logAuditSport({ actor: user, action: ACTIONS.ANNOUNCEMENT_ADD, entityType: 'announcement', entityId: created.id, entityName: a.title, changes: { type: a.type || '—' }, academyId: user?.academyId })
       showToast('Announcement posted')
+      // Notify all staff and active students — fire and forget
+      const preview = (a.content || a.body || '').slice(0, 80)
+      staff.forEach(s => notify({
+        academyId: user.academyId, recipientType: 'staff', recipientId: s.id,
+        title: a.title, body: preview || 'New announcement from academy', type: 'announcement', link: '/staff/notices',
+      }).catch(() => {}))
+      students.filter(s => s.status === 'Active').forEach(s => notify({
+        academyId: user.academyId, recipientType: 'student', recipientId: s.id,
+        title: a.title, body: preview || 'New announcement from academy', type: 'announcement', link: '/student/announcements',
+      }).catch(() => {}))
     } catch (err) {
       showToast(err.message || 'Failed', 'error')
     }
