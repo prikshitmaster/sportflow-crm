@@ -637,14 +637,14 @@ export function AppProvider({ children }) {
         academyId: user?.academyId,
       })
 
-      // Inherit current branch scope so the new student appears in the
-      // branch the owner is currently viewing. If no branch is selected
-      // (All Branches / All Sports), leave branch_id as NULL.
-      // Fire-and-forget — the optimistic state below already has branchId.
+      // Inherit current branch scope — awaited so the DB record has branch_id
+      // before we return. A failed update would make the student invisible to
+      // branch-filtered views on next reload (they'd show in optimistic state
+      // but disappear after refresh). Don't throw — student was created fine.
       if (selectedBranch) {
-        ;(async () => {
-          try { await supabase.from('students').update({ branch_id: selectedBranch }).eq('id', newId) } catch {}
-        })()
+        const { error: brErr } = await supabase
+          .from('students').update({ branch_id: selectedBranch }).eq('id', newId)
+        if (brErr) console.warn('branch_id update failed:', brErr.message)
       }
 
       // Mark from_trial on student record (fire-and-forget, column added via migration 0013)

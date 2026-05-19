@@ -3,17 +3,24 @@
 // Photo avatar, name, parent contact (WhatsApp tap), batch, sport
 // Search by name or parent
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { Search, Phone, Users } from 'lucide-react'
+import * as db from '../../lib/db'
 
 export default function StaffRoster() {
-  const { user, batches, students, attendanceData } = useApp()
+  const { user, batches, students } = useApp()
   const [search, setSearch] = useState('')
   const [batchFilter, setBatchFilter] = useState('all')
 
-  const today    = new Date().toISOString().split('T')[0]
-  const todayAtt = attendanceData[today] || {}
+  const pad2  = n => String(n).padStart(2, '0')
+  const now   = new Date()
+  const today = `${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`
+
+  const [todayAtt, setTodayAtt] = useState({})
+  useEffect(() => {
+    db.fetchAttendanceForDate(today).then(setTodayAtt).catch(() => {})
+  }, [today])
 
   // Coach's assigned batches
   const myBatches = useMemo(() => {
