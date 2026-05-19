@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X } from 'lucide-react'
+import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X, Send } from 'lucide-react'
 import { Modal } from './Students'
+import SendStaffNoticeModal from '../components/SendStaffNoticeModal'
 
 const TYPE_CONFIG = {
   Holiday:     { cls: 'badge-yellow', icon: Calendar,     bg: 'bg-amber-50',   border: 'border-amber-100' },
@@ -14,9 +15,10 @@ const TYPE_CONFIG = {
 const TYPES = Object.keys(TYPE_CONFIG)
 
 export default function Community() {
-  const { announcements, addAnnouncement } = useApp()
-  const [filter, setFilter] = useState('All')
-  const [showModal, setShowModal] = useState(false)
+  const { announcements, addAnnouncement, sendStaffNotice, staff } = useApp()
+  const [filter,     setFilter]     = useState('All')
+  const [showModal,  setShowModal]  = useState(false)
+  const [showNotice, setShowNotice] = useState(false)
 
   const filtered = filter === 'All' ? announcements : announcements.filter(a => a.type === filter)
 
@@ -28,9 +30,14 @@ export default function Community() {
           <h2 className="text-xl font-black text-gray-900">Community Updates</h2>
           <p className="text-sm text-gray-500">Announce to parents, coaches and students</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> New Announcement
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={() => setShowNotice(true)}>
+            <Send size={15} /> Staff Notice
+          </button>
+          <button className="btn-primary" onClick={() => setShowModal(true)}>
+            <Plus size={16} /> New Announcement
+          </button>
+        </div>
       </div>
 
       {/* Filter chips */}
@@ -78,7 +85,8 @@ export default function Community() {
         )}
       </div>
 
-      {showModal && <AddAnnouncementModal onClose={() => setShowModal(false)} onSave={addAnnouncement} />}
+      {showModal  && <AddAnnouncementModal onClose={() => setShowModal(false)} onSave={addAnnouncement} />}
+      {showNotice && <SendStaffNoticeModal staff={staff} onClose={() => setShowNotice(false)} onSend={sendStaffNotice} />}
     </div>
   )
 }

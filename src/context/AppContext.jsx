@@ -1461,6 +1461,20 @@ export function AppProvider({ children }) {
 
   // ── Announcements ─────────────────────────────────────
 
+  const sendStaffNotice = async ({ title, body, actionLabel, recipientIds }) => {
+    const ids = recipientIds?.length ? recipientIds : staff.map(s => s.id)
+    await Promise.allSettled(ids.map(id => notify({
+      academyId: user.academyId,
+      recipientType: 'staff',
+      recipientId: id,
+      title,
+      body,
+      type: 'announcement',
+      link: '/staff/notices',
+      actionLabel: actionLabel || null,
+    })))
+  }
+
   const addAnnouncement = async (a) => {
     try {
       const ann     = { ...a, author: user?.name || 'Owner', academyId: user?.academyId }
@@ -1593,7 +1607,7 @@ export function AppProvider({ children }) {
       // raw fee plans (unfiltered) for places that need everything
       allFeePlans: feePlans,
       attendanceData, loadAttendanceForDate, saveAttendance,
-      announcements, addAnnouncement,
+      announcements, addAnnouncement, sendStaffNotice,
       leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // staff portal management
       inviteStaff, updateStaffAccess, revokeStaffAccess,

@@ -31,14 +31,18 @@ export async function deleteNotification(id) {
   await supabase.from('notifications').delete().eq('id', id)
 }
 
-export async function insertNotification({ academyId, recipientType, recipientId, title, body, type = 'info', link = null }) {
+export async function insertNotification({ academyId, recipientType, recipientId, title, body, type = 'info', link = null, actionLabel = null }) {
   const { data, error } = await supabase
     .from('notifications')
-    .insert({ academy_id: academyId, recipient_type: recipientType, recipient_id: String(recipientId), title, body, type, link })
+    .insert({ academy_id: academyId, recipient_type: recipientType, recipient_id: String(recipientId), title, body, type, link, action_label: actionLabel })
     .select()
     .single()
   if (error) throw error
   return data
+}
+
+export async function actionNotification(id) {
+  await supabase.from('notifications').update({ actioned_at: new Date().toISOString(), read: true }).eq('id', id)
 }
 
 // ── Realtime ──────────────────────────────────────────────────────────────────
@@ -115,9 +119,9 @@ export async function sendPushToUser({ recipientType, recipientId, academyId, ti
 
 // ── Convenience: insert + push in one call ────────────────────────────────────
 
-export async function notify({ academyId, recipientType, recipientId, title, body, type = 'info', link = null }) {
+export async function notify({ academyId, recipientType, recipientId, title, body, type = 'info', link = null, actionLabel = null }) {
   await Promise.allSettled([
-    insertNotification({ academyId, recipientType, recipientId, title, body, type, link }),
+    insertNotification({ academyId, recipientType, recipientId, title, body, type, link, actionLabel }),
     sendPushToUser({ recipientType, recipientId, academyId, title, body, link }),
   ])
 }

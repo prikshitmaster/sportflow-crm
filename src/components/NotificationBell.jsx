@@ -3,6 +3,7 @@ import { Bell, X, Check, CheckCheck, Trash2, BellOff, BellRing } from 'lucide-re
 import {
   fetchNotifications, markAllRead, markRead, deleteNotification,
   subscribeToNotifications, pushSupported, subscribeToPush, savePushSubscription,
+  actionNotification,
 } from '../lib/notifications'
 
 const TYPE_ICON = {
@@ -106,6 +107,12 @@ export default function NotificationBell({ recipientType, recipientId, academyId
     setNotifs(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n))
   }
 
+  const handleAction = async (e, id) => {
+    e.stopPropagation()
+    await actionNotification(id)
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, actioned_at: new Date().toISOString(), read: true } : n))
+  }
+
   return (
     <div className="relative" ref={ref}>
       {/* Bell button */}
@@ -191,6 +198,18 @@ export default function NotificationBell({ recipientType, recipientId, academyId
                     </p>
                     <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{n.body}</p>
                     <p className="text-[10px] text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
+                    {n.action_label && (
+                      n.actioned_at
+                        ? <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-semibold text-emerald-600">
+                            <Check size={10} /> {n.action_label}
+                          </span>
+                        : <button
+                            onClick={e => handleAction(e, n.id)}
+                            className="mt-1.5 text-[11px] font-semibold bg-brand-600 text-white px-3 py-1 rounded-lg hover:bg-brand-700 transition"
+                          >
+                            {n.action_label}
+                          </button>
+                    )}
                   </div>
                   <div className="flex flex-col items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
                     {!n.read && (

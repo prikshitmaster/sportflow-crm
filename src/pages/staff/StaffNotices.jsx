@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
-import { Bell, Calendar, Trophy, MapPin } from 'lucide-react'
+import { Bell, Calendar, Trophy, MapPin, Send } from 'lucide-react'
+import SendStaffNoticeModal from '../../components/SendStaffNoticeModal'
 
 export default function StaffNotices() {
-  const { announcements, user } = useApp()
-  const [events,  setEvents]  = useState([])
-  const [loading, setLoading] = useState(true)
+  const { announcements, user, hasPermission, sendStaffNotice, staff } = useApp()
+  const [events,     setEvents]     = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [showNotice, setShowNotice] = useState(false)
+  const canSend = hasPermission('community.manage')
 
   useEffect(() => {
     db.fetchEvents(user?.academyId)
@@ -32,9 +35,16 @@ export default function StaffNotices() {
 
   return (
     <div className="px-4 pt-6 pb-4 space-y-4">
-      <div>
-        <h1 className="text-xl font-black text-gray-900">Notices</h1>
-        <p className="text-xs text-gray-500 mt-0.5">Events, tournaments &amp; announcements</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-black text-gray-900">Notices</h1>
+          <p className="text-xs text-gray-500 mt-0.5">Events, tournaments &amp; announcements</p>
+        </div>
+        {canSend && (
+          <button onClick={() => setShowNotice(true)} className="btn-primary py-2 text-sm">
+            <Send size={14} /> Send Notice
+          </button>
+        )}
       </div>
 
       {loading && (
@@ -103,6 +113,13 @@ export default function StaffNotices() {
             ))}
           </div>
         </div>
+      )}
+      {showNotice && (
+        <SendStaffNoticeModal
+          staff={staff}
+          onClose={() => setShowNotice(false)}
+          onSend={sendStaffNotice}
+        />
       )}
     </div>
   )
