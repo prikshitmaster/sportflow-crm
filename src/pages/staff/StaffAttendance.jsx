@@ -6,7 +6,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { ArrowLeft, Check, Users, Clock, Search, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Check, Users, Clock, Search, ChevronRight, RefreshCw } from 'lucide-react'
 import { fetchBatchEnrolments } from '../../lib/db'
 import * as db from '../../lib/db'   // pickBatch needs db.fetchAttendanceForDate — was missing, marks weren't pre-loading
 import StudentAvatar from '../../components/StudentAvatar'
@@ -85,30 +85,54 @@ export default function StaffAttendance() {
     )
   }, [batchStudents, search])
 
-  // Count present for header badge
-  const presentCount = batchStudents.filter(s => (marks[s.id] || todayAtt[s.id] || '') === 'Present').length
+  // Count present for header badge — reads from batch-scoped marks only (avoids cross-batch bleed from aggregate todayAtt)
+  const presentCount = batchStudents.filter(s => (marks[s.id] || '') === 'Present').length
+
+  const [refreshing, setRefreshing] = useState(false)
 
   // ── Select a batch → go to step 2 ────────────────────
   const pickBatch = async (batch) => {
     setSelectedBatch(batch)
     setMbStudentIds(new Set())
-    // Load multi-batch enrolments
+    // Load multi-batch enrolments — keep a local copy so we can use it below
+    // (setMbStudentIds is async React state, won't be available synchronously)
+    let mbIds = new Set()
     try {
       const rows = await fetchBatchEnrolments(batch.id)
-      setMbStudentIds(new Set(rows.map(r => r.student_id)))
+      mbIds = new Set(rows.map(r => r.student_id))
+      setMbStudentIds(mbIds)
     } catch {/* table may not exist yet */}
     // Pre-load batch-specific marks for today (not aggregate — avoids cross-batch bleed)
     let batchMarks = {}
     try { batchMarks = await db.fetchAttendanceForDate(today, batch.id) } catch {}
     const existing = {}
     students
-      .filter(s => s.status === 'Active' && (s.batchId === batch.id || s.batch === batch.name))
+      .filter(s => s.status === 'Active' && (s.batchId === batch.id || s.batch === batch.name || mbIds.has(s.id)))
       .forEach(s => { existing[s.id] = batchMarks[s.id] || '' })
     setMarks(existing)
     setDirty(new Set())  // fresh load = nothing dirty yet
     setReasons({})
     setSearch('')
     setStep(2)
+  }
+
+  // ── Refresh marks from DB without losing unsaved coach marks ────────────
+  const refreshMarks = async () => {
+    if (!selectedBatch) return
+    setRefreshing(true)
+    try {
+      const fresh = await db.fetchAttendanceForDate(today, selectedBatch.id)
+      setMarks(prev => {
+        const merged = { ...prev }
+        Object.entries(fresh).forEach(([id, status]) => {
+          const sid = Number(id)
+          // Only overwrite entries the coach hasn't touched this session
+          if (!dirty.has(sid)) merged[sid] = status
+        })
+        return merged
+      })
+    } catch { /* ignore — stale is fine */ }
+    setRefreshing(false)
   }
 
   // ── Back to batch picker — warn if there are unsaved marks ───────────
@@ -242,6 +266,15 @@ export default function StaffAttendance() {
               <p className="font-bold text-gray-900 truncate">{selectedBatch?.name}</p>
               <p className="text-xs text-gray-400">{selectedBatch?.sports?.join(', ')} · {selectedBatch?.startTime}</p>
             </div>
+            {/* Refresh student scans */}
+            <button
+              onClick={refreshMarks}
+              disabled={refreshing}
+              title="Refresh — picks up student self-scans"
+              className="p-1.5 rounded-xl bg-gray-100 text-gray-600 active:bg-gray-200"
+            >
+              <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+            </button>
             {/* Live present count badge */}
             <div className="flex-shrink-0 text-right">
               <p className="text-lg font-black text-emerald-600">{presentCount}</p>
