@@ -1400,8 +1400,8 @@ export function AppProvider({ children }) {
 
   // ── Attendance ────────────────────────────────────────
 
-  const loadAttendanceForDate = async (date) => {
-    if (attendanceData[date]) return
+  const loadAttendanceForDate = async (date, force = false) => {
+    if (!force && attendanceData[date]) return
     try {
       const rec = await db.fetchAttendanceForDate(date)
       setAttendanceData(prev => ({ ...prev, [date]: rec }))
@@ -1510,6 +1510,10 @@ export function AppProvider({ children }) {
   //   • Sport + branch selected → only that branch's slice (the isolation case)
   const isAllSports = !selectedSport || selectedSport === 'All'
   const hasBranchScope = Boolean(selectedBranch)
+
+  // Clear attendance cache when sport or branch changes so stale cross-scope
+  // aggregate counts don't leak into the new view's batch cards.
+  useEffect(() => { setAttendanceData({}) }, [selectedSport, selectedBranch])
 
   // Step 1: sport filter (existing behavior, unchanged)
   const sportStudents = useMemo(() =>

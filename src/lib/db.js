@@ -871,7 +871,7 @@ export async function fetchAttendanceForMonth(year, month, batchId = null) {
   const start = `${year}-${pad(month + 1)}-01`
   const end   = `${year}-${pad(month + 1)}-${pad(lastDay)}`
   let q = supabase.from('attendance').select('student_id, date, present, status').gte('date', start).lte('date', end)
-  if (batchId != null) q = q.or(`batch_id.eq.${batchId},batch_id.is.null`)
+  if (batchId != null) q = q.eq('batch_id', batchId)
   const { data, error } = await q
   if (error) throw error
   const result = {}

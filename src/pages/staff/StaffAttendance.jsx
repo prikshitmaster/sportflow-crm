@@ -22,17 +22,32 @@ const STATUS_STYLE = {
 }
 
 export default function StaffAttendance() {
-  const { user, batches, students, attendanceData, saveAttendance, refreshData, loadAttendanceForDate } = useApp()
+  const { user, batches, students, saveAttendance, refreshData } = useApp()
 
   // LOCAL date (not UTC) — toISOString() returns UTC so it would read previous day's data in IST mornings
   const pad2      = (n) => String(n).padStart(2, '0')
   const now       = new Date()
   const today     = `${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`
-  const todayAtt  = attendanceData[today] || {}
   const dayShort  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()]
 
-  // Always (re)load today's attendance on mount — even if stale data exists in cache
-  useEffect(() => { loadAttendanceForDate?.(today) }, [today])
+  // Per-batch marked count for Step 1 cards — loaded fresh on mount so student
+  // self-scans are reflected without relying on the (potentially stale) AppContext cache.
+  const [todayMarkedByBatch, setTodayMarkedByBatch] = useState({}) // { batchId: Set<studentId> }
+  useEffect(() => {
+    db.fetchAttendanceForDate(today).then(rec => {
+      // rec = { studentId: status } — group by matching batches
+      const byBatch = {}
+      Object.entries(rec).forEach(([sid, status]) => {
+        if (!status) return
+        const s = students.find(st => st.id === Number(sid) || st.id === sid)
+        const bId = s?.batchId ?? null
+        if (bId == null) return
+        if (!byBatch[bId]) byBatch[bId] = new Set()
+        byBatch[bId].add(Number(sid))
+      })
+      setTodayMarkedByBatch(byBatch)
+    }).catch(() => {})
+  }, [today, students])
 
   // Step 1: batch picker state
   const [step,          setStep]          = useState(1)
@@ -206,10 +221,11 @@ export default function StaffAttendance() {
               const count = activeCount
               const runsToday = batchTrainsToday(b)
               // Only count Alternate students who train today + all Daily students
+              const markedSet = todayMarkedByBatch[b.id] || new Set()
               const alreadyMarked = runsToday ? students
                 .filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name))
                 .filter(s => s.trainingType !== 'Alternate' || (b.days || []).includes(dayShort))
-                .filter(s => todayAtt[s.id]).length : 0
+                .filter(s => markedSet.has(s.id)).length : 0
 
               return (
                 <button key={b.id}
