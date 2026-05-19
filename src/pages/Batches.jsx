@@ -13,7 +13,7 @@ const COLOR_HEX      = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
 const COLOR_HEX_DARK = ['#3730a3', '#047857', '#6d28d9', '#b45309', '#be123c']
 
 export default function Batches() {
-  const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches } = useApp()
+  const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch } = useApp()
   const [showModal, setShowModal] = useState(false)
   const [editingBatch, setEditingBatch] = useState(null)
   const [selectedBatch, setSelectedBatch] = useState(null)
@@ -23,6 +23,10 @@ export default function Batches() {
   useEffect(() => {
     fetchAllBatchEnrolments().then(setAllBatchEnrolments).catch(() => {})
   }, [])
+
+  // Reset branch tab + selected batch when scope changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setActiveBranch('All'); setSelectedBatch(null) }, [selectedSport, selectedBranch])
 
   const activeStudents = useMemo(() => students.filter(s => s.status === 'Active'), [students])
 

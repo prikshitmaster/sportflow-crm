@@ -67,7 +67,7 @@ async function exportToExcel({ students, fromDate, toDate, showToast }) {
 }
 
 export default function Attendance() {
-  const { students, batches, showToast, selectedSport } = useApp()
+  const { students, batches, showToast, selectedSport, selectedBranch: contextBranch } = useApp()
   const now           = new Date()
   const todayDay      = now.getDate()
   const todayMonth    = now.getMonth()
@@ -119,6 +119,10 @@ export default function Attendance() {
   }, [year, month, selectedBatch?.id])
 
   useEffect(() => { loadMonth() }, [loadMonth])
+
+  // Reset local branch/batch filter when context scope changes so stale sport-name
+  // filter doesn't hide all batches in the new scope
+  useEffect(() => { setSelectedBranch('All'); setSelectedBatch(null) }, [selectedSport, contextBranch])
 
   // Warn before tab close / refresh if there are unsaved attendance changes.
   useEffect(() => {

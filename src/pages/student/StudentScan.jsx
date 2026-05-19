@@ -72,6 +72,7 @@ export default function StudentScan() {
   const { studentUser } = useApp()
   const navigate = useNavigate()
   const [scanWindow, setScanWindow] = useState(null) // null while loading
+  const [alreadyMarked, setAlreadyMarked] = useState(null) // null=checking, true=marked today, false=not yet
   const activeBatchIdRef  = useRef(null) // batch that is open for scanning today
   const activeBranchIdRef = useRef(null) // branch_id of that batch (for audit log tagging)
 
@@ -115,6 +116,19 @@ export default function StudentScan() {
       })
       setScanWindow(trainsToday ? checkScanWindow(trainsToday.days, trainsToday.start_time, trainsToday.end_time) : best)
     }).catch(() => setScanWindow({ allowed: true }))
+  }, [studentUser])
+
+  // Check if student already has attendance for today
+  useEffect(() => {
+    if (!studentUser?.id) { setAlreadyMarked(false); return }
+    const today = new Date().toISOString().slice(0, 10)
+    supabase.from('attendance')
+      .select('id')
+      .eq('student_id', studentUser.id)
+      .eq('date', today)
+      .maybeSingle()
+      .then(({ data }) => setAlreadyMarked(!!data))
+      .catch(() => setAlreadyMarked(false))
   }, [studentUser])
 
   // Suspended students cannot mark attendance — must clear dues first
@@ -341,6 +355,19 @@ export default function StudentScan() {
                 className="w-full btn-secondary justify-center py-3 mt-4"
               >
                 Back to Dashboard
+              </button>
+            </div>
+          ) : alreadyMarked ? (
+            <div className="bg-white rounded-2xl border border-blue-100 p-8 text-center">
+              <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-5">
+                <CheckCircle2 size={44} className="text-blue-400" strokeWidth={1.5} />
+              </div>
+              <h2 className="text-2xl font-black text-gray-900 mb-2">Already Marked</h2>
+              <p className="text-gray-500 text-sm mb-6">
+                Your attendance is already recorded for today.
+              </p>
+              <button onClick={() => navigate('/student/attendance')} className="w-full btn-primary justify-center py-3">
+                View Attendance
               </button>
             </div>
           ) : (

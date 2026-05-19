@@ -219,8 +219,8 @@ export default function Reports() {
         {activeTab === 'financial'    && <FinancialTab  payments={payments} students={students} />}
         {activeTab === 'by_batch'     && <BatchTab      batches={batches} students={students} payments={payments} attendanceData={attendanceData} batchToStudents={batchToStudents} />}
         {activeTab === 'students'     && <StudentLedgerTab students={students} payments={payments} />}
-        {activeTab === 'ageing'       && <AgeingTab     students={students} payments={payments} />}
-        {activeTab === 'attendance'   && <AttendanceTab students={students} batches={batches} attendanceData={attendanceData} />}
+        {activeTab === 'ageing'       && <AgeingTab     key={`${selectedSport}-${selectedBranch}`} students={students} payments={payments} />}
+        {activeTab === 'attendance'   && <AttendanceTab key={`${selectedSport}-${selectedBranch}`} students={students} batches={batches} attendanceData={attendanceData} />}
         {activeTab === 'performance'  && <PerformanceTab students={students} batches={batches} academyId={user?.academyId} />}
         {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} selectedSport={selectedSport} selectedBranch={selectedBranch} sportBranches={sportBranches} />}
       </div>

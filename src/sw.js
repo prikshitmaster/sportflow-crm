@@ -1,7 +1,21 @@
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching'
+import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
+import { NavigationRoute, registerRoute } from 'workbox-routing'
 
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)
+
+// Take control of all clients immediately on install/activate
+self.addEventListener('install', () => self.skipWaiting())
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim()))
+
+// Handle SKIP_WAITING sent by vite-plugin-pwa autoUpdate
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting()
+})
+
+// SPA fallback: all navigation requests → serve cached index.html
+// Prevents blank screen when network is slow/offline on cold open
+registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')))
 
 // Push: show notification
 self.addEventListener('push', event => {

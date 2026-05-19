@@ -61,7 +61,7 @@ function DobInput({ value, onChange, hasError }) {
 
 export default function Students() {
   const navigate = useNavigate()
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment, selectedSport, user } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user } = useApp()
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
@@ -159,6 +159,13 @@ export default function Students() {
   // Reset pages when filters change
   useEffect(() => setPage(1), [search, sportFilter, batchFilter, accFilter])
   useEffect(() => setSuspPage(1), [suspSearch, suspSportFilter, suspBatchFilter])
+
+  // Reset all local filters when context scope changes so stale values don't hide students
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setSportFilter('All'); setBatchFilter('All'); setAccFilter('All')
+    setSuspSportFilter('All'); setSuspBatchFilter('All'); setSuspSearch('')
+  }, [selectedSport, selectedBranch])
 
   const paged     = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const suspPaged = suspFiltered.slice((suspPage - 1) * PAGE_SIZE, suspPage * PAGE_SIZE)
@@ -629,6 +636,7 @@ export default function Students() {
           onSave={async (data) => { await addPayment(data); setShowPayModal(false); setPayStudent(null) }}
           students={students}
           batches={batches}
+          feePlans={feePlans}
           payments={payments}
           initialStudentId={payStudent?.id}
         />

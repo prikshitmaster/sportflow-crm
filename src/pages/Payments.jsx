@@ -138,7 +138,7 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, user } = useApp()
+  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user } = useApp()
   const [editingDate, setEditingDate] = useState(null) // paymentId being edited
   const [markingPaid, setMarkingPaid] = useState(null) // paymentId currently being marked Paid
   const [deleteTarget, setDeleteTarget] = useState(null) // payment pending deletion
@@ -218,13 +218,18 @@ export default function Payments() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setPage(1), [statusFilter, sportFilter, batchFilter, monthFilter])
 
+  // Clear batch/sport filters when the owner switches sport or branch so stale
+  // filter values don't hide all payments in the new scope
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setBatchFilter('All'); setSportFilter('All') }, [selectedSport, selectedBranch])
+
   const filtered = allRecords.filter(p => {
     const q       = search.toLowerCase()
     const matchQ  = !q || (p.student || '').toLowerCase().includes(q) || (p.id || '').toLowerCase().includes(q)
     const matchS  = statusFilter === 'All' || p.status === statusFilter
     const stu     = studentMap[p.studentId]
     const matchSport = sportFilter === 'All' || stu?.sport === sportFilter
-    const matchBatch = batchFilter === 'All' || stu?.batch === batchFilter
+    const matchBatch = batchFilter === 'All' || stu?.batch === batchFilter || String(stu?.batchId) === batchFilter
     const matchMonth = !monthFilter || p.isVirtual || (p.date && p.date.slice(0, 7) === monthFilter)
     return matchQ && matchS && matchSport && matchBatch && matchMonth
   })
@@ -336,7 +341,7 @@ export default function Payments() {
           )}
           <select className="input w-auto" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
             <option value="All">All Batches</option>
-            {batches.map(b => <option key={b.id} value={b.name}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
+            {batches.map(b => <option key={b.id} value={String(b.id)}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
           {(batchFilter !== 'All' || (selectedSport === 'All' && sportFilter !== 'All')) && (
             <button onClick={() => { setSportFilter('All'); setBatchFilter('All') }}
