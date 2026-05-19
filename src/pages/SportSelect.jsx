@@ -191,10 +191,12 @@ export default function SportSelect() {
     }
   }
 
-  // Catalog sports not yet added (case-insensitive comparison against existing)
+  // Catalog sports not yet added — uses sportList (DB + student-derived fallback)
+  // so the dropdown hides Football when the academy already has Football students,
+  // even if the DB read of academy_branches returned empty.
   const existingLower = useMemo(
-    () => new Set((branches || []).map(b => String(b).toLowerCase())),
-    [branches]
+    () => new Set(sportList.map(b => String(b).toLowerCase())),
+    [sportList]
   )
   const availableCatalog = useMemo(
     () => SPORT_CATALOG.filter(s => !existingLower.has(s.toLowerCase())),

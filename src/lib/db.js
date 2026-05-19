@@ -2096,10 +2096,13 @@ export async function fetchAllStudentBatches(academyId) {
 export async function fetchAuditLogs(academyId, limit = 300, sport = null, branchId = null) {
   let q = supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(limit)
   if (academyId) q = q.eq('academy_id', academyId)
-  // Strict sport filter — no null bleed across branches.
-  if (sport) q = q.eq('sport', sport)
-  // Strict branch filter — when viewing one branch, only show its entries.
-  if (branchId) q = q.eq('branch_id', branchId)
+  // Branch filter is STRICT (no null bleed) — when a branch is selected, only its entries show.
+  // Sport filter includes null-sport entries (old/untagged) so historical logs aren't lost.
+  if (branchId) {
+    q = q.eq('branch_id', branchId)
+  } else if (sport) {
+    q = q.or(`sport.eq.${sport},sport.is.null`)
+  }
   const { data, error } = await q
   if (error) { if (error.code === '42P01') return []; throw error }
   return data || []

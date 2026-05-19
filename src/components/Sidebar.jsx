@@ -30,7 +30,10 @@ const nav = [
 ]
 
 export default function Sidebar({ collapsed, setCollapsed }) {
-  const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport } = useApp()
+  const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport, selectedBranch, sportBranches } = useApp()
+  const currentBranchName = selectedBranch
+    ? (sportBranches || []).find(b => b.id === selectedBranch)?.branchName
+    : null
   const navigate = useNavigate()
 
   // Owner sees all feature-enabled items; admin sees only items they have permission for
@@ -93,7 +96,12 @@ export default function Sidebar({ collapsed, setCollapsed }) {
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <Trophy size={14} className="text-brand-400 flex-shrink-0" />
-                <p className="text-sm font-bold text-white truncate">{selectedSport}</p>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-white truncate">{selectedSport}</p>
+                  {currentBranchName && (
+                    <p className="text-[10px] text-purple-300 truncate leading-tight">· {currentBranchName}</p>
+                  )}
+                </div>
               </div>
               <button
                 onClick={() => navigate('/sport-select')}
