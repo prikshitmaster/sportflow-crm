@@ -159,49 +159,53 @@ export async function deleteStudent(id) {
 }
 
 export async function suspendStudent(id) {
+  // Routed through secure_update_student (migration 0039) — validates
+  // caller via current_actor, requires students.manage perm, enforces
+  // same-academy scope. Replaces raw .update() to block DevTools bypass.
   const today = new Date().toISOString().split('T')[0]
-  // Try with suspended_since; fall back if column doesn't exist yet
-  const { error } = await supabase.from('students').update({ status: 'Suspended', suspended_since: today }).eq('id', id)
-  if (error) {
-    const { error: e2 } = await supabase.from('students').update({ status: 'Suspended' }).eq('id', id)
-    if (e2) throw e2
-  }
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: id,
+    p_payload:    { status: 'Suspended', suspendedSince: today },
+    p_token:      _sessionToken(),
+  })
+  if (error) throw error
 }
 
 export async function updateStudentStatus(id, status) {
-  const { error } = await supabase
-    .from('students')
-    .update({ status })
-    .eq('id', id)
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: id,
+    p_payload:    { status },
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function updateStudent(id, s) {
-  const fields = {
-    name:         s.name,
-    parent:       s.parent       || '',
-    phone:        s.phone        || '',
-    parent_phone: s.parentPhone  || '',
-    age:          Number(s.age)  || null,
-    dob:          s.dob          || null,
-    sport:        s.sport        || '',
-    batch:        s.batchName    || '',
-    batch_id:     s.batchId      || null,
-    fees:          Number(s.fees) || 0,
-    fee_amount:    Number(s.fees) || 0,
-    paid_till:     s.paidTill     || null,
-    join_date:     s.joinDate     || null,
-    training_type: s.trainingType || 'Daily',
-    fee_plan:      s.feePlan      || 'monthly',
-    position:      s.position     || null,
-  }
-  const { data, error } = await supabase
-    .from('students')
-    .update(fields)
-    .eq('id', id)
-    .select()
+  // Returns the updated student row (JSON) so AppContext can patch local state
+  // using the authoritative DB values rather than the submitted payload.
+  const { data, error } = await supabase.rpc('secure_update_student', {
+    p_student_id: id,
+    p_payload: {
+      name:         s.name,
+      parent:       s.parent       || '',
+      phone:        s.phone        || '',
+      parentPhone:  s.parentPhone  || '',
+      age:          s.age          ? Number(s.age) || null : null,
+      dob:          s.dob          || null,
+      sport:        s.sport        || '',
+      batchName:    s.batchName    || '',
+      batchId:      s.batchId      ? String(s.batchId) : null,
+      fees:         String(Number(s.fees) || 0),
+      paidTill:     s.paidTill     || null,
+      joinDate:     s.joinDate     || null,
+      trainingType: s.trainingType || 'Daily',
+      feePlan:      s.feePlan      || 'monthly',
+      position:     s.position     || null,
+    },
+    p_token: _sessionToken(),
+  })
   if (error) throw error
-  return data?.[0] || fields
+  return data
 }
 
 // ── Payments ──────────────────────────────────────────────
@@ -274,7 +278,11 @@ export async function findRecentDuplicatePayment(studentId, amount, withinSecond
 }
 
 export async function updateStudentPosition(id, position) {
-  const { error } = await supabase.from('students').update({ position }).eq('id', id)
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: id,
+    p_payload:    { position: position || null },
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -294,8 +302,14 @@ export async function uploadStudentPhoto(file, studentId) {
 }
 
 export async function updateStudentPhotoUrl(id, photoUrl) {
-  // Students use custom auth (anon key) — RLS may block; photo still shows in session
-  await supabase.from('students').update({ photo_url: photoUrl }).eq('id', id)
+  // Routed through secure_update_student_photo (migration 0039).
+  // Students may update their own photo; owners/staff may update any
+  // student's photo within their academy.
+  await supabase.rpc('secure_update_student_photo', {
+    p_student_id: id,
+    p_photo_url:  photoUrl,
+    p_token:      _sessionToken(),
+  })
 }
 
 export async function fetchBatchCoachInfo(batchId) {
@@ -381,29 +395,40 @@ export async function fetchBatchStudentsForPitch(batchId) {
 }
 
 export async function updateStudentPaidTill(id, paidTill, fees) {
-  const updates = { paid_till: paidTill }
-  if (fees) { updates.fees = fees; updates.fee_amount = fees }
-  const { error } = await supabase.from('students').update(updates).eq('id', id)
+  const payload = { paidTill }
+  if (fees) payload.fees = String(fees)
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: id,
+    p_payload:    payload,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function reactivateStudent(id) {
-  const { error } = await supabase.from('students').update({ status: 'Active', suspended_since: null }).eq('id', id)
-  if (error) {
-    const { error: e2 } = await supabase.from('students').update({ status: 'Active' }).eq('id', id)
-    if (e2) throw e2
-  }
+  // suspendedSince: null explicitly included so the CASE WHEN block
+  // clears the suspended_since column (key present, value null → DB NULL).
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: id,
+    p_payload:    { status: 'Active', suspendedSince: null },
+    p_token:      _sessionToken(),
+  })
+  if (error) throw error
 }
 
 export async function activateStudentWithBatch(id, batchId, batchName, paidTill, fees) {
-  const updates = {
+  const payload = {
     status:    'Active',
-    batch_id:  batchId   || null,
-    batch:     batchName || null,
-    paid_till: paidTill,
+    batchId:   batchId   ? String(batchId) : null,
+    batchName: batchName || null,
+    paidTill,
   }
-  if (fees) { updates.fees = fees; updates.fee_amount = fees }
-  const { error } = await supabase.from('students').update(updates).eq('id', id)
+  if (fees) payload.fees = String(fees)
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: id,
+    p_payload:    payload,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -1113,21 +1138,15 @@ export async function createStudentWithPayment(s) {
 }
 
 export async function activateStudentAccount(studentCode, joinCode, passwordHash) {
-  const { data: student, error: fetchErr } = await supabase
-    .from('students')
-    .select('*')
-    .eq('student_code', studentCode.toUpperCase())
-    .eq('join_code',    joinCode.toUpperCase())
-    .eq('account_status', 'pending')
-    .single()
-  if (fetchErr || !student) throw new Error('Invalid Student ID or Join Code')
-
-  const { error: updateErr } = await supabase
-    .from('students')
-    .update({ password_hash: passwordHash, account_status: 'active', join_code: null })
-    .eq('id', student.id)
-  if (updateErr) throw updateErr
-  return student
+  // Routed through secure_activate_student_account (migration 0039).
+  // The RPC validates join_code server-side and returns the updated student row.
+  const { data, error } = await supabase.rpc('secure_activate_student_account', {
+    p_student_code:  studentCode,
+    p_join_code:     joinCode,
+    p_password_hash: passwordHash,
+  })
+  if (error) throw new Error('Invalid Student ID or Join Code')
+  return data
 }
 
 export async function loginStudentAccount(studentCode, passwordHash) {
@@ -1167,18 +1186,20 @@ export async function deleteStudentSession(token) {
 }
 
 export async function resetStudentPassword(studentId, newJoinCode) {
-  const { error } = await supabase
-    .from('students')
-    .update({ password_hash: null, join_code: newJoinCode, account_status: 'pending' })
-    .eq('id', studentId)
+  const { error } = await supabase.rpc('secure_reset_student_password', {
+    p_student_id: studentId,
+    p_join_code:  newJoinCode,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function assignStudentBatch(studentId, batchId, batchName) {
-  const { error } = await supabase
-    .from('students')
-    .update({ batch_id: batchId, batch: batchName })
-    .eq('id', studentId)
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: studentId,
+    p_payload:    { batchId: batchId ? String(batchId) : null, batchName: batchName || null },
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
