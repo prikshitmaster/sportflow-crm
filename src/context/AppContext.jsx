@@ -847,6 +847,18 @@ export function AppProvider({ children }) {
     }
   }
 
+  const manualActivateStudent = async (id) => {
+    try {
+      await db.manualActivateStudentAccount(id)
+      setStudents(prev => prev.map(s =>
+        s.id === id ? { ...s, accountStatus: 'active', joinCode: null } : s
+      ))
+      showToast('Student account activated', 'success')
+    } catch (err) {
+      showToast(err.message || 'Activation failed', 'error')
+    }
+  }
+
   const resetStudentPasswordAdmin = async (id) => {
     try {
       const newJoin = generateJoinCode()
@@ -1593,7 +1605,7 @@ export function AppProvider({ children }) {
       allStudents: students, allStaff: staff, allBatches: batches,
       allPayments: payments, allTrials: trials,
       // data — auto-filtered by selectedSport
-      students: filteredStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
+      students: filteredStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, manualActivateStudent, refreshStudents,
       payments: filteredPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
       trials: filteredTrials, addTrial, updateTrialStatus, deleteTrial,
       trialSources, addTrialSource, removeTrialSource,

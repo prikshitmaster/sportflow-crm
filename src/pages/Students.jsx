@@ -61,7 +61,7 @@ function DobInput({ value, onChange, hasError }) {
 
 export default function Students() {
   const navigate = useNavigate()
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, addPayment, selectedSport, user } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, manualActivateStudent, batches, payments, addPayment, selectedSport, user } = useApp()
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
@@ -503,7 +503,7 @@ export default function Students() {
                       onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === s.id ? null : s.id) }}>
                       <MoreVertical size={15} className="text-gray-500" />
                     </button>
-                    {openMenu === s.id && <StudentMenu s={s} onEdit={() => { setEditStudent(s); setOpenMenu(null) }} onSuspend={() => { suspendStudent(s); setOpenMenu(null) }} onStatus={() => { updateStudentStatus(s.id, s.status === 'Active' ? 'Inactive' : 'Active'); setOpenMenu(null) }} onReset={() => handleReset(s)} onCopy={() => { copyToClipboard(`Student ID: ${s.studentCode}\nActivate at: /activate`, s.id); setOpenMenu(null) }} onDelete={() => { setDeleteTarget(s); setOpenMenu(null) }} copied={copied === s.id} />}
+                    {openMenu === s.id && <StudentMenu s={s} onEdit={() => { setEditStudent(s); setOpenMenu(null) }} onSuspend={() => { suspendStudent(s); setOpenMenu(null) }} onStatus={() => { updateStudentStatus(s.id, s.status === 'Active' ? 'Inactive' : 'Active'); setOpenMenu(null) }} onReset={() => handleReset(s)} onCopy={() => { copyToClipboard(`Student ID: ${s.studentCode}\nActivate at: /activate`, s.id); setOpenMenu(null) }} onActivate={() => { manualActivateStudent(s.id); setOpenMenu(null) }} onDelete={() => { setDeleteTarget(s); setOpenMenu(null) }} copied={copied === s.id} />}
                   </td>
                 </tr>
               ))}
@@ -648,12 +648,17 @@ export default function Students() {
   )
 }
 
-function StudentMenu({ s, mobile, onEdit, onSuspend, onStatus, onReset, onCopy, onDelete, copied }) {
+function StudentMenu({ s, mobile, onEdit, onSuspend, onStatus, onReset, onCopy, onActivate, onDelete, copied }) {
   return (
     <div className={`absolute ${mobile ? 'right-0' : 'right-4'} top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 py-1 w-48`}>
       <button className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-brand-700 hover:bg-brand-50" onClick={onEdit}>
         <Pencil size={14} /> Edit Student
       </button>
+      {s.accountStatus === 'pending' && (
+        <button className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-emerald-700 hover:bg-emerald-50" onClick={onActivate}>
+          <UserCheck size={14} /> Activate Account
+        </button>
+      )}
       {s.status === 'Active' && (
         <button className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50" onClick={onSuspend}>
           <Ban size={14} /> Suspend
