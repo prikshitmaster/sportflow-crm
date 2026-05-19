@@ -573,17 +573,18 @@ function StaffDrillLibrary({ academyId, coachId, sportName }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [drillData, favData] = await Promise.all([
-        fetchDrills(academyId, sportName),
-        fetchDrillFavorites(coachId),
-      ])
+      const drillData = await fetchDrills(academyId, sportName)
       setDrills(drillData)
+    } catch (e) {
+      console.error('fetchDrills error:', e)
+    }
+    try {
+      const favData = await fetchDrillFavorites(coachId)
       setFavorites(new Set(favData))
     } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
+      console.error('fetchDrillFavorites error:', e)
     }
+    setLoading(false)
   }, [academyId, coachId, sportName])
 
   useEffect(() => { load() }, [load])
