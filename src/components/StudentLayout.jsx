@@ -51,7 +51,8 @@ export default function StudentLayout() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Top header */}
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+      <header className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between"
+        style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center overflow-hidden">
             {academyLogo

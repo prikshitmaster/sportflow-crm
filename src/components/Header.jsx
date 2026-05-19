@@ -28,7 +28,8 @@ export default function Header({ onMenuClick }) {
     : null
 
   return (
-    <header className="h-16 bg-white border-b border-gray-100 flex items-center px-4 gap-3 sticky top-0 z-30">
+    <header className="bg-white border-b border-gray-100 flex items-center px-4 gap-3 sticky top-0 z-30"
+      style={{ minHeight: '4rem', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       <button onClick={onMenuClick} className="p-2 rounded-lg hover:bg-gray-100 transition lg:hidden">
         <Menu size={20} className="text-gray-600" />
       </button>
