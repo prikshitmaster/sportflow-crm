@@ -187,31 +187,53 @@ function ArrayEditor({ label, value = [], onChange, placeholder, highlight }) {
 }
 
 // ── Staff Drill Card (mobile row) ─────────────────────────────────────────────
-function StaffDrillCard({ drill, isFav, onFavorite, onClick }) {
+function StaffDrillCard({ drill, isFav, onFavorite, onClick, onClone, onEdit, onDelete, isOwn }) {
   return (
-    <div onClick={onClick}
-      className="bg-white border border-gray-200 rounded-2xl p-4 flex items-start gap-3 cursor-pointer hover:shadow-sm transition">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-          <CategoryBadge category={drill.category} />
-          {!drill.is_global && (
-            <span className="text-[10px] font-semibold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">Mine</span>
-          )}
-          {(drill.diagram_url || drill.diagram_preset) && (
-            <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">Diagram</span>
-          )}
+    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-sm transition">
+      {/* Main row — tap to view detail */}
+      <div onClick={onClick} className="p-4 flex items-start gap-3 cursor-pointer">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+            <CategoryBadge category={drill.category} />
+            {!drill.is_global && (
+              <span className="text-[10px] font-semibold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">Mine</span>
+            )}
+            {(drill.diagram_url || drill.diagram_preset) && (
+              <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">Diagram</span>
+            )}
+          </div>
+          <p className="font-semibold text-sm text-gray-900 leading-snug line-clamp-2">{drill.name}</p>
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-xs text-gray-400">
+            {drill.duration    && <span className="flex items-center gap-1"><Clock size={10}/>{drill.duration}m</span>}
+            {drill.min_players && <span className="flex items-center gap-1"><Users size={10}/>{drill.min_players}–{drill.max_players}</span>}
+            {drill.difficulty  && <span className="capitalize">{drill.difficulty}</span>}
+          </div>
         </div>
-        <p className="font-semibold text-sm text-gray-900 leading-snug line-clamp-2">{drill.name}</p>
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-xs text-gray-400">
-          {drill.duration    && <span className="flex items-center gap-1"><Clock size={10}/>{drill.duration}m</span>}
-          {drill.min_players && <span className="flex items-center gap-1"><Users size={10}/>{drill.min_players}–{drill.max_players}</span>}
-          {drill.difficulty  && <span className="capitalize">{drill.difficulty}</span>}
-        </div>
+        <button onClick={e => { e.stopPropagation(); onFavorite() }}
+          className={`p-1.5 rounded-lg flex-shrink-0 transition ${isFav ? 'text-red-500' : 'text-gray-200 hover:text-gray-400'}`}>
+          <Heart size={16} fill={isFav ? 'currentColor' : 'none'} />
+        </button>
       </div>
-      <button onClick={e => { e.stopPropagation(); onFavorite() }}
-        className={`p-1.5 rounded-lg flex-shrink-0 transition ${isFav ? 'text-red-500' : 'text-gray-200 hover:text-gray-400'}`}>
-        <Heart size={16} fill={isFav ? 'currentColor' : 'none'} />
-      </button>
+
+      {/* Action bar */}
+      <div className="border-t border-gray-100 px-3 py-2 flex items-center gap-1">
+        <button onClick={onClone}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-100 transition">
+          <Copy size={12}/> Clone
+        </button>
+        {isOwn && (
+          <>
+            <button onClick={onEdit}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-brand-600 hover:bg-brand-50 transition">
+              <Edit2 size={12}/> Edit
+            </button>
+            <button onClick={onDelete}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-500 hover:bg-red-50 transition ml-auto">
+              <Trash2 size={12}/> Delete
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -720,8 +742,12 @@ function StaffDrillLibrary({ academyId, coachId, sportName }) {
           {filtered.map(drill => (
             <StaffDrillCard key={drill.id} drill={drill}
               isFav={favorites.has(drill.id)}
+              isOwn={!drill.is_global && drill.academy_id === academyId}
               onFavorite={() => handleFavorite(drill)}
               onClick={() => setSelected(drill)}
+              onClone={() => handleClone(drill)}
+              onEdit={() => { setEditing(drill); setShowEditor(true) }}
+              onDelete={() => handleDelete(drill)}
             />
           ))}
         </div>
