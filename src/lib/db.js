@@ -53,6 +53,79 @@ export async function fetchStudents(academyId) {
   }))
 }
 
+// Paginated variant. Use this for any page that doesn't need the full roster in
+// memory — Students table, Reports lists, etc. Still server-side filtered for
+// sport/branch/status so a 1000-student academy can serve a paginated view in
+// ~200 rows per request instead of pulling the full payload through loadAll().
+//
+// Returns { students, total, page, pageSize, hasMore }. The mapping below is a
+// 1-to-1 copy of fetchStudents so callers can swap freely without field drift.
+export async function fetchStudentsPaginated(academyId, {
+  page = 0,
+  pageSize = 200,
+  sport = null,
+  branchId = null,
+  status = null,
+  search = null,
+} = {}) {
+  let query = supabase
+    .from('students')
+    .select('*', { count: 'exact' })
+    .order('name')
+    .range(page * pageSize, (page + 1) * pageSize - 1)
+
+  if (academyId) query = query.eq('academy_id', academyId)
+  if (sport)     query = query.eq('sport', sport)
+  if (branchId)  query = query.eq('branch_id', branchId)
+  if (status)    query = query.eq('status', status)
+  if (search)    query = query.ilike('name', `%${search}%`)
+
+  const { data, error, count } = await query
+  if (error) {
+    if (error.code === '42P01') return { students: [], total: 0, page, pageSize, hasMore: false }
+    throw error
+  }
+  const students = (data || []).map(row => ({
+    id:             row.id,
+    name:           row.name,
+    parent:         row.parent,
+    phone:          row.phone,
+    parentPhone:    row.parent_phone,
+    age:            row.age,
+    dob:            row.dob || null,
+    sport:          row.sport,
+    batch:          row.batch,
+    batchId:        row.batch_id,
+    joinDate:       row.join_date,
+    status:         row.status,
+    accountStatus:  row.account_status,
+    fees:           row.fees,
+    paidTill:       row.paid_till,
+    studentCode:    row.student_code,
+    joinCode:       row.join_code,
+    feeAmount:      row.fee_amount,
+    feeDueDay:      row.fee_due_day,
+    lastBatchId:    row.last_batch_id,
+    lastBatchName:  row.last_batch_name,
+    suspendedSince: row.suspended_since,
+    trainingType:   row.training_type || 'Daily',
+    feePlan:        row.fee_plan || 'monthly',
+    position:       row.position || null,
+    photoUrl:       row.photo_url || null,
+    fromTrial:      row.from_trial  || false,
+    branchId:       row.branch_id || null,
+    academy_id:     row.academy_id || null,
+  }))
+  const total = count || 0
+  return {
+    students,
+    total,
+    page,
+    pageSize,
+    hasMore: (page + 1) * pageSize < total,
+  }
+}
+
 export async function insertStudent(s) {
   const { data, error } = await supabase
     .from('students')

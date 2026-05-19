@@ -258,9 +258,28 @@ export default function SportSelect() {
   }
 
   const handleRemoveSport = async (sport) => {
-    await removeBranch(sport)
-    showToast(`${sport} removed`, 'success')
-    setRemoving(null)
+    // Block delete if any branch under this sport still has students assigned.
+    // Mirrors the guard in handleConfirmDeleteBranch so callers can't orphan rows.
+    const sportBranchIds = (sportBranches || [])
+      .filter(b => b.sportName === sport)
+      .map(b => b.id)
+    const studentsInSport = allStudents.filter(s => sportBranchIds.includes(s.branchId)).length
+    if (studentsInSport > 0) {
+      showToast(`Cannot remove: ${studentsInSport} students still assigned. Reassign first.`, 'error')
+      return
+    }
+    try {
+      // Legacy registry (academy_branches) — keeps sportList fallback in sync
+      await removeBranch(sport)
+      // New system (sport_branches) — without this, sportList still shows the sport
+      const orphans = (sportBranches || []).filter(b => b.sportName === sport)
+      await Promise.all(orphans.map(b => db.deleteSportBranch(b.id)))
+      await refreshSportBranches()
+      showToast(`${sport} removed`, 'success')
+      setRemoving(null)
+    } catch (err) {
+      showToast(err.message || `Failed to remove ${sport}`, 'error')
+    }
   }
 
   const handleLogout = async () => { await logoutOwner(); navigate('/login') }

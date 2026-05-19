@@ -177,8 +177,14 @@ export function AppProvider({ children }) {
     if (!academyId) return
     setDataLoading(true)
     try {
-      const [s, p, t, b, st, a, ev, fp, ts] = await Promise.all([
-        db.fetchStudents(academyId),
+      // STUDENTS_PAGE_SIZE caps the initial roster pull. 1000 covers ~99% of
+      // single-academy customers — academies that grow past this will see a
+      // console warn and need follow-up to paginate properly (chunked load).
+      // Until then, dashboard sees the first 1000 by name and pages that filter
+      // by sport/branch still work correctly within that slice.
+      const STUDENTS_PAGE_SIZE = 1000
+      const [studentsPage, p, t, b, st, a, ev, fp, ts] = await Promise.all([
+        db.fetchStudentsPaginated(academyId, { page: 0, pageSize: STUDENTS_PAGE_SIZE }),
         db.fetchPayments(academyId),
         db.fetchTrials(academyId),
         db.fetchBatches(academyId),
@@ -188,6 +194,15 @@ export function AppProvider({ children }) {
         db.fetchFeePlans(academyId),
         db.fetchTrialSources(academyId).catch(() => []),
       ])
+      const s = studentsPage.students
+      if (studentsPage.total > STUDENTS_PAGE_SIZE) {
+        // Hard-flag this so we don't quietly serve stale rosters at scale.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[AppContext] Roster paginated: showing ${s.length} of ${studentsPage.total} students. ` +
+          `Increase STUDENTS_PAGE_SIZE or add chunked loading to avoid missing rows.`
+        )
+      }
       setStudents(s); setPayments(p); setTrials(t)
       setBatches(b);  setStaff(st);   setAnnouncements(a)
       setEvents(ev);  setFeePlans(fp); setTrialSources(ts)
