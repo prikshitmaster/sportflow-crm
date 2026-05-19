@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
+import { useLoginThrottle } from '../lib/loginThrottle'
 import { Zap, ArrowRight } from 'lucide-react'
 
 export default function Login() {
@@ -11,15 +12,19 @@ export default function Login() {
   const [showPw,   setShowPw]   = useState(false)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
+  const { blocked, secondsLeft, recordFailure, reset } = useLoginThrottle('owner')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (blocked) return
     if (!email || !password) { setError('Please fill all fields'); return }
     setLoading(true); setError('')
     try {
       await loginOwner(email, password)
+      reset()
       navigate('/dashboard')
     } catch (err) {
+      recordFailure()
       setError(err.message || 'Login failed')
     } finally { setLoading(false) }
   }
@@ -40,7 +45,12 @@ export default function Login() {
           <h1 className="text-2xl font-black text-gray-900 mb-1">Welcome back</h1>
           <p className="text-sm text-gray-500 mb-6">Sign in to manage your academy</p>
 
-          {error && (
+          {blocked && (
+            <div className="bg-orange-50 border border-orange-200 text-orange-700 text-sm px-4 py-3 rounded-lg mb-5">
+              Too many failed attempts. Try again in {secondsLeft}s.
+            </div>
+          )}
+          {!blocked && error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-5">
               {error}
             </div>
@@ -68,7 +78,7 @@ export default function Login() {
                 </button>
               </div>
             </div>
-            <button type="submit" disabled={loading}
+            <button type="submit" disabled={loading || blocked}
               className="w-full btn-primary justify-center py-3 text-base mt-2">
               {loading ? (
                 <span className="flex items-center gap-2">

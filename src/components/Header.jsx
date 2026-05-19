@@ -1,6 +1,7 @@
-import { Bell, Search, Menu, Trophy, RefreshCw } from 'lucide-react'
+import { Search, Menu, Trophy, RefreshCw } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { useLocation, useNavigate } from 'react-router-dom'
+import NotificationBell from './NotificationBell'
 
 const titles = {
   '/dashboard':  'Dashboard',
@@ -59,10 +60,11 @@ export default function Header({ onMenuClick }) {
         </div>
 
         {/* Notifications */}
-        <button className="relative p-2 rounded-lg hover:bg-gray-100 transition">
-          <Bell size={20} className="text-gray-600" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
-        </button>
+        <NotificationBell
+          recipientType="owner"
+          recipientId={user?.id}
+          academyId={user?.academyId}
+        />
 
         {/* Avatar */}
         <div className="flex items-center gap-2.5">

@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import {
   Home, QrCode, CalendarCheck, CreditCard, Megaphone, LogOut, Zap, Target,
 } from 'lucide-react'
+import NotificationBell from './NotificationBell'
 
 function PageSkeleton() {
   return (
@@ -59,7 +60,7 @@ export default function StudentLayout() {
           </div>
           <span className="font-bold text-gray-900 text-sm">SportFlow</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {studentUser && (
             <div className="text-right">
               <p className="text-xs font-semibold text-gray-800 leading-tight">{studentUser.name}</p>
@@ -69,6 +70,11 @@ export default function StudentLayout() {
           <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-sm font-bold text-brand-700">
             {studentUser?.name?.[0] || 'S'}
           </div>
+          <NotificationBell
+            recipientType="student"
+            recipientId={studentUser?.id}
+            academyId={studentUser?.academy_id}
+          />
           <button onClick={handleLogout} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
             <LogOut size={16} />
           </button>

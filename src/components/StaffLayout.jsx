@@ -2,6 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { Suspense, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut, ClipboardList, UserPlus, CalendarDays } from 'lucide-react'
+import NotificationBell from './NotificationBell'
 
 function PageSkeleton() {
   return (
@@ -81,7 +82,12 @@ export default function StaffLayout() {
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${badgeColor}`}>{badge}</span>
         </div>
         <div className="flex items-center gap-2">
-          {user && <p className="text-xs font-semibold text-gray-700 truncate max-w-[140px]">{user.name}</p>}
+          {user && <p className="text-xs font-semibold text-gray-700 truncate max-w-[120px]">{user.name}</p>}
+          <NotificationBell
+            recipientType="staff"
+            recipientId={user?.id}
+            academyId={user?.academyId}
+          />
           <button onClick={handleLogout} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
             <LogOut size={15} />
           </button>
