@@ -14,6 +14,11 @@
     "test:payments": "playwright test payments"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "@supabase/supabase-js": "^2.105.1",
     "date-fns": "^3.6.0",
     "html5-qrcode": "^2.3.8",
@@ -34,6 +39,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.41",
     "tailwindcss": "^3.4.10",
+    "typescript": "^6.0.3",
     "vite": "^5.4.1",
     "vite-plugin-pwa": "^1.2.0"
   }
