@@ -242,7 +242,7 @@ export async function insertPayment(p, invoiceId) {
       amount:         Number(p.amount),
       month:          p.month,
       date:           p.date || new Date().toISOString().split('T')[0],
-      status:         'Paid',
+      status:         p.status || 'Paid',
       mode:           p.mode,
       paymentType:    p.paymentType || 'monthly',
       discountPct:    p.discountPct || 0,
@@ -427,26 +427,32 @@ export async function deletePayment(id) {
 }
 
 export async function updatePaymentStatus(id, status, mode) {
-  const { error } = await supabase
-    .from('payments')
-    .update({ status, mode, date: new Date().toISOString().split('T')[0] })
-    .eq('id', id)
+  // Routed through secure_update_payment (migration 0037) — validates
+  // caller via current_actor, requires payments.manage perm, enforces
+  // same-academy scope so no cross-academy status flips are possible.
+  const { error } = await supabase.rpc('secure_update_payment', {
+    p_payment_id: id,
+    p_payload: { status, mode, date: new Date().toISOString().split('T')[0] },
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function updatePaymentAmount(id, amount, monthsCovered) {
-  const { error } = await supabase
-    .from('payments')
-    .update({ amount, months_covered: monthsCovered })
-    .eq('id', id)
+  const { error } = await supabase.rpc('secure_update_payment', {
+    p_payment_id: id,
+    p_payload: { amount, monthsCovered },
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function updatePaymentDate(id, date) {
-  const { error } = await supabase
-    .from('payments')
-    .update({ date })
-    .eq('id', id)
+  const { error } = await supabase.rpc('secure_update_payment', {
+    p_payment_id: id,
+    p_payload: { date },
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 

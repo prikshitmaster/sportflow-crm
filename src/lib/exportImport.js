@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { supabase } from './supabase'
+import * as db from './db'
 
 // ── Export a single sport's data to JSON + Excel ──────────
 
@@ -276,23 +277,22 @@ export async function importSportData(data, academyId, existingStudentCodes) {
       const invoiceId = `INV-${new Date().getFullYear()}-${String(payNextNum).padStart(3, '0')}`
       payNextNum++
 
-      const insert = {
-        id:             invoiceId,
-        student_id:     newStudentId,
-        student:        p.student_name,
-        amount:         p.amount,
-        month:          p.month,
-        date:           p.date         || null,
-        status:         p.status,
-        mode:           p.mode         || null,
-        payment_type:   p.payment_type || 'monthly',
-        months_covered: p.months_covered || 1,
-        discount_pct:   p.discount_pct   || 0,
-      }
-      if (academyId) insert.academy_id = academyId
-
-      const { error } = await supabase.from('payments').insert(insert)
-      if (error) throw error
+      // Routed through secure_insert_payment (migration 0035) so import
+      // respects the same caller/academy validation as the in-app add path.
+      // status preserved from import — could be "Paid" or "Unpaid".
+      await db.insertPayment({
+        studentId:     newStudentId,
+        student:       p.student_name,
+        amount:        p.amount,
+        month:         p.month,
+        date:          p.date || null,
+        status:        p.status,
+        mode:          p.mode || null,
+        paymentType:   p.payment_type || 'monthly',
+        monthsCovered: p.months_covered || 1,
+        discountPct:   p.discount_pct || 0,
+        academyId:     academyId || null,
+      }, invoiceId)
     } catch (err) {
       results.errors.push(`Payment for ${p.student_name}: ${err.message}`)
     }
