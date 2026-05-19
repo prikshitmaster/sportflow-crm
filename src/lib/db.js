@@ -80,14 +80,6 @@ export async function suspendStudent(id) {
   }
 }
 
-export async function manualActivateStudentAccount(id) {
-  const { error } = await supabase
-    .from('students')
-    .update({ account_status: 'active', join_code: null })
-    .eq('id', id)
-  if (error) throw error
-}
-
 export async function updateStudentStatus(id, status) {
   const { error } = await supabase
     .from('students')
