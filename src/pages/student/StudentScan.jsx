@@ -72,15 +72,47 @@ export default function StudentScan() {
   const { studentUser } = useApp()
   const navigate = useNavigate()
   const [scanWindow, setScanWindow] = useState(null) // null while loading
+  const activeBatchIdRef = useRef(null) // batch that is open for scanning today
 
   useEffect(() => {
-    const batchId = studentUser?.batch_id || studentUser?.batchId
-    if (!batchId) { setScanWindow({ allowed: true }); return }
-    supabase.from('batches').select('days, start_time, end_time').eq('id', batchId).maybeSingle()
-      .then(({ data }) => {
-        setScanWindow(checkScanWindow(data?.days, data?.start_time, data?.end_time))
+    if (!studentUser?.id) { setScanWindow({ allowed: true }); return }
+    const primaryId = studentUser?.batch_id || studentUser?.batchId
+
+    Promise.all([
+      primaryId
+        ? supabase.from('batches').select('id, days, start_time, end_time').eq('id', primaryId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from('student_batches')
+        .select('batch_id, batches(id, days, start_time, end_time)')
+        .eq('student_id', studentUser.id),
+    ]).then(([primary, multi]) => {
+      const seen = new Set()
+      const all = []
+      if (primary.data) { all.push(primary.data); seen.add(primary.data.id) }
+      for (const row of (multi.data || [])) {
+        const b = row.batches
+        if (b && !seen.has(b.id)) { all.push(b); seen.add(b.id) }
+      }
+
+      if (all.length === 0) { setScanWindow({ allowed: true }); return }
+
+      // Find first batch whose scan window is open right now
+      const openBatch = all.find(b => checkScanWindow(b.days, b.start_time, b.end_time).allowed)
+      if (openBatch) {
+        activeBatchIdRef.current = openBatch.id
+        setScanWindow({ allowed: true })
+        return
+      }
+
+      // No batch open — pick best reason from the primary batch (or first batch)
+      const best = checkScanWindow(all[0].days, all[0].start_time, all[0].end_time)
+      // If at least one batch trains today (not "No training today"), show that reason
+      const trainsToday = all.find(b => {
+        const w = checkScanWindow(b.days, b.start_time, b.end_time)
+        return w.reason !== 'No training today'
       })
-      .catch(() => setScanWindow({ allowed: true }))
+      setScanWindow(trainsToday ? checkScanWindow(trainsToday.days, trainsToday.start_time, trainsToday.end_time) : best)
+    }).catch(() => setScanWindow({ allowed: true }))
   }, [studentUser])
 
   // Suspended students cannot mark attendance — must clear dues first
@@ -215,7 +247,7 @@ export default function StudentScan() {
 
   const processQR = async (token) => {
     try {
-      await db.markAttendanceViaQR(studentUser.id, token.trim())
+      await db.markAttendanceViaQR(studentUser.id, token.trim(), activeBatchIdRef.current)
       logAudit({
         actor: { id: studentUser.id, name: studentUser.name, role: 'Student' },
         action: ACTIONS.ATTENDANCE_QR_SCAN, entityType: 'attendance',
@@ -243,7 +275,7 @@ export default function StudentScan() {
   const markDirect = async () => {
     setPhase('processing')
     try {
-      await db.markAttendanceDirect(studentUser.id)
+      await db.markAttendanceDirect(studentUser.id, activeBatchIdRef.current)
       logAudit({
         actor: { id: studentUser.id, name: studentUser.name, role: 'Student' },
         action: ACTIONS.ATTENDANCE_MANUAL, entityType: 'attendance',

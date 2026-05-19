@@ -1154,18 +1154,18 @@ export async function validateGateToken(token) {
 
 // ── QR Attendance ─────────────────────────────────────────
 
-export async function markAttendanceDirect(studentId) {
+export async function markAttendanceDirect(studentId, batchIdOverride = undefined) {
   const today = new Date().toISOString().split('T')[0]
-  // QA_AUDIT C1 fix: resolve student's primary batch_id so the row aligns with
-  // the same composite (date, student_id, batch_id) unique key the coach/admin
-  // paths use. Without this, QR (NULL batch_id) and coach (real batch_id) both
-  // wrote rows for the same student/day and the UNIQUE constraint didn't catch it.
-  let batchId = null
-  try {
-    const { data } = await supabase
-      .from('students').select('batch_id').eq('id', studentId).maybeSingle()
-    batchId = data?.batch_id ?? null
-  } catch { /* ignore — proceed with NULL batch */ }
+  // batchIdOverride: when the student is in multiple batches, the caller passes
+  // the specific batch that is active today so the attendance row is keyed correctly.
+  let batchId = batchIdOverride !== undefined ? batchIdOverride : null
+  if (batchIdOverride === undefined) {
+    try {
+      const { data } = await supabase
+        .from('students').select('batch_id').eq('id', studentId).maybeSingle()
+      batchId = data?.batch_id ?? null
+    } catch { /* ignore — proceed with NULL batch */ }
+  }
 
   if (batchId != null) {
     // Common path — student has a primary batch; UPSERT on the composite key.
@@ -1203,23 +1203,30 @@ export async function markAttendanceDirect(studentId) {
   if (error) throw error
 }
 
-export async function markAttendanceViaQR(studentId, gateToken) {
+export async function markAttendanceViaQR(studentId, gateToken, batchIdOverride = undefined) {
   const today = new Date().toISOString().split('T')[0]
 
   const isValid = await validateGateToken(gateToken)
   if (!isValid) throw new Error('Invalid gate QR code')
 
-  const { data: existing } = await supabase
-    .from('attendance')
-    .select('id')
-    .eq('date', today)
-    .eq('student_id', studentId)
-    .maybeSingle()
+  // Resolve batch_id: use override (multi-batch) or fall back to student's primary batch
+  let batchId = batchIdOverride !== undefined ? batchIdOverride : null
+  if (batchIdOverride === undefined) {
+    try {
+      const { data } = await supabase.from('students').select('batch_id').eq('id', studentId).maybeSingle()
+      batchId = data?.batch_id ?? null
+    } catch { /* proceed with null */ }
+  }
+
+  const query = supabase.from('attendance').select('id').eq('date', today).eq('student_id', studentId)
+  const { data: existing } = batchId != null
+    ? await query.eq('batch_id', batchId).maybeSingle()
+    : await query.is('batch_id', null).maybeSingle()
   if (existing) throw new Error('already marked')
 
   const { error } = await supabase
     .from('attendance')
-    .insert({ date: today, student_id: studentId, present: true, status: 'Present' })
+    .insert({ date: today, student_id: studentId, batch_id: batchId, present: true, status: 'Present' })
   if (error) throw error
 }
 
