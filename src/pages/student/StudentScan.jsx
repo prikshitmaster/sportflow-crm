@@ -252,7 +252,9 @@ export default function StudentScan() {
         actor: { id: studentUser.id, name: studentUser.name, role: 'Student' },
         action: ACTIONS.ATTENDANCE_QR_SCAN, entityType: 'attendance',
         entityId: studentUser.id, entityName: studentUser.name,
-        academyId: studentUser.academy_id, note: 'gate QR',
+        academyId: studentUser.academy_id,
+        sport: studentUser.sport || null,
+        note: 'gate QR',
       })
       setPhase('success')
     } catch (err) {
@@ -280,7 +282,9 @@ export default function StudentScan() {
         actor: { id: studentUser.id, name: studentUser.name, role: 'Student' },
         action: ACTIONS.ATTENDANCE_MANUAL, entityType: 'attendance',
         entityId: studentUser.id, entityName: studentUser.name,
-        academyId: studentUser.academy_id, note: 'manual (phone)',
+        academyId: studentUser.academy_id,
+        sport: studentUser.sport || null,
+        note: 'manual (phone)',
       })
       setPhase('success')
     } catch (err) {

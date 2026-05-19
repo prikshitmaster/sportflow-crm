@@ -38,6 +38,7 @@ export async function fetchStudents(academyId) {
     photoUrl:       row.photo_url || null,
     fromTrial:      row.from_trial  || false,
     branchId:       row.branch_id || null,
+    academy_id:     row.academy_id || null,
   }))
 }
 
@@ -2095,10 +2096,9 @@ export async function fetchAllStudentBatches(academyId) {
 export async function fetchAuditLogs(academyId, limit = 300, sport = null) {
   let q = supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(limit)
   if (academyId) q = q.eq('academy_id', academyId)
-  // Include un-tagged (NULL) entries in every sport view — they are historical
-  // pre-branch entries. Going forward, every new action is tagged so branch
-  // views will naturally isolate themselves over time.
-  if (sport) q = q.or(`sport.eq.${sport},sport.is.null`)
+  // Strict sport filter — no null bleed across branches.
+  // Null-sport entries (student attendance, auth events) always show in All Sports view.
+  if (sport) q = q.eq('sport', sport)
   const { data, error } = await q
   if (error) { if (error.code === '42P01') return []; throw error }
   return data || []
