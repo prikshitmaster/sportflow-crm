@@ -231,24 +231,28 @@ export async function fetchPayments(academyId) {
 }
 
 export async function insertPayment(p, invoiceId) {
-  const { error } = await supabase
-    .from('payments')
-    .insert({
+  // Routed through secure_insert_payment (migration 0035) — validates
+  // caller via current_actor, requires payments.manage perm, enforces
+  // same-academy scope for both the payment and the referenced student.
+  const { error } = await supabase.rpc('secure_insert_payment', {
+    p_payload: {
       id:             invoiceId,
-      student_id:     p.studentId    || null,
+      studentId:      p.studentId,
       student:        p.student,
       amount:         Number(p.amount),
       month:          p.month,
       date:           p.date || new Date().toISOString().split('T')[0],
       status:         'Paid',
       mode:           p.mode,
-      payment_type:   p.paymentType  || 'monthly',
-      discount_pct:   p.discountPct  || 0,
-      months_covered:  p.monthsCovered  || 1,
-      coverage_start:  p.coverageStart  || null,
-      academy_id:      p.academyId     || null,
-      notes:           p.notes         || null,
-    })
+      paymentType:    p.paymentType || 'monthly',
+      discountPct:    p.discountPct || 0,
+      monthsCovered:  p.monthsCovered || 1,
+      coverageStart:  p.coverageStart || null,
+      academyId:      p.academyId    || null,
+      notes:          p.notes        || null,
+    },
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
