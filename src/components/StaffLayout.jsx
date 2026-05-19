@@ -82,7 +82,7 @@ export default function StaffLayout() {
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${badgeColor}`}>{badge}</span>
         </div>
         <div className="flex items-center gap-2">
-          {user && <p className="text-xs font-semibold text-gray-700 truncate max-w-[120px]">{user.name}</p>}
+          {user && <p className="hidden xs:block text-xs font-semibold text-gray-700 truncate max-w-[100px]">{user.name}</p>}
           <NotificationBell
             recipientType="staff"
             recipientId={user?.id}

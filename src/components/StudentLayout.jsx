@@ -62,7 +62,7 @@ export default function StudentLayout() {
         </div>
         <div className="flex items-center gap-2">
           {studentUser && (
-            <div className="text-right">
+            <div className="hidden xs:block text-right">
               <p className="text-xs font-semibold text-gray-800 leading-tight">{studentUser.name}</p>
               <p className="text-[10px] text-brand-600 font-mono leading-tight">{studentUser.student_code}</p>
             </div>
