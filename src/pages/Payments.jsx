@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
 import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer } from 'lucide-react'
 import { Modal } from './Students'
@@ -159,6 +160,7 @@ export default function Payments() {
   const [showModal,       setShowModal]       = useState(false)
   const [payForStudent,   setPayForStudent]   = useState(null)
   const [detailPayment,   setDetailPayment]   = useState(null)
+  const [page,            setPage]            = useState(1)
 
   const now          = new Date()
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
@@ -213,6 +215,8 @@ export default function Payments() {
   }, [students, payments, firstOfMonth])
 
   const allRecords = useMemo(() => [...overdueRows, ...payments], [overdueRows, payments])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setPage(1), [statusFilter, sportFilter, batchFilter, monthFilter])
 
   const filtered = allRecords.filter(p => {
     const q       = search.toLowerCase()
@@ -224,6 +228,7 @@ export default function Payments() {
     const matchMonth = !monthFilter || p.isVirtual || (p.date && p.date.slice(0, 7) === monthFilter)
     return matchQ && matchS && matchSport && matchBatch && matchMonth
   })
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   // Summary cards — filter by selected month when active
   const paidBase    = monthFilter
@@ -355,7 +360,7 @@ export default function Payments() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map(p => {
+              {paged.map(p => {
                 const sm = STATUS_MAP[p.status] || STATUS_MAP.Overdue
                 return (
                   <tr key={p.id} className={`group hover:bg-gray-50/60 transition cursor-pointer ${p.isVirtual ? 'bg-red-50/30' : ''}`}
@@ -441,6 +446,9 @@ export default function Payments() {
               })}
             </tbody>
           </table>
+        </div>
+        <div className="px-4 py-2 border-t border-gray-100">
+          <Paginator page={page} total={filtered.length} onChange={setPage} />
         </div>
       </div>
 

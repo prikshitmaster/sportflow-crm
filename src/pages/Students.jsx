@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
 import { SPORTS, BATCH_NAMES } from '../data/mockData'
 import { SPORT_CATALOG } from '../lib/sportCatalog'
@@ -80,6 +81,8 @@ export default function Students() {
   const [suspSearch,      setSuspSearch]      = useState('')
   const [editStudent,     setEditStudent]     = useState(null)
   const [deleteTarget,    setDeleteTarget]    = useState(null)
+  const [page,            setPage]            = useState(1)
+  const [suspPage,        setSuspPage]        = useState(1)
 
   // Close row menu on outside click — delayed so the opening click doesn't immediately close it
   useEffect(() => {
@@ -152,6 +155,13 @@ export default function Students() {
       .filter(s => suspSportFilter === 'All' || s.sport === suspSportFilter)
       .filter(s => !q || s.name.toLowerCase().includes(q) || (s.studentCode || '').toLowerCase().includes(q))
   }, [suspendedStudents, suspBatchFilter, suspSportFilter, suspSearch])
+
+  // Reset pages when filters change
+  useEffect(() => setPage(1), [search, sportFilter, batchFilter, accFilter])
+  useEffect(() => setSuspPage(1), [suspSearch, suspSportFilter, suspBatchFilter])
+
+  const paged     = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const suspPaged = suspFiltered.slice((suspPage - 1) * PAGE_SIZE, suspPage * PAGE_SIZE)
 
   const pendingCount   = students.filter(s => s.accountStatus === 'pending').length
   const activeCount    = students.filter(s => s.accountStatus === 'active').length
@@ -264,7 +274,7 @@ export default function Students() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {suspFiltered.map(s => (
+                  {suspPaged.map(s => (
                     <tr key={s.id} className="hover:bg-red-50/30 transition">
                       <td className="px-4 py-3">
                         <p className="font-semibold text-gray-900">{s.name}</p>
@@ -298,6 +308,9 @@ export default function Students() {
                 </div>
               )}
             </div>
+            <div className="px-4 py-2 border-t border-gray-100">
+              <Paginator page={suspPage} total={suspFiltered.length} onChange={setSuspPage} />
+            </div>
           </div>
 
           {/* Suspended — mobile card list */}
@@ -307,7 +320,7 @@ export default function Students() {
                 <UsersIcon size={32} className="mx-auto mb-2 opacity-30" />
                 <p className="text-sm">No suspended students</p>
               </div>
-            ) : suspFiltered.map(s => (
+            ) : suspPaged.map(s => (
               <div key={s.id} className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -338,6 +351,11 @@ export default function Students() {
                 </div>
               </div>
             ))}
+            {suspFiltered.length > PAGE_SIZE && (
+              <div className="px-4 py-2 border-t border-gray-100">
+                <Paginator page={suspPage} total={suspFiltered.length} onChange={setSuspPage} />
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -413,7 +431,7 @@ export default function Students() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map(s => (
+              {paged.map(s => (
                 <tr key={s.id} className="hover:bg-gray-50/60 transition group">
                   <td className="px-4 py-3">
                     <button onClick={() => setProfile(s)} className="flex items-center gap-3 text-left hover:opacity-80 transition">
@@ -498,6 +516,9 @@ export default function Students() {
             </div>
           )}
         </div>
+        <div className="px-4 py-2 border-t border-gray-100">
+          <Paginator page={page} total={filtered.length} onChange={setPage} />
+        </div>
       </div>
 
       {/* Mobile Card List */}
@@ -507,7 +528,7 @@ export default function Students() {
             <UsersIcon size={32} className="mx-auto mb-2 opacity-30" />
             <p className="text-sm">No students found</p>
           </div>
-        ) : filtered.map(s => (
+        ) : paged.map(s => (
           <div key={s.id} className="p-4">
             <div className="flex items-start gap-3">
               <button onClick={() => setProfile(s)} className="flex-shrink-0 mt-0.5">
@@ -562,6 +583,11 @@ export default function Students() {
             </div>
           </div>
         ))}
+        {filtered.length > PAGE_SIZE && (
+          <div className="px-4 py-2 border-t border-gray-100">
+            <Paginator page={page} total={filtered.length} onChange={setPage} />
+          </div>
+        )}
       </div>
 
       </>)}

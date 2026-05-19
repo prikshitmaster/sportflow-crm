@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
 import {
   UserPlus, Search, Plus, X, ChevronDown, CheckCircle2,
@@ -1322,6 +1323,7 @@ export default function Trials() {
 
   const [stage,    setStage]    = useState('all')
   const [search,   setSearch]   = useState('')
+  const [page,     setPage]     = useState(1)
   const [modal,    setModal]    = useState(null) // null | 'add' | 'edit' | 'schedule' | 'session' | 'convert' | 'sources' | 'slip'
   const [active,   setActive]   = useState(null) // the trial being actioned
   const [slipTrial,setSlipTrial]= useState(null) // trial to show receipt for
@@ -1345,6 +1347,9 @@ export default function Trials() {
     )
     return list
   }, [trials, stage, search])
+
+  useEffect(() => setPage(1), [stage, search])
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   // Stage counts
   const stageCount = id => {
@@ -1476,12 +1481,15 @@ export default function Trials() {
           <p className="text-sm font-semibold text-gray-400">No leads in this stage</p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(t => (
-            <TrialCard key={t.id} trial={t} batches={batches} onAction={handleAction}
-              onDelete={t => { if (window.confirm(`Delete "${t.name}"? This cannot be undone.`)) deleteTrial(t.id) }} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {paged.map(t => (
+              <TrialCard key={t.id} trial={t} batches={batches} onAction={handleAction}
+                onDelete={t => { if (window.confirm(`Delete "${t.name}"? This cannot be undone.`)) deleteTrial(t.id) }} />
+            ))}
+          </div>
+          <Paginator page={page} total={filtered.length} onChange={setPage} />
+        </>
       )}
 
       {/* Modals */}
