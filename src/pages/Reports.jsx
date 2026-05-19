@@ -163,7 +163,7 @@ const TABS = [
 // ── Main ──────────────────────────────────────────────────
 
 export default function Reports() {
-  const { user, students, payments, trials, batches, attendanceData, selectedSport } = useApp()
+  const { user, students, payments, trials, batches, attendanceData, selectedSport, selectedBranch, sportBranches } = useApp()
   const [activeTab, setActiveTab] = useState('overview')
 
   // Multi-batch enrolments — without this, students who train in a non-primary batch
@@ -222,7 +222,7 @@ export default function Reports() {
         {activeTab === 'ageing'       && <AgeingTab     students={students} payments={payments} />}
         {activeTab === 'attendance'   && <AttendanceTab students={students} batches={batches} attendanceData={attendanceData} />}
         {activeTab === 'performance'  && <PerformanceTab students={students} batches={batches} academyId={user?.academyId} />}
-        {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} selectedSport={selectedSport} />}
+        {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} selectedSport={selectedSport} selectedBranch={selectedBranch} sportBranches={sportBranches} />}
       </div>
     </div>
   )
@@ -1452,7 +1452,7 @@ function groupByDate(logs) {
   return Object.entries(map).sort(([a], [b]) => b.localeCompare(a))
 }
 
-function AuditEntry({ log, expanded, onToggle }) {
+function AuditEntry({ log, branchName, expanded, onToggle }) {
   const changes    = log.changes || {}
   const hasChanges = Object.keys(changes).length > 0
   const label      = ACTION_LABELS[log.action] || log.action
@@ -1487,11 +1487,18 @@ function AuditEntry({ log, expanded, onToggle }) {
               {log.entity_name ? <> — <span className="font-semibold text-gray-900">{log.entity_name}</span></> : ''}
             </p>
           </div>
-          {/* Entity badge + note */}
+          {/* Entity badge + branch + note */}
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {log.entity_type && (
               <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${entityColor.bg} ${entityColor.text}`}>
                 <span>{entityEmoji}</span> {log.entity_type}
+              </span>
+            )}
+            {(branchName || log.sport) && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700">
+                {log.sport && <span>{log.sport}</span>}
+                {log.sport && branchName && <span className="opacity-60">·</span>}
+                {branchName && <span>{branchName}</span>}
               </span>
             )}
             {log.note && (
@@ -1546,7 +1553,12 @@ function AuditEntry({ log, expanded, onToggle }) {
   )
 }
 
-function AuditTab({ academyId, selectedSport }) {
+function AuditTab({ academyId, selectedSport, selectedBranch, sportBranches }) {
+  const branchNameById = useMemo(() => {
+    const m = {}
+    ;(sportBranches || []).forEach(b => { m[b.id] = b.branchName })
+    return m
+  }, [sportBranches])
   const [logs, setLogs]             = useState([])
   const [loading, setLoading]       = useState(true)
   const [search, setSearch]         = useState('')
@@ -1561,13 +1573,13 @@ function AuditTab({ academyId, selectedSport }) {
 
   const load = () => {
     setLoading(true)
-    db.fetchAuditLogs(academyId, 500, selectedSport || null)
+    db.fetchAuditLogs(academyId, 500, selectedSport || null, selectedBranch || null)
       .then(setLogs)
       .catch(() => setLogs([]))
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [academyId, selectedSport])
+  useEffect(() => { load() }, [academyId, selectedSport, selectedBranch])
 
   // Student check-ins: only attendance events
   const checkIns = useMemo(() => logs
@@ -1841,6 +1853,7 @@ function AuditTab({ academyId, selectedSport }) {
                   <AuditEntry
                     key={log.id}
                     log={log}
+                    branchName={log.branch_id ? branchNameById[log.branch_id] : null}
                     expanded={expandedId === log.id}
                     onToggle={() => setExpandedId(prev => prev === log.id ? null : log.id)}
                   />

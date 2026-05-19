@@ -131,10 +131,10 @@ export function AppProvider({ children }) {
     setSelectedBranch(branchId)
   }, [setSelectedSport, setSelectedBranch])
 
-  // Wrapper: auto-injects the active sport so every audit entry is branch-scoped.
+  // Wrapper: auto-injects the active sport + branch so every audit entry is branch-scoped.
   const logAuditSport = useCallback((args) =>
-    logAudit({ ...args, sport: selectedSport || null })
-  , [selectedSport])
+    logAudit({ ...args, sport: selectedSport || null, branchId: selectedBranch || null })
+  , [selectedSport, selectedBranch])
 
   const [suspendAfterDays, setSuspendAfterDaysState] = useState(getSuspendDays)
   const updateSuspendAfterDays = useCallback((n) => {
@@ -377,13 +377,17 @@ export function AppProvider({ children }) {
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [role, loadAll])
 
-  // Load branches when academy is known
-  useEffect(() => {
+  // Load branches when academy is known. Always replace state — even if the DB
+  // returns an empty list, so newly-added sports (e.g. Tennis) are picked up by
+  // the next refresh and stale ones go away.
+  const refreshBranches = useCallback(async () => {
     if (!user?.academyId) return
-    db.fetchBranches(user.academyId).then(list => {
-      if (list.length > 0) setBranches(list)
-    }).catch(() => {})
+    try {
+      const list = await db.fetchBranches(user.academyId)
+      setBranches(list || [])
+    } catch { /* keep prior */ }
   }, [user?.academyId])
+  useEffect(() => { refreshBranches() }, [refreshBranches])
 
   // Load sport_branches (proper branches under sports) when academy is known
   const refreshSportBranches = useCallback(async () => {

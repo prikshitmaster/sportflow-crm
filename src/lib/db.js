@@ -2093,12 +2093,13 @@ export async function fetchAllStudentBatches(academyId) {
   return data || []
 }
 
-export async function fetchAuditLogs(academyId, limit = 300, sport = null) {
+export async function fetchAuditLogs(academyId, limit = 300, sport = null, branchId = null) {
   let q = supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(limit)
   if (academyId) q = q.eq('academy_id', academyId)
   // Strict sport filter — no null bleed across branches.
-  // Null-sport entries (student attendance, auth events) always show in All Sports view.
   if (sport) q = q.eq('sport', sport)
+  // Strict branch filter — when viewing one branch, only show its entries.
+  if (branchId) q = q.eq('branch_id', branchId)
   const { data, error } = await q
   if (error) { if (error.code === '42P01') return []; throw error }
   return data || []
