@@ -38,8 +38,10 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
 
-      - name: Sync Capacitor
-        run: npx cap sync android
+      - name: Copy web assets to Android
+        run: |
+          mkdir -p android/app/src/main/assets/public
+          cp -r dist/. android/app/src/main/assets/public/
 
       - name: Make Gradle executable
         run: chmod +x android/gradlew
