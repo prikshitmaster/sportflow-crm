@@ -1840,14 +1840,9 @@ export async function fetchUserPermissions(userId) {
   return data
 }
 
-export async function saveUserPermissions(userId, academyId, accessRole, permissions, name) {
-  const { error } = await supabase
-    .from('user_permissions')
-    .upsert(
-      { user_id: userId, academy_id: academyId, access_role: accessRole, permissions, name, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    )
-  if (error) throw error
+export async function saveUserPermissions(_userId, _academyId, _accessRole, _permissions, _name) {
+  // Now a no-op — user_permissions is written inside secure_complete_invite_signup RPC.
+  // Kept as an export to avoid breaking any callers during the transition.
 }
 
 export async function fetchAccessUsers(academyId) {
@@ -1868,18 +1863,18 @@ export async function fetchAccessUsers(academyId) {
 }
 
 export async function updateAccessUser(userId, accessRole, permissions) {
-  const { error } = await supabase
-    .from('user_permissions')
-    .update({ access_role: accessRole, permissions, updated_at: new Date().toISOString() })
-    .eq('user_id', userId)
+  const { error } = await supabase.rpc('secure_update_user_permissions', {
+    p_user_id:     userId,
+    p_access_role: accessRole,
+    p_permissions: permissions,
+  })
   if (error) throw error
 }
 
 export async function revokeAccessUser(userId) {
-  const { error } = await supabase
-    .from('user_permissions')
-    .delete()
-    .eq('user_id', userId)
+  const { error } = await supabase.rpc('secure_revoke_user_permissions', {
+    p_user_id: userId,
+  })
   if (error) throw error
 }
 
