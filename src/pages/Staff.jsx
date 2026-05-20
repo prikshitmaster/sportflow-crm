@@ -1577,6 +1577,8 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const handleDevFill = () => {
     const data = fillStaff({ sportOptions: selectedSport && selectedSport !== 'All' ? [selectedSport] : SPORTS })
     setForm(f => ({ ...f, name: data.name, role: data.role, phone: data.phone, age: data.age, sports: data.sports }))
+    setGiveAccess(true)
+    selectPortalType(Math.random() > 0.5 ? 'field' : 'office')
   }
 
   return (
