@@ -60,7 +60,7 @@ BEGIN
     COALESCE(p_phone, ''),
     ARRAY(SELECT jsonb_array_elements_text(COALESCE(p_sports, '[]'::JSONB))),
     COALESCE(p_salary, 0),
-    p_join_date,
+    COALESCE(p_join_date, CURRENT_DATE),
     COALESCE(p_status, 'Active'),
     100,
     NULLIF(p_photo_url, ''),
