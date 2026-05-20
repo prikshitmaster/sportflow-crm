@@ -849,7 +849,7 @@ export async function fetchStaffProfileExtra(staffId) {
 }
 
 export async function deleteStaffSession(token) {
-  await supabase.from('staff_sessions').delete().eq('token', token)
+  await supabase.rpc('secure_logout_staff', { p_token: token })
 }
 
 export async function updateStaffProfile(staffId, { name, phone, photoUrl }) {
@@ -1139,7 +1139,7 @@ export async function validateStudentSession(token) {
 }
 
 export async function deleteStudentSession(token) {
-  await supabase.from('student_sessions').delete().eq('token', token)
+  await supabase.rpc('secure_logout_student', { p_token: token })
 }
 
 export async function resetStudentPassword(studentId, newJoinCode) {
@@ -1164,35 +1164,22 @@ export async function assignStudentBatch(studentId, batchId, batchName) {
 // All three functions scope by academy_id (column added in migration 0031).
 // academyName is kept for display labelling only; academyId drives isolation.
 
-export async function getOrCreateGateQR(academyId, academyName) {
-  if (!academyId) throw new Error('getOrCreateGateQR requires academyId')
-  const { data: existing } = await supabase
-    .from('gate_qr')
-    .select('*')
-    .eq('academy_id', academyId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (existing) return existing
-
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  const token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
-  const { data, error } = await supabase
-    .from('gate_qr')
-    .insert({ token, academy_name: academyName || 'Academy Gate', academy_id: academyId })
-    .select()
-    .single()
+export async function getOrCreateGateQR(_academyId, academyName) {
+  const { data, error } = await supabase.rpc('secure_get_or_create_gate_qr', {
+    p_academy_name: academyName || 'Academy Gate',
+    p_token:        _sessionToken(),
+  })
   if (error) throw error
   return data
 }
 
-export async function regenerateGateQR(academyId, academyName) {
-  if (!academyId) throw new Error('regenerateGateQR requires academyId')
-  // Only delete this academy's rows. Previous version used .neq('id', 0)
-  // which wiped every academy's gate QR — cross-tenant data loss.
-  await supabase.from('gate_qr').delete().eq('academy_id', academyId)
-  return getOrCreateGateQR(academyId, academyName)
+export async function regenerateGateQR(_academyId, academyName) {
+  const { data, error } = await supabase.rpc('secure_regenerate_gate_qr', {
+    p_academy_name: academyName || 'Academy Gate',
+    p_token:        _sessionToken(),
+  })
+  if (error) throw error
+  return data
 }
 
 export async function validateGateToken(token, academyId) {
@@ -1449,56 +1436,65 @@ export async function fetchEvents(academyId) {
 }
 
 export async function insertEvent(e) {
-  const { data, error } = await supabase
-    .from('events')
-    .insert({
-      title:         e.title,
-      type:          e.type,
-      sport:         e.sport || null,
-      date:          e.date,
-      end_date:      e.endDate || null,
-      venue:         e.venue || null,
-      description:   e.description || null,
-      status:        e.status || 'Upcoming',
-      academy_id:    e.academyId || null,
-      audience_type: e.audienceType || 'all',
-      audience_ids:  e.audienceIds  || [],
-      flyer_url:     e.flyerUrl     || null,
-      bracket_type:  e.bracketType  || null,
-      participants:  e.participants  || [],
-    })
-    .select()
-    .single()
+  const { data, error } = await supabase.rpc('secure_insert_event', {
+    p_payload: {
+      title:        e.title,
+      type:         e.type,
+      sport:        e.sport        || '',
+      date:         e.date,
+      endDate:      e.endDate      || '',
+      venue:        e.venue        || '',
+      description:  e.description  || '',
+      status:       e.status       || 'Upcoming',
+      audienceType: e.audienceType || 'all',
+      audienceIds:  e.audienceIds  || [],
+      flyerUrl:     e.flyerUrl     || '',
+      bracketType:  e.bracketType  || '',
+      participants: e.participants  || [],
+    },
+    p_token: _sessionToken(),
+  })
   if (error) throw error
   return data
 }
 
 export async function updateEvent(id, e) {
-  const fields = {}
-  if (e.title        !== undefined) fields.title         = e.title
-  if (e.type         !== undefined) fields.type          = e.type
-  if (e.sport        !== undefined) fields.sport         = e.sport || null
-  if (e.date         !== undefined) fields.date          = e.date
-  if (e.endDate      !== undefined) fields.end_date      = e.endDate || null
-  if (e.venue        !== undefined) fields.venue         = e.venue || null
-  if (e.description  !== undefined) fields.description   = e.description || null
-  if (e.status       !== undefined) fields.status        = e.status
-  if (e.audienceType !== undefined) fields.audience_type = e.audienceType
-  if (e.audienceIds  !== undefined) fields.audience_ids  = e.audienceIds
-  if (e.flyerUrl     !== undefined) fields.flyer_url     = e.flyerUrl || null
-  if (e.bracketType  !== undefined) fields.bracket_type  = e.bracketType || null
-  if (e.participants !== undefined) fields.participants  = e.participants
-  const { error } = await supabase.from('events').update(fields).eq('id', id)
+  const payload = {}
+  if (e.title        !== undefined) payload.title        = e.title
+  if (e.type         !== undefined) payload.type         = e.type
+  if (e.sport        !== undefined) payload.sport        = e.sport || ''
+  if (e.date         !== undefined) payload.date         = e.date
+  if (e.endDate      !== undefined) payload.endDate      = e.endDate || ''
+  if (e.venue        !== undefined) payload.venue        = e.venue || ''
+  if (e.description  !== undefined) payload.description  = e.description || ''
+  if (e.status       !== undefined) payload.status       = e.status
+  if (e.audienceType !== undefined) payload.audienceType = e.audienceType
+  if (e.audienceIds  !== undefined) payload.audienceIds  = e.audienceIds
+  if (e.flyerUrl     !== undefined) payload.flyerUrl     = e.flyerUrl || ''
+  if (e.bracketType  !== undefined) payload.bracketType  = e.bracketType || ''
+  if (e.participants !== undefined) payload.participants  = e.participants
+  const { error } = await supabase.rpc('secure_update_event', {
+    p_event_id: id,
+    p_payload:  payload,
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function updateEventStatus(id, status) {
-  const { error } = await supabase.from('events').update({ status }).eq('id', id)
+  const { error } = await supabase.rpc('secure_update_event', {
+    p_event_id: id,
+    p_payload:  { status },
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function deleteEvent(id) {
-  const { error } = await supabase.from('events').delete().eq('id', id)
+  const { error } = await supabase.rpc('secure_delete_event', {
+    p_event_id: id,
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -1535,21 +1531,29 @@ export async function insertTournamentMatches(eventId, matches) {
     winner_id:    m.winnerId    || null,
     winner_name:  m.winnerName  || null,
   }))
-  const { error } = await supabase.from('tournament_matches').insert(rows)
+  const { error } = await supabase.rpc('secure_insert_tournament_matches', {
+    p_rows:  rows,
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function updateTournamentMatch(id, { winnerId, winnerName, score }) {
-  const { error } = await supabase
-    .from('tournament_matches')
-    .update({ winner_id: winnerId || null, winner_name: winnerName || null,
-              score: score || null, played_at: new Date().toISOString() })
-    .eq('id', id)
+  const { error } = await supabase.rpc('secure_update_tournament_match', {
+    p_match_id:    id,
+    p_winner_id:   winnerId   || null,
+    p_winner_name: winnerName || null,
+    p_score:       score      || null,
+    p_token:       _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function deleteEventMatches(eventId) {
-  const { error } = await supabase.from('tournament_matches').delete().eq('event_id', eventId)
+  const { error } = await supabase.rpc('secure_delete_event_matches', {
+    p_event_id: eventId,
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -1653,19 +1657,19 @@ export async function fetchBranches(academyId) {
   return data.map(r => r.name)
 }
 
-export async function insertBranch(academyId, name) {
-  const { error } = await supabase
-    .from('academy_branches')
-    .upsert({ academy_id: academyId, name })
+export async function insertBranch(_academyId, name) {
+  const { error } = await supabase.rpc('secure_upsert_branch', {
+    p_name:  name,
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
-export async function deleteBranch(academyId, name) {
-  const { error } = await supabase
-    .from('academy_branches')
-    .delete()
-    .eq('academy_id', academyId)
-    .eq('name', name)
+export async function deleteBranch(_academyId, name) {
+  const { error } = await supabase.rpc('secure_delete_branch', {
+    p_name:  name,
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -1705,17 +1709,13 @@ export async function fetchSportBranches(academyId) {
   }))
 }
 
-export async function insertSportBranch(academyId, sportName, branchName, address = '') {
-  const payload = { academy_id: academyId, sport_name: sportName, branch_name: branchName }
-  if (address) payload.address = address
-  let { data, error } = await supabase.from('sport_branches').insert(payload).select().single()
-  if (error && error.code === '42703' && payload.address !== undefined) {
-    // address column doesn't exist yet — retry without it
-    delete payload.address
-    const retry = await supabase.from('sport_branches').insert(payload).select().single()
-    data  = retry.data
-    error = retry.error
-  }
+export async function insertSportBranch(_academyId, sportName, branchName, address = '') {
+  const { data, error } = await supabase.rpc('secure_insert_sport_branch', {
+    p_sport_name:  sportName,
+    p_branch_name: branchName,
+    p_address:     address || null,
+    p_token:       _sessionToken(),
+  })
   if (error) throw error
   return {
     id:         data.id,
@@ -1727,18 +1727,12 @@ export async function insertSportBranch(academyId, sportName, branchName, addres
 }
 
 export async function updateSportBranch(branchId, { branchName, address }) {
-  const fields = {}
-  if (branchName !== undefined) fields.branch_name = branchName
-  if (address    !== undefined) fields.address     = address || null
-  if (Object.keys(fields).length === 0) return
-  let { error } = await supabase.from('sport_branches').update(fields).eq('id', branchId)
-  if (error && error.code === '42703' && 'address' in fields) {
-    // address column doesn't exist yet — retry without it
-    delete fields.address
-    if (Object.keys(fields).length === 0) return
-    const retry = await supabase.from('sport_branches').update(fields).eq('id', branchId)
-    error = retry.error
-  }
+  const { error } = await supabase.rpc('secure_update_sport_branch', {
+    p_branch_id:   branchId,
+    p_branch_name: branchName !== undefined ? branchName : null,
+    p_address:     address    !== undefined ? (address || null) : null,
+    p_token:       _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -1752,16 +1746,18 @@ export async function deleteSportBranch(branchId) {
 
 // ── Leave Requests ────────────────────────────────────────
 
-// Staff submits a leave request — academyId scopes to current tenant
-export async function createLeaveRequest(staffId, staffName, startDate, endDate, reason, academyId = null) {
-  const row = { staff_id: staffId, staff_name: staffName, start_date: startDate, end_date: endDate, reason, status: 'Pending' }
-  if (academyId) row.academy_id = academyId
-  const { data, error } = await supabase
-    .from('leave_requests')
-    .insert(row)
-    .select()
+// Staff submits a leave request — academy_id resolved from session token by RPC
+export async function createLeaveRequest(staffId, staffName, startDate, endDate, reason, _academyId = null) {
+  const { data, error } = await supabase.rpc('secure_create_leave_request', {
+    p_staff_id:   staffId,
+    p_staff_name: staffName,
+    p_start_date: startDate,
+    p_end_date:   endDate,
+    p_reason:     reason,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
-  return data?.[0] || row
+  return data
 }
 
 // Owner fetches all leave requests for their academy — strict isolation.
@@ -1788,10 +1784,11 @@ export async function fetchMyLeaveRequests(staffId) {
 
 // Owner approves or rejects
 export async function updateLeaveStatus(id, status) {
-  const { error } = await supabase
-    .from('leave_requests')
-    .update({ status })
-    .eq('id', id)
+  const { error } = await supabase.rpc('secure_update_leave_status', {
+    p_id:     id,
+    p_status: status,
+    p_token:  _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -1850,16 +1847,14 @@ export async function revokeAccessUser(userId) {
 
 // ── Staff Invites ─────────────────────────────────────────
 
-export async function createInvite(academyId, academyName, name, accessRole, permissions) {
-  const bytes = new Uint8Array(24)
-  crypto.getRandomValues(bytes)
-  const token = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-  const { data, error } = await supabase
-    .from('staff_invites')
-    .insert({ token, academy_id: academyId, academy_name: academyName, name, access_role: accessRole, permissions, expires_at: expiresAt, used: false })
-    .select()
-    .single()
+export async function createInvite(_academyId, academyName, name, accessRole, permissions) {
+  const { data, error } = await supabase.rpc('secure_create_invite', {
+    p_name:         name,
+    p_access_role:  accessRole,
+    p_permissions:  permissions || [],
+    p_academy_name: academyName || '',
+    p_token:        _sessionToken(),
+  })
   if (error) throw error
   return data
 }
@@ -1924,22 +1919,23 @@ export async function acceptInvite(token, email, password) {
 }
 
 export async function deleteInvite(id) {
-  const { error } = await supabase
-    .from('staff_invites')
-    .delete()
-    .eq('id', id)
+  const { error } = await supabase.rpc('secure_delete_invite', {
+    p_id:    id,
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
 // ── Staff Attendance ──────────────────────────────────────
 
-export async function logStaffAttendance(academyId, profileId, staffName, date, checkInTime) {
-  const { error } = await supabase
-    .from('staff_attendance')
-    .upsert(
-      { academy_id: academyId, profile_id: profileId, staff_name: staffName, check_in_date: date, check_in_time: checkInTime },
-      { onConflict: 'academy_id,profile_id,check_in_date' }
-    )
+export async function logStaffAttendance(_academyId, profileId, staffName, date, checkInTime) {
+  const { error } = await supabase.rpc('secure_log_staff_attendance', {
+    p_profile_id:    profileId,
+    p_staff_name:    staffName,
+    p_date:          date,
+    p_check_in_time: checkInTime,
+    p_token:         _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -2009,22 +2005,13 @@ export async function fetchAllAssessments(academyId, month) {
   return data || []
 }
 
-export async function upsertAssessment({ studentId, staffId, batchId, sport, month, scores, notes, academyId }) {
-  const { data, error } = await supabase
-    .from('skill_assessments')
-    .upsert({
-      student_id:     studentId,
-      staff_id:       staffId,
-      batch_id:       batchId,
-      sport,
-      assessed_month: month,
-      scores,
-      notes,
-      academy_id:     academyId,
-    }, { onConflict: 'student_id,assessed_month,sport' })
-    .select()
+export async function upsertAssessment({ studentId, staffId, batchId, sport, month, scores, notes }) {
+  const { data, error } = await supabase.rpc('secure_upsert_assessment', {
+    p_payload: { studentId, staffId, batchId: batchId ?? null, sport, month, scores, notes: notes ?? null },
+    p_token:   _sessionToken(),
+  })
   if (error) throw error
-  return data?.[0]
+  return data
 }
 
 // ── Multi-batch enrolment ─────────────────────────────────
@@ -2207,24 +2194,16 @@ export async function fetchPlayerGoal(studentId, month) {
 }
 
 // Coach upserts a goal for a student in a month. Empty/blank text deletes the goal.
-export async function upsertPlayerGoal({ studentId, month, goalText, academyId, staffId }) {
-  const text = (goalText || '').trim()
-  if (!text) {
-    await supabase.from('player_goals').delete().eq('student_id', studentId).eq('month', month)
-    return null
-  }
-  const { data, error } = await supabase
-    .from('player_goals')
-    .upsert({
-      student_id: studentId,
-      month,
-      goal_text:  text,
-      academy_id: academyId ?? null,
-      staff_id:   staffId   ?? null,
-    }, { onConflict: 'student_id,month' })
-    .select()
+export async function upsertPlayerGoal({ studentId, month, goalText, staffId }) {
+  const { data, error } = await supabase.rpc('secure_upsert_player_goal', {
+    p_student_id: studentId,
+    p_month:      month,
+    p_goal_text:  goalText ?? '',
+    p_staff_id:   staffId  ?? null,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
-  return data?.[0]
+  return data
 }
 
 // Coach side — all goals for students in a batch for a given month.
@@ -2242,43 +2221,24 @@ export async function fetchBatchGoals(studentIds, month) {
 // ── Activity session tracking (ops dashboard) ───────────────
 
 export async function startActivitySession({ userType, userId, userName, academyId, academyName, device }) {
-  const { data, error } = await supabase
-    .from('activity_sessions')
-    .insert({
-      user_id:      userId       ? String(userId) : null,
-      user_type:    userType,
-      user_name:    userName,
-      academy_id:   academyId   || null,
-      academy_name: academyName || null,
-      device:       device      || null,
-    })
-    .select('session_uuid')
-    .single()
+  const { data, error } = await supabase.rpc('secure_start_activity_session', {
+    p_user_type:    userType,
+    p_user_id:      userId       ? String(userId) : null,
+    p_user_name:    userName     || null,
+    p_academy_id:   academyId   || null,
+    p_academy_name: academyName || null,
+    p_device:       device      || null,
+  })
   if (error) throw error
-  return data.session_uuid
+  return data
 }
 
 export async function heartbeatActivitySession(sessionUuid) {
-  await supabase
-    .from('activity_sessions')
-    .update({ last_active_at: new Date().toISOString() })
-    .eq('session_uuid', sessionUuid)
+  await supabase.rpc('secure_heartbeat_activity_session', { p_session_uuid: sessionUuid })
 }
 
 export async function endActivitySession(sessionUuid) {
-  const now = new Date().toISOString()
-  const { data } = await supabase
-    .from('activity_sessions')
-    .select('started_at')
-    .eq('session_uuid', sessionUuid)
-    .single()
-  const durationSeconds = data?.started_at
-    ? Math.round((Date.now() - new Date(data.started_at).getTime()) / 1000)
-    : null
-  await supabase
-    .from('activity_sessions')
-    .update({ ended_at: now, last_active_at: now, duration_seconds: durationSeconds })
-    .eq('session_uuid', sessionUuid)
+  await supabase.rpc('secure_end_activity_session', { p_session_uuid: sessionUuid })
 }
 
 export async function fetchActivitySessions(days = 7) {
@@ -2332,19 +2292,29 @@ export async function fetchDrills(academyId, sportName) {
 }
 
 export async function createDrill(drill) {
-  const { data, error } = await supabase.from('drills').insert(drill).select().single()
+  const { data, error } = await supabase.rpc('secure_create_drill', {
+    p_payload: drill,
+    p_token:   _sessionToken(),
+  })
   if (error) throw error
   return data
 }
 
 export async function updateDrill(id, updates) {
-  const { data, error } = await supabase.from('drills').update(updates).eq('id', id).select().single()
+  const { data, error } = await supabase.rpc('secure_update_drill', {
+    p_id:      id,
+    p_payload: updates,
+    p_token:   _sessionToken(),
+  })
   if (error) throw error
   return data
 }
 
 export async function deleteDrill(id) {
-  const { error } = await supabase.from('drills').delete().eq('id', id)
+  const { error } = await supabase.rpc('secure_delete_drill', {
+    p_id:    id,
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -2356,19 +2326,14 @@ export async function fetchDrillFavorites(staffId) {
   return (data || []).map(r => r.drill_id)
 }
 
-export async function toggleDrillFavorite(drillId, staffId, academyId) {
-  const { data: existing } = await supabase
-    .from('drill_favorites').select('id')
-    .eq('drill_id', drillId).eq('staff_id', staffId).maybeSingle()
-  if (existing) {
-    const { error } = await supabase.from('drill_favorites').delete().eq('id', existing.id)
-    if (error) throw error
-    return false
-  } else {
-    const { error } = await supabase.from('drill_favorites').insert({ drill_id: drillId, staff_id: staffId, academy_id: academyId })
-    if (error) throw error
-    return true
-  }
+export async function toggleDrillFavorite(drillId, staffId, _academyId) {
+  const { data, error } = await supabase.rpc('secure_toggle_drill_favorite', {
+    p_drill_id: drillId,
+    p_staff_id: staffId,
+    p_token:    _sessionToken(),
+  })
+  if (error) throw error
+  return data
 }
 
 // ── DRILL IMAGE UPLOAD ────────────────────────────────────────────────────────
@@ -2414,37 +2379,48 @@ export async function fetchSessionPlan(id) {
 }
 
 export async function createSessionPlan(plan) {
-  const { data, error } = await supabase.from('session_plans')
-    .insert(plan).select().single()
+  const { data, error } = await supabase.rpc('secure_create_session_plan', {
+    p_payload: plan,
+    p_token:   _sessionToken(),
+  })
   if (error) throw error
   return data
 }
 
 export async function updateSessionPlan(id, updates) {
-  const { data, error } = await supabase.from('session_plans')
-    .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq('id', id).select().single()
+  const { data, error } = await supabase.rpc('secure_update_session_plan', {
+    p_id:      id,
+    p_payload: updates,
+    p_token:   _sessionToken(),
+  })
   if (error) throw error
   return data
 }
 
 export async function deleteSessionPlan(id) {
-  const { error } = await supabase.from('session_plans').delete().eq('id', id)
+  const { error } = await supabase.rpc('secure_delete_session_plan', {
+    p_id:    id,
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function activateSessionPlan(id) {
-  const { data, error } = await supabase.from('session_plans')
-    .update({ status: 'active', updated_at: new Date().toISOString() })
-    .eq('id', id).select().single()
+  const { data, error } = await supabase.rpc('secure_update_session_plan', {
+    p_id:      id,
+    p_payload: { status: 'active' },
+    p_token:   _sessionToken(),
+  })
   if (error) throw error
   return data
 }
 
 export async function completeSessionPlan(id) {
-  const { data, error } = await supabase.from('session_plans')
-    .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq('id', id).select().single()
+  const { data, error } = await supabase.rpc('secure_update_session_plan', {
+    p_id:      id,
+    p_payload: { status: 'completed', completed_at: new Date().toISOString() },
+    p_token:   _sessionToken(),
+  })
   if (error) throw error
   return data
 }
@@ -2467,7 +2443,10 @@ export async function duplicateSessionPlan(id, newDate, newBatchId) {
     session_id: newPlan.id,
   }))
   if (phases.length > 0) {
-    const { error } = await supabase.from('session_phases').insert(phases)
+    const { error } = await supabase.rpc('secure_insert_session_phases', {
+      p_phases: phases,
+      p_token:  _sessionToken(),
+    })
     if (error) throw error
   }
   return newPlan
@@ -2476,30 +2455,37 @@ export async function duplicateSessionPlan(id, newDate, newBatchId) {
 // ── SESSION PHASES ────────────────────────────────────────────────────────────
 
 export async function createSessionPhase(phase) {
-  const { data, error } = await supabase.from('session_phases')
-    .insert(phase).select('*, drills(*)').single()
+  const { data, error } = await supabase.rpc('secure_create_session_phase', {
+    p_phase: phase,
+    p_token: _sessionToken(),
+  })
   if (error) throw error
   return data
 }
 
 export async function updateSessionPhase(id, updates) {
-  const { data, error } = await supabase.from('session_phases')
-    .update(updates).eq('id', id).select('*, drills(*)').single()
+  const { data, error } = await supabase.rpc('secure_update_session_phase', {
+    p_id:      id,
+    p_updates: updates,
+    p_token:   _sessionToken(),
+  })
   if (error) throw error
   return data
 }
 
 export async function deleteSessionPhase(id) {
-  const { error } = await supabase.from('session_phases').delete().eq('id', id)
+  const { error } = await supabase.rpc('secure_delete_session_phase', {
+    p_id:    id,
+    p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function reorderSessionPhases(updates) {
-  // updates = [{id, position}]
-  await Promise.all(
-    updates.map(({ id, position }) =>
-      supabase.from('session_phases').update({ position }).eq('id', id)
-    )
-  )
+  const { error } = await supabase.rpc('secure_reorder_session_phases', {
+    p_updates: updates,
+    p_token:   _sessionToken(),
+  })
+  if (error) throw error
 }
 
