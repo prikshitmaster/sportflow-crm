@@ -522,72 +522,48 @@ export async function fetchTrials(academyId) {
 }
 
 export async function insertTrial(t) {
-  const { data, error } = await supabase
-    .from('trials')
-    .insert({
-      name:           t.name,
-      parent:         t.parent         || '',
-      phone:          t.phone,
-      age:            t.age            || null,
-      sport:          t.sport,
-      trial_date:     t.trialDate,
-      source:         t.source         || null,
-      status:         'Scheduled',
-      stage:          'scheduled',
-      batch_id:       t.batchId        || null,
-      trial_sessions: t.trialSessions  || 1,
-      sessions_done:  0,
-      converted:      false,
-      follow_up:      t.followUp       || null,
-      notes:          t.notes          || null,
-      quoted_fee:     t.quotedFee      || null,
-      session_start:  t.sessionStart   || null,
-      session_end:    t.sessionEnd     || null,
-      dob:            t.dob            || null,
-      age_group:      t.ageGroup       || null,
-      program_type:   t.programType    || 'academy',
-      trial_fee_paid: t.trialFeePaid   ?? 590,
-      academy_id:     t.academyId      || null,
-      branch_id:      t.branchId       || null,
-    })
-    .select()
-    .single()
+  const { data, error } = await supabase.rpc('secure_insert_trial', {
+    p_payload: {
+      name:          t.name,
+      parent:        t.parent        || '',
+      phone:         t.phone,
+      age:           t.age           != null ? String(t.age) : null,
+      sport:         t.sport,
+      trialDate:     t.trialDate,
+      source:        t.source        || null,
+      batchId:       t.batchId       != null ? String(t.batchId) : null,
+      trialSessions: String(t.trialSessions || 1),
+      followUp:      t.followUp      || null,
+      notes:         t.notes         || null,
+      quotedFee:     t.quotedFee     != null ? String(t.quotedFee) : null,
+      sessionStart:  t.sessionStart  || null,
+      sessionEnd:    t.sessionEnd    || null,
+      dob:           t.dob           || null,
+      ageGroup:      t.ageGroup      || null,
+      programType:   t.programType   || 'academy',
+      trialFeePaid:  String(t.trialFeePaid ?? 590),
+      branchId:      t.branchId      || null,
+    },
+    p_token: _sessionToken(),
+  })
   if (error) throw error
-  return {
-    ...t,
-    id: data.id,
-    stage: 'scheduled',
-    converted: false,
-    sessionsDone: 0,
-  }
+  const row = typeof data === 'string' ? JSON.parse(data) : data
+  return { ...t, id: row.id, stage: 'scheduled', converted: false, sessionsDone: 0 }
 }
 
 export async function updateTrial(id, updates) {
-  const dbUpdates = {}
-  if (updates.name          !== undefined) dbUpdates.name          = updates.name
-  if (updates.phone         !== undefined) dbUpdates.phone         = updates.phone
-  if (updates.parent        !== undefined) dbUpdates.parent        = updates.parent
-  if (updates.age           !== undefined) dbUpdates.age           = updates.age
-  if (updates.sport         !== undefined) dbUpdates.sport         = updates.sport
-  if (updates.status        !== undefined) dbUpdates.status        = updates.status
-  if (updates.stage         !== undefined) dbUpdates.stage         = updates.stage
-  if (updates.converted     !== undefined) dbUpdates.converted     = updates.converted
-  if (updates.followUp      !== undefined) dbUpdates.follow_up     = updates.followUp
-  if (updates.batchId       !== undefined) dbUpdates.batch_id      = updates.batchId
-  if (updates.trialDate     !== undefined) dbUpdates.trial_date    = updates.trialDate
-  if (updates.trialSessions !== undefined) dbUpdates.trial_sessions= updates.trialSessions
-  if (updates.sessionsDone  !== undefined) dbUpdates.sessions_done = updates.sessionsDone
-  if (updates.coachNote     !== undefined) dbUpdates.coach_note    = updates.coachNote
-  if (updates.coachRec      !== undefined) dbUpdates.coach_rec     = updates.coachRec
-  if (updates.notes         !== undefined) dbUpdates.notes         = updates.notes
-  if (updates.quotedFee     !== undefined) dbUpdates.quoted_fee    = updates.quotedFee
-  if (updates.sessionStart  !== undefined) dbUpdates.session_start  = updates.sessionStart
-  if (updates.sessionEnd    !== undefined) dbUpdates.session_end    = updates.sessionEnd
-  if (updates.dob           !== undefined) dbUpdates.dob            = updates.dob
-  if (updates.ageGroup      !== undefined) dbUpdates.age_group      = updates.ageGroup
-  if (updates.programType   !== undefined) dbUpdates.program_type   = updates.programType
-  if (updates.trialFeePaid  !== undefined) dbUpdates.trial_fee_paid = updates.trialFeePaid
-  const { error } = await supabase.from('trials').update(dbUpdates).eq('id', id)
+  // Build camelCase payload — RPC uses CASE WHEN p_payload ? 'key' per field
+  const payload = {}
+  const fields = ['name','phone','parent','age','sport','status','stage','converted',
+    'followUp','batchId','trialDate','trialSessions','sessionsDone','coachNote',
+    'coachRec','notes','quotedFee','sessionStart','sessionEnd','dob','ageGroup',
+    'programType','trialFeePaid']
+  fields.forEach(k => { if (updates[k] !== undefined) payload[k] = updates[k] })
+  const { error } = await supabase.rpc('secure_update_trial', {
+    p_trial_id: id,
+    p_payload:  payload,
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -604,23 +580,25 @@ export async function fetchTrialSources(academyId) {
   return data || []
 }
 
-export async function insertTrialSource(academyId, label) {
-  const { data, error } = await supabase
-    .from('trial_sources')
-    .insert({ academy_id: academyId, label: label.trim() })
-    .select()
-    .single()
+export async function insertTrialSource(_academyId, label) {
+  const { data, error } = await supabase.rpc('secure_insert_trial_source', {
+    p_label: label.trim(), p_token: _sessionToken(),
+  })
   if (error) throw error
-  return data
+  return typeof data === 'string' ? JSON.parse(data) : data
 }
 
 export async function deleteTrial(id) {
-  const { error } = await supabase.from('trials').delete().eq('id', id)
+  const { error } = await supabase.rpc('secure_delete_trial', {
+    p_trial_id: id, p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function deleteTrialSource(id) {
-  const { error } = await supabase.from('trial_sources').delete().eq('id', id)
+  const { error } = await supabase.rpc('secure_delete_trial_source', {
+    p_id: id, p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -1338,20 +1316,16 @@ export async function fetchAnnouncements(academyId) {
 }
 
 export async function insertAnnouncement(a) {
-  const { data, error } = await supabase
-    .from('announcements')
-    .insert({
-      title:      a.title,
-      body:       a.body,
-      type:       a.type,
-      author:     a.author || 'Admin',
-      date:       new Date().toISOString().split('T')[0],
-      academy_id: a.academyId || null,
-    })
-    .select()
-    .single()
+  const { data, error } = await supabase.rpc('secure_insert_announcement', {
+    p_title:  a.title,
+    p_body:   a.body,
+    p_type:   a.type,
+    p_author: a.author || 'Admin',
+    p_token:  _sessionToken(),
+  })
   if (error) throw error
-  return { ...a, id: data.id, date: data.date }
+  const row = typeof data === 'string' ? JSON.parse(data) : data
+  return { ...a, id: row.id, date: row.date }
 }
 
 // ── Fee Plans ─────────────────────────────────────────────
@@ -1376,39 +1350,38 @@ export async function fetchFeePlans(academyId) {
 }
 
 export async function insertFeePlan(p) {
-  const { data, error } = await supabase
-    .from('fee_plans')
-    .insert({
-      academy_id:    p.academyId    || null,
-      batch_id:      p.batchId,
-      name:          p.name,
-      training_type: p.trainingType || 'daily',
-      monthly_fee:   Number(p.monthlyFee)   || 0,
-      quarterly_fee: Number(p.quarterlyFee) || 0,
-      yearly_fee:    Number(p.yearlyFee)    || 0,
-    })
-    .select().single()
+  const { data, error } = await supabase.rpc('secure_insert_fee_plan', {
+    p_batch_id:      p.batchId,
+    p_name:          p.name,
+    p_training_type: p.trainingType  || 'daily',
+    p_monthly_fee:   Number(p.monthlyFee)   || 0,
+    p_quarterly_fee: Number(p.quarterlyFee) || 0,
+    p_yearly_fee:    Number(p.yearlyFee)    || 0,
+    p_token:         _sessionToken(),
+  })
   if (error) throw error
-  return { id: data.id, batchId: data.batch_id, name: data.name, trainingType: data.training_type,
-    monthlyFee: data.monthly_fee || 0, quarterlyFee: data.quarterly_fee || 0, yearlyFee: data.yearly_fee || 0, academyId: data.academy_id }
+  const row = typeof data === 'string' ? JSON.parse(data) : data
+  return { id: row.id, batchId: row.batch_id, name: row.name, trainingType: row.training_type,
+    monthlyFee: row.monthly_fee || 0, quarterlyFee: row.quarterly_fee || 0, yearlyFee: row.yearly_fee || 0, academyId: row.academy_id }
 }
 
 export async function updateFeePlan(id, p) {
-  const { error } = await supabase
-    .from('fee_plans')
-    .update({
-      name:          p.name,
-      training_type: p.trainingType || 'daily',
-      monthly_fee:   Number(p.monthlyFee)   || 0,
-      quarterly_fee: Number(p.quarterlyFee) || 0,
-      yearly_fee:    Number(p.yearlyFee)    || 0,
-    })
-    .eq('id', id)
+  const { error } = await supabase.rpc('secure_update_fee_plan', {
+    p_id:            id,
+    p_name:          p.name,
+    p_training_type: p.trainingType  || 'daily',
+    p_monthly_fee:   Number(p.monthlyFee)   || 0,
+    p_quarterly_fee: Number(p.quarterlyFee) || 0,
+    p_yearly_fee:    Number(p.yearlyFee)    || 0,
+    p_token:         _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function deleteFeePlan(id) {
-  const { error } = await supabase.from('fee_plans').delete().eq('id', id)
+  const { error } = await supabase.rpc('secure_delete_fee_plan', {
+    p_id: id, p_token: _sessionToken(),
+  })
   if (error) throw error
 }
 
