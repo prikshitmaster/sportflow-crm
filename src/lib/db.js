@@ -751,36 +751,22 @@ export async function updateAcademyLogoUrl(academyId, logoUrl) {
 }
 
 export async function insertStaff(s) {
-  const { data, error } = await supabase
-    .from('staff')
-    .insert({
-      name:       s.name,
-      role:       s.role,
-      phone:      s.phone,
-      sports:     s.sports || [],
-      salary:     Number(s.salary) || 0,
-      join_date:  s.joinDate,
-      status:     s.status || 'Active',
-      attendance: 100,
-      photo_url:  s.photoUrl  || null,
-      academy_id: s.academyId || null,
-    })
-    .select()
-    .single()
+  const { data, error } = await supabase.rpc('secure_insert_staff', {
+    p_token:      _sessionToken(),
+    p_name:       s.name,
+    p_role:       s.role,
+    p_phone:      s.phone       || '',
+    p_sports:     s.sports      || [],
+    p_salary:     Number(s.salary) || 0,
+    p_join_date:  s.joinDate    || null,
+    p_status:     s.status      || 'Active',
+    p_photo_url:  s.photoUrl    || null,
+    p_staff_code: s.staffCode   || null,
+    p_join_code:  s.joinCode    || null,
+    p_staff_type: s.staffType   || 'coach',
+  })
   if (error) throw error
-
-  if (s.staffCode) {
-    const { error: authErr } = await supabase.from('staff_auth').insert({
-      staff_id:   data.id,
-      staff_code: s.staffCode,
-      join_code:  s.joinCode,
-      status:     'pending',
-      staff_type: s.staffType || 'coach',
-    })
-    if (authErr) throw new Error('Failed to create activation record: ' + authErr.message)
-  }
-
-  return { ...s, id: data.id, attendance: 100 }
+  return { ...s, id: data, attendance: 100 }
 }
 
 // ── Staff Auth (custom auth — staff_auth + staff_sessions) ─
@@ -1961,20 +1947,13 @@ export async function acceptInvite(token, email, password) {
   await createProfile(data.user.id, 'staff', invite.academy_id, invite.name)
   await saveUserPermissions(data.user.id, invite.academy_id, invite.access_role, invite.permissions, invite.name)
 
-  // Create HR staff record so they appear in the Staff & Coaches tab
+  // Create HR staff record and mark invite used — both handled inside the RPC.
   const roleLabel = { coach: 'Coach', receptionist: 'Receptionist', accountant: 'Accountant', admin: 'Admin', staff: 'Staff' }
-  await supabase.from('staff').insert({
-    name:       invite.name,
-    role:       roleLabel[invite.access_role] || invite.access_role,
-    phone:      '',
-    sports:     [],
-    salary:     0,
-    join_date:  new Date().toISOString().split('T')[0],
-    status:     'Active',
-    attendance: 100,
+  const { error: invErr } = await supabase.rpc('secure_complete_invite_signup', {
+    p_invite_token: token,
+    p_role_label:   roleLabel[invite.access_role] || invite.access_role,
   })
-
-  await supabase.from('staff_invites').update({ used: true }).eq('token', token)
+  if (invErr) throw invErr
 
   return { user: data.user, session: data.session, invite }
 }
