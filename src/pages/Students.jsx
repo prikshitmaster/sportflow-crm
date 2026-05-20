@@ -613,7 +613,6 @@ export default function Students() {
               }
             }
             setShowModal(false)
-            if (newStudent) { setPayStudent(newStudent); setShowPayModal(true) }
           }}
         />
       )}
