@@ -1445,21 +1445,17 @@ export function AppProvider({ children }) {
   }
 
   const saveAttendance = async (date, records, batchId = null) => {
-    try {
-      await db.saveAttendanceForDate(date, records, batchId)
-      // Merge into aggregate cache (so dashboard present-count stays current)
-      setAttendanceData(prev => {
-        const updated = { ...(prev[date] || {}) }
-        Object.entries(records).forEach(([id, status]) => {
-          if (status) updated[id] = status
-          else delete updated[id]
-        })
-        return { ...prev, [date]: updated }
+    await db.saveAttendanceForDate(date, records, batchId)
+    // Merge into aggregate cache (so dashboard present-count stays current)
+    setAttendanceData(prev => {
+      const updated = { ...(prev[date] || {}) }
+      Object.entries(records).forEach(([id, status]) => {
+        if (status) updated[id] = status
+        else delete updated[id]
       })
-      showToast('Attendance saved')
-    } catch (err) {
-      showToast(err.message || 'Save failed', 'error')
-    }
+      return { ...prev, [date]: updated }
+    })
+    showToast('Attendance saved')
   }
 
   // ── Leave Requests ────────────────────────────────────

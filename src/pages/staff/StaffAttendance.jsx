@@ -22,7 +22,7 @@ const STATUS_STYLE = {
 }
 
 export default function StaffAttendance() {
-  const { user, batches, students, saveAttendance, refreshData } = useApp()
+  const { user, batches, students, saveAttendance, refreshData, showToast } = useApp()
 
   // LOCAL date (not UTC) — toISOString() returns UTC so it would read previous day's data in IST mornings
   const pad2      = (n) => String(n).padStart(2, '0')
@@ -180,6 +180,8 @@ export default function StaffAttendance() {
       await saveAttendance(today, dirtyMarks, selectedBatch?.id ?? null)
       setDirty(new Set())
       setStep(3)
+    } catch (err) {
+      showToast(err?.message || 'Save failed — please try again', 'error')
     } finally {
       setSaving(false)
     }
