@@ -5,6 +5,8 @@ import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, T
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { isOutstanding } from '../lib/studentRules'
+import DevFillButton from '../components/DevFillButton'
+import { fillPayment } from '../lib/devFill'
 
 // ── Payment Receipt Printer ───────────────────────────────────
 
@@ -913,9 +915,21 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     custom:    'Monthly Fee (₹)',
   }[form.paymentType] || 'Fee (₹)'
 
+  const handleDevFill = () => {
+    const { student, mode, paymentType, discountPct } = fillPayment({ students })
+    if (student) {
+      setStudentSearch(student.name)
+      handleStudentChange(String(student.id))
+    }
+    setForm(f => ({ ...f, mode, paymentType, discountPct }))
+  }
+
   return (
     <Modal title="Record Payment" onClose={onClose}>
       <div className="space-y-4">
+        <div className="flex justify-end -mt-1 mb-1">
+          <DevFillButton onFill={handleDevFill} />
+        </div>
 
         {/* Student */}
         <div className="relative">

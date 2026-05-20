@@ -3,6 +3,8 @@ import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
 import { SPORTS, BATCH_NAMES } from '../data/mockData'
 import { SPORT_CATALOG } from '../lib/sportCatalog'
+import DevFillButton from '../components/DevFillButton'
+import { fillStudent } from '../lib/devFill'
 import {
   Search, Plus, MoreVertical, UserCheck, UserX, X, Users as UsersIcon,
   Copy, KeyRound, CheckCheck, RefreshCw, Phone, Calendar, IndianRupee,
@@ -813,13 +815,20 @@ function AddStudentModal({ onClose, onSave }) {
     try { await onSave({ ...form, age: calcAge(form.dob), additionalBatchIds }) } finally { setLoading(false) }
   }
 
+  const handleDevFill = () => {
+    const data = fillStudent({ sportOptions, batches })
+    setForm(f => ({ ...f, ...data }))
+    setErrors({})
+  }
+
   return (
     <Modal title="Add New Student" onClose={onClose}>
-      <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 mb-5">
+      <div className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 mb-5">
         <p className="text-xs text-blue-700">
           A <strong>Student ID</strong> and <strong>Join Code</strong> will be auto-generated.
           Fee and Paid Till are required — first payment will be recorded automatically.
         </p>
+        <DevFillButton onFill={handleDevFill} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Name */}

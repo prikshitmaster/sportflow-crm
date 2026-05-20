@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext'
 import { UserCog, Plus, Phone, Award, X, Layers, CheckCircle, ChevronRight, ChevronDown, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor, FileText, ExternalLink } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
+import DevFillButton from '../components/DevFillButton'
+import { fillStaff } from '../lib/devFill'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
 import * as db from '../lib/db'
 
@@ -1572,9 +1574,17 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
     )
   }
 
+  const handleDevFill = () => {
+    const data = fillStaff({ sportOptions: selectedSport && selectedSport !== 'All' ? [selectedSport] : SPORTS })
+    setForm(f => ({ ...f, name: data.name, role: data.role, phone: data.phone, age: data.age, sports: data.sports }))
+  }
+
   return (
     <Modal title="Add Staff Member" onClose={onClose}>
       <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+        <div className="flex justify-end -mb-3">
+          <DevFillButton onFill={handleDevFill} />
+        </div>
 
         {/* Photo */}
         <div className="flex flex-col items-center gap-2 pt-1">

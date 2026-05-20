@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext'
 import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
+import DevFillButton from '../components/DevFillButton'
+import { fillBatch } from '../lib/devFill'
 import { fetchBatchEnrolments, fetchAllBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch, updateBatchEnrolled } from '../lib/db'
 import { logAudit, ACTIONS } from '../lib/audit'
 import StudentAvatar from '../components/StudentAvatar'
@@ -354,9 +356,23 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
     days: f.days.includes(day) ? f.days.filter(d => d !== day) : [...f.days, day],
   }))
 
+  const sportOptions = [...new Set(
+    (sportBranches || []).map(b => b.sportName).filter(Boolean).concat(SPORTS)
+  )]
+  const handleDevFill = () => {
+    if (isEdit) return
+    const data = fillBatch({ sportOptions })
+    setForm(f => ({ ...f, ...data, coach: staff[0]?.name || data.coach }))
+  }
+
   return (
     <Modal title={isEdit ? `Edit Batch — ${initialData.name}` : 'Create New Batch'} onClose={onClose}>
       <div className="space-y-4">
+        {!isEdit && (
+          <div className="flex justify-end -mt-1 mb-1">
+            <DevFillButton onFill={handleDevFill} />
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Batch Name *</label>
