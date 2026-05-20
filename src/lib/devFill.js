@@ -94,6 +94,35 @@ export function fillBatch({ sportOptions = [] } = {}) {
   }
 }
 
+// ── Trial ─────────────────────────────────────────────────────
+const AGE_GROUPS = ['U8','U10','U12','U14','U16','U18','U21','Open']
+
+export function fillTrial({ sports = [], batches = [] } = {}) {
+  const sport    = sports.length ? pick(sports) : 'Cricket'
+  const matched  = batches.filter(b => (b.sports || []).includes(sport))
+  const batch    = matched.length ? pick(matched) : null
+  const ageGroup = pick(AGE_GROUPS)
+  const age      = rand(8, 20)
+  return {
+    name:         fakeName(),
+    parent:       fakeName(),
+    phone:        fakePhone(),
+    age:          String(age),
+    dob:          randomDob(age, age),
+    ageGroup,
+    sport,
+    programType:  'academy',
+    trialDate:    isoDate(today()),
+    trialSessions: pick([1, 2, 3]),
+    trialFeePaid: 590,
+    quotedFee:    String(pick([800, 1000, 1200, 1500])),
+    batchId:      batch ? String(batch.id) : '',
+    notes:        '',
+    sessionStart: '',
+    sessionEnd:   '',
+  }
+}
+
 // ── Payment ───────────────────────────────────────────────────
 // Returns a student to select + payment overrides (student must be picked by caller).
 export function fillPayment({ students = [] } = {}) {

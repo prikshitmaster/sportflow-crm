@@ -6,6 +6,8 @@ import {
   Clock, RotateCcw, XCircle, ArrowRight, Calendar, Settings2,
   Trash2, Phone, User, Pencil,
 } from 'lucide-react'
+import DevFillButton from '../components/DevFillButton'
+import { fillTrial } from '../lib/devFill'
 
 // ── Stage config ─────────────────────────────────────────────
 
@@ -482,10 +484,16 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
               {isEdit ? 'Update lead details' : 'Add a new prospect to the pipeline'}
             </p>
           </div>
-          <button onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-xl bg-gray-100 text-gray-500 hover:bg-gray-200 transition">
-            <X size={15} />
-          </button>
+          <div className="flex items-center gap-2">
+            {!isEdit && <DevFillButton onFill={() => {
+              const data = fillTrial({ sports, batches })
+              setForm(f => ({ ...f, ...data }))
+            }} />}
+            <button onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-xl bg-gray-100 text-gray-500 hover:bg-gray-200 transition">
+              <X size={15} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 pb-2 space-y-4">
@@ -620,18 +628,6 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
                 ))}
               </div>
             </Field>
-
-            {/* Session time — optional */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <Field label="Start Time">
-                <input value={form.sessionStart || ''} onChange={e => set('sessionStart', e.target.value)}
-                  type="time" className={fieldCls} />
-              </Field>
-              <Field label="End Time">
-                <input value={form.sessionEnd || ''} onChange={e => set('sessionEnd', e.target.value)}
-                  type="time" className={fieldCls} />
-              </Field>
-            </div>
 
             <Field label="Sessions">
               <div className="flex gap-2">
