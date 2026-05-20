@@ -1296,31 +1296,26 @@ export async function fetchStudentOwnPayments(studentId) {
 // ── Batches (extended) ────────────────────────────────────
 
 export async function insertBatchV2(b) {
-  const { data, error } = await supabase
-    .from('batches')
-    .insert({
-      name:         b.name,
-      code:         b.code || null,
-      time:         b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
-      sports:       b.sports   || [],
-      coach:        b.coach,
-      capacity:     Number(b.capacity),
-      enrolled:     0,
-      waitlist:     0,
-      days:         b.days     || [],
-      start_time:   b.startTime || null,
-      end_time:     b.endTime   || null,
-      age_min:      Number(b.ageMin) || 0,
-      age_max:      Number(b.ageMax) || 99,
-      ground:       b.ground || null,
-      default_fee:  Number(b.defaultFee)  || 0,
-      default_plan: b.defaultPlan         || 'monthly',
-      academy_id:   b.academyId  || null,
-      branch_id:    b.branchId   || null,
-    })
-    .select()
+  const { data, error } = await supabase.rpc('secure_insert_batch', {
+    p_token:       _sessionToken(),
+    p_name:        b.name,
+    p_time:        b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : (b.time || null),
+    p_sports:      b.sports      || [],
+    p_coach:       b.coach       || null,
+    p_capacity:    Number(b.capacity) || 30,
+    p_days:        b.days        || [],
+    p_start_time:  b.startTime   || null,
+    p_end_time:    b.endTime     || null,
+    p_age_min:     Number(b.ageMin)  || 0,
+    p_age_max:     Number(b.ageMax)  || 99,
+    p_ground:      b.ground      || null,
+    p_code:        b.code        || null,
+    p_default_fee: Number(b.defaultFee) || 0,
+    p_default_plan: b.defaultPlan || 'monthly',
+    p_branch_id:   b.branchId    || null,
+  })
   if (error) throw error
-  return data?.[0] || b
+  return data || b
 }
 
 // ── Announcements ─────────────────────────────────────────
@@ -1418,44 +1413,46 @@ export async function deleteFeePlan(id) {
 }
 
 export async function updateBatchFee(batchId, defaultFee, defaultPlan) {
-  const { error } = await supabase
-    .from('batches')
-    .update({ default_fee: Number(defaultFee) || 0, default_plan: defaultPlan || 'monthly' })
-    .eq('id', batchId)
+  const { error } = await supabase.rpc('secure_update_batch', {
+    p_batch_id: batchId,
+    p_payload:  { defaultFee: Number(defaultFee) || 0, defaultPlan: defaultPlan || 'monthly' },
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function updateBatchCoach(batchId, coachName) {
-  const { error } = await supabase
-    .from('batches')
-    .update({ coach: coachName })
-    .eq('id', batchId)
+  const { error } = await supabase.rpc('secure_update_batch', {
+    p_batch_id: batchId,
+    p_payload:  { coach: coachName },
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function updateBatch(batchId, b) {
-  const { data, error } = await supabase
-    .from('batches')
-    .update({
-      name:         b.name,
-      code:         b.code || null,
-      time:         b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
-      sports:       b.sports   || [],
-      coach:        b.coach,
-      capacity:     Number(b.capacity),
-      days:         b.days     || [],
-      start_time:   b.startTime || null,
-      end_time:     b.endTime   || null,
-      age_min:      Number(b.ageMin) || 0,
-      age_max:      Number(b.ageMax) || 99,
-      ground:       b.ground || null,
-      default_fee:  Number(b.defaultFee)  || 0,
-      default_plan: b.defaultPlan         || 'monthly',
-    })
-    .eq('id', batchId)
-    .select()
+  const { data, error } = await supabase.rpc('secure_update_batch', {
+    p_batch_id: batchId,
+    p_payload: {
+      name:        b.name,
+      code:        b.code        || null,
+      time:        b.startTime && b.endTime ? `${b.startTime} – ${b.endTime}` : b.time,
+      sports:      b.sports      || [],
+      coach:       b.coach,
+      capacity:    Number(b.capacity),
+      days:        b.days        || [],
+      startTime:   b.startTime   || null,
+      endTime:     b.endTime     || null,
+      ageMin:      Number(b.ageMin)  || 0,
+      ageMax:      Number(b.ageMax)  || 99,
+      ground:      b.ground      || null,
+      defaultFee:  Number(b.defaultFee) || 0,
+      defaultPlan: b.defaultPlan || 'monthly',
+    },
+    p_token: _sessionToken(),
+  })
   if (error) throw error
-  return data?.[0] || b
+  return data || b
 }
 
 export async function deleteBatch(id) {
@@ -2086,20 +2083,22 @@ export async function fetchAllBatchEnrolments() {
   return data || []
 }
 
-export async function assignStudentToBatch(studentId, batchId, batchName, academyId) {
-  const { error } = await supabase
-    .from('student_batches')
-    .upsert({ student_id: studentId, batch_id: batchId, batch_name: batchName, academy_id: academyId },
-      { onConflict: 'student_id,batch_id' })
+export async function assignStudentToBatch(studentId, batchId, batchName, _academyId) {
+  const { error } = await supabase.rpc('secure_assign_student_to_batch', {
+    p_student_id: studentId,
+    p_batch_id:   batchId,
+    p_batch_name: batchName,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function unassignStudentFromBatch(studentId, batchId) {
-  const { error } = await supabase
-    .from('student_batches')
-    .delete()
-    .eq('student_id', studentId)
-    .eq('batch_id', batchId)
+  const { error } = await supabase.rpc('secure_unassign_student_from_batch', {
+    p_student_id: studentId,
+    p_batch_id:   batchId,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
