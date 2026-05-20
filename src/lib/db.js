@@ -975,25 +975,13 @@ export async function fetchAttendanceForDate(date, batchId = null) {
 // batchId = null → save as legacy/admin mark (no batch context)
 // batchId = number → save scoped to that batch
 export async function saveAttendanceForDate(date, records, batchId = null) {
-  const toDelete = []
-  const toUpsert = []
-  Object.entries(records).forEach(([student_id, status]) => {
-    const sid = Number(student_id)
-    if (!status) toDelete.push(sid)
-    else toUpsert.push({ date, student_id: sid, batch_id: batchId, present: status === 'Present', status })
+  const { error } = await supabase.rpc('secure_save_attendance_date', {
+    p_date:     date,
+    p_batch_id: batchId,
+    p_records:  records,
+    p_token:    _sessionToken(),
   })
-  if (toDelete.length > 0) {
-    let q = supabase.from('attendance').delete().eq('date', date).in('student_id', toDelete)
-    q = batchId != null ? q.eq('batch_id', batchId) : q.is('batch_id', null)
-    const { error } = await q
-    if (error) throw error
-  }
-  if (toUpsert.length > 0) {
-    const { error } = await supabase
-      .from('attendance')
-      .upsert(toUpsert, { onConflict: 'date,student_id,batch_id' })
-    if (error) throw error
-  }
+  if (error) throw error
 }
 
 // Fetch all attendance records for a full month.
@@ -1036,17 +1024,11 @@ export async function saveAttendanceMonth(year, month, monthData, batchId = null
     }
   }
   if (rows.length === 0) return
-  // Both null-batch and with-batch rows now use the same composite conflict key.
-  // The null-batch path is backed by partial unique index att_no_batch_idx (migration 0031)
-  // since Postgres treats NULL != NULL in normal unique constraints.
-  const nullBatch = rows.filter(r => r.batch_id == null)
-  const withBatch = rows.filter(r => r.batch_id != null)
-  const errs = await Promise.all([
-    nullBatch.length ? supabase.from('attendance').upsert(nullBatch, { onConflict: 'date,student_id,batch_id' }).then(r => r.error) : null,
-    withBatch.length ? supabase.from('attendance').upsert(withBatch, { onConflict: 'date,student_id,batch_id' }).then(r => r.error) : null,
-  ])
-  const err = errs.find(Boolean)
-  if (err) throw err
+  const { error } = await supabase.rpc('secure_upsert_attendance', {
+    p_rows:  rows,
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
 }
 
 // ── Student Auth & Onboarding ────────────────────────────
@@ -1263,61 +1245,26 @@ export async function validateGateToken(token, academyId) {
 // ── QR Attendance ─────────────────────────────────────────
 
 export async function markAttendanceDirect(studentId, batchIdOverride = undefined) {
-  const today = new Date().toISOString().split('T')[0]
-  // batchIdOverride: when the student is in multiple batches, the caller passes
-  // the specific batch that is active today so the attendance row is keyed correctly.
+  // Resolve batch_id before calling RPC: use override (multi-batch) or student's primary batch.
   let batchId = batchIdOverride !== undefined ? batchIdOverride : null
   if (batchIdOverride === undefined) {
     try {
       const { data } = await supabase
         .from('students').select('batch_id').eq('id', studentId).maybeSingle()
       batchId = data?.batch_id ?? null
-    } catch { /* ignore — proceed with NULL batch */ }
+    } catch { /* proceed with null batch */ }
   }
-
-  if (batchId != null) {
-    // Common path — student has a primary batch; UPSERT on the composite key.
-    const { error } = await supabase
-      .from('attendance')
-      .upsert(
-        { date: today, student_id: studentId, batch_id: batchId, present: true, status: 'Present' },
-        { onConflict: 'date,student_id,batch_id' }
-      )
-    if (error) throw error
-    return
-  }
-
-  // Rare path — student with no primary batch. Partial unique index from migration
-  // 0015b prevents duplicates but PostgREST can't target it via onConflict (no WHERE
-  // clause support). Use SELECT-then-INSERT — race-safe enough for the rare case.
-  const { data: existing } = await supabase
-    .from('attendance')
-    .select('id, status')
-    .eq('date', today).eq('student_id', studentId).is('batch_id', null)
-    .maybeSingle()
-  if (existing) {
-    // Already marked today — only escalate from Absent/Leave to Present, never downgrade.
-    if (existing.status === 'Present' || existing.status === 'Late') return
-    const { error } = await supabase
-      .from('attendance')
-      .update({ present: true, status: 'Present' })
-      .eq('id', existing.id)
-    if (error) throw error
-    return
-  }
-  const { error } = await supabase
-    .from('attendance')
-    .insert({ date: today, student_id: studentId, batch_id: null, present: true, status: 'Present' })
+  const { error } = await supabase.rpc('secure_mark_attendance', {
+    p_student_id: studentId,
+    p_batch_id:   batchId,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function markAttendanceViaQR(studentId, gateToken, batchIdOverride = undefined, academyId = null) {
-  const today = new Date().toISOString().split('T')[0]
-
-  const isValid = await validateGateToken(gateToken, academyId)
-  if (!isValid) throw new Error('Invalid gate QR code')
-
-  // Resolve batch_id: use override (multi-batch) or fall back to student's primary batch
+  // Resolve batch_id: use override (multi-batch) or fall back to student's primary batch.
+  // Gate token validation, student academy check, and already-marked guard are all in the RPC.
   let batchId = batchIdOverride !== undefined ? batchIdOverride : null
   if (batchIdOverride === undefined) {
     try {
@@ -1325,16 +1272,12 @@ export async function markAttendanceViaQR(studentId, gateToken, batchIdOverride 
       batchId = data?.batch_id ?? null
     } catch { /* proceed with null */ }
   }
-
-  const query = supabase.from('attendance').select('id').eq('date', today).eq('student_id', studentId)
-  const { data: existing } = batchId != null
-    ? await query.eq('batch_id', batchId).maybeSingle()
-    : await query.is('batch_id', null).maybeSingle()
-  if (existing) throw new Error('already marked')
-
-  const { error } = await supabase
-    .from('attendance')
-    .insert({ date: today, student_id: studentId, batch_id: batchId, present: true, status: 'Present' })
+  const { error } = await supabase.rpc('secure_mark_attendance_qr', {
+    p_student_id: studentId,
+    p_gate_token: gateToken,
+    p_batch_id:   batchId,
+    p_academy_id: academyId,
+  })
   if (error) throw error
 }
 
