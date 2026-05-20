@@ -810,22 +810,16 @@ export async function verifyStaffCodes(staffCode, joinCode) {
 }
 
 export async function activateStaffAccount(staffCode, joinCode, passwordHash, { email }) {
-  const { data: auth, error } = await supabase
-    .from('staff_auth')
-    .select('id, staff_id, join_code, status, staff(*)')
-    .eq('staff_code', staffCode.toUpperCase())
-    .maybeSingle()
-  if (error || !auth) throw new Error('Staff ID not found')
-  if (auth.status === 'active') throw new Error('Account already activated')
-  if (auth.join_code !== joinCode.toUpperCase()) throw new Error('Incorrect Join Code')
-
-  const { error: authErr } = await supabase.from('staff_auth')
-    .update({ password_hash: passwordHash, status: 'active', join_code: null, email: email.toLowerCase().trim() })
-    .eq('id', auth.id)
-  if (authErr) throw new Error('Activation failed: ' + authErr.message)
-
-  const staffRow = Array.isArray(auth.staff) ? auth.staff[0] : auth.staff
-  return staffRow || {}
+  // Routed through secure_activate_staff_account (migration 0041).
+  // Validates join_code server-side; returns the staff row for audit logging.
+  const { data, error } = await supabase.rpc('secure_activate_staff_account', {
+    p_staff_code:    staffCode,
+    p_join_code:     joinCode,
+    p_password_hash: passwordHash,
+    p_email:         email,
+  })
+  if (error) throw new Error(error.message)
+  return data || {}
 }
 
 export async function loginStaffAccount(email, passwordHash) {
@@ -895,19 +889,31 @@ export async function deleteStaffSession(token) {
 }
 
 export async function updateStaffProfile(staffId, { name, phone, photoUrl }) {
-  const fields = {}
-  if (name     !== undefined) fields.name      = name
-  if (phone    !== undefined) fields.phone     = phone
-  if (photoUrl !== undefined) fields.photo_url = photoUrl
-  const { error } = await supabase.from('staff').update(fields).eq('id', staffId)
+  // Routed through secure_update_staff_profile (migration 0041).
+  // Staff may update their own profile; owners may update any in their academy.
+  const payload = {}
+  if (name     !== undefined) payload.name     = name
+  if (phone    !== undefined) payload.phone    = phone
+  if (photoUrl !== undefined) payload.photoUrl = photoUrl
+  if (!Object.keys(payload).length) return
+  const { error } = await supabase.rpc('secure_update_staff_profile', {
+    p_staff_id: staffId,
+    p_payload:  payload,
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
 export async function upsertStaffProfileExtra(staffId, { age, licenceUrl }) {
-  const fields = { staff_id: staffId, updated_at: new Date().toISOString() }
-  if (age        !== undefined) fields.age         = age        || null
-  if (licenceUrl !== undefined) fields.licence_url = licenceUrl || null
-  const { error } = await supabase.from('staff_profiles').upsert(fields, { onConflict: 'staff_id' })
+  const payload = {}
+  if (age        !== undefined) payload.age        = age        ?? null
+  if (licenceUrl !== undefined) payload.licenceUrl = licenceUrl ?? null
+  if (!Object.keys(payload).length) return
+  const { error } = await supabase.rpc('secure_update_staff_profile', {
+    p_staff_id: staffId,
+    p_payload:  payload,
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
@@ -921,9 +927,14 @@ export async function uploadStaffLicence(file, staffId) {
 }
 
 export async function updateStaffPermissions(staffId, { accessRole, permissions }) {
-  const { error } = await supabase.from('staff_auth')
-    .update({ access_role: accessRole, permissions })
-    .eq('staff_id', staffId)
+  // Routed through secure_update_staff_permissions (migration 0041).
+  // Owner-only — the RPC rejects any non-owner caller with 42501.
+  const { error } = await supabase.rpc('secure_update_staff_permissions', {
+    p_staff_id:    staffId,
+    p_access_role: accessRole,
+    p_permissions: permissions,
+    p_token:       _sessionToken(),
+  })
   if (error) throw error
 }
 
