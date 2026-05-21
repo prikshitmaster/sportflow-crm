@@ -1,12 +1,13 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
-import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer } from 'lucide-react'
+import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer, Link as LinkIcon } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { isOutstanding } from '../lib/studentRules'
 import DevFillButton from '../components/DevFillButton'
 import { fillPayment } from '../lib/devFill'
+import SendPayLinkModal from '../components/SendPayLinkModal'
 
 // ── Payment Receipt Printer ───────────────────────────────────
 
@@ -160,6 +161,7 @@ export default function Payments() {
   const [batchFilter,     setBatchFilter]     = useState('All')
   const [monthFilter,     setMonthFilter]     = useState(new Date().toISOString().slice(0, 7))
   const [showModal,       setShowModal]       = useState(false)
+  const [showPayLink,     setShowPayLink]     = useState(false)
   const [payForStudent,   setPayForStudent]   = useState(null)
   const [detailPayment,   setDetailPayment]   = useState(null)
   const [page,            setPage]            = useState(1)
@@ -264,9 +266,16 @@ export default function Payments() {
           <h2 className="text-xl font-black text-gray-900">Payments</h2>
           <p className="text-sm text-gray-500">Track fees, generate receipts, manage collections</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> Record Payment
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Hidden — Razorpay/parent portal disabled for v1. Uncomment to re-enable:
+          <button className="btn-secondary" onClick={() => setShowPayLink(true)}>
+            <LinkIcon size={14} /> Send Pay Link
+          </button>
+          */}
+          <button className="btn-primary" onClick={() => setShowModal(true)}>
+            <Plus size={16} /> Record Payment
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -478,6 +487,13 @@ export default function Payments() {
           feePlans={feePlans}
           payments={payments}
           initialStudentId={payForStudent.id}
+        />
+      )}
+
+      {showPayLink && (
+        <SendPayLinkModal
+          students={students}
+          onClose={() => setShowPayLink(false)}
         />
       )}
 

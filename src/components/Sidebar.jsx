@@ -18,7 +18,8 @@ import { useState } from 'react'
 const nav = [
   { to: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard, feature: null,        permission: 'dashboard.view' },
   { to: '/students',   label: 'Students',   icon: Users,            feature: null,        permission: 'students.view' },
-  { to: '/parents',    label: 'Parents',    icon: UserCircle,       feature: null,        permission: 'students.view' },
+  // Hidden — parent portal disabled for v1. Uncomment to re-enable:
+  // { to: '/parents',    label: 'Parents',    icon: UserCircle,       feature: null,        permission: 'students.view' },
   { to: '/attendance', label: 'Attendance', icon: CalendarCheck,   feature: 'attendance', permission: 'attendance.manage' },
   { to: '/payments',   label: 'Payments',   icon: CreditCard,      feature: 'payments',   permission: 'payments.view' },
   { to: '/trials',     label: 'Trials',     icon: UserPlus,        feature: 'trials',     permission: 'trials.manage' },
