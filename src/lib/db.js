@@ -301,6 +301,22 @@ export async function uploadStudentPhoto(file, studentId) {
   return `${data.publicUrl}?v=${Date.now()}`
 }
 
+// Student-only — update own football profile (height/weight/foot/wing)
+export async function updateStudentSelfProfile(studentId, { heightCm, weightKg, preferredFoot, wing } = {}) {
+  const payload = {}
+  if (heightCm      !== undefined) payload.heightCm      = heightCm
+  if (weightKg      !== undefined) payload.weightKg      = weightKg
+  if (preferredFoot !== undefined) payload.preferredFoot = preferredFoot
+  if (wing          !== undefined) payload.wing          = wing
+  const { data, error } = await supabase.rpc('secure_update_student_self_profile', {
+    p_student_id: studentId,
+    p_payload:    payload,
+    p_token:      _sessionToken(),
+  })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
 export async function updateStudentPhotoUrl(id, photoUrl) {
   // Routed through secure_update_student_photo (migration 0039).
   // Students may update their own photo; owners/staff may update any

@@ -14,7 +14,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import {
-  Target, Sparkles, MessageCircle, TrendingUp, CheckCircle2, BarChart3, ChevronRight, FileText,
+  Target, Sparkles, MessageCircle, TrendingUp, CheckCircle2, BarChart3, ChevronRight, FileText, User, X,
 } from 'lucide-react'
 
 const pad2     = (n) => String(n).padStart(2, '0')
@@ -40,8 +40,9 @@ function formatDate(dateStr) {
 }
 
 export default function StudentProgress() {
-  const { studentUser } = useApp()
+  const { studentUser, updateStudentProfile } = useApp()
   const isFootball = studentUser?.sport?.toLowerCase() === 'football'
+  const [editProfile, setEditProfile] = useState(false)
   const now      = new Date()
   const today    = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
   const monthStr = monthKey(now)
@@ -139,6 +140,30 @@ export default function StudentProgress() {
           </button>
         )}
       </div>
+
+      {/* Football profile — student fills these → auto-fills assessment PDF */}
+      {isFootball && (
+        <button
+          onClick={() => setEditProfile(true)}
+          className="w-full bg-white rounded-2xl border border-gray-100 p-3.5 flex items-center justify-between active:bg-gray-50">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-emerald-50 rounded-xl flex items-center justify-center">
+              <User size={16} className="text-emerald-600" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-bold text-gray-900">My football profile</p>
+              <p className="text-[11px] text-gray-400">
+                {[
+                  studentUser?.height_cm && `${studentUser.height_cm} cm`,
+                  studentUser?.weight_kg && `${studentUser.weight_kg} kg`,
+                  studentUser?.preferred_foot && `${studentUser.preferred_foot} foot`,
+                ].filter(Boolean).join(' · ') || 'Tap to add height, weight, foot'}
+              </p>
+            </div>
+          </div>
+          <ChevronRight size={16} className="text-gray-300" />
+        </button>
+      )}
 
       {/* This month's focus goal */}
       {goal ? (
@@ -279,6 +304,92 @@ export default function StudentProgress() {
         </div>
         <ChevronRight size={16} className="text-gray-300" />
       </Link>}
+
+      {editProfile && (
+        <ProfileEditor
+          current={studentUser}
+          onClose={() => setEditProfile(false)}
+          onSave={async (fields) => {
+            try {
+              await updateStudentProfile(fields)
+              setEditProfile(false)
+            } catch (e) {
+              alert('Save failed: ' + (e?.message || 'Unknown error'))
+            }
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function ProfileEditor({ current, onClose, onSave }) {
+  const [form, setForm] = useState({
+    heightCm:      current?.height_cm      || '',
+    weightKg:      current?.weight_kg      || '',
+    preferredFoot: current?.preferred_foot || '',
+    wing:          current?.wing           || '',
+  })
+  const [saving, setSaving] = useState(false)
+
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+  const save = async () => {
+    setSaving(true)
+    await onSave({
+      heightCm:      form.heightCm ? Number(form.heightCm) : null,
+      weightKg:      form.weightKg ? Number(form.weightKg) : null,
+      preferredFoot: form.preferredFoot || null,
+      wing:          form.wing || null,
+    })
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-5 shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-black text-gray-900">My football profile</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400"><X size={16} /></button>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">This fills your assessment report automatically.</p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] font-bold text-gray-600 block mb-1">Height (cm)</label>
+            <input className="input" type="number" min="50" max="250" inputMode="numeric"
+              value={form.heightCm}
+              onChange={e => set('heightCm', e.target.value.replace(/\D/g, '').slice(0, 3))} />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-gray-600 block mb-1">Weight (kg)</label>
+            <input className="input" type="number" min="10" max="200" inputMode="numeric"
+              value={form.weightKg}
+              onChange={e => set('weightKg', e.target.value.replace(/\D/g, '').slice(0, 3))} />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-gray-600 block mb-1">Preferred Foot</label>
+            <select className="input" value={form.preferredFoot}
+              onChange={e => set('preferredFoot', e.target.value)}>
+              <option value="">—</option>
+              <option>Left</option><option>Right</option><option>Both</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-gray-600 block mb-1">Wing</label>
+            <select className="input" value={form.wing}
+              onChange={e => set('wing', e.target.value)}>
+              <option value="">—</option>
+              <option>Left</option><option>Right</option><option>None</option>
+            </select>
+          </div>
+        </div>
+
+        <button onClick={save} disabled={saving}
+          className="w-full mt-5 bg-brand-600 text-white rounded-xl py-3 font-bold text-sm disabled:opacity-50">
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
     </div>
   )
 }

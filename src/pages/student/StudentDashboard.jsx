@@ -29,7 +29,9 @@ export default function StudentDashboard() {
     try {
       await updateStudentPhoto(file)
     } catch (err) {
-      alert('Photo upload failed: ' + (err?.message || 'Unknown error'))
+      console.error('Photo upload error:', err)
+      const detail = err?.message || err?.error?.message || err?.statusCode || JSON.stringify(err)
+      alert(`Photo upload failed:\n${detail}\n\n(Open DevTools console for full error)`)
     }
     setUploading(false)
     e.target.value = ''

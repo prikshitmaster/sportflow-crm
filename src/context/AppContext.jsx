@@ -642,6 +642,19 @@ export function AppProvider({ children }) {
     return photoUrl
   }
 
+  // Student self-edit of football profile fields (height/weight/foot/wing)
+  const updateStudentProfile = async (fields) => {
+    const updated = await db.updateStudentSelfProfile(studentUser.id, fields)
+    setStudentUser(prev => ({
+      ...prev,
+      height_cm:      updated?.height_cm      ?? prev.height_cm,
+      weight_kg:      updated?.weight_kg      ?? prev.weight_kg,
+      preferred_foot: updated?.preferred_foot ?? prev.preferred_foot,
+      wing:           updated?.wing           ?? prev.wing,
+    }))
+    return updated
+  }
+
   // ── Parent Auth (Supabase phone OTP) ─────────────────
   // Step 1: send OTP to phone number
   const sendParentOtp = async (phoneE164) => {
@@ -1820,7 +1833,7 @@ export function AppProvider({ children }) {
       // staff auth
       loginStaff, logoutStaff, activateStaff,
       // student auth
-      loginStudent, logoutStudent, activateStudent, updateStudentPhoto,
+      loginStudent, logoutStudent, activateStudent, updateStudentPhoto, updateStudentProfile,
       // parent auth (Supabase phone OTP)
       parentUser, sendParentOtp, verifyParentOtp, logoutParent, testLoginParent,
       // sport scoping
