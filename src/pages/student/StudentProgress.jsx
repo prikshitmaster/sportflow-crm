@@ -14,7 +14,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import {
-  Target, Sparkles, MessageCircle, TrendingUp, CheckCircle2, BarChart3, ChevronRight,
+  Target, Sparkles, MessageCircle, TrendingUp, CheckCircle2, BarChart3, ChevronRight, FileText,
 } from 'lucide-react'
 
 const pad2     = (n) => String(n).padStart(2, '0')
@@ -126,9 +126,18 @@ export default function StudentProgress() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-5 space-y-5">
-      <div>
-        <h1 className="text-xl font-black text-gray-900">My Development</h1>
-        <p className="text-sm text-gray-500">Your coach feedback &amp; focus</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-black text-gray-900">My Development</h1>
+          <p className="text-sm text-gray-500">Your coach feedback &amp; focus</p>
+        </div>
+        {isFootball && (
+          <button
+            onClick={() => window.open('/student/assessment-report', '_blank')}
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-sm active:scale-95 transition">
+            <FileText size={13} /> PDF
+          </button>
+        )}
       </div>
 
       {/* This month's focus goal */}

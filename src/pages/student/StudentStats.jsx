@@ -51,6 +51,12 @@ export default function StudentStats() {
           <p className="text-sm mt-2 leading-relaxed max-w-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
             Your coach hasn't submitted a performance assessment yet. Check back after your next session.
           </p>
+          <button
+            onClick={() => window.open('/student/assessment-report', '_blank')}
+            className="mt-5 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold"
+            style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.4)' }}>
+            <FileText size={13} /> View blank report
+          </button>
         </div>
         {studentUser?.id && (
           <div className="px-4">
