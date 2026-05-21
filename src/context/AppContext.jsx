@@ -100,6 +100,10 @@ export function AppProvider({ children }) {
   const [studentUser,   setStudentUser]   = useState(null)
   const [academyLogo,   setAcademyLogo]   = useState(null)
 
+  // ── Parent portal state (Supabase Auth phone OTP) ────
+  // Lives alongside student/staff; does not interfere with their flows.
+  const [parentUser,    setParentUser]    = useState(null)
+
   // ── Sport scoping (owner only) ────────────────────────
   const [selectedSport, setSelectedSportState] = useState(() => {
     try { return localStorage.getItem(SPORT_KEY) || null } catch { return null }
@@ -321,6 +325,26 @@ export function AppProvider({ children }) {
             setLoading(false)
             return
           }
+
+          // No profile row → check if this Supabase Auth user is a parent
+          // (parents authenticate via phone OTP — no profiles row).
+          try {
+            const dash = await db.fetchParentDashboard()
+            if (dash?.parent?.id) {
+              setParentUser({
+                id:                 dash.parent.id,
+                auth_user_id:       dash.parent.auth_user_id,
+                academy_id:         dash.parent.academy_id,
+                name:               dash.parent.name,
+                phone:              dash.parent.phone,
+                email:              dash.parent.email,
+                notification_prefs: dash.parent.notification_prefs,
+              })
+              setRole('parent')
+              setLoading(false)
+              return
+            }
+          } catch { /* fall through to staff/student session checks */ }
         }
         // 2. Check staff session (custom localStorage token)
         const stfSess = getStaffSession()
@@ -339,10 +363,12 @@ export function AppProvider({ children }) {
               name:        member.name,
               staffCode:   member.staff_code,
               staffType:   member.staff_type,
+              sports:      member.sports       || [],
               photoUrl:    member.photo_url    || null,
               phone:       member.phone        || '',
               age:         member.age          || null,
               licenceUrl:  member.licence_url  || null,
+              branchId:    member.branch_id    || null,
               academy:     academyName,
               academyId,
               academyLogo: academyData2?.logo_url || null,
@@ -507,10 +533,12 @@ export function AppProvider({ children }) {
       name:       member.name,
       staffCode:  member.staff_code,
       staffType:  member.staff_type,
+      sports:     member.sports       || [],
       photoUrl:   member.photo_url    || null,
       phone:      member.phone        || '',
       age:        extra.age           || null,
       licenceUrl: extra.licence_url   || null,
+      branchId:   member.branch_id    || null,
       academy:     academyName,
       academyId,
       academyLogo: academyData?.logo_url || null,
@@ -612,6 +640,40 @@ export function AppProvider({ children }) {
     await db.updateStudentPhotoUrl(studentUser.id, photoUrl)
     setStudentUser(prev => ({ ...prev, photo_url: photoUrl }))
     return photoUrl
+  }
+
+  // ── Parent Auth (Supabase phone OTP) ─────────────────
+  // Step 1: send OTP to phone number
+  const sendParentOtp = async (phoneE164) => {
+    const { error } = await supabase.auth.signInWithOtp({ phone: phoneE164 })
+    if (error) throw error
+  }
+
+  // Step 2: verify OTP, then claim parents row by phone match
+  const verifyParentOtp = async (phoneE164, code) => {
+    const { data, error } = await supabase.auth.verifyOtp({
+      phone: phoneE164, token: code, type: 'sms',
+    })
+    if (error) throw error
+    // Bind auth.uid() → parents row (by phone). Owner must have pre-added them.
+    const parent = await db.claimParentAccount(phoneE164)
+    setParentUser({
+      id:                 parent.id,
+      auth_user_id:       parent.auth_user_id,
+      academy_id:         parent.academy_id,
+      name:               parent.name,
+      phone:              parent.phone,
+      email:              parent.email,
+      notification_prefs: parent.notification_prefs,
+    })
+    setRole('parent')
+    return parent
+  }
+
+  const logoutParent = async () => {
+    try { await supabase.auth.signOut() } catch {}
+    setParentUser(null)
+    setRole(null)
   }
 
   // ── Feature flag toggle ───────────────────────────────
@@ -755,6 +817,18 @@ export function AppProvider({ children }) {
         }, ...prev])
       }
 
+      // Auto-link parent: upsert into parents table by (academy_id, phone)
+      // so siblings share one parent row + parent app can claim via OTP.
+      const parentPhone10 = (s.parentPhone || '').replace(/\D/g, '').slice(-10)
+      if (s.parent && parentPhone10.length === 10) {
+        db.createParent({
+          name:         s.parent,
+          phone:        parentPhone10,
+          studentId:    newId,
+          relationship: 'guardian',
+        }).catch(err => console.warn('parent auto-link failed:', err.message))
+      }
+
       showToast(`Student created — Code: ${studentCode} · Join: ${joinCode}`, 'success')
       logAuditSport({ actor: user, action: ACTIONS.STUDENT_ADD, entityType: 'student', entityId: mapped.id, entityName: mapped.name, changes: { batch: mapped.batch || '—', sport: mapped.sport, fees: String(mapped.fees) }, academyId: user?.academyId })
       return mapped
@@ -802,6 +876,17 @@ export function AppProvider({ children }) {
           if (b.id === newBatchId) return { ...b, enrolled: (b.enrolled || 0) + 1 }
           return b
         }))
+      }
+
+      // Auto-link parent on edit too (handles phone/name changes)
+      const editParentPhone10 = (s.parentPhone || '').replace(/\D/g, '').slice(-10)
+      if (s.parent && editParentPhone10.length === 10) {
+        db.createParent({
+          name:         s.parent,
+          phone:        editParentPhone10,
+          studentId:    id,
+          relationship: 'guardian',
+        }).catch(err => console.warn('parent auto-link failed:', err.message))
       }
 
       showToast('Student updated')
@@ -1511,7 +1596,14 @@ export function AppProvider({ children }) {
 
   const addAnnouncement = async (a) => {
     try {
-      const ann     = { ...a, author: user?.name || 'Owner', academyId: user?.academyId }
+      const ann     = {
+        ...a,
+        author:   user?.name    || 'Owner',
+        academyId: user?.academyId,
+        // Tag with staff's sport/branch so only same-scope members see it
+        sport:    a.sport    ?? (role === 'staff' ? (user?.sports?.[0] || null) : null),
+        branchId: a.branchId ?? (role === 'staff' ? (user?.branchId    || null) : null),
+      }
       const created = await db.insertAnnouncement(ann)
       setAnnouncements(prev => [created, ...prev])
       logAuditSport({ actor: user, action: ACTIONS.ANNOUNCEMENT_ADD, entityType: 'announcement', entityId: created.id, entityName: a.title, changes: { type: a.type || '—' }, academyId: user?.academyId })
@@ -1599,6 +1691,94 @@ export function AppProvider({ children }) {
     hasBranchScope ? sportTrials.filter(t => t.branchId === selectedBranch) : sportTrials
   , [sportTrials, selectedBranch, hasBranchScope])
 
+  // Coach-scope: when logged in as a staff member, limit batches/students to
+  // only their sport(s). This prevents cross-sport data leakage while still
+  // showing all batches within the coach's sports (even if no batch is assigned yet).
+  // Staff with no sports set (e.g. office staff) see all data in their scope.
+  const staffScopedBatches = useMemo(() => {
+    if (role !== 'staff') return filteredBatches
+    const staffSports = new Set((user?.sports || []).map(s => s.toLowerCase()))
+    if (staffSports.size === 0) return filteredBatches
+    return filteredBatches.filter(b =>
+      (b.sports || []).some(s => staffSports.has(s.toLowerCase()))
+    )
+  }, [filteredBatches, role, user?.sports])
+
+  const staffScopedStudents = useMemo(() => {
+    if (role !== 'staff') return filteredStudents
+    const staffSports = new Set((user?.sports || []).map(s => s.toLowerCase()))
+    if (staffSports.size === 0) return filteredStudents
+    const batchIds = new Set(staffScopedBatches.map(b => b.id))
+    return filteredStudents.filter(s =>
+      batchIds.has(s.batchId) ||
+      (s.sport && staffSports.has(s.sport.toLowerCase()))
+    )
+  }, [filteredStudents, role, staffScopedBatches, user?.sports])
+
+  // Scope payments and trials for staff portal (same sport-based logic)
+  const staffScopedPayments = useMemo(() => {
+    if (role !== 'staff') return filteredPayments
+    const staffSports = new Set((user?.sports || []).map(s => s.toLowerCase()))
+    if (staffSports.size === 0) return filteredPayments
+    const studentIds = new Set(staffScopedStudents.map(s => s.id))
+    return filteredPayments.filter(p => studentIds.has(p.studentId))
+  }, [filteredPayments, role, staffScopedStudents, user?.sports])
+
+  const staffScopedTrials = useMemo(() => {
+    if (role !== 'staff') return filteredTrials
+    const staffSports = new Set((user?.sports || []).map(s => s.toLowerCase()))
+    if (staffSports.size === 0) return filteredTrials
+    return filteredTrials.filter(t =>
+      t.sport && staffSports.has(t.sport.toLowerCase())
+    )
+  }, [filteredTrials, role, user?.sports])
+
+  // Staff-scope: when logged in as a staff member, only show staff from the same branch
+  // AND/OR the same sport(s). Branch wins if set; sport is the fallback scope.
+  // Owners see all staff (filteredStaff passes through unchanged).
+  const staffScopedStaff = useMemo(() => {
+    if (role !== 'staff') return filteredStaff
+    const staffBranchId = user?.branchId
+    const staffSports   = new Set((user?.sports || []).map(s => s.toLowerCase()))
+    return filteredStaff.filter(s => {
+      // Branch filter: exclude staff from a different branch
+      if (staffBranchId && s.branchId && s.branchId !== staffBranchId) return false
+      // If the logged-in staff has sports assigned, only show colleagues who share at least one sport
+      if (staffSports.size > 0 && s.sports?.length > 0) {
+        return s.sports.some(sp => staffSports.has(sp.toLowerCase()))
+      }
+      return true
+    })
+  }, [filteredStaff, role, user?.branchId, user?.sports])
+
+  // Staff-scope: events and announcements — same sport+branch logic.
+  // Events use the existing `sport` column; announcements use the new sport/branchId fields.
+  // audience_type === 'staff_members' events are shown only if the logged-in staff is in audience_ids.
+  const staffScopedEvents = useMemo(() => {
+    if (role !== 'staff') return events
+    const staffSports   = new Set((user?.sports || []).map(s => s.toLowerCase()))
+    const staffBranchId = user?.branchId
+    return events.filter(e => {
+      if (e.audience_type === 'staff_members') return (e.audience_ids || []).includes(user?.id)
+      if (staffBranchId && e.branch_id && e.branch_id !== staffBranchId) return false
+      if (staffSports.size > 0 && e.sport) return staffSports.has(e.sport.toLowerCase())
+      return true
+    })
+  }, [events, role, user?.sports, user?.branchId, user?.id])
+
+  const staffScopedAnnouncements = useMemo(() => {
+    if (role !== 'staff') return announcements
+    const staffSports   = new Set((user?.sports || []).map(s => s.toLowerCase()))
+    const staffBranchId = user?.branchId
+    return announcements.filter(a => {
+      // Academy-wide announcements (no sport, no branch) are always visible
+      if (!a.sport && !a.branchId) return true
+      if (staffBranchId && a.branchId && a.branchId !== staffBranchId) return false
+      if (staffSports.size > 0 && a.sport) return staffSports.has(a.sport.toLowerCase())
+      return true
+    })
+  }, [announcements, role, user?.sports, user?.branchId])
+
   // Fee plans inherit scope through their batch_id. If we can see the batch,
   // we can see its fee plans. Outside any sport scope → show everything.
   const filteredFeePlans = useMemo(() => {
@@ -1621,6 +1801,8 @@ export function AppProvider({ children }) {
       loginStaff, logoutStaff, activateStaff,
       // student auth
       loginStudent, logoutStudent, activateStudent, updateStudentPhoto,
+      // parent auth (Supabase phone OTP)
+      parentUser, sendParentOtp, verifyParentOtp, logoutParent,
       // sport scoping
       selectedSport, setSelectedSport, isAllSports,
       // branch scoping (within a sport)
@@ -1630,21 +1812,21 @@ export function AppProvider({ children }) {
       allStudents: students, allStaff: staff, allBatches: batches,
       allPayments: payments, allTrials: trials,
       // data — auto-filtered by selectedSport
-      students: filteredStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
-      payments: filteredPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
-      trials: filteredTrials, addTrial, updateTrialStatus, deleteTrial,
+      students: staffScopedStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
+      payments: staffScopedPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
+      trials: staffScopedTrials, addTrial, updateTrialStatus, deleteTrial,
       trialSources, addTrialSource, removeTrialSource,
       refreshData: loadAll,
-      batches: filteredBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee, deleteBatch,
+      batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee, deleteBatch,
       feePlans: filteredFeePlans, addFeePlan, editFeePlan, removeFeePlan,
-      events, addEvent, updateEvent, updateEventStatus, removeEvent,
-      staff: filteredStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,
+      events: staffScopedEvents, addEvent, updateEvent, updateEventStatus, removeEvent,
+      staff: staffScopedStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,
       updateStaffProfile,
       branches, addBranch, removeBranch,
       // raw fee plans (unfiltered) for places that need everything
       allFeePlans: feePlans,
       attendanceData, loadAttendanceForDate, saveAttendance,
-      announcements, addAnnouncement, sendStaffNotice,
+      announcements: staffScopedAnnouncements, addAnnouncement, sendStaffNotice,
       leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // staff portal management
       inviteStaff, updateStaffAccess, revokeStaffAccess,
