@@ -15,7 +15,8 @@ export default function StudentAnnouncements() {
   useEffect(() => {
     const academyId = studentUser?.academy_id
     Promise.all([
-      ctxAnnouncements?.length ? Promise.resolve(ctxAnnouncements) : db.fetchAnnouncements(),
+      // Always fetch fresh — context announcements may be from a different sport scope
+      db.fetchAnnouncements(academyId),
       db.fetchEvents(academyId),
     ])
       .then(([ann, evts]) => {
@@ -24,19 +25,29 @@ export default function StudentAnnouncements() {
       })
       .catch(console.error)
       .finally(() => setLoading(false))
-  }, [])
+  }, [studentUser?.academy_id])
 
-  // Events visible to this student (by audience_type + their batchId)
-  const studentBatchId = studentUser?.batchId
+  // Scope filters — student only sees content tagged for their sport+branch
+  // OR content with no sport/branch tag (= academy-wide).
+  const studentSport    = (studentUser?.sport || '').toLowerCase()
+  const studentBatchId  = studentUser?.batchId
+  const studentBranchId = studentUser?.branch_id || studentUser?.branchId || null
+
+  const sportMatch  = (item) => !item.sport     || item.sport.toLowerCase() === studentSport
+  const branchMatch = (item) => !item.branch_id || item.branch_id === studentBranchId
+
   const visibleEvents = events.filter(e => {
     if (e.status === 'Cancelled') return false
+    if (!sportMatch(e))           return false
     if (!e.audience_type || e.audience_type === 'all')      return true
     if (e.audience_type === 'students') return true
     if (e.audience_type === 'batches')  return studentBatchId && (e.audience_ids || []).includes(studentBatchId)
     return false
   }).sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
-  const hasContent = visibleEvents.length > 0 || announcements.length > 0
+  const visibleAnnouncements = announcements.filter(a => sportMatch(a) && branchMatch(a))
+
+  const hasContent = visibleEvents.length > 0 || visibleAnnouncements.length > 0
 
   return (
     <div className="max-w-lg mx-auto px-4 py-5 space-y-5">
@@ -87,11 +98,11 @@ export default function StudentAnnouncements() {
             </div>
           )}
 
-          {announcements.length > 0 && (
+          {visibleAnnouncements.length > 0 && (
             <div>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Announcements</p>
               <div className="space-y-3">
-                {announcements.map(a => (
+                {visibleAnnouncements.map(a => (
                   <div key={a.id} className="bg-white rounded-2xl border border-gray-100 p-4">
                     <div className="flex items-start gap-3">
                       <div className="w-9 h-9 bg-gray-50 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">

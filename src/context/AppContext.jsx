@@ -1633,9 +1633,11 @@ export function AppProvider({ children }) {
         ...a,
         author:   user?.name    || 'Owner',
         academyId: user?.academyId,
-        // Tag with staff's sport/branch so only same-scope members see it
-        sport:    a.sport    ?? (role === 'staff' ? (user?.sports?.[0] || null) : null),
-        branchId: a.branchId ?? (role === 'staff' ? (user?.branchId    || null) : null),
+        // Tag with current sport/branch scope so only that audience sees it.
+        // Owner uses sport switcher (selectedSport); staff uses assigned sport.
+        // null = academy-wide (visible to every student).
+        sport:    a.sport    ?? (role === 'owner' ? (selectedSport || null) : (user?.sports?.[0] || null)),
+        branchId: a.branchId ?? (role === 'owner' ? (selectedBranch || null) : (user?.branchId   || null)),
       }
       const created = await db.insertAnnouncement(ann)
       setAnnouncements(prev => [created, ...prev])

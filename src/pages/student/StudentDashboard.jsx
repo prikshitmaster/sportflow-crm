@@ -42,7 +42,16 @@ export default function StudentDashboard() {
     loadData()
     if (studentUser.academy_id) {
       db.fetchAnnouncements(studentUser.academy_id)
-        .then(data => setNotices(data.slice(0, 3)))
+        .then(data => {
+          // Same scope filter as Notices page — sport + branch
+          const sp = (studentUser.sport || '').toLowerCase()
+          const br = studentUser.branch_id || studentUser.branchId || null
+          const filtered = (data || []).filter(a =>
+            (!a.sport     || a.sport.toLowerCase() === sp) &&
+            (!a.branch_id || a.branch_id === br)
+          )
+          setNotices(filtered.slice(0, 3))
+        })
         .catch(() => {})
     }
     // Fetch this month's focus goal — drives the focus banner
