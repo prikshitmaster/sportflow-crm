@@ -23,7 +23,7 @@ const WORK_TILES = [
 ]
 
 export default function StaffDashboard() {
-  const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, hasPermission, trials } = useApp()
+  const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, hasPermission, trials, showToast } = useApp()
   const navigate = useNavigate()
 
   const [gateQRToken,   setGateQRToken]   = useState(null)
@@ -37,6 +37,8 @@ export default function StaffDashboard() {
     try {
       const qr = await db.getOrCreateGateQR(user?.academyId, user?.academy || 'Academy Gate')
       setGateQRToken(qr.token)
+    } catch (err) {
+      showToast(err.message || 'Could not load Gate QR', 'error')
     } finally {
       setGateQRLoading(false)
     }
@@ -54,7 +56,7 @@ export default function StaffDashboard() {
   const myBatches = batches.filter(b =>
     b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
   )
-  const displayBatches = myBatches.length > 0 ? myBatches : batches
+  const displayBatches = myBatches
 
   const myStudentIds = new Set(
     students
@@ -305,8 +307,10 @@ export default function StaffDashboard() {
               />
             </div>
           ) : (
-            <div className="w-64 h-64 bg-gray-50 rounded-2xl flex items-center justify-center">
+            <div className="w-64 h-64 bg-gray-50 rounded-2xl flex flex-col items-center justify-center gap-2 px-6 text-center">
+              <QrCode size={32} className="text-gray-300" />
               <p className="text-gray-400 text-sm">QR unavailable</p>
+              <p className="text-gray-300 text-xs">Ask the academy owner to set up Gate QR from Admin settings</p>
             </div>
           )}
           <p className="text-xl font-black text-gray-900 mt-8">{user?.academy}</p>

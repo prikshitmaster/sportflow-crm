@@ -1107,6 +1107,18 @@ export async function activateStudentAccount(studentCode, joinCode, passwordHash
 }
 
 export async function loginStudentAccount(studentCode, passwordHash) {
+  // First check if the student code exists at all (to give a clearer error)
+  const { data: student } = await supabase
+    .from('students')
+    .select('account_status, password_hash')
+    .eq('student_code', studentCode.toUpperCase())
+    .maybeSingle()
+
+  if (!student) throw new Error('Invalid Student ID or password')
+  if (student.account_status !== 'active' || !student.password_hash) {
+    throw new Error('Account not activated yet — please go to "Activate your account" first')
+  }
+
   const { data, error } = await supabase
     .from('students')
     .select('*')
@@ -1293,26 +1305,30 @@ export async function fetchAnnouncements(academyId) {
     throw error
   }
   return data.map(row => ({
-    id:     row.id,
-    title:  row.title,
-    body:   row.body,
-    type:   row.type,
-    author: row.author,
-    date:   row.date,
+    id:       row.id,
+    title:    row.title,
+    body:     row.body,
+    type:     row.type,
+    author:   row.author,
+    date:     row.date,
+    sport:    row.sport    || null,
+    branchId: row.branch_id || null,
   }))
 }
 
 export async function insertAnnouncement(a) {
   const { data, error } = await supabase.rpc('secure_insert_announcement', {
-    p_title:  a.title,
-    p_body:   a.body,
-    p_type:   a.type,
-    p_author: a.author || 'Admin',
-    p_token:  _sessionToken(),
+    p_title:     a.title,
+    p_body:      a.body,
+    p_type:      a.type,
+    p_author:    a.author || 'Admin',
+    p_token:     _sessionToken(),
+    p_sport:     a.sport     || null,
+    p_branch_id: a.branchId  || null,
   })
   if (error) throw error
   const row = typeof data === 'string' ? JSON.parse(data) : data
-  return { ...a, id: row.id, date: row.date }
+  return { ...a, id: row.id, date: row.date, sport: row.sport || null, branchId: row.branch_id || null }
 }
 
 // ── Fee Plans ─────────────────────────────────────────────
@@ -2489,3 +2505,139 @@ export async function reorderSessionPhases(updates) {
   if (error) throw error
 }
 
+// ============================================================
+// Parents (added migration 0057)
+// ============================================================
+
+// Owner — list parents in the academy
+export async function fetchParents() {
+  const { data, error } = await supabase.rpc('secure_list_parents', { p_token: _sessionToken() })
+  if (error) throw error
+  return data || []
+}
+
+// Owner — create/upsert a parent, optionally linked to a child
+export async function createParent({ name, phone, email = null, studentId = null, relationship = null }) {
+  const { data, error } = await supabase.rpc('secure_create_parent', {
+    p_name:         name,
+    p_phone:        phone,
+    p_email:        email,
+    p_student_id:   studentId,
+    p_relationship: relationship,
+    p_token:        _sessionToken(),
+  })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+export async function linkStudentToParent(parentId, studentId, { relationship = null, isPrimary = false } = {}) {
+  const { error } = await supabase.rpc('secure_link_student_to_parent', {
+    p_parent_id:    parentId,
+    p_student_id:   studentId,
+    p_relationship: relationship,
+    p_is_primary:   isPrimary,
+    p_token:        _sessionToken(),
+  })
+  if (error) throw error
+}
+
+export async function unlinkStudentFromParent(parentId, studentId) {
+  const { error } = await supabase.rpc('secure_unlink_student_from_parent', {
+    p_parent_id:  parentId,
+    p_student_id: studentId,
+    p_token:      _sessionToken(),
+  })
+  if (error) throw error
+}
+
+// Parent — claim auth.uid() → parents row by phone (post phone-OTP signup)
+export async function claimParentAccount(phone) {
+  const { data, error } = await supabase.rpc('secure_claim_parent_account', { p_phone: phone })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+// Parent — dashboard payload (parent row + children with payment status)
+export async function fetchParentDashboard() {
+  const { data, error } = await supabase.rpc('secure_get_parent_dashboard')
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+// Parent — update notification preferences
+export async function updateParentPrefs(prefs) {
+  const { data, error } = await supabase.rpc('secure_update_parent_prefs', { p_prefs: prefs })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+// ============================================================
+// Razorpay (added migration 0058 + edge function razorpay-create-order)
+// ============================================================
+
+const _functionsBase = () => {
+  const url = import.meta.env.VITE_SUPABASE_URL || ''
+  // Supabase Edge Functions URL pattern
+  return url.replace('.supabase.co', '.functions.supabase.co')
+}
+
+// Frontend → razorpay-create-order edge function
+// Returns { orderId, keyId, amount, currency, prefill, notes } for Razorpay Checkout.
+export async function createRazorpayOrder({ studentId, amount, monthsCovered = 1, coverageStart = null, paymentLinkId = null }) {
+  const sessionToken = _sessionToken()
+  const { data: { session } } = await supabase.auth.getSession()
+  const authHeader = session?.access_token
+    ? `Bearer ${session.access_token}`
+    : `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+
+  const resp = await fetch(`${_functionsBase()}/razorpay-create-order`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':     'application/json',
+      'Authorization':    authHeader,
+      'apikey':           import.meta.env.VITE_SUPABASE_ANON_KEY,
+      ...(sessionToken ? { 'x-session-token': sessionToken } : {}),
+    },
+    body: JSON.stringify({ studentId, amount, monthsCovered, coverageStart, paymentLinkId }),
+  })
+  const json = await resp.json().catch(() => ({}))
+  if (!resp.ok) throw new Error(json?.error || 'Could not create Razorpay order')
+  return json
+}
+
+// Owner — read/save Razorpay config for the academy
+export async function fetchPaymentConfig() {
+  const { data, error } = await supabase.rpc('secure_get_payment_config', { p_token: _sessionToken() })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+export async function savePaymentConfig(payload) {
+  const { data, error } = await supabase.rpc('secure_set_payment_config', {
+    p_payload: payload,
+    p_token:   _sessionToken(),
+  })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+// Owner — create a payment link for a parent to pay later
+export async function createPaymentLink({ studentId, amount, description = null, monthsCovered = 1, coverageStart = null }) {
+  const { data, error } = await supabase.rpc('secure_create_payment_link', {
+    p_student_id:    studentId,
+    p_amount:        amount,
+    p_description:   description,
+    p_months:        monthsCovered,
+    p_coverage_start: coverageStart,
+    p_token:         _sessionToken(),
+  })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+// Public — fetch a payment link by short_code (anon callable)
+export async function fetchPaymentLink(shortCode) {
+  const { data, error } = await supabase.rpc('secure_fetch_payment_link', { p_short_code: shortCode })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
