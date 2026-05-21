@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, CalendarCheck, CreditCard, UserPlus,
   Layers, UserCog, BarChart3, Megaphone, Settings, LogOut,
   Zap, ChevronLeft, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, UserCircle,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -18,6 +18,7 @@ import { useState } from 'react'
 const nav = [
   { to: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard, feature: null,        permission: 'dashboard.view' },
   { to: '/students',   label: 'Students',   icon: Users,            feature: null,        permission: 'students.view' },
+  { to: '/parents',    label: 'Parents',    icon: UserCircle,       feature: null,        permission: 'students.view' },
   { to: '/attendance', label: 'Attendance', icon: CalendarCheck,   feature: 'attendance', permission: 'attendance.manage' },
   { to: '/payments',   label: 'Payments',   icon: CreditCard,      feature: 'payments',   permission: 'payments.view' },
   { to: '/trials',     label: 'Trials',     icon: UserPlus,        feature: 'trials',     permission: 'trials.manage' },

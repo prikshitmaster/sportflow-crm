@@ -2516,6 +2516,31 @@ export async function fetchParents() {
   return data || []
 }
 
+// Owner/staff — parent detail with linked children + payment status
+export async function fetchParentDetail(parentId) {
+  const { data, error } = await supabase.rpc('secure_get_parent_detail', {
+    p_parent_id: parentId,
+    p_token:     _sessionToken(),
+  })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+// Owner — update parent name/phone/email
+export async function updateParent(parentId, { name, phone, email } = {}) {
+  const payload = {}
+  if (name  !== undefined) payload.name  = name
+  if (phone !== undefined) payload.phone = phone
+  if (email !== undefined) payload.email = email
+  const { data, error } = await supabase.rpc('secure_update_parent', {
+    p_parent_id: parentId,
+    p_payload:   payload,
+    p_token:     _sessionToken(),
+  })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
 // Owner — create/upsert a parent, optionally linked to a child
 export async function createParent({ name, phone, email = null, studentId = null, relationship = null }) {
   const { data, error } = await supabase.rpc('secure_create_parent', {

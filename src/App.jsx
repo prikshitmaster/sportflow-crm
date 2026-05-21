@@ -4,6 +4,7 @@ import { AppProvider, useApp } from './context/AppContext'
 import Layout from './components/Layout'
 import StaffLayout from './components/StaffLayout'
 import StudentLayout from './components/StudentLayout'
+import ParentLayout from './components/ParentLayout'
 
 // Ops monitoring — secret URL, PIN-gated, no nav link
 import OpsActivity from './pages/OpsActivity'
@@ -14,6 +15,7 @@ import Signup from './pages/Signup'
 import StaffLogin from './pages/StaffLogin'
 import StaffActivate from './pages/StaffActivate'
 import StudentLogin from './pages/StudentLogin'
+import ParentLogin from './pages/ParentLogin'
 import Activate from './pages/Activate'
 import Invite from './pages/Invite'
 
@@ -34,6 +36,7 @@ const StaffAttendanceQR = lazy(() => import('./pages/StaffAttendanceQR'))
 const SportSelect      = lazy(() => import('./pages/SportSelect'))
 const Drills           = lazy(() => import('./pages/Drills'))
 const Sessions         = lazy(() => import('./pages/Sessions'))
+const Parents          = lazy(() => import('./pages/Parents'))
 
 // Staff pages — lazy loaded
 const StaffDashboard   = lazy(() => import('./pages/staff/StaffDashboard'))
@@ -47,6 +50,15 @@ const StaffAssess      = lazy(() => import('./pages/staff/StaffAssess'))
 const StaffPulse       = lazy(() => import('./pages/staff/StaffPulse'))
 const StaffTrials      = lazy(() => import('./pages/staff/StaffTrials'))
 const SessionPlanner   = lazy(() => import('./pages/staff/SessionPlanner'))
+
+// Parent pages — lazy loaded
+const ParentDashboard      = lazy(() => import('./pages/parent/ParentDashboard'))
+const ParentPayments       = lazy(() => import('./pages/parent/ParentPayments'))
+const ParentNotices        = lazy(() => import('./pages/parent/ParentNotices'))
+const ParentMe             = lazy(() => import('./pages/parent/ParentMe'))
+
+// Public Razorpay pay-link landing page — no auth required
+const PayPublic            = lazy(() => import('./pages/PayPublic'))
 
 // Student pages — lazy loaded
 const StudentDashboard     = lazy(() => import('./pages/student/StudentDashboard'))
@@ -153,6 +165,13 @@ function StudentRoute({ children }) {
   return <Navigate to="/student-login" replace />
 }
 
+function ParentRoute({ children }) {
+  const { role, loading } = useApp()
+  if (loading) return <PageLoading />
+  if (role === 'parent') return children
+  return <Navigate to="/parent-login" replace />
+}
+
 // Renders children only if the current staff user has the given permission.
 // Shows a locked screen otherwise — staff cannot bypass by typing the URL.
 function PermRequired({ perm, children }) {
@@ -178,6 +197,7 @@ function PublicRoute({ children }) {
   if (role === 'owner')   return <Navigate to="/dashboard" replace />
   if (role === 'staff')   return <Navigate to="/staff/home" replace />
   if (role === 'student') return <Navigate to="/student/dashboard" replace />
+  if (role === 'parent')  return <Navigate to="/parent/home" replace />
   return children
 }
 
@@ -193,6 +213,7 @@ function AppRoutes() {
       <Route path="/" element={<OwnerRoute><Layout /></OwnerRoute>}>
         <Route path="dashboard"  element={<Dashboard />} />
         <Route path="students"   element={<Students />} />
+        <Route path="parents"    element={<Parents />} />
         <Route path="attendance" element={<Attendance />} />
         <Route path="payments"   element={<Payments />} />
         <Route path="trials"     element={<Trials />} />
@@ -234,6 +255,15 @@ function AppRoutes() {
         <Route path="settings"  element={<PermRequired perm="settings.manage"><Settings />  </PermRequired>} />
       </Route>
 
+      {/* Parent */}
+      <Route path="/parent-login"  element={<PublicRoute><ParentLogin /></PublicRoute>} />
+      <Route path="/parent" element={<ParentRoute><ParentLayout /></ParentRoute>}>
+        <Route path="home"     element={<ParentDashboard />} />
+        <Route path="payments" element={<ParentPayments />} />
+        <Route path="notices"  element={<ParentNotices />} />
+        <Route path="me"       element={<ParentMe />} />
+      </Route>
+
       {/* Student */}
       <Route path="/student-login" element={<PublicRoute><StudentLogin /></PublicRoute>} />
       <Route path="/activate"      element={<Activate />} />
@@ -249,6 +279,9 @@ function AppRoutes() {
 
       {/* Invite — public, no auth required */}
       <Route path="/invite/:token" element={<Invite />} />
+
+      {/* Razorpay pay-link landing — public, no auth required */}
+      <Route path="/pay/:shortCode" element={<PayPublic />} />
 
       {/* Ops monitor — PIN-gated, secret URL, not linked anywhere */}
       <Route path="/ops/live" element={<OpsActivity />} />
