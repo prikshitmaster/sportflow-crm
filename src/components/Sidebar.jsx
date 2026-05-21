@@ -28,15 +28,14 @@ const nav = [
   { to: '/sessions',   label: 'Sessions',   icon: CalendarDays,    feature: null,         permission: 'dashboard.view', footballOnly: true, group: 'training' },
   { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: null,         permission: 'dashboard.view', footballOnly: true, group: 'training' },
   { to: '/coaches',    label: 'Staff',      icon: UserCog,         feature: 'staff',      permission: 'staff.manage' },
-  { to: '/reports',    label: 'Reports',    icon: BarChart3,       feature: 'reports',    permission: 'reports.view',    group: 'engage' },
-  { to: '/community',  label: 'Community',  icon: Megaphone,       feature: 'community',  permission: 'community.manage', group: 'engage' },
+  { to: '/reports',    label: 'Reports',    icon: BarChart3,       feature: 'reports',    permission: 'reports.view' },
+  { to: '/community',  label: 'Community',  icon: Megaphone,       feature: 'community',  permission: 'community.manage' },
   { to: '/settings',   label: 'Settings',   icon: Settings,        feature: null,         permission: 'settings.manage' },
 ]
 
 const GROUP_META = {
   qr:       { label: 'QR Codes',  icon: QrCode },
   training: { label: 'Training',  icon: CalendarDays },
-  engage:   { label: 'Insights',  icon: BarChart3 },
 }
 
 export default function Sidebar({ collapsed, setCollapsed }) {
