@@ -20,17 +20,20 @@ function PageSkeleton() {
   )
 }
 
-const tabs = [
+const ALL_TABS = [
   { to: '/student/dashboard',     label: 'Home',     icon: Home },
   { to: '/student/scan',          label: 'Scan',     icon: QrCode },
   { to: '/student/attendance',    label: 'Attend',   icon: CalendarCheck },
-  { to: '/student/progress',      label: 'Progress', icon: Target },
+  { to: '/student/progress',      label: 'Progress', icon: Target,      footballOnly: true },
   { to: '/student/payments',      label: 'Fees',     icon: CreditCard },
   { to: '/student/announcements', label: 'Notice',   icon: Megaphone },
 ]
 
 export default function StudentLayout() {
   const { studentUser, logoutStudent, academyLogo } = useApp()
+
+  const isFootball = studentUser?.sport?.toLowerCase() === 'football'
+  const tabs = ALL_TABS.filter(t => !t.footballOnly || isFootball)
   const navigate = useNavigate()
 
   useEffect(() => {

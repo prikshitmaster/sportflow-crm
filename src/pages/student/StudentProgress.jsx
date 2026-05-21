@@ -41,6 +41,7 @@ function formatDate(dateStr) {
 
 export default function StudentProgress() {
   const { studentUser } = useApp()
+  const isFootball = studentUser?.sport?.toLowerCase() === 'football'
   const now      = new Date()
   const today    = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
   const monthStr = monthKey(now)
@@ -253,8 +254,8 @@ export default function StudentProgress() {
         </div>
       )}
 
-      {/* Link to detailed monthly stats (kept separate for the deeper slider view) */}
-      <Link
+      {/* Link to detailed monthly stats — football only (pitch view + position ratings) */}
+      {isFootball && <Link
         to="/student/stats"
         className="block w-full bg-white rounded-2xl border border-gray-100 p-3.5 flex items-center justify-between active:bg-gray-50"
       >
@@ -268,7 +269,7 @@ export default function StudentProgress() {
           </div>
         </div>
         <ChevronRight size={16} className="text-gray-300" />
-      </Link>
+      </Link>}
     </div>
   )
 }

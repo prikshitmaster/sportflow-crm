@@ -38,7 +38,9 @@ export default function StaffLayout() {
   const { user, logoutStaff, hasPermission, selectedSport } = useApp()
   const navigate = useNavigate()
 
-  const isFootball = !selectedSport || selectedSport.toLowerCase() === 'football'
+  // Use the staff member's own assigned sports (not the owner's context switcher)
+  const isFootball = !user?.sports?.length ||
+    user.sports.some(s => s.toLowerCase() === 'football')
 
   useEffect(() => {
     // Prefetch all staff page chunks so tab switches are instant
@@ -56,7 +58,9 @@ export default function StaffLayout() {
 
   const isOffice = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)
   const hasTrials = hasPermission('trials.manage')
-  const coachTabs = isFootball ? BASE_COACH_TABS : BASE_COACH_TABS.filter(t => t.to !== '/staff/sessions')
+  const coachTabs = isFootball
+    ? BASE_COACH_TABS
+    : BASE_COACH_TABS.filter(t => t.to !== '/staff/sessions' && t.to !== '/staff/assess')
   const baseTabs  = isOffice ? BASE_OFFICE_TABS : coachTabs
   const tabs = hasTrials
     ? isOffice
