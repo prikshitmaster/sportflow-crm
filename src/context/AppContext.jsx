@@ -676,6 +676,22 @@ export function AppProvider({ children }) {
     setRole(null)
   }
 
+  // DEV ONLY — skip phone OTP for testing
+  const testLoginParent = async (phone) => {
+    const parent = await db.parentTestLogin(phone)
+    setParentUser({
+      id:                 parent.id,
+      auth_user_id:       parent.auth_user_id,
+      academy_id:         parent.academy_id,
+      name:               parent.name,
+      phone:              parent.phone,
+      email:              parent.email,
+      notification_prefs: parent.notification_prefs,
+    })
+    setRole('parent')
+    return parent
+  }
+
   // ── Feature flag toggle ───────────────────────────────
   const toggleFeature = async (feature, enabled) => {
     if (!user?.academyId) return
@@ -1802,7 +1818,7 @@ export function AppProvider({ children }) {
       // student auth
       loginStudent, logoutStudent, activateStudent, updateStudentPhoto,
       // parent auth (Supabase phone OTP)
-      parentUser, sendParentOtp, verifyParentOtp, logoutParent,
+      parentUser, sendParentOtp, verifyParentOtp, logoutParent, testLoginParent,
       // sport scoping
       selectedSport, setSelectedSport, isAllSports,
       // branch scoping (within a sport)

@@ -2551,10 +2551,33 @@ export async function unlinkStudentFromParent(parentId, studentId) {
 }
 
 // Parent — claim auth.uid() → parents row by phone (post phone-OTP signup)
+// Phone is normalized to 10 digits since parents.phone is stored that way.
 export async function claimParentAccount(phone) {
-  const { data, error } = await supabase.rpc('secure_claim_parent_account', { p_phone: phone })
+  const phone10 = String(phone || '').replace(/\D/g, '').slice(-10)
+  const { data, error } = await supabase.rpc('secure_claim_parent_account', { p_phone: phone10 })
   if (error) throw error
   return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+// DEV ONLY — bypass phone OTP. Calls parent-test-login edge function which
+// returns synthetic { email, password }, then we sign in. The function is
+// gated behind ENABLE_PARENT_TEST_LOGIN env var on the server side.
+export async function parentTestLogin(phone) {
+  const phone10 = String(phone || '').replace(/\D/g, '').slice(-10)
+  const resp = await fetch(`${_functionsBase()}/parent-test-login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey':       import.meta.env.VITE_SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ phone: phone10 }),
+  })
+  const json = await resp.json().catch(() => ({}))
+  if (!resp.ok) throw new Error(json?.error || 'Test login failed')
+  const { error } = await supabase.auth.signInWithPassword({ email: json.email, password: json.password })
+  if (error) throw error
+  return claimParentAccount(phone10)
 }
 
 // Parent — dashboard payload (parent row + children with payment status)
