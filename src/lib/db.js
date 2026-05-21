@@ -2021,10 +2021,16 @@ export async function fetchAllAssessments(academyId, month) {
   return data || []
 }
 
-export async function upsertAssessment({ studentId, staffId, batchId, sport, month, scores, notes }) {
+export async function upsertAssessment({ studentId, staffId, batchId, sport, month, scores, notes, categoryNotes }) {
   const { data, error } = await supabase.rpc('secure_upsert_assessment', {
-    p_payload: { studentId, staffId, batchId: batchId ?? null, sport, month, scores, notes: notes ?? null },
-    p_token:   _sessionToken(),
+    p_payload: {
+      studentId, staffId,
+      batchId: batchId ?? null,
+      sport, month, scores,
+      notes:         notes ?? null,
+      categoryNotes: categoryNotes ?? {},
+    },
+    p_token: _sessionToken(),
   })
   if (error) throw error
   return data

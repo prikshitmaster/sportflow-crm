@@ -60,6 +60,9 @@ const ParentMe             = lazy(() => import('./pages/parent/ParentMe'))
 // Public Razorpay pay-link landing page — no auth required
 const PayPublic            = lazy(() => import('./pages/PayPublic'))
 
+// Standalone printable assessment report — no app chrome
+const AssessmentReport     = lazy(() => import('./pages/AssessmentReport'))
+
 // Student pages — lazy loaded
 const StudentDashboard     = lazy(() => import('./pages/student/StudentDashboard'))
 const StudentAttendance    = lazy(() => import('./pages/student/StudentAttendance'))
@@ -282,6 +285,11 @@ function AppRoutes() {
 
       {/* Razorpay pay-link landing — public, no auth required */}
       <Route path="/pay/:shortCode" element={<PayPublic />} />
+
+      {/* Printable assessment report — standalone (no app chrome).
+          Owner/coach pass studentId; student route auto-uses logged-in id. */}
+      <Route path="/report/student/:studentId" element={<AssessmentReport />} />
+      <Route path="/student/assessment-report" element={<AssessmentReport asStudent />} />
 
       {/* Ops monitor — PIN-gated, secret URL, not linked anywhere */}
       <Route path="/ops/live" element={<OpsActivity />} />

@@ -882,6 +882,10 @@ export function AppProvider({ children }) {
         trainingType: updated.training_type || 'Daily',
         feePlan:      updated.fee_plan || 'monthly',
         position:     updated.position || null,
+        heightCm:      updated.height_cm      ?? null,
+        weightKg:      updated.weight_kg      ?? null,
+        preferredFoot: updated.preferred_foot ?? null,
+        wing:          updated.wing           ?? null,
       } : x))
 
       if (oldBatchId !== newBatchId) {

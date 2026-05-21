@@ -4,7 +4,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
   LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid,
 } from 'recharts'
-import { TrendingUp, Award, Sparkles } from 'lucide-react'
+import { TrendingUp, Award, Sparkles, FileText } from 'lucide-react'
 import * as db from '../../lib/db'
 import {
   SPORT_CATEGORIES, FOOTBALL_CATEGORIES,
@@ -113,6 +113,14 @@ export default function StudentStats() {
         }} />
 
         <div className="relative px-5 pt-5 pb-6">
+          {/* Download PDF button (top-right) */}
+          <button
+            onClick={() => window.open('/student/assessment-report', '_blank')}
+            className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold border"
+            style={{ borderColor: 'rgba(99,102,241,0.5)', color: '#a5b4fc', background: 'rgba(99,102,241,0.1)' }}>
+            <FileText size={11} /> PDF
+          </button>
+
           {/* Sport + position row */}
           <div className="flex items-center gap-2 mb-5">
             <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em]">{sport} · Performance</span>

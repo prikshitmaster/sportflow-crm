@@ -8,7 +8,7 @@ import { fillStudent } from '../lib/devFill'
 import {
   Search, Plus, MoreVertical, UserCheck, UserX, X, Users as UsersIcon,
   Copy, KeyRound, CheckCheck, RefreshCw, Phone, Calendar, IndianRupee,
-  ShieldCheck, Award, ChevronRight, Pencil, Ban, Trash2, UserPlus,
+  ShieldCheck, Award, ChevronRight, Pencil, Ban, Trash2, UserPlus, FileText,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from './Payments'
@@ -658,11 +658,20 @@ export default function Students() {
 }
 
 function StudentMenu({ s, mobile, onEdit, onSuspend, onStatus, onReset, onCopy, onDelete, copied }) {
+  const isFootball = (s.sport || '').toLowerCase() === 'football'
   return (
     <div className={`absolute ${mobile ? 'right-0' : 'right-4'} top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 py-1 w-48`}>
       <button className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-brand-700 hover:bg-brand-50" onClick={onEdit}>
         <Pencil size={14} /> Edit Student
       </button>
+      {isFootball && (
+        <button
+          className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-indigo-700 hover:bg-indigo-50"
+          onClick={() => window.open(`/report/student/${s.id}`, '_blank')}
+        >
+          <FileText size={14} /> Assessment PDF
+        </button>
+      )}
       {s.status === 'Active' && (
         <button className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50" onClick={onSuspend}>
           <Ban size={14} /> Suspend
@@ -816,6 +825,8 @@ function AddStudentModal({ onClose, onSave }) {
 
   const handleDevFill = () => {
     const data = fillStudent({ sportOptions, batches })
+    // When sport is locked to a branch, don't override it
+    if (sportLocked) delete data.sport
     setForm(f => ({ ...f, ...data }))
     setErrors({})
   }
@@ -1305,6 +1316,10 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     trainingType: s.trainingType || '',
     feePlan:      s.feePlan      || 'monthly',
     position:     s.position     || '',
+    heightCm:      s.heightCm      || s.height_cm     || '',
+    weightKg:      s.weightKg      || s.weight_kg     || '',
+    preferredFoot: s.preferredFoot || s.preferred_foot || '',
+    wing:          s.wing          || '',
   })
   const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
@@ -1432,6 +1447,43 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
               onChange={e => set('joinDate', e.target.value)} />
           )}
         </div>
+
+        {/* Football profile — shown on the printable assessment PDF */}
+        {form.sport?.toLowerCase() === 'football' && (
+          <div className="sm:col-span-2 bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+            <p className="text-[11px] font-black text-emerald-700 uppercase tracking-wider mb-3">Football Profile</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="label">Height (cm)</label>
+                <input className="input" type="number" min="50" max="250"
+                  value={form.heightCm}
+                  onChange={e => set('heightCm', e.target.value.replace(/\D/g, '').slice(0, 3))} />
+              </div>
+              <div>
+                <label className="label">Weight (kg)</label>
+                <input className="input" type="number" min="10" max="200"
+                  value={form.weightKg}
+                  onChange={e => set('weightKg', e.target.value.replace(/\D/g, '').slice(0, 3))} />
+              </div>
+              <div>
+                <label className="label">Preferred Foot</label>
+                <select className="input" value={form.preferredFoot}
+                  onChange={e => set('preferredFoot', e.target.value)}>
+                  <option value="">—</option>
+                  <option>Left</option><option>Right</option><option>Both</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Wing</label>
+                <select className="input" value={form.wing}
+                  onChange={e => set('wing', e.target.value)}>
+                  <option value="">—</option>
+                  <option>Left</option><option>Right</option><option>None</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Fee and payment history are managed from the Payments page */}
         <div className="sm:col-span-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between">

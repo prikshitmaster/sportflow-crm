@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { Search, CheckCircle, Clock, X, Save, ClipboardList, ChevronDown, ChevronUp, Target, Sparkles } from 'lucide-react'
+import { Search, CheckCircle, Clock, X, Save, ClipboardList, ChevronDown, ChevronUp, Target, Sparkles, FileText } from 'lucide-react'
 import * as db from '../../lib/db'
 import { logAudit, ACTIONS } from '../../lib/audit'
 import {
@@ -61,7 +61,7 @@ function AssessTab({ user, batches, students }) {
   const myBatches = batches.filter(b =>
     b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
   )
-  const displayBatches = myBatches.length > 0 ? myBatches : batches
+  const displayBatches = myBatches
   const selectedBatch  = displayBatches.find(b => String(b.id) === batchId)
 
   useEffect(() => {
@@ -293,6 +293,7 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
     return init
   })
   const [notes, setNotes]       = useState(existing?.notes || '')
+  const [categoryNotes, setCategoryNotes] = useState(() => existing?.category_notes || {})
   const [position, setPosition] = useState(student.position || '')
   const [saving, setSaving]     = useState(false)
   const [openCat, setOpenCat]   = useState(categories[0]?.id || null)
@@ -323,6 +324,7 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
         month,
         scores,
         notes,
+        categoryNotes,
         academyId: user?.academyId,
       })
       if (position !== (student.position || '')) {
@@ -397,6 +399,11 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
                 className="w-full border border-gray-200 text-gray-700 rounded-2xl py-3.5 font-bold text-sm">
                 Overwrite — start fresh from 50
               </button>
+              <button
+                onClick={() => window.open(`/report/student/${student.id}`, '_blank')}
+                className="w-full flex items-center justify-center gap-2 border border-indigo-200 text-indigo-700 bg-indigo-50 rounded-2xl py-3 font-bold text-sm">
+                <FileText size={14} /> View / Download Assessment PDF
+              </button>
             </div>
           </div>
         )}
@@ -452,6 +459,20 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
                           </div>
                         )
                       })}
+
+                      {/* Per-category comment — shown on the assessment PDF */}
+                      <div className="pt-2 border-t border-gray-200">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block mb-1.5">
+                          {cat.short} — comment for report
+                        </label>
+                        <textarea
+                          value={categoryNotes[cat.id] || ''}
+                          onChange={e => setCategoryNotes(prev => ({ ...prev, [cat.id]: e.target.value }))}
+                          rows={2}
+                          placeholder={`What does the player need to improve in ${cat.short.toLowerCase()}?`}
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 resize-none focus:outline-none focus:border-brand-500 bg-white"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -469,10 +490,16 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
 
             <button
               onClick={handleSave} disabled={saving}
-              className="w-full bg-brand-600 text-white rounded-2xl py-4 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 mb-4"
+              className="w-full bg-brand-600 text-white rounded-2xl py-4 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <Save size={16} />
               {saving ? 'Saving...' : 'Save Assessment'}
+            </button>
+            <button
+              onClick={() => window.open(`/report/student/${student.id}`, '_blank')}
+              className="w-full flex items-center justify-center gap-2 text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-2xl py-3 font-bold text-sm mb-4"
+            >
+              <FileText size={14} /> View Assessment PDF
             </button>
           </div>
         )}
@@ -628,7 +655,7 @@ function GoalsTab({ user, batches, students }) {
   const myBatches = batches.filter(b =>
     b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
   )
-  const displayBatches = myBatches.length > 0 ? myBatches : batches
+  const displayBatches = myBatches
   const selectedBatch  = displayBatches.find(b => String(b.id) === batchId)
   const batchStudents  = selectedBatch
     ? students.filter(s => s.status === 'Active' && (s.batchId == selectedBatch.id || s.batch === selectedBatch.name))
