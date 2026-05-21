@@ -1,13 +1,15 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
-import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer, Link as LinkIcon } from 'lucide-react'
+import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer, Link as LinkIcon, MessageCircle } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { isOutstanding } from '../lib/studentRules'
 import DevFillButton from '../components/DevFillButton'
 import { fillPayment } from '../lib/devFill'
 import SendPayLinkModal from '../components/SendPayLinkModal'
+import WhatsAppBulkModal from '../components/WhatsAppBulkModal'
+import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/whatsapp'
 
 // ── Payment Receipt Printer ───────────────────────────────────
 
@@ -162,6 +164,7 @@ export default function Payments() {
   const [monthFilter,     setMonthFilter]     = useState(new Date().toISOString().slice(0, 7))
   const [showModal,       setShowModal]       = useState(false)
   const [showPayLink,     setShowPayLink]     = useState(false)
+  const [showBulkWA,      setShowBulkWA]      = useState(false)
   const [payForStudent,   setPayForStudent]   = useState(null)
   const [detailPayment,   setDetailPayment]   = useState(null)
   const [page,            setPage]            = useState(1)
@@ -267,6 +270,14 @@ export default function Payments() {
           <p className="text-sm text-gray-500">Track fees, generate receipts, manage collections</p>
         </div>
         <div className="flex items-center gap-2">
+          {overdueCount > 0 && (
+            <button
+              onClick={() => setShowBulkWA(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition shadow-sm">
+              <MessageCircle size={14} />
+              Remind ({overdueCount})
+            </button>
+          )}
           {/* Hidden — Razorpay/parent portal disabled for v1. Uncomment to re-enable:
           <button className="btn-secondary" onClick={() => setShowPayLink(true)}>
             <LinkIcon size={14} /> Send Pay Link
@@ -426,12 +437,28 @@ export default function Payments() {
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       {p.isVirtual ? (
-                        <button
-                          className="text-xs text-red-600 font-semibold hover:underline"
-                          onClick={() => setPayForStudent(studentMap[p.studentId])}
-                        >
-                          Record Payment
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button
+                            className="text-xs text-red-600 font-semibold hover:underline"
+                            onClick={() => setPayForStudent(studentMap[p.studentId])}
+                          >
+                            Record
+                          </button>
+                          <button
+                            className="text-xs text-emerald-600 font-semibold hover:underline flex items-center gap-1"
+                            title="Send WhatsApp reminder"
+                            onClick={() => {
+                              const stu = studentMap[p.studentId]
+                              if (!stu) return
+                              openWhatsAppLink(
+                                stu.parentPhone || stu.phone,
+                                buildFeesReminderMessage({ student: stu, academy: user?.academy })
+                              )
+                            }}
+                          >
+                            <MessageCircle size={11} /> Remind
+                          </button>
+                        </div>
                       ) : p.status !== 'Paid' ? (
                         <button
                           className="text-xs text-brand-600 font-semibold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
@@ -494,6 +521,14 @@ export default function Payments() {
         <SendPayLinkModal
           students={students}
           onClose={() => setShowPayLink(false)}
+        />
+      )}
+
+      {showBulkWA && (
+        <WhatsAppBulkModal
+          overdueStudents={overdueBase.map(p => studentMap[p.studentId]).filter(Boolean)}
+          academy={user?.academy}
+          onClose={() => setShowBulkWA(false)}
         />
       )}
 
