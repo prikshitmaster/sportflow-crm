@@ -1,16 +1,20 @@
 // Sidebar — owner portal (desktop)
 // Nav items are filtered by feature flags set in Settings → Features
 // feature: null means always visible (no toggle needed)
+// Groups: items with `group` key are collapsed under a single parent row
 
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import {
   LayoutDashboard, Users, CalendarCheck, CreditCard, UserPlus,
   Layers, UserCog, BarChart3, Megaphone, Settings, LogOut,
   Zap, ChevronLeft, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
+  ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { useState } from 'react'
 
+// Items with the same `group` string are nested under a collapsible parent.
+// The parent row uses the first item's icon by default; override with `groupIcon`.
 const nav = [
   { to: '/dashboard',  label: 'Dashboard',  icon: LayoutDashboard, feature: null,        permission: 'dashboard.view' },
   { to: '/students',   label: 'Students',   icon: Users,            feature: null,        permission: 'students.view' },
@@ -18,33 +22,73 @@ const nav = [
   { to: '/payments',   label: 'Payments',   icon: CreditCard,      feature: 'payments',   permission: 'payments.view' },
   { to: '/trials',     label: 'Trials',     icon: UserPlus,        feature: 'trials',     permission: 'trials.manage' },
   { to: '/batches',    label: 'Batches',    icon: Layers,          feature: 'batches',    permission: 'batches.view' },
-  { to: '/gate-qr',    label: 'Gate QR',    icon: QrCode,          feature: 'gate_qr',   permission: 'attendance.manage' },
-  { to: '/staff-qr',   label: 'Staff QR',   icon: QrCode,          feature: 'attendance', permission: 'staff.manage' },
+  { to: '/gate-qr',    label: 'Gate QR',    icon: QrCode,          feature: 'gate_qr',   permission: 'attendance.manage', group: 'qr' },
+  { to: '/staff-qr',   label: 'Staff QR',   icon: QrCode,          feature: 'attendance', permission: 'staff.manage',      group: 'qr' },
   { to: '/events',     label: 'Events',     icon: Trophy,          feature: 'events',     permission: 'events.manage' },
-  { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: null,         permission: 'dashboard.view', footballOnly: true },
-  { to: '/sessions',   label: 'Sessions',   icon: CalendarDays,    feature: null,         permission: 'dashboard.view', footballOnly: true },
+  { to: '/sessions',   label: 'Sessions',   icon: CalendarDays,    feature: null,         permission: 'dashboard.view', footballOnly: true, group: 'training' },
+  { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: null,         permission: 'dashboard.view', footballOnly: true, group: 'training' },
   { to: '/coaches',    label: 'Staff',      icon: UserCog,         feature: 'staff',      permission: 'staff.manage' },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,       feature: 'reports',    permission: 'reports.view' },
   { to: '/community',  label: 'Community',  icon: Megaphone,       feature: 'community',  permission: 'community.manage' },
   { to: '/settings',   label: 'Settings',   icon: Settings,        feature: null,         permission: 'settings.manage' },
 ]
 
+const GROUP_META = {
+  qr:       { label: 'QR Codes',  icon: QrCode },
+  training: { label: 'Training',  icon: CalendarDays },
+}
+
 export default function Sidebar({ collapsed, setCollapsed }) {
   const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport, selectedBranch, sportBranches } = useApp()
   const currentBranchName = selectedBranch
     ? (sportBranches || []).find(b => b.id === selectedBranch)?.branchName
     : null
-  const navigate = useNavigate()
+  const navigate  = useNavigate()
+  const location  = useLocation()
 
-  // Owner sees all feature-enabled items; admin sees only items they have permission for
-  const visible = nav.filter(item => {
+  // Track which groups are open; auto-open if current route is inside the group
+  const activeGroups = new Set(
+    nav.filter(i => i.group && location.pathname.startsWith(i.to)).map(i => i.group)
+  )
+  const [openGroups, setOpenGroups] = useState(() => activeGroups)
+
+  const toggleGroup = (key) =>
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+
+  const isItemVisible = (item) => {
     const featureOk  = item.feature === null || isFeatureOn(item.feature)
     const permOk     = role === 'owner' || item.permission === null || hasPermission(item.permission)
     const footballOk = !item.footballOnly || !selectedSport || selectedSport.toLowerCase() === 'football'
     return featureOk && permOk && footballOk
-  })
+  }
+
+  // Build the list of things to render: plain items OR group-header + children
+  const rendered = []
+  const seenGroups = new Set()
+
+  for (const item of nav) {
+    if (!isItemVisible(item)) continue
+    if (!item.group) {
+      rendered.push({ type: 'item', item })
+      continue
+    }
+    if (!seenGroups.has(item.group)) {
+      seenGroups.add(item.group)
+      const children = nav.filter(i => i.group === item.group && isItemVisible(i))
+      if (children.length > 0) rendered.push({ type: 'group', key: item.group, children })
+    }
+  }
 
   const handleLogout = async () => { await logoutOwner(); navigate('/login') }
+
+  const navLinkCls = (isActive) =>
+    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+      isActive ? 'bg-brand-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+    } ${collapsed ? 'justify-center' : ''}`
 
   return (
     <aside className={`fixed top-0 left-0 h-full z-40 flex flex-col bg-gray-900 text-white transition-all duration-300 ${collapsed ? 'w-16' : 'w-60'}`}>
@@ -118,23 +162,75 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {visible.map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                isActive
-                  ? 'bg-brand-600 text-white'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-              } ${collapsed ? 'justify-center' : ''}`
-            }
-            title={collapsed ? label : undefined}
-          >
-            <Icon size={18} className="flex-shrink-0" />
-            {!collapsed && <span>{label}</span>}
-          </NavLink>
-        ))}
+        {rendered.map((entry) => {
+          if (entry.type === 'item') {
+            const { to, label, icon: Icon } = entry.item
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) => navLinkCls(isActive)}
+                title={collapsed ? label : undefined}
+              >
+                <Icon size={18} className="flex-shrink-0" />
+                {!collapsed && <span>{label}</span>}
+              </NavLink>
+            )
+          }
+
+          // Group
+          const { key, children } = entry
+          const meta      = GROUP_META[key]
+          const GroupIcon = meta.icon
+          const isOpen    = openGroups.has(key)
+          const anyActive = children.some(c => location.pathname.startsWith(c.to))
+
+          return (
+            <div key={key}>
+              {/* Group header */}
+              <button
+                onClick={() => {
+                  if (collapsed) { setCollapsed(false); setOpenGroups(prev => { const n = new Set(prev); n.add(key); return n }) }
+                  else toggleGroup(key)
+                }}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all w-full
+                  ${anyActive && !isOpen ? 'bg-brand-600/30 text-brand-300' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}
+                  ${collapsed ? 'justify-center' : ''}`}
+                title={collapsed ? meta.label : undefined}
+              >
+                <GroupIcon size={18} className="flex-shrink-0" />
+                {!collapsed && (
+                  <>
+                    <span className="flex-1 text-left">{meta.label}</span>
+                    {isOpen
+                      ? <ChevronDown size={13} className="text-gray-500" />
+                      : <ChevronRight size={13} className="text-gray-500" />}
+                  </>
+                )}
+              </button>
+
+              {/* Children */}
+              {!collapsed && isOpen && (
+                <div className="ml-3 mt-0.5 pl-3 border-l border-gray-700 space-y-0.5">
+                  {children.map(({ to, label, icon: Icon }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                          isActive ? 'bg-brand-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                        }`
+                      }
+                    >
+                      <Icon size={16} className="flex-shrink-0" />
+                      <span>{label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </nav>
 
       {/* User + logout */}
