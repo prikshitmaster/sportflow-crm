@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImport'
 import { SPORT_CATALOG } from '../lib/sportCatalog'
+import SportIcon from '../components/SportIcon'
 
 // Per-sport color theme — each card gets a distinct accent so the page
 // has visual identity instead of a sea of identical blue cards.
@@ -484,9 +485,9 @@ export default function SportSelect() {
                     disabled={isConfirming}
                     className="w-full text-left disabled:pointer-events-none p-5 pb-4"
                   >
-                    {/* Icon */}
-                    <div className={`w-12 h-12 ${theme.iconBg} rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-105`}>
-                      <Trophy size={22} className={theme.iconText} />
+                    {/* Sport-specific icon */}
+                    <div className={`w-12 h-12 ${theme.iconBg} rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-105 ${theme.iconText}`}>
+                      <SportIcon sport={sport} size={24} />
                     </div>
 
                     {/* Sport name + active count */}
@@ -623,13 +624,14 @@ function BranchView({
   editingBranch, onStartEdit, onCancelEdit, onSaveEdit,
   deletingBranch, onStartDelete, setDeletingBranch, onConfirmDelete,
 }) {
+  const theme = getSportTheme(sportName)
   return (<>
     <div className="mb-8">
       <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-brand-600 mb-3">
         <ArrowLeft size={14} /> Back to sports
       </button>
-      <div className="flex items-center gap-2 text-brand-600 mb-2">
-        <Trophy size={16} />
+      <div className={`flex items-center gap-2 mb-2 ${theme.iconText}`}>
+        <SportIcon sport={sportName} size={16} />
         <span className="text-xs font-bold uppercase tracking-wider">{sportName}</span>
       </div>
       <h1 className="text-3xl font-black text-gray-900 mb-1">Pick a branch</h1>
