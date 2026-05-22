@@ -1090,6 +1090,13 @@ function AgeingTab({ students, payments }) {
 function AttendanceTab({ students, batches, attendanceData }) {
   const [date,        setDate]        = useState(todayStr)
   const [batchFilter, setBatchFilter] = useState('All')
+  const [markerData,  setMarkerData]  = useState({})  // { [studentId]: { status, markedBy } }
+
+  // Fetch the richer attendance (with marked_by) whenever date changes
+  useEffect(() => {
+    setMarkerData({})
+    db.fetchAttendanceWithMarker(date).then(setMarkerData).catch(() => {})
+  }, [date])
 
   const attForDay = attendanceData[date] || {}
   const activeStu = students.filter(s => s.status === 'Active')
@@ -1104,17 +1111,19 @@ function AttendanceTab({ students, batches, attendanceData }) {
   const attPct   = filtered.length ? pct(present, filtered.length) : 0
 
   const handleExport = () => {
-    const headers = ['Student','Student Code','Batch','Sport','Status']
+    const headers = ['Student','Student Code','Batch','Sport','Status','Marked By']
     downloadCSV(headers, filtered.map(s => [
-      s.name, s.studentCode||'', s.batch||'', s.sport||'', attForDay[s.id]||'Unmarked'
+      s.name, s.studentCode||'', s.batch||'', s.sport||'',
+      attForDay[s.id]||'Unmarked', markerData[s.id]?.markedBy || '—'
     ]), `attendance-${date}.csv`)
   }
 
   const cols = [
-    { key: 'name',   label: 'Student',  w: '2fr'  },
-    { key: 'batch',  label: 'Batch',    w: '1.5fr' },
-    { key: 'sport',  label: 'Sport',    w: '1fr'  },
-    { key: 'status', label: 'Status',   w: '100px' },
+    { key: 'name',     label: 'Student',    w: '2fr'   },
+    { key: 'batch',    label: 'Batch',      w: '1.5fr' },
+    { key: 'sport',    label: 'Sport',      w: '1fr'   },
+    { key: 'status',   label: 'Status',     w: '100px' },
+    { key: 'markedBy', label: 'Marked by',  w: '1.5fr' },
   ]
 
   return (
@@ -1189,6 +1198,7 @@ function AttendanceTab({ students, batches, attendanceData }) {
         <div className="divide-y divide-gray-50 max-h-[480px] overflow-y-auto">
           {filtered.map(s => {
             const st = attForDay[s.id] || 'Unmarked'
+            const mb = markerData[s.id]?.markedBy || null
             const chip = { Present: 'bg-emerald-50 text-emerald-700 border-emerald-200', Absent: 'bg-red-50 text-red-600 border-red-200', Late: 'bg-amber-50 text-amber-700 border-amber-200', Unmarked: 'bg-gray-50 text-gray-400 border-gray-200' }
             return (
               <div key={s.id}
@@ -1201,6 +1211,11 @@ function AttendanceTab({ students, batches, attendanceData }) {
                 <span className="text-xs text-gray-600">{s.batch || '—'}</span>
                 <span className="text-xs text-gray-500">{s.sport || '—'}</span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border w-fit ${chip[st]}`}>{st}</span>
+                <span className="text-xs text-gray-600 truncate">
+                  {st === 'Unmarked' ? <span className="text-gray-300">—</span>
+                    : mb ? mb
+                    : <span className="text-gray-300 italic">legacy</span>}
+                </span>
               </div>
             )
           })}

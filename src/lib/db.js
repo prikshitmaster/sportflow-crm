@@ -952,6 +952,27 @@ export async function fetchAttendanceForDate(date, batchId = null) {
   return record
 }
 
+// Same as fetchAttendanceForDate but also returns marked_by — used in Reports.
+// Returns { [studentId]: { status, markedBy } }
+export async function fetchAttendanceWithMarker(date, batchId = null) {
+  let q = supabase.from('attendance').select('student_id, present, status, marked_by').eq('date', date)
+  if (batchId != null) q = q.eq('batch_id', batchId)
+  const { data, error } = await q
+  if (error) {
+    if (error.code === '42P01') return {}
+    throw error
+  }
+  const record = {}
+  data.forEach(row => {
+    const st = row.status || (row.present ? 'Present' : 'Absent')
+    const existing = record[row.student_id]
+    if (!existing || _bestStatus(existing.status, st) === st) {
+      record[row.student_id] = { status: st, markedBy: row.marked_by || null }
+    }
+  })
+  return record
+}
+
 // batchId = null → save as legacy/admin mark (no batch context)
 // batchId = number → save scoped to that batch
 export async function saveAttendanceForDate(date, records, batchId = null) {
