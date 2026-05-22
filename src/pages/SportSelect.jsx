@@ -386,15 +386,24 @@ export default function SportSelect() {
                   key={sport}
                   className="group relative bg-white border border-gray-100 hover:border-brand-200 hover:shadow-md rounded-2xl p-5 transition"
                 >
-                  {/* Trash icon — appears on hover when not in delete flow */}
+                  {/* Action icons — appear on hover when not in delete flow */}
                   {!isConfirming && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setRemoving(sport) }}
-                      className="absolute top-3 right-3 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
-                      title="Remove sport"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDrillSport(sport); setView('branches') }}
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-brand-600 hover:bg-brand-50 transition"
+                        title="Manage branches"
+                      >
+                        <MapPin size={14} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setRemoving(sport) }}
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition"
+                        title="Remove sport"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   )}
 
                   {/* Delete confirmation overlay */}
@@ -504,6 +513,20 @@ export default function SportSelect() {
                       </div>
                     </div>
                   </button>
+
+                  {/* Branch manager link — sibling of the card button so it
+                      stays clickable on mobile without nesting interactive
+                      elements. Always visible, including when sport has 1 branch. */}
+                  {!isConfirming && (() => {
+                    const branchCount = branchesOf(sport).length
+                    return (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDrillSport(sport); setView('branches') }}
+                        className="mt-3 w-full flex items-center justify-center gap-1.5 text-[11px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition border border-purple-100">
+                        <MapPin size={11} /> {branchCount} {branchCount === 1 ? 'branch' : 'branches'} · manage
+                      </button>
+                    )
+                  })()}
                 </div>
               )
             })}
