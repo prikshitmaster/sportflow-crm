@@ -185,11 +185,24 @@ export default function SportSelect() {
     )
     if (dup) { showToast(`${newName} already exists in ${drillSport}`, 'info'); return }
     try {
+      // 1. Save name + address only (no manager_id here)
       await db.updateSportBranch(editingBranch.id, {
         branchName: newName,
         address:    fields.address ?? '',
-        managerId:  fields.managerId ?? null,
       })
+
+      // 2. Manager change → call the dedicated assign/unassign RPCs which
+      //    also grant full permissions + lock the staff to this branch.
+      const oldManager = editingBranch.managerId ?? null
+      const newManager = fields.managerId ?? null
+      if (String(oldManager || '') !== String(newManager || '')) {
+        if (newManager) {
+          await db.assignBranchManager(editingBranch.id, newManager)
+        } else {
+          await db.unassignBranchManager(editingBranch.id)
+        }
+      }
+
       await refreshSportBranches()
       showToast('Branch updated', 'success')
       setEditingBranch(null)
@@ -813,9 +826,14 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-            {staffList.length === 0 && (
+            {staffList.length === 0 ? (
               <p className="text-[11px] text-gray-400 mt-1">
                 Add staff to this sport first to assign a manager.
+              </p>
+            ) : (
+              <p className="text-[11px] text-indigo-600 mt-1.5 leading-snug">
+                <ShieldCheck size={10} className="inline -mt-0.5 mr-1" />
+                Branch manager gets <strong>full permissions</strong> for this branch — students, payments, attendance, batches, staff, settings. Their access is scoped to this branch only.
               </p>
             )}
           </div>

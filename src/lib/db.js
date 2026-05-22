@@ -1770,11 +1770,20 @@ export async function insertSportBranch(_academyId, sportName, branchName, addre
 }
 
 export async function updateSportBranch(branchId, { branchName, address, managerId }) {
+  // Coerce managerId to integer — select option values are strings; staff.id is bigint
+  let mid = null
+  if (managerId !== undefined && managerId !== null && managerId !== '') {
+    const n = Number(managerId)
+    if (!Number.isFinite(n)) {
+      throw new Error(`Invalid manager id: ${managerId} (expected a number, got ${typeof managerId})`)
+    }
+    mid = n
+  }
   const { error } = await supabase.rpc('secure_update_sport_branch', {
     p_branch_id:   branchId,
     p_branch_name: branchName !== undefined ? branchName : null,
     p_address:     address    !== undefined ? (address || null) : null,
-    p_manager_id:  managerId  !== undefined ? (managerId || null) : null,
+    p_manager_id:  mid,
     p_token:       _sessionToken(),
   })
   if (error) throw error
@@ -1785,6 +1794,30 @@ export async function deleteSportBranch(branchId) {
     .from('sport_branches')
     .delete()
     .eq('id', branchId)
+  if (error) throw error
+}
+
+// Assign a staff as branch manager — atomically:
+//   - sets sport_branches.manager_id
+//   - locks staff.branch_id to this branch
+//   - sets staff_auth.access_role='branch_manager' + grants all perms
+export async function assignBranchManager(branchId, staffId) {
+  const sid = Number(staffId)
+  if (!Number.isFinite(sid)) throw new Error(`Invalid staff id: ${staffId}`)
+  const { error } = await supabase.rpc('secure_assign_branch_manager', {
+    p_branch_id: branchId,
+    p_staff_id:  sid,
+    p_token:     _sessionToken(),
+  })
+  if (error) throw error
+}
+
+// Reverse the above — clears manager link, demotes role back to 'coach', empties perms.
+export async function unassignBranchManager(branchId) {
+  const { error } = await supabase.rpc('secure_unassign_branch_manager', {
+    p_branch_id: branchId,
+    p_token:     _sessionToken(),
+  })
   if (error) throw error
 }
 

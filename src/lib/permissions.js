@@ -16,11 +16,12 @@ export const ALL_PERMISSIONS = [
 ]
 
 export const ROLE_PRESETS = {
-  coach:        ['attendance.manage', 'students.view', 'batches.view'],
-  receptionist: ['students.view', 'students.manage', 'trials.manage'],
-  accountant:   ['payments.view', 'payments.manage', 'reports.view'],
-  admin:        [...ALL_PERMISSIONS],
-  staff:        ['attendance.manage', 'students.view'],
+  coach:          ['attendance.manage', 'students.view', 'batches.view'],
+  receptionist:   ['students.view', 'students.manage', 'trials.manage'],
+  accountant:     ['payments.view', 'payments.manage', 'reports.view'],
+  admin:          [...ALL_PERMISSIONS],
+  staff:          ['attendance.manage', 'students.view'],
+  branch_manager: [...ALL_PERMISSIONS],
 }
 
 export const PERMISSION_GROUPS = {
@@ -54,20 +55,22 @@ export const PERM_LABEL = {
   'events.manage':     'Manage Events',
 }
 
-export const ACCESS_ROLES = ['coach', 'receptionist', 'accountant', 'admin', 'staff']
+export const ACCESS_ROLES = ['coach', 'receptionist', 'accountant', 'admin', 'staff', 'branch_manager']
 
 export const ACCESS_ROLE_LABEL = {
-  coach:        'Coach',
-  receptionist: 'Receptionist',
-  accountant:   'Accountant',
-  admin:        'Admin',
-  staff:        'Staff',
+  coach:          'Coach',
+  receptionist:   'Receptionist',
+  accountant:     'Accountant',
+  admin:          'Admin',
+  staff:          'Staff',
+  branch_manager: 'Branch Manager',
 }
 
 export const ACCESS_ROLE_COLOR = {
-  coach:        'bg-blue-100 text-blue-700',
-  receptionist: 'bg-purple-100 text-purple-700',
-  accountant:   'bg-emerald-100 text-emerald-700',
-  admin:        'bg-red-100 text-red-700',
-  staff:        'bg-gray-100 text-gray-700',
+  coach:          'bg-blue-100 text-blue-700',
+  receptionist:   'bg-purple-100 text-purple-700',
+  accountant:     'bg-emerald-100 text-emerald-700',
+  admin:          'bg-red-100 text-red-700',
+  staff:          'bg-gray-100 text-gray-700',
+  branch_manager: 'bg-indigo-100 text-indigo-700',
 }
