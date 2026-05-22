@@ -5,7 +5,7 @@ import * as db from '../lib/db'
 import {
   Zap, LogOut, Trophy, Users, UserCog, Layers, Plus, Sparkles,
   X, Check, Trash2, Download, AlertTriangle, Loader2, IndianRupee,
-  ArrowLeft, MapPin, Pencil, TrendingUp,
+  ArrowLeft, MapPin, Pencil, TrendingUp, ShieldCheck,
 } from 'lucide-react'
 import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImport'
 import { SPORT_CATALOG } from '../lib/sportCatalog'
@@ -185,7 +185,11 @@ export default function SportSelect() {
     )
     if (dup) { showToast(`${newName} already exists in ${drillSport}`, 'info'); return }
     try {
-      await db.updateSportBranch(editingBranch.id, { branchName: newName, address: fields.address ?? '' })
+      await db.updateSportBranch(editingBranch.id, {
+        branchName: newName,
+        address:    fields.address ?? '',
+        managerId:  fields.managerId ?? null,
+      })
       await refreshSportBranches()
       showToast('Branch updated', 'success')
       setEditingBranch(null)
@@ -326,6 +330,7 @@ export default function SportSelect() {
             sportName={drillSport}
             branches={branchesOf(drillSport)}
             counts={branchCounts}
+            allStaff={allStaff}
             studentsInBranch={(id) => allStudents.filter(s => s.branchId === id).length}
             onBack={() => { setView('sports'); setDrillSport(null); setAddingBranch(false); setNewBranch(''); setNewBranchAddress('') }}
             onPickBranch={(id) => pickBranch(drillSport, id)}
@@ -338,7 +343,7 @@ export default function SportSelect() {
             onCancelAdd={() => { setAddingBranch(false); setNewBranch(''); setNewBranchAddress('') }}
             onConfirmAdd={handleAddBranch}
             editingBranch={editingBranch}
-            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '' })}
+            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '', managerId: b.managerId || null })}
             onCancelEdit={() => setEditingBranch(null)}
             onSaveEdit={handleSaveEditBranch}
             deletingBranch={deletingBranch}
@@ -617,7 +622,7 @@ export default function SportSelect() {
 
 // ── Branch picker view (rendered when user drills into a sport) ─────
 function BranchView({
-  sportName, branches, counts, studentsInBranch,
+  sportName, branches, counts, studentsInBranch, allStaff,
   onBack, onPickBranch,
   adding, newBranch, setNewBranch, newBranchAddress, setNewBranchAddress,
   onStartAdd, onCancelAdd, onConfirmAdd,
@@ -625,6 +630,11 @@ function BranchView({
   deletingBranch, onStartDelete, setDeletingBranch, onConfirmDelete,
 }) {
   const theme = getSportTheme(sportName)
+  // Staff eligible to be managers: those whose sports array includes this sport
+  const eligibleStaff = (allStaff || []).filter(s =>
+    Array.isArray(s.sports) ? s.sports.includes(sportName) : s.sport === sportName
+  )
+  const staffById = Object.fromEntries((allStaff || []).map(s => [s.id, s]))
   return (<>
     <div className="mb-8">
       <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-brand-600 mb-3">
@@ -669,6 +679,12 @@ function BranchView({
                 <span className="text-[10px] font-bold text-gray-400 group-hover:text-brand-600 uppercase tracking-wider transition">Open →</span>
               </div>
               <p className="text-lg font-black text-gray-900 mb-0.5">{b.branchName}</p>
+              {b.managerId && staffById[b.managerId] && (
+                <p className="flex items-center gap-1 text-[11px] text-indigo-600 font-semibold mb-1">
+                  <ShieldCheck size={10} className="flex-shrink-0" />
+                  {staffById[b.managerId].name}
+                </p>
+              )}
               {b.address && (
                 <p className="flex items-start gap-1 text-[11px] text-gray-500 mb-2 leading-snug">
                   <MapPin size={10} className="mt-0.5 flex-shrink-0" />
@@ -739,6 +755,7 @@ function BranchView({
     {editingBranch && (
       <EditBranchModal
         initial={editingBranch}
+        staffList={eligibleStaff}
         onCancel={onCancelEdit}
         onSave={onSaveEdit}
       />
@@ -757,13 +774,14 @@ function BranchView({
 }
 
 // ── Edit branch modal ───────────────────────────────────────────────
-function EditBranchModal({ initial, onCancel, onSave }) {
-  const [name,    setName]    = useState(initial.branchName || '')
-  const [address, setAddress] = useState(initial.address    || '')
-  const [saving,  setSaving]  = useState(false)
+function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
+  const [name,      setName]      = useState(initial.branchName || '')
+  const [address,   setAddress]   = useState(initial.address    || '')
+  const [managerId, setManagerId] = useState(initial.managerId  || '')
+  const [saving,    setSaving]    = useState(false)
   const submit = async () => {
     setSaving(true)
-    try { await onSave({ branchName: name, address }) } finally { setSaving(false) }
+    try { await onSave({ branchName: name, address, managerId: managerId || null }) } finally { setSaving(false) }
   }
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -780,6 +798,26 @@ function EditBranchModal({ initial, onCancel, onSave }) {
           <div>
             <label className="label">Address <span className="text-gray-400 font-normal">(optional)</span></label>
             <input className="input" value={address} onChange={e => setAddress(e.target.value)} placeholder="Street, city, landmark…" />
+          </div>
+          <div>
+            <label className="label">
+              Branch manager <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <select
+              className="input"
+              value={managerId}
+              onChange={e => setManagerId(e.target.value)}
+            >
+              <option value="">— No manager —</option>
+              {staffList.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            {staffList.length === 0 && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                Add staff to this sport first to assign a manager.
+              </p>
+            )}
           </div>
         </div>
         <div className="flex gap-2 mt-6">

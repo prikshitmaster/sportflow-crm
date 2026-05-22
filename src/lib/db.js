@@ -1714,19 +1714,29 @@ export async function fetchSportBranches(academyId) {
   // Try with address first; if the column doesn't exist (42703), retry without it
   let { data, error } = await supabase
     .from('sport_branches')
-    .select(`${baseColumns}, address`)
+    .select(`${baseColumns}, address, manager_id`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
   if (error && error.code === '42703') {
-    const retry = await supabase
+    // Fallback: try without manager_id (pre-0065), then without address (pre-0018)
+    const r2 = await supabase
       .from('sport_branches')
-      .select(baseColumns)
+      .select(`${baseColumns}, address`)
       .eq('academy_id', academyId)
       .order('sport_name')
       .order('branch_name')
-    data  = retry.data
-    error = retry.error
+    if (!r2.error) { data = r2.data; error = null }
+    else {
+      const r3 = await supabase
+        .from('sport_branches')
+        .select(baseColumns)
+        .eq('academy_id', academyId)
+        .order('sport_name')
+        .order('branch_name')
+      data  = r3.data
+      error = r3.error
+    }
   }
   if (error) {
     if (error.code === '42P01') return []   // table doesn't exist yet
@@ -1737,6 +1747,7 @@ export async function fetchSportBranches(academyId) {
     sportName:  r.sport_name,
     branchName: r.branch_name,
     address:    r.address || '',
+    managerId:  r.manager_id || null,
     createdAt:  r.created_at,
   }))
 }
@@ -1758,11 +1769,12 @@ export async function insertSportBranch(_academyId, sportName, branchName, addre
   }
 }
 
-export async function updateSportBranch(branchId, { branchName, address }) {
+export async function updateSportBranch(branchId, { branchName, address, managerId }) {
   const { error } = await supabase.rpc('secure_update_sport_branch', {
     p_branch_id:   branchId,
     p_branch_name: branchName !== undefined ? branchName : null,
     p_address:     address    !== undefined ? (address || null) : null,
+    p_manager_id:  managerId  !== undefined ? (managerId || null) : null,
     p_token:       _sessionToken(),
   })
   if (error) throw error
