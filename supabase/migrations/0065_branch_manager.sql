@@ -4,7 +4,7 @@
 BEGIN;
 
 ALTER TABLE sport_branches
-  ADD COLUMN IF NOT EXISTS manager_id UUID REFERENCES staff(id) ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS manager_id BIGINT REFERENCES staff(id) ON DELETE SET NULL;
 
 -- Drop old 4-arg signature before replacing with 5-arg version.
 -- (Postgres treats different arg-type lists as separate overloads.)
@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION secure_update_sport_branch(
   p_branch_id   BIGINT,
   p_branch_name TEXT    DEFAULT NULL,
   p_address     TEXT    DEFAULT NULL,
-  p_manager_id  UUID    DEFAULT NULL,
+  p_manager_id  BIGINT  DEFAULT NULL,
   p_token       TEXT    DEFAULT NULL
 ) RETURNS VOID
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
@@ -43,6 +43,6 @@ BEGIN
   WHERE id = p_branch_id;
 END;
 $$;
-GRANT EXECUTE ON FUNCTION secure_update_sport_branch(BIGINT, TEXT, TEXT, UUID, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION secure_update_sport_branch(BIGINT, TEXT, TEXT, BIGINT, TEXT) TO anon, authenticated;
 
 COMMIT;
