@@ -1,0 +1,82 @@
+name: Database Backup
+
+# Nightly Postgres dump of the Supabase database, uploaded as a workflow artifact.
+# Retains 30 days by default (configurable below). Off-platform mirror of Supabase's
+# managed PITR — protects against account-level incidents (lost credentials, billing,
+# accidental project deletion).
+#
+# Required GitHub Secrets:
+#   SUPABASE_DB_URL  — postgres://postgres:<password>@db.<ref>.supabase.co:5432/postgres
+#                       (Settings → Database → Connection string → URI)
+#
+# Optional (uncomment S3 block below if you want off-GitHub storage):
+#   AWS_ACCESS_KEY_ID
+#   AWS_SECRET_ACCESS_KEY
+#   AWS_S3_BUCKET
+
+on:
+  schedule:
+    # 02:00 UTC = 07:30 IST — well past midnight in India, minimal academy activity
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # allow manual trigger from Actions tab
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install Postgres 16 client
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+
+      - name: Dump database
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set"
+            exit 1
+          fi
+          STAMP=$(date -u +%Y%m%d-%H%M)
+          mkdir -p backups
+          # --format=custom is compressed + restorable with pg_restore
+          # --no-owner / --no-acl so the dump can restore into a different account
+          pg_dump "$DB_URL" \
+            --format=custom \
+            --no-owner \
+            --no-acl \
+            --verbose \
+            -f "backups/sportflow-${STAMP}.dump"
+          ls -lh backups/
+          echo "BACKUP_STAMP=${STAMP}" >> "$GITHUB_ENV"
+
+      - name: Upload as workflow artifact (30-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sportflow-db-${{ env.BACKUP_STAMP }}
+          path: backups/*.dump
+          retention-days: 30
+
+      # ── Optional: also push to S3 for long-term storage ──
+      # Uncomment + add AWS secrets to enable.
+      #
+      # - name: Configure AWS
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: ap-south-1
+      # - name: Upload to S3
+      #   run: |
+      #     aws s3 cp backups/sportflow-${{ env.BACKUP_STAMP }}.dump \
+      #       s3://${{ secrets.AWS_S3_BUCKET }}/db/${{ env.BACKUP_STAMP }}.dump \
+      #       --storage-class STANDARD_IA
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Backup failed — check job logs."
+          # Hook a Slack/Discord webhook here once SMTP/Slack secrets are set up.
