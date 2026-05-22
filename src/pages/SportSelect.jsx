@@ -5,10 +5,27 @@ import * as db from '../lib/db'
 import {
   Zap, LogOut, Trophy, Users, UserCog, Layers, Plus, Sparkles,
   X, Check, Trash2, Download, AlertTriangle, Loader2, IndianRupee,
-  ArrowLeft, MapPin, Pencil,
+  ArrowLeft, MapPin, Pencil, TrendingUp,
 } from 'lucide-react'
 import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImport'
 import { SPORT_CATALOG } from '../lib/sportCatalog'
+
+// Per-sport color theme — each card gets a distinct accent so the page
+// has visual identity instead of a sea of identical blue cards.
+const SPORT_THEMES = {
+  Football:       { accent: 'bg-emerald-500',  iconBg: 'bg-emerald-50',  iconText: 'text-emerald-600', tint: 'bg-emerald-50/40', ring: 'group-hover:ring-emerald-200' },
+  Cricket:        { accent: 'bg-amber-500',    iconBg: 'bg-amber-50',    iconText: 'text-amber-600',   tint: 'bg-amber-50/40',   ring: 'group-hover:ring-amber-200' },
+  Tennis:         { accent: 'bg-lime-500',     iconBg: 'bg-lime-50',     iconText: 'text-lime-600',    tint: 'bg-lime-50/40',    ring: 'group-hover:ring-lime-200' },
+  Squash:         { accent: 'bg-violet-500',   iconBg: 'bg-violet-50',   iconText: 'text-violet-600',  tint: 'bg-violet-50/40',  ring: 'group-hover:ring-violet-200' },
+  Basketball:     { accent: 'bg-orange-500',   iconBg: 'bg-orange-50',   iconText: 'text-orange-600',  tint: 'bg-orange-50/40',  ring: 'group-hover:ring-orange-200' },
+  Badminton:      { accent: 'bg-cyan-500',     iconBg: 'bg-cyan-50',     iconText: 'text-cyan-600',    tint: 'bg-cyan-50/40',    ring: 'group-hover:ring-cyan-200' },
+  'Table Tennis': { accent: 'bg-rose-500',     iconBg: 'bg-rose-50',     iconText: 'text-rose-600',    tint: 'bg-rose-50/40',    ring: 'group-hover:ring-rose-200' },
+  Hockey:         { accent: 'bg-blue-500',     iconBg: 'bg-blue-50',     iconText: 'text-blue-600',    tint: 'bg-blue-50/40',    ring: 'group-hover:ring-blue-200' },
+  Volleyball:     { accent: 'bg-yellow-500',   iconBg: 'bg-yellow-50',   iconText: 'text-yellow-700',  tint: 'bg-yellow-50/40',  ring: 'group-hover:ring-yellow-200' },
+  Swimming:       { accent: 'bg-sky-500',      iconBg: 'bg-sky-50',      iconText: 'text-sky-600',     tint: 'bg-sky-50/40',     ring: 'group-hover:ring-sky-200' },
+}
+const DEFAULT_THEME = { accent: 'bg-brand-600', iconBg: 'bg-brand-50', iconText: 'text-brand-600', tint: 'bg-brand-50/30', ring: 'group-hover:ring-brand-200' }
+const getSportTheme = (sport) => SPORT_THEMES[sport] || DEFAULT_THEME
 
 export default function SportSelect() {
   const navigate = useNavigate()
@@ -330,37 +347,47 @@ export default function SportSelect() {
           />
         ) : (<>
         {/* Heading */}
-        <div className="mb-8">
-          <div className="flex items-center gap-2 text-brand-600 mb-2">
-            <Sparkles size={16} />
-            <span className="text-xs font-bold uppercase tracking-wider">Welcome back</span>
+        <div className="mb-8 flex items-end justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-2 text-gray-400 mb-2">
+              <Sparkles size={13} />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">Welcome back</span>
+            </div>
+            <h1 className="text-[28px] font-black text-gray-900 leading-tight tracking-tight">
+              Hi {user?.name?.split(' ')[0] || 'there'}
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Pick a sport to scope your dashboard.
+            </p>
           </div>
-          <h1 className="text-3xl font-black text-gray-900 mb-1">
-            Hi {user?.name?.split(' ')[0] || 'there'} — pick a sport
-          </h1>
-          <p className="text-gray-500 text-sm">
-            Students, staff, batches and payments will all be scoped to your selection.
+          <p className="text-[11px] text-gray-400 font-medium hidden sm:block">
+            {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
 
-        {/* Academy summary strip (informational, not clickable) */}
-        <div className="mb-5 bg-white border border-gray-100 rounded-2xl px-5 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Academy</p>
-            <p className="text-sm font-black text-gray-900 mt-0.5">{user?.academy}</p>
+        {/* Academy summary strip — refined */}
+        <div className="mb-6 bg-white border border-gray-100 rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-brand-50 to-brand-100 rounded-xl flex items-center justify-center">
+              <Trophy size={18} className="text-brand-600" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Academy</p>
+              <p className="text-sm font-black text-gray-900 leading-tight">{user?.academy}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-5 text-xs">
-            <div className="text-right">
-              <p className="font-black text-base text-gray-900">{totalCounts.students}</p>
-              <p className="text-gray-400">Students</p>
+          <div className="flex items-center divide-x divide-gray-100 text-xs">
+            <div className="px-5 text-right">
+              <p className="font-black text-xl text-gray-900 leading-none">{totalCounts.students}</p>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Students</p>
             </div>
-            <div className="text-right">
-              <p className="font-black text-base text-gray-900">{totalCounts.staff}</p>
-              <p className="text-gray-400">Staff</p>
+            <div className="px-5 text-right">
+              <p className="font-black text-xl text-gray-900 leading-none">{totalCounts.staff}</p>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Staff</p>
             </div>
-            <div className="text-right">
-              <p className="font-black text-base text-gray-900">{totalCounts.batches}</p>
-              <p className="text-gray-400">Batches</p>
+            <div className="pl-5 text-right">
+              <p className="font-black text-xl text-gray-900 leading-none">{totalCounts.batches}</p>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Batches</p>
             </div>
           </div>
         </div>
@@ -375,24 +402,28 @@ export default function SportSelect() {
               const isConfirming = removing === sport
               const isExporting  = exportingFor === sport
 
+              const theme = getSportTheme(sport)
               return (
                 <div
                   key={sport}
-                  className="group relative bg-white border border-gray-100 hover:border-brand-200 hover:shadow-md rounded-2xl p-5 transition"
+                  className={`group relative bg-white rounded-2xl overflow-hidden transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 ring-1 ring-gray-100 ${theme.ring}`}
                 >
-                  {/* Action icons — appear on hover when not in delete flow */}
+                  {/* Color accent strip */}
+                  <div className={`h-1 ${theme.accent}`} />
+
+                  {/* Action icons — top-right, below the accent strip */}
                   {!isConfirming && (
-                    <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <div className="absolute top-4 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition z-20">
                       <button
                         onClick={(e) => { e.stopPropagation(); setDrillSport(sport); setView('branches') }}
-                        className="p-1.5 rounded-lg text-gray-300 hover:text-brand-600 hover:bg-brand-50 transition"
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-gray-700 bg-white hover:bg-gray-100 transition"
                         title="Manage branches"
                       >
                         <MapPin size={14} />
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); setRemoving(sport) }}
-                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition"
+                        className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 bg-white hover:bg-red-50 transition"
                         title="Remove sport"
                       >
                         <Trash2 size={14} />
@@ -451,74 +482,67 @@ export default function SportSelect() {
                   <button
                     onClick={() => pickSport(sport)}
                     disabled={isConfirming}
-                    className="w-full text-left disabled:pointer-events-none"
+                    className="w-full text-left disabled:pointer-events-none p-5 pb-4"
                   >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="w-11 h-11 bg-brand-50 rounded-xl flex items-center justify-center group-hover:bg-brand-100 transition">
-                        <Trophy size={20} className="text-brand-600" />
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        {c.overdue > 0 && (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                            <AlertTriangle size={9} /> {c.overdue} overdue
-                          </span>
-                        )}
-                        {!isConfirming && (
-                          <span className="text-[10px] font-bold text-gray-400 group-hover:text-brand-600 uppercase tracking-wider transition">
-                            Open →
-                          </span>
-                        )}
-                      </div>
+                    {/* Icon */}
+                    <div className={`w-12 h-12 ${theme.iconBg} rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-105`}>
+                      <Trophy size={22} className={theme.iconText} />
                     </div>
 
-                    <p className="text-lg font-black text-gray-900 mb-1">{sport}</p>
-
-                    {/* Monthly revenue */}
-                    {c.monthlyRevenue > 0 && (
-                      <p className="flex items-center gap-0.5 text-[11px] text-emerald-600 font-bold mb-3">
-                        <IndianRupee size={10} />
-                        {c.monthlyRevenue.toLocaleString('en-IN')} this month
+                    {/* Sport name + active count */}
+                    <div className="mb-4">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="text-xl font-black text-gray-900 leading-tight tracking-tight">{sport}</p>
+                        {c.overdue > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-full flex-shrink-0 mt-1">
+                            <AlertTriangle size={9} /> {c.overdue}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        <span className="font-bold text-gray-900">{c.active}</span>
+                        {c.students > c.active && <span className="text-gray-400"> / {c.students}</span>}
+                        <span className="text-gray-400"> active</span>
+                        {c.monthlyRevenue > 0 && (
+                          <span className="ml-2 inline-flex items-center gap-0.5 text-emerald-600 font-bold">
+                            <TrendingUp size={10} /> ₹{(c.monthlyRevenue / 1000).toFixed(c.monthlyRevenue >= 100000 ? 0 : 1)}k
+                          </span>
+                        )}
                       </p>
-                    )}
+                    </div>
 
-                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-gray-100">
-                      <div>
-                        <div className="flex items-center gap-1 text-gray-400 text-[10px] mb-0.5">
-                          <Users size={10} /> Students
-                        </div>
-                        <p className="text-sm font-black text-gray-900">
-                          {c.active}
-                          {c.students > c.active && (
-                            <span className="text-[10px] text-gray-400 font-normal">/{c.students}</span>
-                          )}
-                        </p>
+                    {/* Inline stats */}
+                    <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <UserCog size={11} className="text-gray-400" />
+                        <span><span className="font-black text-gray-800">{c.staff}</span> {c.staff === 1 ? 'coach' : 'coaches'}</span>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-1 text-gray-400 text-[10px] mb-0.5">
-                          <UserCog size={10} /> Coaches
-                        </div>
-                        <p className="text-sm font-black text-gray-900">{c.staff}</p>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1 text-gray-400 text-[10px] mb-0.5">
-                          <Layers size={10} /> Batches
-                        </div>
-                        <p className="text-sm font-black text-gray-900">{c.batches}</p>
+                      <span className="w-0.5 h-0.5 rounded-full bg-gray-300" />
+                      <div className="flex items-center gap-1">
+                        <Layers size={11} className="text-gray-400" />
+                        <span><span className="font-black text-gray-800">{c.batches}</span> {c.batches === 1 ? 'batch' : 'batches'}</span>
                       </div>
                     </div>
                   </button>
 
-                  {/* Branch manager link — sibling of the card button so it
-                      stays clickable on mobile without nesting interactive
-                      elements. Always visible, including when sport has 1 branch. */}
+                  {/* Footer: branch link + Open CTA */}
                   {!isConfirming && (() => {
                     const branchCount = branchesOf(sport).length
                     return (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDrillSport(sport); setView('branches') }}
-                        className="mt-3 w-full flex items-center justify-center gap-1.5 text-[11px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition border border-purple-100">
-                        <MapPin size={11} /> {branchCount} {branchCount === 1 ? 'branch' : 'branches'} · manage
-                      </button>
+                      <div className={`flex items-center justify-between border-t border-gray-100 ${theme.tint}`}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDrillSport(sport); setView('branches') }}
+                          className="flex items-center gap-1.5 px-4 py-2.5 text-[11px] font-bold text-gray-600 hover:text-gray-900 transition group/branch">
+                          <MapPin size={11} className={theme.iconText} />
+                          <span>{branchCount} {branchCount === 1 ? 'branch' : 'branches'}</span>
+                          <span className="text-gray-400 group-hover/branch:text-gray-700 transition">→</span>
+                        </button>
+                        <button
+                          onClick={() => pickSport(sport)}
+                          className="px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 group-hover:text-gray-900 transition">
+                          Open →
+                        </button>
+                      </div>
                     )
                   })()}
                 </div>
