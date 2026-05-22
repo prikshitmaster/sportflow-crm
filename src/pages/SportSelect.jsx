@@ -139,11 +139,6 @@ export default function SportSelect() {
     navigate('/dashboard')
   }
 
-  const pickAllBranchesOfSport = (sportName) => {
-    setSelectedSportAndBranch(sportName, null)
-    navigate('/dashboard')
-  }
-
   const handleAddBranch = async () => {
     const v = newBranch.trim()
     if (!v || !drillSport || !user?.academyId) { setAddingBranch(false); return }
@@ -316,7 +311,6 @@ export default function SportSelect() {
             studentsInBranch={(id) => allStudents.filter(s => s.branchId === id).length}
             onBack={() => { setView('sports'); setDrillSport(null); setAddingBranch(false); setNewBranch(''); setNewBranchAddress('') }}
             onPickBranch={(id) => pickBranch(drillSport, id)}
-            onPickAll={() => pickAllBranchesOfSport(drillSport)}
             adding={addingBranch}
             newBranch={newBranch}
             setNewBranch={setNewBranch}
@@ -599,7 +593,7 @@ export default function SportSelect() {
 // ── Branch picker view (rendered when user drills into a sport) ─────
 function BranchView({
   sportName, branches, counts, studentsInBranch,
-  onBack, onPickBranch, onPickAll,
+  onBack, onPickBranch,
   adding, newBranch, setNewBranch, newBranchAddress, setNewBranchAddress,
   onStartAdd, onCancelAdd, onConfirmAdd,
   editingBranch, onStartEdit, onCancelEdit, onSaveEdit,
@@ -617,23 +611,6 @@ function BranchView({
       <h1 className="text-3xl font-black text-gray-900 mb-1">Pick a branch</h1>
       <p className="text-gray-500 text-sm">Each branch is isolated — its students, batches, payments and reports are separate.</p>
     </div>
-
-    {/* All Branches overview */}
-    <button
-      onClick={onPickAll}
-      className="w-full mb-5 bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600 transition rounded-2xl p-5 text-left flex items-center justify-between text-white shadow-md hover:shadow-lg"
-    >
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-          <Layers size={22} />
-        </div>
-        <div>
-          <p className="text-lg font-black">All {sportName} branches</p>
-          <p className="text-xs text-white/80">View everything across branches</p>
-        </div>
-      </div>
-      <span className="text-[10px] font-bold text-white/90 uppercase tracking-wider">Open →</span>
-    </button>
 
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {branches.map(b => {
