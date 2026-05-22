@@ -551,6 +551,17 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
   const [accPerms,      setAccPerms]      = useState(s.permissions || [])
   const [accSaving,     setAccSaving]     = useState(false)
 
+  // Copy activation link
+  const [linkCopied,    setLinkCopied]    = useState(false)
+  const activationLink = s.staffCode
+    ? `${window.location.origin}/staff-activate?id=${s.staffCode}&code=${s.joinCode || '?'}`
+    : ''
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(activationLink)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
+  }
+
   const isPending   = s.accountStatus === 'pending'
   const isField     = s.staffType !== 'office'
   const typeLabel   = isField ? 'Coach / Field Staff' : 'Office Staff'
@@ -660,9 +671,22 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
                 <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Activation Pending</p>
                 <p className="text-xs text-amber-600 mb-3">Share this link so they can register their account</p>
-                <p className="text-xs font-mono text-amber-800 break-all bg-amber-100 rounded-lg px-3 py-2">
-                  {window.location.origin}/staff-activate?id={s.staffCode}&code={s.joinCode || '?'}
-                </p>
+                <div className="flex items-start gap-2">
+                  <p className="text-xs font-mono text-amber-800 break-all bg-amber-100 rounded-lg px-3 py-2 flex-1">
+                    {activationLink}
+                  </p>
+                  <button
+                    onClick={handleCopyLink}
+                    className={`flex-shrink-0 flex items-center gap-1 text-xs font-semibold px-3 py-2 rounded-lg transition ${
+                      linkCopied
+                        ? 'bg-green-100 text-green-700 border border-green-200'
+                        : 'bg-amber-200 text-amber-800 border border-amber-300 hover:bg-amber-300'
+                    }`}
+                  >
+                    {linkCopied ? <Check size={13} /> : <Copy size={13} />}
+                    {linkCopied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -881,6 +905,7 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
 
 function AccessPanel({ staff, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess }) {
   const [showInvite,    setShowInvite]    = useState(false)
+  const [inviteTarget,  setInviteTarget]  = useState(null)   // pre-fill name for HR staff invite
   const [editTarget,    setEditTarget]    = useState(null)   // { userId, name, accessRole, permissions }
   const [accessUsers,   setAccessUsers]   = useState([])
   const [pendingInvites, setPendingInvites] = useState([])
@@ -1042,6 +1067,47 @@ function AccessPanel({ staff, user, demoMode, inviteStaff, updateStaffAccess, re
         )}
       </div>
 
+      {/* HR staff without portal access */}
+      {(() => {
+        const linkedIds = new Set(accessUsers.map(u => u.userId))
+        const pendingNames = new Set(pendingInvites.map(i => i.name?.trim().toLowerCase()))
+        const unlinked = (staff || []).filter(m =>
+          m.status === 'Active' &&
+          !m.userId &&
+          !linkedIds.has(m.userId) &&
+          !pendingNames.has(m.name?.trim().toLowerCase())
+        )
+        if (unlinked.length === 0) return null
+        return (
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
+              HR Staff — No Portal Access ({unlinked.length})
+            </p>
+            <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+              <div className="divide-y divide-gray-50">
+                {unlinked.map(m => (
+                  <div key={m.id} className="flex items-center gap-4 px-5 py-4">
+                    <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm font-black text-gray-500 flex-shrink-0">
+                      {m.name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900">{m.name}</p>
+                      <p className="text-xs text-gray-400">{m.role}</p>
+                    </div>
+                    <button
+                      onClick={() => { setInviteTarget(m.name); setShowInvite(true) }}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-50 text-brand-600 border border-brand-200 hover:bg-brand-100 transition"
+                    >
+                      Assign Access
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Pending invites */}
       {pendingInvites.length > 0 && (
         <div>
@@ -1083,9 +1149,10 @@ function AccessPanel({ staff, user, demoMode, inviteStaff, updateStaffAccess, re
 
       {showInvite && (
         <InviteModal
-          onClose={() => setShowInvite(false)}
+          onClose={() => { setShowInvite(false); setInviteTarget(null) }}
           onGenerated={handleInviteGenerated}
           inviteStaff={inviteStaff}
+          initialName={inviteTarget || ''}
         />
       )}
 
@@ -1102,8 +1169,8 @@ function AccessPanel({ staff, user, demoMode, inviteStaff, updateStaffAccess, re
 
 // ── Invite Modal ──────────────────────────────────────────
 
-function InviteModal({ onClose, onGenerated, inviteStaff }) {
-  const [name,        setName]        = useState('')
+function InviteModal({ onClose, onGenerated, inviteStaff, initialName = '' }) {
+  const [name,        setName]        = useState(initialName)
   const [accessRole,  setAccessRole]  = useState('coach')
   const [permissions, setPermissions] = useState([...ROLE_PRESETS.coach])
   const [link,        setLink]        = useState('')
@@ -1479,6 +1546,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const [codeCopied,   setCodeCopied]   = useState(false)
   const [loading,      setLoading]      = useState(false)
   const [saveError,    setSaveError]    = useState('')
+  const [fieldErrors,  setFieldErrors]  = useState({})
 
   const FIELD_PERMS = ['attendance.manage', 'students.view', 'batches.view']
 
@@ -1513,9 +1581,12 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const OFFICE_GROUPS = Object.entries(PERMISSION_GROUPS).filter(([g]) => g !== 'Attendance')
 
   const handleSave = async () => {
-    if (!form.name.trim()) return
+    const errs = {}
+    if (!form.name.trim()) errs.name = 'Name is required'
     const phoneDigits = form.phone.replace('+91', '')
-    if (phoneDigits.length !== 10) return
+    if (phoneDigits.length !== 10) errs.phone = 'Enter a valid 10-digit number'
+    if (Object.keys(errs).length) { setFieldErrors(errs); return }
+    setFieldErrors({})
     setLoading(true)
     setSaveError('')
     try {
@@ -1641,7 +1712,8 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
             </div>
             <div>
               <label className="label">Full Name *</label>
-              <input className="input" placeholder="Staff name" value={form.name} onChange={e => set('name', e.target.value)} />
+              <input className={`input ${fieldErrors.name ? 'border-red-400' : ''}`} placeholder="Staff name" value={form.name} onChange={e => { set('name', e.target.value); setFieldErrors(f => ({ ...f, name: '' })) }} />
+              {fieldErrors.name && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.name}</p>}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1658,7 +1730,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
               <div className="flex">
                 <span className="flex items-center px-3 bg-gray-50 border border-r-0 border-gray-200 rounded-l-xl text-sm font-semibold text-gray-500 select-none">+91</span>
                 <input
-                  className="input rounded-l-none flex-1"
+                  className={`input rounded-l-none flex-1 ${fieldErrors.phone ? 'border-red-400' : ''}`}
                   placeholder="9876543210"
                   maxLength={10}
                   inputMode="numeric"
@@ -1666,9 +1738,11 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
                   onChange={e => {
                     const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
                     set('phone', digits ? '+91' + digits : '')
+                    setFieldErrors(f => ({ ...f, phone: '' }))
                   }}
                 />
               </div>
+              {fieldErrors.phone && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.phone}</p>}
             </div>
             <div>
               <label className="label">Sports / Activities</label>
@@ -1829,7 +1903,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
       )}
       <div className="flex justify-end gap-3 mt-3 pt-4 border-t border-gray-100">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={handleSave} disabled={loading || !form.name.trim()}>
+        <button className="btn-primary" onClick={handleSave} disabled={loading}>
           {loading ? '…' : giveAccess ? 'Add & Send Invite' : 'Add Staff Member'}
         </button>
       </div>

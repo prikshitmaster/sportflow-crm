@@ -1411,7 +1411,7 @@ export default function SessionPlanner() {
   const myBatches = (ctxBatches || []).filter(b =>
     b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
   )
-  const batches = myBatches.length > 0 ? myBatches : (ctxBatches || [])
+  const batches = myBatches
   const sportName = (sportBranches || []).find(sb => sb.id === selectedSport)?.sportName || null
 
   const load = useCallback(() => {
