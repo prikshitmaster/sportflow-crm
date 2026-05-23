@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase'
 import * as db from '../lib/db'
 import {
   generateJoinCode, generateAcademyCode,
-  hashPassword, generateToken,
+  hashPassword,
   getStudentSession, setStudentSession, clearStudentSession,
   getStaffSession, setStaffSession, clearStaffSession,
 } from '../lib/auth'
@@ -516,9 +516,10 @@ export function AppProvider({ children }) {
 
   const loginStaff = async (email, password) => {
     const hash        = await hashPassword(password)
+    // secure_login_staff returns a bundle: token, expires_at, and all staff fields
     const member      = await db.loginStaffAccount(email, hash)
-    const token       = generateToken()
-    const expiry      = await db.createStaffSession(member.id, token)
+    const token       = member.token
+    const expiry      = member.expires_at
     const academyId   = member.academy_id
     const [flags, academyData, extra] = await Promise.all([
       db.fetchFeatureFlags(academyId),
@@ -590,9 +591,10 @@ export function AppProvider({ children }) {
 
   const loginStudent = async (studentCode, password) => {
     const hash    = await hashPassword(password)
+    // secure_login_student returns a bundle: token, expires_at, and all student fields
     const student = await db.loginStudentAccount(studentCode, hash)
-    const token   = generateToken()
-    const expiry  = await db.createStudentSession(student.id, token)
+    const token   = student.token
+    const expiry  = student.expires_at
     setStudentSession(token, expiry, {
       id: student.id, studentCode: student.student_code, name: student.name,
     })

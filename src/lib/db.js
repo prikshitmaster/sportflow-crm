@@ -779,14 +779,13 @@ export async function fetchNextStaffCode(type) {
 }
 
 export async function verifyStaffCodes(staffCode, joinCode) {
-  const { data } = await supabase
-    .from('staff_auth')
-    .select('staff_code, join_code, status')
-    .eq('staff_code', staffCode.toUpperCase())
-    .maybeSingle()
-  if (!data) throw new Error('Staff ID not found')
-  if (data.status === 'active') throw new Error('Account already activated — go to login.')
-  if (data.join_code !== joinCode.toUpperCase()) throw new Error('Incorrect Join Code')
+  // Routed through secure_verify_staff_codes (security-v3/04).
+  // Validates staff_code + join_code server-side; raises if invalid/used.
+  const { error } = await supabase.rpc('secure_verify_staff_codes', {
+    p_staff_code: staffCode,
+    p_join_code:  joinCode,
+  })
+  if (error) throw new Error(error.message)
 }
 
 export async function activateStaffAccount(staffCode, joinCode, passwordHash, { email }) {
@@ -803,56 +802,36 @@ export async function activateStaffAccount(staffCode, joinCode, passwordHash, { 
 }
 
 export async function loginStaffAccount(email, passwordHash) {
-  const { data, error } = await supabase
-    .from('staff_auth')
-    .select('*, staff(*)')
-    .eq('email', email.toLowerCase().trim())
-    .eq('password_hash', passwordHash)
-    .eq('status', 'active')
-    .maybeSingle()
-  if (error) throw new Error('Login error: ' + error.message)
+  // Routed through secure_login_staff (security-v3/04). The RPC validates
+  // credentials, creates the session row server-side, and returns a bundle
+  // with token + expires_at + all staff fields. Caller reads .token /
+  // .expires_at — no separate createStaffSession() call needed anymore.
+  const { data, error } = await supabase.rpc('secure_login_staff', {
+    p_email:         email,
+    p_password_hash: passwordHash,
+  })
+  if (error) throw new Error(error.message || 'Invalid email or password')
   if (!data) throw new Error('Invalid email or password')
-  const staff = Array.isArray(data.staff) ? data.staff[0] : data.staff
-  if (!staff) throw new Error('Staff record not found')
-  return {
-    ...staff,
-    staff_code:     data.staff_code,
-    staff_type:     data.staff_type,
-    account_status: data.status,
-    access_role:    data.access_role  || 'coach',
-    permissions:    data.permissions  || [],
-  }
+  return data
 }
 
-export async function createStaffSession(staffId, token) {
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-  const { error } = await supabase
-    .from('staff_sessions')
-    .insert({ staff_id: staffId, token, expires_at: expiresAt })
-  if (error) throw error
-  return expiresAt
+// Deprecated: secure_login_staff now creates the session row server-side.
+// Kept as a no-op for backward compatibility — returns the expires_at from
+// the prior login call (passed in as `token` here means the caller still
+// wants the legacy 30-day timestamp shape).
+export async function createStaffSession(_staffId, _token) {
+  return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
 }
 
 export async function validateStaffSession(token) {
-  const { data, error } = await supabase
-    .from('staff_sessions')
-    .select('*, staff(*, staff_auth(staff_code, staff_type, status, access_role, permissions), staff_profiles(age, licence_url))')
-    .eq('token', token)
-    .gt('expires_at', new Date().toISOString())
-    .maybeSingle()
-  if (error || !data?.staff) return null
-  const auth    = Array.isArray(data.staff.staff_auth)     ? data.staff.staff_auth[0]     : data.staff.staff_auth
-  const profile = Array.isArray(data.staff.staff_profiles) ? data.staff.staff_profiles[0] : data.staff.staff_profiles
-  return {
-    ...data.staff,
-    staff_code:     auth?.staff_code     || null,
-    staff_type:     auth?.staff_type     || 'coach',
-    account_status: auth?.status         || null,
-    access_role:    auth?.access_role    || 'coach',
-    permissions:    auth?.permissions    || [],
-    age:            profile?.age         || null,
-    licence_url:    profile?.licence_url || null,
-  }
+  // Routed through secure_validate_staff_session (security-v3/04).
+  // Returns the staff bundle (same shape as loginStaffAccount) or null
+  // when the token is missing/expired.
+  const { data, error } = await supabase.rpc('secure_validate_staff_session', {
+    p_token: token,
+  })
+  if (error || !data) return null
+  return data
 }
 
 export async function fetchStaffProfileExtra(staffId) {
@@ -1144,47 +1123,31 @@ export async function activateStudentAccount(studentCode, joinCode, passwordHash
 }
 
 export async function loginStudentAccount(studentCode, passwordHash) {
-  // First check if the student code exists at all (to give a clearer error)
-  const { data: student } = await supabase
-    .from('students')
-    .select('account_status, password_hash')
-    .eq('student_code', studentCode.toUpperCase())
-    .maybeSingle()
-
-  if (!student) throw new Error('Invalid Student ID or password')
-  if (student.account_status !== 'active' || !student.password_hash) {
-    throw new Error('Account not activated yet — please go to "Activate your account" first')
-  }
-
-  const { data, error } = await supabase
-    .from('students')
-    .select('*')
-    .eq('student_code',   studentCode.toUpperCase())
-    .eq('password_hash',  passwordHash)
-    .eq('account_status', 'active')
-    .single()
-  if (error || !data) throw new Error('Invalid Student ID or password')
+  // Routed through secure_login_student (security-v3/04). The RPC validates
+  // credentials, creates the session row server-side, and returns the student
+  // bundle including .token + .expires_at. AppContext extracts those.
+  const { data, error } = await supabase.rpc('secure_login_student', {
+    p_student_code:  studentCode,
+    p_password_hash: passwordHash,
+  })
+  if (error) throw new Error(error.message || 'Invalid Student ID or password')
+  if (!data) throw new Error('Invalid Student ID or password')
   return data
 }
 
-export async function createStudentSession(studentId, token) {
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-  const { error } = await supabase
-    .from('student_sessions')
-    .insert({ student_id: studentId, token, expires_at: expiresAt })
-  if (error) throw error
-  return expiresAt
+// Deprecated: secure_login_student now creates the session row server-side.
+// Kept as a no-op for backward compatibility.
+export async function createStudentSession(_studentId, _token) {
+  return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
 }
 
 export async function validateStudentSession(token) {
-  const { data, error } = await supabase
-    .from('student_sessions')
-    .select('*, students(*)')
-    .eq('token', token)
-    .gt('expires_at', new Date().toISOString())
-    .single()
+  // Routed through secure_validate_student_session (security-v3/04).
+  const { data, error } = await supabase.rpc('secure_validate_student_session', {
+    p_token: token,
+  })
   if (error || !data) return null
-  return data.students
+  return data
 }
 
 export async function deleteStudentSession(token) {
