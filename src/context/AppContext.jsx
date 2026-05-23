@@ -776,17 +776,10 @@ export function AppProvider({ children }) {
         studentCode, joinCode, paidTill, fees,
         suspendNow, payment,
         academyId: user?.academyId,
+        // Owner passes the viewed branch; field staff are forced into their own
+        // branch server-side by the RPC. branch_id is now set atomically on insert.
+        branchId: role === 'staff' ? (user?.branchId || null) : (selectedBranch || null),
       })
-
-      // Inherit current branch scope — awaited so the DB record has branch_id
-      // before we return. A failed update would make the student invisible to
-      // branch-filtered views on next reload (they'd show in optimistic state
-      // but disappear after refresh). Don't throw — student was created fine.
-      if (selectedBranch) {
-        const { error: brErr } = await supabase
-          .from('students').update({ branch_id: selectedBranch }).eq('id', newId)
-        if (brErr) console.warn('branch_id update failed:', brErr.message)
-      }
 
       // Mark from_trial on student record (fire-and-forget, column added via migration 0013)
       if (s.fromTrial) {
@@ -832,7 +825,7 @@ export function AppProvider({ children }) {
         feePlan:        s.feePlan || 'monthly',
         fromTrial:      s.fromTrial   || false,
         trialDeduct:    trialDeduct,
-        branchId:       selectedBranch || null,
+        branchId:       role === 'staff' ? (user?.branchId || null) : (selectedBranch || null),
       }
       setStudents(prev => [...prev, mapped])
 

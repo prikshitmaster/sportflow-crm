@@ -1073,6 +1073,10 @@ export async function createStudentWithPayment(s) {
     p_payment_month:  s.payment?.label        || null,
     p_payment_date:   s.payment?.startDate    || null,
     p_months_covered: s.payment?.monthsCovered ?? null,
+    // Branch: owner passes the viewed branch; field staff are forced into their
+    // own branch server-side (RPC overrides p_branch_id when staff has a branch).
+    p_token:          _sessionToken(),
+    p_branch_id:      s.branchId ?? null,
   })
   if (error) throw error
   return data  // BIGINT student id
