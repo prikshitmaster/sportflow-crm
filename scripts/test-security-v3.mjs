@@ -102,6 +102,49 @@ console.log('\n=== RPCs that MUST still work ===')
   else bad('fetch_next_staff_code(no token)', `status ${r.status} body ${r.body.slice(0,120)}`)
 }
 
+console.log('\n=== PHASE 3.3a: tenant tables ===')
+
+{
+  const r = await anonGet('payments', '?select=id,amount&limit=3')
+  if (r.body === '[]') ok('anon GET payments (no header) → []')
+  else bad('anon GET payments', `got ${r.body.slice(0,80)}`)
+}
+
+{
+  const r = await anonGet('batches', '?select=id,name&limit=3')
+  if (r.body === '[]') ok('anon GET batches (no header) → []')
+  else bad('anon GET batches', `got ${r.body.slice(0,80)}`)
+}
+
+{
+  const r = await anonGet('announcements', '?select=id,title&limit=3')
+  if (r.body === '[]') ok('anon GET announcements (no header) → []')
+  else bad('anon GET announcements', `got ${r.body.slice(0,80)}`)
+}
+
+console.log('\n=== POSITIVE: tenant reads with valid x-staff-token ===')
+{
+  const { default: pg } = await import('pg')
+  const url = fs.readFileSync('.supabase-db-url', 'utf8').trim()
+  const c = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+  await c.connect()
+  const { rows } = await c.query('SELECT token FROM staff_sessions WHERE expires_at > now() LIMIT 1')
+  await c.end()
+  if (!rows.length) { console.log('  (skip: no live sessions)'); }
+  else {
+    const headers = { apikey: ANON_KEY, 'x-staff-token': rows[0].token }
+    for (const table of ['payments', 'batches', 'announcements']) {
+      const res = await fetch(`${API}/${table}?select=id&limit=2`, { headers })
+      const body = await res.text()
+      try {
+        const arr = JSON.parse(body)
+        if (Array.isArray(arr)) ok(`staff header → ${table}: ${arr.length} row(s) visible`)
+        else bad(`staff header ${table}`, `got ${body.slice(0,80)}`)
+      } catch { bad(`staff header ${table} parse`, body.slice(0,80)) }
+    }
+  }
+}
+
 console.log('\n=== POSITIVE: validate against a real session ===')
 {
   // Find a real active session via direct DB connection, then validate it through the RPC
