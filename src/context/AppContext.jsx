@@ -1682,7 +1682,13 @@ export function AppProvider({ children }) {
   //   • Sport selected, no branch → all branches of that sport
   //   • Sport + branch selected → only that branch's slice (the isolation case)
   const isAllSports = !selectedSport || selectedSport === 'All'
-  const hasBranchScope = Boolean(selectedBranch)
+  // Branch isolation source of truth:
+  //   • Owner — the branch picked in the switcher (selectedBranch).
+  //   • Staff with an assigned branch — ALWAYS locked to their own branch
+  //     (they have no switcher; selectedBranch is never set for them).
+  //   • Branch-less staff (office/multi-branch) — no branch filter (see all).
+  const effectiveBranch = role === 'staff' ? (user?.branchId || null) : selectedBranch
+  const hasBranchScope = Boolean(effectiveBranch)
 
   // Clear attendance cache when sport or branch changes so stale cross-scope
   // aggregate counts don't leak into the new view's batch cards.
@@ -1717,30 +1723,30 @@ export function AppProvider({ children }) {
 
   // Step 2: branch filter on top — only narrows further when selectedBranch is set
   const filteredStudents = useMemo(() =>
-    hasBranchScope ? sportStudents.filter(s => s.branchId === selectedBranch) : sportStudents
-  , [sportStudents, selectedBranch, hasBranchScope])
+    hasBranchScope ? sportStudents.filter(s => s.branchId === effectiveBranch) : sportStudents
+  , [sportStudents, effectiveBranch, hasBranchScope])
 
   const filteredBatches = useMemo(() =>
-    hasBranchScope ? sportBatches.filter(b => b.branchId === selectedBranch) : sportBatches
-  , [sportBatches, selectedBranch, hasBranchScope])
+    hasBranchScope ? sportBatches.filter(b => b.branchId === effectiveBranch) : sportBatches
+  , [sportBatches, effectiveBranch, hasBranchScope])
 
   const filteredStaff = useMemo(() => {
     if (!hasBranchScope) return sportStaff
     // Keep non-branch-bound staff visible (no branchId), filter the rest by branch
-    return sportStaff.filter(s => !s.branchId || s.branchId === selectedBranch)
-  }, [sportStaff, selectedBranch, hasBranchScope])
+    return sportStaff.filter(s => !s.branchId || s.branchId === effectiveBranch)
+  }, [sportStaff, effectiveBranch, hasBranchScope])
 
   const filteredPayments = useMemo(() => {
     if (!hasBranchScope) return sportPayments
     const branchStudentIds = new Set(
-      students.filter(s => s.branchId === selectedBranch).map(s => s.id)
+      students.filter(s => s.branchId === effectiveBranch).map(s => s.id)
     )
     return sportPayments.filter(p => branchStudentIds.has(p.studentId))
-  }, [sportPayments, students, selectedBranch, hasBranchScope])
+  }, [sportPayments, students, effectiveBranch, hasBranchScope])
 
   const filteredTrials = useMemo(() =>
-    hasBranchScope ? sportTrials.filter(t => t.branchId === selectedBranch) : sportTrials
-  , [sportTrials, selectedBranch, hasBranchScope])
+    hasBranchScope ? sportTrials.filter(t => t.branchId === effectiveBranch) : sportTrials
+  , [sportTrials, effectiveBranch, hasBranchScope])
 
   // Coach-scope: when logged in as a staff member, limit batches/students to
   // only their sport(s). This prevents cross-sport data leakage while still
