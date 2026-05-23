@@ -14,6 +14,7 @@ import {
 import { ALL_PERMISSIONS, ROLE_PRESETS } from '../lib/permissions'
 import { logAudit, ACTIONS, diffObjects } from '../lib/audit'
 import { logger } from '../lib/logger'
+import { setSentryUser } from '../lib/sentry'
 import { notify } from '../lib/notifications'
 
 // Module-level in-flight payment lock — survives across renders, isolated per tab.
@@ -291,6 +292,20 @@ export function AppProvider({ children }) {
       setDataLoading(false)
     }
   }, [user?.academyId])
+
+  // ── Tag every Sentry error with the current user ──────
+  useEffect(() => {
+    if (!user && !studentUser) { setSentryUser(null); return }
+    const u = user || studentUser
+    setSentryUser({
+      id:        u.id,
+      email:     u.email,
+      name:      u.name,
+      role:      role || (studentUser ? 'student' : null),
+      academyId: u.academyId || u.academy_id,
+      branchId:  u.branchId  || u.branch_id,
+    })
+  }, [user, studentUser, role])
 
   // ── Restore Supabase session on app open ──────────────
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Component, lazy, Suspense } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
+import { logger } from './lib/logger'
 import Layout from './components/Layout'
 import StaffLayout from './components/StaffLayout'
 import StudentLayout from './components/StudentLayout'
@@ -75,7 +76,11 @@ const StudentProgress      = lazy(() => import('./pages/student/StudentProgress'
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(err) { return { error: err } }
-  componentDidCatch(err) {
+  componentDidCatch(err, info) {
+    // Report every React render crash to Sentry. Chunk errors are handled
+    // separately below (auto-reload) but still get reported the first time.
+    logger.error('React ErrorBoundary caught', err, { componentStack: info?.componentStack })
+
     const isChunkError = err?.message?.includes('dynamically imported module') || err?.message?.includes('Failed to fetch')
     if (isChunkError) {
       const reloads = Number(sessionStorage.getItem('_eb_reloads') || 0)

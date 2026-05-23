@@ -2,6 +2,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
+import { initSentry } from './lib/sentry'
+
+// Initialize crash + error reporting before anything else runs.
+// No-ops if VITE_SENTRY_DSN is not configured.
+initSentry()
 
 // Block long-press context menu on Android Chrome (links, images, etc.)
 document.addEventListener('contextmenu', e => e.preventDefault())

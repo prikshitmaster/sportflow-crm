@@ -1,14 +1,15 @@
 // Tiny logger — single seam for crash + telemetry tooling.
 //
-// Today it just forwards to console. The point of this file is that when
-// you wire up Sentry / LogRocket / Datadog later, you change ONE file
-// instead of grepping through 100 console.error calls.
+// Forwards to console always, plus Sentry for warn/error in production
+// (no-ops if VITE_SENTRY_DSN is unset).
 //
 // Rules:
 //   - Never throw. Logging a problem must never create a new problem.
 //   - Treat the `context` arg as a free-form dict for breadcrumbs (where,
 //     why, who). Sentry-style.
 //   - Stringify Errors with stack; pass everything else through.
+
+import { captureException, captureMessage } from './sentry'
 
 const isProd = import.meta.env.MODE === 'production'
 
@@ -27,12 +28,21 @@ export const logger = {
     try { console.info('[info]', msg, context || '') } catch {}
   },
   warn(msg, context) {
-    try { console.warn('[warn]', msg, context || '') } catch {}
+    try {
+      console.warn('[warn]', msg, context || '')
+      captureMessage(msg, { level: 'warning', extra: context })
+    } catch {}
   },
   error(msg, err, context) {
     try {
       console.error('[error]', msg, normalise(err), context || '')
-      // Future: Sentry.captureException(err, { extra: { msg, ...context } })
+      // If we have an Error instance, capture as exception (gets stack trace).
+      // Otherwise capture the message with the value attached.
+      if (err instanceof Error) {
+        captureException(err, { extra: { msg, ...(context || {}) } })
+      } else {
+        captureMessage(msg, { level: 'error', extra: { err, ...(context || {}) } })
+      }
     } catch {}
   },
 }
