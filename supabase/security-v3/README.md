@@ -5,11 +5,11 @@ stays untouched and the audit work is reviewable as one unit.
 
 ## Status
 
-| Phase | Goal | Files |
-|---|---|---|
-| Phase 1 (this folder, applied incrementally) | Branch enforcement on all secure_* write RPCs. Owners + branch-less staff unrestricted. Branch-scoped staff cannot write to other branches. | `01_actor_branch_helper.sql`, `02_branch_writes_core.sql`, `03_branch_writes_extended.sql` |
-| Phase 2 (future) | Login flows moved to RPCs, so anon SELECT can be locked down. | TBD |
-| Phase 3 (future) | Lock anon SELECT (replace `USING (true)` with scoped predicates). | TBD |
+| Phase | Goal | Files | State |
+|---|---|---|---|
+| Phase 1 | Branch enforcement on all secure_* write RPCs. Owners + branch-less staff unrestricted. Branch-scoped staff cannot write to other branches. | `01_actor_branch_helper.sql`, `02_branch_writes_core.sql`, `03_branch_writes_extended.sql` | ✅ applied |
+| Phase 2 | Login + session validation moved to RPCs. Sets up Phase 3 by removing the last reason anon SELECT must stay open on `staff_auth` / `staff_sessions` / `student_sessions`. | `04_auth_rpcs.sql` | ✅ applied |
+| Phase 3 (next) | Lock anon SELECT on auth tables (RPC-only now). Replace `USING (true)` on tenant tables with scoped predicates. | TBD | pending |
 
 ## How to apply
 
