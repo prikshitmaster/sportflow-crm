@@ -531,15 +531,14 @@ export function AppProvider({ children }) {
 
   const loginStaff = async (email, password) => {
     const hash        = await hashPassword(password)
-    // secure_login_staff returns a bundle: token, expires_at, and all staff fields
+    // secure_login_staff bundles token + expires_at + staff + staff_auth + staff_profiles
     const member      = await db.loginStaffAccount(email, hash)
     const token       = member.token
     const expiry      = member.expires_at
     const academyId   = member.academy_id
-    const [flags, academyData, extra] = await Promise.all([
+    const [flags, academyData] = await Promise.all([
       db.fetchFeatureFlags(academyId),
       academyId ? db.fetchAcademy(academyId).catch(() => null) : Promise.resolve(null),
-      db.fetchStaffProfileExtra(member.id),
     ])
     const academyName = academyData?.name || ''
     const perms = member.permissions?.length ? member.permissions : (ROLE_PRESETS[member.access_role] || ROLE_PRESETS['coach'])
@@ -552,8 +551,8 @@ export function AppProvider({ children }) {
       sports:     member.sports       || [],
       photoUrl:   member.photo_url    || null,
       phone:      member.phone        || '',
-      age:        extra.age           || null,
-      licenceUrl: extra.licence_url   || null,
+      age:        member.age          || null,
+      licenceUrl: member.licence_url  || null,
       branchId:   member.branch_id    || null,
       academy:     academyName,
       academyId,

@@ -766,16 +766,14 @@ export async function insertStaff(s) {
 // ── Staff Auth (custom auth — staff_auth + staff_sessions) ─
 
 export async function fetchNextStaffCode(type) {
-  const prefix = type === 'office' ? 'OF' : 'FC'
-  const { data } = await supabase
-    .from('staff_auth')
-    .select('staff_code')
-    .like('staff_code', `${prefix}%`)
-    .order('staff_code', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const num = data?.staff_code ? parseInt(data.staff_code.slice(prefix.length)) : 0
-  return `${prefix}${String(num + 1).padStart(3, '0')}`
+  // Routed through secure_fetch_next_staff_code (security-v3/06).
+  // Owner-only RPC; anon can no longer SELECT from staff_auth.
+  const { data, error } = await supabase.rpc('secure_fetch_next_staff_code', {
+    p_type:  type,
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return data
 }
 
 export async function verifyStaffCodes(staffCode, joinCode) {
