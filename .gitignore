@@ -13,3 +13,9 @@ supabase/.temp/
 playwright-report/
 test-results/
 playwright.config.js
+
+.supabase-pat
+
+
+.supabase-db-url
+
