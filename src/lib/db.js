@@ -2423,7 +2423,8 @@ export async function deleteDrill(id) {
 }
 
 export async function fetchDrillFavorites(staffId) {
-  if (!staffId) return []
+  // staff_id is BIGINT — owner's user.id is a UUID, skip the query for them.
+  if (!staffId || !Number.isFinite(Number(staffId))) return []
   const { data, error } = await supabase
     .from('drill_favorites').select('drill_id').eq('staff_id', staffId)
   if (error) { if (error.code === '42P01') return []; throw error }
