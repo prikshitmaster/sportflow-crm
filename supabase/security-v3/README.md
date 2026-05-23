@@ -13,7 +13,8 @@ stays untouched and the audit work is reviewable as one unit.
 | Phase 3.2 | Lock staff_auth + staff_profiles. Password_hash leak sealed. Owner-scoped policy added for Staff Management page. New RPC `secure_fetch_next_staff_code` replaces direct staff_auth read. | `06_lock_staff_auth_tables.sql` | ✅ applied |
 | Phase 3.3a | Drop USING(true) shadow on payments, batches, announcements (their scoped *_anon_read policies already existed). | `07_lock_easy_tenant_reads.sql` | ✅ applied |
 | Phase 3.3b | Scoped policies created for attendance, trials, and 19 more tenant tables (staff, events, tournament_matches, session_plans, session_phases, sport_branches, academy_branches, trial_sources, activity_sessions, fee_plans, skill_assessments, player_goals, drill_favorites, drills, staff_attendance, leave_requests, student_batches, staff_invites, user_permissions). Legacy wide-open policies dropped. | `08_lock_attendance_trials.sql`, `09_lock_remaining_tenant_reads.sql`, `10_drop_legacy_open_shadows.sql` | ✅ applied |
-| Phase 3.4 (deferred) | `students` table — needs an RPC for student-side batchmate fetches in StudentStats before locking. Also: audit_logs, academies, feature_flags, notifications, push_subscriptions, session_feedback, student_badges, payment_links each need per-use-case scoped policies. `gate_qr` stays wide-open by design. | TBD | pending |
+| Phase 3.4a | `students` table locked. New RPCs `secure_fetch_student_batchmates` and `secure_fetch_batch_students` replace direct table reads in StudentStats / SessionPlanner. `students_anon_read` now allows only own row or staff-academy. | `11_lock_students_with_batchmate_rpc.sql` | ✅ applied |
+| Phase 3.4b | Final 8 stragglers locked: audit_logs, academies, feature_flags, notifications, push_subscriptions, session_feedback, student_badges, payment_links. Only `gate_qr` left wide-open by design. | `12_lock_final_stragglers.sql` | ✅ applied |
 
 ## Server-side regression suite
 
