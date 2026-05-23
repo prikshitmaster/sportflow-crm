@@ -61,7 +61,10 @@ BEGIN
     RAISE EXCEPTION 'Staff record not found' USING ERRCODE = 'P0002';
   END IF;
 
-  v_token   := encode(gen_random_bytes(32), 'hex');
+  -- 64 hex chars (matches client's old crypto.getRandomValues format).
+  -- gen_random_uuid() is in pg_catalog and always reachable; gen_random_bytes
+  -- requires the extensions schema on search_path which we don't set.
+  v_token   := replace(gen_random_uuid()::TEXT, '-', '') || replace(gen_random_uuid()::TEXT, '-', '');
   v_expires := now() + interval '30 days';
 
   INSERT INTO staff_sessions (staff_id, token, expires_at)
@@ -114,7 +117,10 @@ BEGIN
     RAISE EXCEPTION 'Invalid Student ID or password' USING ERRCODE = '42501';
   END IF;
 
-  v_token   := encode(gen_random_bytes(32), 'hex');
+  -- 64 hex chars (matches client's old crypto.getRandomValues format).
+  -- gen_random_uuid() is in pg_catalog and always reachable; gen_random_bytes
+  -- requires the extensions schema on search_path which we don't set.
+  v_token   := replace(gen_random_uuid()::TEXT, '-', '') || replace(gen_random_uuid()::TEXT, '-', '');
   v_expires := now() + interval '30 days';
 
   INSERT INTO student_sessions (student_id, token, expires_at)
