@@ -5,6 +5,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
 import { BookOpen, Plus, Search, Heart, X, Edit2, Copy, Clock, Users, Check, Trash2, Image, Upload } from 'lucide-react'
+import DevFillButton from '../components/DevFillButton'
+import { fillDrill } from '../lib/devFill'
 
 // ── Constants ──────────────────────────────────────────────────
 
@@ -416,9 +418,12 @@ function DrillEditorModal({ drill, onClose, onSave, saving, academyId, staffId }
 
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Drill' : 'Add New Drill'}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
-            <X size={16} className="text-gray-500"/>
-          </button>
+          <div className="flex items-center gap-2">
+            {!isEdit && <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillDrill() }))} />}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
+              <X size={16} className="text-gray-500"/>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 p-5 space-y-4">

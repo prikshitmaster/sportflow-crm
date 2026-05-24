@@ -4,7 +4,7 @@ import { UserCog, Plus, Phone, Award, X, Layers, CheckCircle, ChevronRight, Chev
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import DevFillButton from '../components/DevFillButton'
-import { fillStaff } from '../lib/devFill'
+import { fillStaff, fillInvite } from '../lib/devFill'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
 import * as db from '../lib/db'
 
@@ -1214,6 +1214,13 @@ function InviteModal({ onClose, onGenerated, inviteStaff, initialName = '' }) {
     <Modal title="Invite Staff Member" onClose={onClose}>
       {!link ? (
         <div className="space-y-5">
+          <div className="flex justify-end -mt-2 -mb-3">
+            <DevFillButton onFill={() => {
+              const d = fillInvite()
+              setName(d.name)
+              applyPreset(d.accessRole)
+            }} />
+          </div>
           <div>
             <label className="label">Staff Name *</label>
             <input

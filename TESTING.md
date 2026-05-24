@@ -26,16 +26,16 @@
 
 ---
 
-## 1. Owner Auth
+## 1. Owner Auth ✅ (1 pending)
 
-- [ ] Log in with Supabase email/password → lands on `/sport-select`
-- [ ] Refresh page while logged in → stays logged in (JWT persisted)
-- [ ] Log out → `selectedSport` cleared → redirected to login
-- [ ] Navigate directly to `/students` without selecting sport → redirected to `/sport-select`
+- [x] Log in with Supabase email/password → lands on `/sport-select`
+- [x] Refresh page while logged in → stays logged in (JWT persisted)
+- [x] Log out → `selectedSport` cleared → redirected to login
+- [x] Navigate directly to `/students` without selecting sport → redirected to `/sport-select`
   - ℹ️ **Note:** If sport was set in a previous session, localStorage still has it → route guard lets you through (this is correct behavior — sport only clears on logout)
-- [ ] Type a non-existent URL like `/student` (typo) → currently redirects to `/dashboard` silently — **✅ CONFIRMED: no 404 shown** (low priority, not data-breaking)
+- [x] Type a non-existent URL like `/student` (typo) → **FIXED** — now shows 404 page with "Go to Home"
 - [ ] 🔴 JWT expiry: leave tab open overnight → next morning click anything → redirects to login (not silent fail)
-- [ ] Two tabs: log out in tab 1 → tab 2 still shows data (ok) but any write fails gracefully
+- [x] Two tabs: log out in tab 1 → tab 2 still shows data (ok) but any write fails gracefully
 
 ---
 

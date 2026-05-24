@@ -5,6 +5,8 @@ import {
   Plus, Calendar, MapPin, Users, Trophy, Trash2, Pencil,
   X, Check, RotateCcw, Image,
 } from 'lucide-react'
+import DevFillButton from '../components/DevFillButton'
+import { fillEvent } from '../lib/devFill'
 
 // ── Bracket helpers ──────────────────────────────────────────
 function shuffle(arr) {
@@ -96,7 +98,10 @@ function EventFormModal({ initial, onClose, onSave, batches, allStaff }) {
       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white px-5 pt-5 pb-3 border-b border-gray-100 flex items-center justify-between">
           <p className="font-black text-gray-900">{initial?.id ? 'Edit Event' : 'New Event'}</p>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={15} /></button>
+          <div className="flex items-center gap-2">
+            <DevFillButton onFill={() => setForm(fillEvent({ sportOptions: SPORTS }))} />
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={15} /></button>
+          </div>
         </div>
         <div className="px-5 py-4 space-y-4">
           <div className="flex gap-2">

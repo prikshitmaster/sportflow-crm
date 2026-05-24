@@ -149,3 +149,132 @@ export function fillStaff({ sportOptions = [] } = {}) {
     staffType: 'coach',
   }
 }
+
+// ── Event / Tournament ────────────────────────────────────────
+const EVENT_TITLES = [
+  'Annual Sports Day','Regional Championship','Junior League','Summer Camp',
+  'Open Trials','Friendly Match','Inter-Academy Cup','Skill Showcase',
+  'Parents vs Coaches','Year-End Tournament',
+]
+const VENUES = ['Main Ground','Community Stadium','Sports Complex','Indoor Arena',
+  'City Sports Park','Academy Field','Practice Pitch','Multipurpose Court']
+
+export function fillEvent({ sportOptions = [] } = {}) {
+  const sport = sportOptions.length ? pick(sportOptions) : 'Cricket'
+  const d = today()
+  d.setDate(d.getDate() + rand(7, 60))
+  const start = isoDate(d)
+  d.setDate(d.getDate() + rand(0, 2))
+  const end = isoDate(d)
+  return {
+    title:        pick(EVENT_TITLES),
+    type:         pick(['event', 'event', 'tournament']),
+    sport,
+    date:         start,
+    endDate:      end,
+    venue:        pick(VENUES),
+    description:  `Open to all ${sport.toLowerCase()} students. Registration on the day. Snacks and water provided.`,
+    audienceType: 'all',
+    audienceIds:  [],
+    bracketType:  'knockout',
+    flyerFile:    null,
+  }
+}
+
+// ── Announcement ──────────────────────────────────────────────
+const ANNOUNCE = [
+  { type: 'Holiday',     title: 'Academy Closed Tomorrow',
+    body: 'The academy will remain closed tomorrow for the local festival. Regular classes resume the day after.' },
+  { type: 'Tournament',  title: 'Inter-Branch Cup Next Week',
+    body: 'Sign up at the front desk by Friday. Open to all U14+ students. Selection trials on Saturday morning.' },
+  { type: 'Achievement', title: 'Congratulations to Our State Team!',
+    body: 'Our students brought home 3 medals at the state championships last weekend. Well done team!' },
+  { type: 'Reminder',    title: 'Monthly Fees Due',
+    body: 'A friendly reminder that monthly fees are due by the 5th. Please pay at the front desk or via UPI.' },
+  { type: 'Announcement',title: 'New Coaching Staff',
+    body: 'We are happy to welcome two new coaches joining the academy from next week. Come say hello!' },
+]
+export function fillAnnouncement() {
+  return pick(ANNOUNCE)
+}
+
+// ── Drill ─────────────────────────────────────────────────────
+const DRILL_NAMES = ['Rondo 4v1','Two-Touch Passing','Cone Dribbling','Shooting Pyramid',
+  'Box-to-Box Fitness','Crossing & Finishing','1v1 Defending','Quick Feet Ladder',
+  'Possession Squares','Wall Pass Drill','Through-Ball Trigger','Counter-Attack 3v2']
+const DRILL_CATEGORIES = ['warm_up','technical','passing','shooting','defending','ssg','match','cool_down']
+const EQUIPMENT_OPTS  = ['Cones','Balls','Bibs','Goals','Markers','Ladder','Mannequins','Stopwatch']
+
+export function fillDrill() {
+  const cat = pick(DRILL_CATEGORIES)
+  const minP = rand(4, 8)
+  return {
+    name:            pick(DRILL_NAMES),
+    category:        cat,
+    age_group:       pick(['U10','U12','U14','U16','All']),
+    duration:        pick([10, 15, 20, 25, 30]),
+    min_players:     minP,
+    max_players:     minP + rand(4, 10),
+    difficulty:      pick(['beginner', 'intermediate', 'advanced']),
+    equipment:       Array.from(new Set([pick(EQUIPMENT_OPTS), pick(EQUIPMENT_OPTS), pick(EQUIPMENT_OPTS)])),
+    tags:            [],
+    area:            pick(['20x20m','30x20m','Half Pitch','Full Pitch','Penalty Box']),
+    context_ct:      'Attacking transition after losing possession in the middle third.',
+    context_mt:      'Practice quick recovery and triggers to win the ball back high up the pitch.',
+    procedure: [
+      'Set up the grid with cones and place players in designated positions.',
+      'Coach signals start; one team begins with possession.',
+      'Rotate roles every 2 minutes to keep intensity high.',
+    ],
+    coaching_points: [
+      'Body shape when receiving — open up to play forward.',
+      'Communication — call for the ball loudly.',
+      'First touch out of feet, away from pressure.',
+    ],
+    progressions: ['Add a second defender', 'Reduce touches to 2 max'],
+    regressions:  ['Increase grid size', 'Allow unlimited touches'],
+    objectives:   ['Improve first touch', 'Sharpen short passing under pressure'],
+    diagram_preset: pick(['full_pitch','half_pitch','channel','small_grid']),
+    diagram_url:    '',
+  }
+}
+
+// ── Staff Invite ──────────────────────────────────────────────
+export function fillInvite() {
+  return {
+    name:       fakeName(),
+    accessRole: pick(['coach', 'coach', 'admin']),
+  }
+}
+
+// ── Skill Assessment ──────────────────────────────────────────
+// `categories` shape: [{ id, skills: ['skill1', ...] }]
+export function fillAssessment({ categories = [] } = {}) {
+  const scores = {}
+  categories.forEach(cat => {
+    (cat.skills || []).forEach(sk => {
+      // Bias around 55-80 so the result looks plausible (not random across full 0-100)
+      scores[sk] = rand(55, 85)
+    })
+  })
+  return {
+    scores,
+    notes:    'Solid effort this month. Continues to improve under pressure. Focus on left-foot accuracy and movement off the ball next cycle.',
+    position: pick(['Striker','Midfielder','Defender','Goalkeeper','Winger']),
+  }
+}
+
+// ── Signup (Owner) ────────────────────────────────────────────
+const ACADEMY_NAMES = ['Champions Sports Academy','Elite Football Club','Star Athletes Academy',
+  'Pro Sports Hub','Victory Sports Training','Galaxy Sports Academy']
+export function fillSignupOwner() {
+  const ownerName   = fakeName()
+  const academyName = pick(ACADEMY_NAMES)
+  const slug        = ownerName.toLowerCase().replace(/\s+/g, '.')
+  return {
+    ownerName,
+    academyName,
+    ownerEmail: `${slug}+${Date.now().toString().slice(-5)}@test.local`,
+    ownerPw:    'demo1234',
+  }
+}

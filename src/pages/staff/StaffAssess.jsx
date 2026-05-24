@@ -3,6 +3,8 @@ import { useApp } from '../../context/AppContext'
 import { Search, CheckCircle, Clock, X, Save, ClipboardList, ChevronDown, ChevronUp, Target, Sparkles, FileText } from 'lucide-react'
 import * as db from '../../lib/db'
 import { logAudit, ACTIONS } from '../../lib/audit'
+import DevFillButton from '../../components/DevFillButton'
+import { fillAssessment } from '../../lib/devFill'
 import {
   SPORT_CATEGORIES, FOOTBALL_CATEGORIES,
   getCategoryAvg, getOverallScore, getTier,
@@ -363,6 +365,12 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
               <h2 className="text-xl font-black text-gray-900 leading-none">{student.name}</h2>
             </div>
             <div className="flex items-center gap-2">
+              <DevFillButton onFill={() => {
+                const d = fillAssessment({ categories })
+                setScores(d.scores)
+                setNotes(d.notes)
+                if (!student.position) setPosition(d.position)
+              }} />
               {tier && overall > 0 && (
                 <span className={`text-sm font-black px-3 py-1 rounded-full border ${tier.bgClass} ${tier.textClass} ${tier.borderClass}`}>
                   {overall} · {tier.label}

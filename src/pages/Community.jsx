@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext'
 import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X, Send } from 'lucide-react'
 import { Modal } from './Students'
 import SendStaffNoticeModal from '../components/SendStaffNoticeModal'
+import DevFillButton from '../components/DevFillButton'
+import { fillAnnouncement } from '../lib/devFill'
 
 const TYPE_CONFIG = {
   Holiday:     { cls: 'badge-yellow', icon: Calendar,     bg: 'bg-amber-50',   border: 'border-amber-100' },
@@ -97,6 +99,9 @@ function AddAnnouncementModal({ onClose, onSave }) {
 
   return (
     <Modal title="New Announcement" onClose={onClose}>
+      <div className="flex justify-end -mt-1 mb-1">
+        <DevFillButton onFill={() => setForm(fillAnnouncement())} />
+      </div>
       <div className="space-y-4">
         <div>
           <label className="label">Type</label>

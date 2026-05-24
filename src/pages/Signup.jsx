@@ -6,6 +6,8 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { Zap, ArrowRight, ShieldCheck, UserCog, Building, Key } from 'lucide-react'
+import DevFillButton from '../components/DevFillButton'
+import { fillSignupOwner } from '../lib/devFill'
 
 export default function Signup() {
   const { signupOwner, signupStaff } = useApp()
@@ -136,7 +138,16 @@ export default function Signup() {
         {/* ── Owner signup ──────────────────────────────── */}
         {tab === 'owner' && (
           <>
-            <h1 className="text-2xl font-black text-gray-900 mb-1">Create Academy</h1>
+            <div className="flex items-center justify-between mb-1">
+              <h1 className="text-2xl font-black text-gray-900">Create Academy</h1>
+              <DevFillButton onFill={() => {
+                const d = fillSignupOwner()
+                setOwnerName(d.ownerName)
+                setAcademyName(d.academyName)
+                setOwnerEmail(d.ownerEmail)
+                setOwnerPw(d.ownerPw)
+              }} />
+            </div>
             <p className="text-sm text-gray-500 mb-6">Set up your sports academy account</p>
             <form onSubmit={handleOwner} className="space-y-4">
               <div>
