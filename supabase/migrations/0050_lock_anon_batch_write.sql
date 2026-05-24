@@ -14,7 +14,7 @@
 --   Remove student         → secure_unassign_student_from_batch (students.manage)
 --   SELECT                 → batches_anon_select / student_batches_anon_select (wide-open)
 --
--- IDEMPOTENT — safe to re-run.
+-- IDEMPOTENT — safe to2 re-run.
 -- ============================================================
 
 DROP POLICY IF EXISTS batches_anon_all       ON public.batches;

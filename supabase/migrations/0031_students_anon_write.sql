@@ -16,3 +16,4 @@ CREATE POLICY "students_anon_update"
   ON students FOR UPDATE TO anon
   USING (true)
   WITH CHECK (true);
+  
