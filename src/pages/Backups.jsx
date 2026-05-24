@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
 import { exportAcademyData } from '../lib/exportImport'
 import { Download, ShieldCheck, RefreshCw } from 'lucide-react'
+import { SkeletonRows } from '../components/Skeleton'
 
 export default function Backups() {
   const { user, showToast } = useApp()
@@ -51,7 +52,7 @@ export default function Backups() {
           <button onClick={load} className="text-gray-400 hover:text-gray-700" aria-label="Refresh"><RefreshCw size={15} /></button>
         </div>
         {loading ? (
-          <p className="px-4 py-6 text-sm text-gray-400">Loading…</p>
+          <SkeletonRows rows={4} />
         ) : rows.length === 0 ? (
           <p className="px-4 py-6 text-sm text-gray-400">No saved backups yet — the first weekly backup will appear here.</p>
         ) : rows.map(r => (
