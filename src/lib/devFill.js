@@ -1,5 +1,6 @@
-// Dev-only data generators — Vite tree-shakes this file entirely in production
-// because every consumer is wrapped in `import.meta.env.DEV` checks.
+// Demo data generators — used by DevFillButton, which shows in dev or when
+// the user has enabled demo mode on the deployed app via ?demo=1.
+// File adds ~3KB to the production bundle (strings + small generators).
 
 const FIRST = ['Arjun','Priya','Rahul','Meera','Vikram','Ananya','Rohit','Sneha',
   'Kabir','Divya','Aakash','Pooja','Siddharth','Neha','Ayaan','Riya','Shivam',
