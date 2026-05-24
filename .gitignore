@@ -19,3 +19,6 @@ playwright.config.js
 
 .supabase-db-url
 
+# Local Claude Code settings (machine-specific; may contain secrets)
+.claude/settings.local.json
+
