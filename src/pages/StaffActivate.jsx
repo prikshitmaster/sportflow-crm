@@ -5,7 +5,7 @@ import { Zap, ArrowRight, CheckCircle, KeyRound, Mail } from 'lucide-react'
 import * as db from '../lib/db'
 
 export default function StaffActivate() {
-  const { activateStaff } = useApp()
+  const { activateStaff, role, logoutOwner, logoutStaff, logoutStudent, logoutParent } = useApp()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -50,6 +50,17 @@ export default function StaffActivate() {
         password,
         { email: email.trim() }
       )
+      // Sign out any pre-existing session in this browser so the
+      // "Go to Login" button doesn't bounce back to that account's home.
+      // (Common case: owner generated the invite link and is opening it in
+      // the same browser to test — without this, /staff-login → PublicRoute
+      // would silently redirect them to /dashboard as the owner.)
+      try {
+        if (role === 'owner')   await logoutOwner()
+        if (role === 'staff')   await logoutStaff()
+        if (role === 'student') await logoutStudent()
+        if (role === 'parent')  await logoutParent()
+      } catch {}
       setStaffName(member?.name || '')
       setStep(3)
     } catch (err) {
