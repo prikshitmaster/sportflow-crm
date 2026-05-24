@@ -58,4 +58,25 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split ONLY stable, eager vendor libs into their own long-cached chunks.
+        // Heavy route-only libs (recharts, xlsx, jsQR, qrcode) are deliberately NOT
+        // matched here, so Rollup keeps them in their lazy route chunks — matching
+        // here would pull them into the eager bundle and bloat first load.
+        // App code is never manually chunked (avoids duplicate-module / context bugs).
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|@remix-run[\\/]router|scheduler|use-sync-external-store)[\\/]/.test(id)) {
+            return 'react-vendor'
+          }
+          if (/[\\/]node_modules[\\/]@supabase[\\/]/.test(id)) {
+            return 'supabase'
+          }
+          // everything else → Rollup default (lazy libs stay lazy)
+        },
+      },
+    },
+  },
 })
