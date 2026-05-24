@@ -38,6 +38,7 @@ const SportSelect      = lazy(() => import('./pages/SportSelect'))
 const Drills           = lazy(() => import('./pages/Drills'))
 const Sessions         = lazy(() => import('./pages/Sessions'))
 const Parents          = lazy(() => import('./pages/Parents'))
+const Backups          = lazy(() => import('./pages/Backups'))
 
 // Staff pages — lazy loaded
 const StaffDashboard   = lazy(() => import('./pages/staff/StaffDashboard'))
@@ -230,6 +231,7 @@ function AppRoutes() {
         <Route path="reports"    element={<Reports />} />
         <Route path="community"  element={<Community />} />
         <Route path="settings"   element={<Settings />} />
+        <Route path="backups"    element={<Backups />} />
         <Route path="gate-qr"    element={<AdminQR />} />
         <Route path="staff-qr"   element={<StaffAttendanceQR />} />
         <Route path="events"     element={<Events />} />

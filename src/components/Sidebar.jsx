@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, CalendarCheck, CreditCard, UserPlus,
   Layers, UserCog, BarChart3, Megaphone, Settings, LogOut,
   Zap, ChevronLeft, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
-  ChevronDown, ChevronRight, UserCircle,
+  ChevronDown, ChevronRight, UserCircle, ShieldCheck,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -33,6 +33,7 @@ const nav = [
   { to: '/reports',    label: 'Reports',    icon: BarChart3,       feature: 'reports',    permission: 'reports.view' },
   { to: '/community',  label: 'Community',  icon: Megaphone,       feature: 'community',  permission: 'community.manage' },
   { to: '/settings',   label: 'Settings',   icon: Settings,        feature: null,         permission: 'settings.manage' },
+  { to: '/backups',    label: 'Backups',    icon: ShieldCheck,     feature: null,         permission: 'settings.manage' },
 ]
 
 const GROUP_META = {
