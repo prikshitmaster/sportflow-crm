@@ -1439,7 +1439,7 @@ export function AppProvider({ children }) {
 
   // ── Staff HR ──────────────────────────────────────────
 
-  const addStaffMember = async (s, photoFile = null) => {
+  const addStaffMember = async (s, photoFile = null, accessConfig = null) => {
     const staffCode = await db.fetchNextStaffCode(s.staffType || 'coach')
     const joinCode  = generateJoinCode()
     // Auto-link the new staff to the owner's currently selected branch so
@@ -1455,12 +1455,28 @@ export function AppProvider({ children }) {
         await db.updateStaffProfile(created.id, { name: s.name, phone: s.phone, photoUrl })
       } catch (_) {}
     }
+    // Persist portal-access permissions if the modal supplied them.
+    // Without this the accessConfig was silently dropped, leaving every
+    // new staff with an empty permissions[] in staff_auth — the activation
+    // login then fell back to ROLE_PRESETS[access_role] which gave wider
+    // access than the owner intended.
+    if (accessConfig?.accessRole) {
+      try {
+        await db.updateStaffPermissions(created.id, {
+          accessRole:  accessConfig.accessRole,
+          permissions: accessConfig.permissions || [],
+        })
+      } catch (err) {
+        console.error('Failed to save staff permissions:', err)
+        showToast('Staff created but permissions did not save — edit Access to retry', 'error')
+      }
+    }
     setStaff(prev => [...prev, {
       ...created,
       photoUrl,
       userId:        null,
-      accessRole:    null,
-      permissions:   [],
+      accessRole:    accessConfig?.accessRole  || null,
+      permissions:   accessConfig?.permissions || [],
       staffCode,
       joinCode:      null,
       staffType:     s.staffType || 'coach',

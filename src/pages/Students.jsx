@@ -63,7 +63,9 @@ function DobInput({ value, onChange, hasError }) {
 
 export default function Students() {
   const navigate = useNavigate()
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, hasPermission } = useApp()
+  const canManageStudents = hasPermission('students.manage')
+  const canManageTrials   = hasPermission('trials.manage')
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
@@ -202,12 +204,16 @@ export default function Students() {
         <div className="flex items-center gap-2">
           {activeTab === 'students' && (
             <>
-              <button className="btn-secondary" onClick={() => navigate('/trials')}>
-                <UserPlus size={16} /> Trial
-              </button>
-              <button className="btn-primary" onClick={() => setShowModal(true)}>
-                <Plus size={16} /> Add Student
-              </button>
+              {canManageTrials && (
+                <button className="btn-secondary" onClick={() => navigate('/trials')}>
+                  <UserPlus size={16} /> Trial
+                </button>
+              )}
+              {canManageStudents && (
+                <button className="btn-primary" onClick={() => setShowModal(true)}>
+                  <Plus size={16} /> Add Student
+                </button>
+              )}
             </>
           )}
         </div>
