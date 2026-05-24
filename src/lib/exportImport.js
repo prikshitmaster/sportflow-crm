@@ -183,6 +183,38 @@ export function downloadExcel(data) {
   XLSX.writeFile(wb, `${data.sport}_backup_${date}.xlsx`)
 }
 
+// ── Full-academy backup: one workbook, a sheet per entity ──
+// Raw rows (all columns) for backup fidelity. As owner (authenticated) each
+// select is scoped to the academy by the *_owner_all RLS policies; attendance
+// has no academy_id column, so it's read via the owner policy (academy's students).
+export async function exportAcademyData(academyId, { download = true } = {}) {
+  const [students, payments, batches, trials] = await Promise.all([
+    supabase.from('students').select('*').eq('academy_id', academyId),
+    supabase.from('payments').select('*').eq('academy_id', academyId),
+    supabase.from('batches').select('*').eq('academy_id', academyId),
+    supabase.from('trials').select('*').eq('academy_id', academyId),
+  ])
+  const attendance = await supabase.from('attendance').select('*')
+
+  const wb = XLSX.utils.book_new()
+  const addSheet = (name, rows) =>
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows || []), name)
+
+  addSheet('Payments',   payments.data   || [])
+  addSheet('Students',   students.data   || [])
+  addSheet('Batches',    batches.data    || [])
+  addSheet('Attendance', attendance.data || [])
+  addSheet('Trials',     trials.data     || [])
+
+  const stamp = new Date().toISOString().slice(0, 10)
+  const filename = `sportflow-backup-${stamp}.xlsx`
+  if (download) {
+    XLSX.writeFile(wb, filename)
+    return { filename }
+  }
+  return { filename, buffer: XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) }
+}
+
 // ── Parse & validate an imported JSON file ────────────────
 
 export function parseImportFile(file) {

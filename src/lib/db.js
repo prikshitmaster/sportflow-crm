@@ -1082,6 +1082,32 @@ export async function createStudentWithPayment(s) {
   return data  // BIGINT student id
 }
 
+// ── Backups (private 'backups' bucket; owner-only via storage RLS) ──
+// Lists the academy's backup files newest-first.
+export async function listBackups(academyId) {
+  if (!academyId) return []
+  const { data, error } = await supabase
+    .storage.from('backups')
+    .list(String(academyId), { limit: 100, sortBy: { column: 'name', order: 'desc' } })
+  if (error) throw error
+  return (data || [])
+    .filter(f => f.name.endsWith('.xlsx'))
+    .map(f => ({
+      name: f.name,
+      path: `${academyId}/${f.name}`,
+      date: f.name.replace('.xlsx', ''),
+      size: f.metadata?.size ?? null,
+    }))
+}
+
+// Short-lived signed URL for one backup file.
+export async function getBackupSignedUrl(path, ttlSeconds = 600) {
+  const { data, error } = await supabase
+    .storage.from('backups').createSignedUrl(path, ttlSeconds)
+  if (error) throw error
+  return data.signedUrl
+}
+
 export async function activateStudentAccount(studentCode, joinCode, passwordHash) {
   // Routed through secure_activate_student_account (migration 0039).
   // The RPC validates join_code server-side and returns the updated student row.
