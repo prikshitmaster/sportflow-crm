@@ -728,6 +728,7 @@ export async function insertStaff(s) {
     p_staff_code: s.staffCode   || null,
     p_join_code:  s.joinCode    || null,
     p_staff_type: s.staffType   || 'coach',
+    p_branch_id:  s.branchId    || null,
   })
   if (error) throw error
   return { ...s, id: data, attendance: 100 }

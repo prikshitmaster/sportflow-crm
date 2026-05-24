@@ -1421,7 +1421,11 @@ export function AppProvider({ children }) {
   const addStaffMember = async (s, photoFile = null) => {
     const staffCode = await db.fetchNextStaffCode(s.staffType || 'coach')
     const joinCode  = generateJoinCode()
-    const created   = await db.insertStaff({ ...s, academyId: user?.academyId, staffCode, joinCode })
+    // Auto-link the new staff to the owner's currently selected branch so
+    // they only see students from that branch when they log in. Without
+    // this, branch_id stays NULL and the staff sees the whole academy.
+    const branchId = s.branchId || selectedBranch || null
+    const created   = await db.insertStaff({ ...s, branchId, academyId: user?.academyId, staffCode, joinCode })
     // Upload photo AFTER insert so we have the real staff ID for fixed-path storage
     let photoUrl = created.photoUrl || null
     if (photoFile) {

@@ -1534,11 +1534,15 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
 }
 
 function AddStaffModal({ onClose, onSave, demoMode }) {
-  const { selectedSport } = useApp()
+  const { selectedSport, selectedBranch, sportBranches } = useApp()
   const fileRef = useRef(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [photoFile,    setPhotoFile]    = useState(null)
   const defaultSports = selectedSport && selectedSport !== 'All' ? [selectedSport] : []
+  // Resolve the human-readable name of the auto-linked branch for the hint
+  const linkedBranchName = selectedBranch
+    ? (sportBranches?.find?.(b => b.id === selectedBranch)?.branch_name || null)
+    : null
   const [form, setForm] = useState({
     name: '', role: '', phone: '', age: '', sports: defaultSports, status: 'Active', staffType: 'coach',
   })
@@ -1761,10 +1765,25 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
               </div>
               {fieldErrors.phone && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.phone}</p>}
             </div>
-            {form.sports.length > 0 && (
-              <div className="text-[11px] text-gray-400 -mt-1">
-                Sport: <span className="font-semibold text-gray-600">{form.sports.join(', ')}</span>
-                <span className="ml-1">(auto-linked from your sport selection)</span>
+            {(form.sports.length > 0 || linkedBranchName) && (
+              <div className="text-[11px] text-gray-400 -mt-1 space-y-0.5">
+                {form.sports.length > 0 && (
+                  <div>
+                    Sport: <span className="font-semibold text-gray-600">{form.sports.join(', ')}</span>
+                    <span className="ml-1">(auto-linked from your sport selection)</span>
+                  </div>
+                )}
+                {linkedBranchName && (
+                  <div>
+                    Branch: <span className="font-semibold text-gray-600">{linkedBranchName}</span>
+                    <span className="ml-1">(auto-linked — staff will only see this branch's data)</span>
+                  </div>
+                )}
+                {!linkedBranchName && (
+                  <div className="text-amber-600">
+                    ⚠ No branch selected — this staff will see <strong>all branches</strong>. Switch to a specific branch first if you want them scoped.
+                  </div>
+                )}
               </div>
             )}
           </div>
