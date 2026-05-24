@@ -792,6 +792,12 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
   const [address,   setAddress]   = useState(initial.address    || '')
   const [managerId, setManagerId] = useState(initial.managerId  || '')
   const [saving,    setSaving]    = useState(false)
+  // Only offer staff who are free (no branch) or already in THIS branch — a
+  // staff member assigned to another branch shouldn't manage this one.
+  // Always keep the current manager visible even if data is inconsistent.
+  const options = staffList.filter(s =>
+    s.id === initial.managerId || !s.branchId || s.branchId === initial.id
+  )
   const submit = async () => {
     setSaving(true)
     try { await onSave({ branchName: name, address, managerId: managerId || null }) } finally { setSaving(false) }
@@ -822,11 +828,11 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
               onChange={e => setManagerId(e.target.value)}
             >
               <option value="">— No manager —</option>
-              {staffList.map(s => (
+              {options.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
-            {staffList.length === 0 ? (
+            {options.length === 0 ? (
               <p className="text-[11px] text-gray-400 mt-1">
                 Add staff to this sport first to assign a manager.
               </p>
