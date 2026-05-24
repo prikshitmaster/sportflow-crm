@@ -87,6 +87,7 @@ export default function Attendance() {
   const [dirty,         setDirty]         = useState(new Set())
   const [saving,        setSaving]        = useState(false)
   const [loading,       setLoading]       = useState(false)
+  const [page,          setPage]          = useState(1)
   const [showExport,    setShowExport]    = useState(false)
   const [exportFrom,    setExportFrom]    = useState(`${todayYear}-${pad(todayMonth+1)}-01`)
   const [exportTo,      setExportTo]      = useState(`${todayYear}-${pad(todayMonth+1)}-${pad(daysInMonth(todayYear, todayMonth))}`)
@@ -124,6 +125,9 @@ export default function Attendance() {
   // filter doesn't hide all batches in the new scope
   useEffect(() => { setSelectedBranch('All'); setSelectedBatch(null) }, [selectedSport, contextBranch])
 
+  // Reset to page 1 whenever the student list changes
+  useEffect(() => { setPage(1) }, [selectedBatch?.id, selectedBranch, selectedSport])
+
   // Warn before tab close / refresh if there are unsaved attendance changes.
   useEffect(() => {
     if (dirty.size === 0) return
@@ -151,6 +155,10 @@ export default function Attendance() {
       .then(rows => setMbStudentIds(new Set(rows.map(r => r.student_id))))
       .catch(() => setMbStudentIds(new Set()))
   }, [selectedBatch?.id])
+
+  const PAGE_SIZE        = 30
+  const totalPages       = Math.ceil(displayed.length / PAGE_SIZE)
+  const paginatedStudents = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const getStatus = (sid, day) => monthData[sid]?.[day] || ''
 
@@ -254,10 +262,19 @@ export default function Attendance() {
 
   const batchStats = useMemo(() => batches.map(b => {
     const mbIds = allEnrolments[b.id] || new Set()
-    const bs = activeStudents.filter(s => s.batchId === b.id || s.batch === b.name || mbIds.has(s.id))
+    // ALL enrolled (Active + Suspended) — shown as the badge count
+    const allBs    = students.filter(s => s.batchId === b.id || s.batch === b.name || mbIds.has(s.id))
+    // Active only — used for present% denominator (suspended kids can't attend)
+    const activeBs = allBs.filter(s => s.status === 'Active')
     const trainsToday = b.days?.length > 0 ? b.days.includes(todayDayShort) : true
-    return { ...b, studentCount: bs.length, presentToday: isCurrentMonth ? bs.filter(s => getStatus(s.id, todayDay)==='Present').length : 0, trainsToday }
-  }), [batches, activeStudents, monthData, todayDay, isCurrentMonth, allEnrolments, todayDayShort])
+    return {
+      ...b,
+      studentCount: allBs.length,
+      activeCount:  activeBs.length,
+      presentToday: isCurrentMonth ? activeBs.filter(s => getStatus(s.id, todayDay)==='Present').length : 0,
+      trainsToday,
+    }
+  }), [batches, students, monthData, todayDay, isCurrentMonth, allEnrolments, todayDayShort])
 
   // Branch list derived from batches' sports arrays
   const branchList = useMemo(() => {
@@ -329,15 +346,15 @@ export default function Attendance() {
             !selectedBatch ? 'bg-brand-200 text-brand-800' : 'bg-gray-100 text-gray-600'
           }`}>
             {selectedBranch === 'All'
-              ? activeStudents.length
-              : activeStudents.filter(s => visibleBatches.some(b => b.name === s.batch)).length}
+              ? students.length
+              : students.filter(s => visibleBatches.some(b => b.name === s.batch)).length}
           </span>
         </button>
 
         {visibleBatches.map(b => {
           const isActive  = selectedBatch?.id === b.id
           const dimmed    = isCurrentMonth && !b.trainsToday
-          const pct       = b.studentCount > 0 ? Math.round((b.presentToday / b.studentCount) * 100) : null
+          const pct       = b.activeCount > 0 ? Math.round((b.presentToday / b.activeCount) * 100) : null
           const pctColor  = pct === null ? '' : pct >= 80 ? 'text-emerald-600 bg-emerald-50' : pct >= 60 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50'
           return (
             <button
@@ -408,7 +425,7 @@ export default function Attendance() {
           { label:'Present', value:todayStats.Present, bg:'bg-emerald-100', text:'text-emerald-700', ring:'ring-emerald-200' },
           { label:'Absent',  value:todayStats.Absent,  bg:'bg-red-100',     text:'text-red-700',     ring:'ring-red-200' },
           { label:'Late',    value:todayStats.Late,    bg:'bg-amber-100',   text:'text-amber-700',   ring:'ring-amber-200' },
-          { label:'Total',   value:displayed.length,  bg:'bg-brand-100',   text:'text-brand-700',   ring:'ring-brand-200' },
+          { label:'Total',   value:displayed.length + suspendedDisplayed.length, bg:'bg-brand-100', text:'text-brand-700', ring:'ring-brand-200' },
         ].map(s => (
           <div key={s.label} className="card p-3 flex items-center gap-3">
             <div className={`w-10 h-10 ${s.bg} ${s.text} rounded-full flex items-center justify-center text-lg font-black ring-2 ${s.ring} flex-shrink-0`}>{s.value}</div>
@@ -488,7 +505,7 @@ export default function Attendance() {
             {displayed.length === 0 && (
               <p className="text-center py-10 text-sm text-gray-400">No students in this batch</p>
             )}
-            {displayed.map((s, idx) => {
+            {paginatedStudents.map((s, idx) => {
               const st  = getStatus(s.id, mobileDay)
               const cfg = st ? S[st] : null
               const off = isOffDay(s, mobileDay)
@@ -499,7 +516,7 @@ export default function Attendance() {
                   disabled={off}
                   className={`w-full flex items-center gap-3 px-4 py-3.5 transition text-left ${off ? 'opacity-50 bg-gray-50/60' : 'active:bg-gray-50'}`}
                 >
-                  <span className="text-xs text-gray-400 w-5 flex-shrink-0 font-medium">{idx+1}</span>
+                  <span className="text-xs text-gray-400 w-5 flex-shrink-0 font-medium">{(page-1)*PAGE_SIZE+idx+1}</span>
                   <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center text-sm font-bold text-brand-700 flex-shrink-0">
                     {s.name[0]}
                   </div>
@@ -529,6 +546,22 @@ export default function Attendance() {
                 </button>
               )
             })}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/50">
+                <span className="text-xs text-gray-400">{(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE,displayed.length)} of {displayed.length}</span>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1}
+                    className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 disabled:opacity-30 transition">
+                    <ChevronLeft size={14}/>
+                  </button>
+                  <span className="text-xs font-bold text-gray-700 px-2">{page}/{totalPages}</span>
+                  <button onClick={() => setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}
+                    className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 disabled:opacity-30 transition">
+                    <ChevronRight size={14}/>
+                  </button>
+                </div>
+              </div>
+            )}
             {suspendedDisplayed.map(s => (
               <div key={`susp-${s.id}`} className="w-full flex items-center gap-3 px-4 py-3.5 bg-red-50/40 opacity-60">
                 <span className="text-xs text-gray-300 w-5 flex-shrink-0">—</span>
@@ -576,9 +609,9 @@ export default function Attendance() {
                 {displayed.length === 0 && (
                   <tr><td colSpan={totalDays+2} className="text-center py-12 text-gray-400 text-sm">No students in this batch</td></tr>
                 )}
-                {displayed.map((s, idx) => (
+                {paginatedStudents.map((s, idx) => (
                   <tr key={s.id} className="hover:bg-gray-50/50 group transition">
-                    <td className="sticky left-0 bg-white group-hover:bg-gray-50/50 z-10 text-center px-2 py-2.5 text-gray-400 border-r border-gray-100 font-medium">{idx+1}</td>
+                    <td className="sticky left-0 bg-white group-hover:bg-gray-50/50 z-10 text-center px-2 py-2.5 text-gray-400 border-r border-gray-100 font-medium">{(page-1)*PAGE_SIZE+idx+1}</td>
                     <td className="sticky left-8 bg-white group-hover:bg-gray-50/50 z-10 px-3 py-2.5 border-r border-gray-100">
                       <div className="flex items-center gap-2">
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${s.trainingType === 'Alternate' ? 'bg-violet-100 text-violet-700' : 'bg-brand-100 text-brand-700'}`}>{s.name[0]}</div>
@@ -645,7 +678,7 @@ export default function Attendance() {
             </table>
           </div>
         )}
-        {/* Legend */}
+        {/* Legend + Pagination */}
         <div className="px-4 py-3 border-t border-gray-100 flex flex-wrap items-center gap-4 bg-gray-50/50">
           {Object.entries(S).map(([k, v]) => (
             <div key={k} className="flex items-center gap-1.5">
@@ -653,7 +686,33 @@ export default function Attendance() {
               <span className="text-xs text-gray-500">{k}</span>
             </div>
           ))}
-          <span className="text-xs text-gray-400 ml-auto italic">Click any cell to cycle status</span>
+          {totalPages > 1 && (
+            <div className="ml-auto flex items-center gap-1.5">
+              <span className="text-xs text-gray-400 mr-1">
+                {(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE, displayed.length)} of {displayed.length}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.max(1, p-1))}
+                disabled={page === 1}
+                className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+              ><ChevronLeft size={13}/></button>
+              {Array.from({length: totalPages}, (_, i) => i+1).map(n => (
+                <button
+                  key={n}
+                  onClick={() => setPage(n)}
+                  className={`w-7 h-7 rounded-lg text-xs font-bold transition ${
+                    n === page ? 'bg-brand-600 text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >{n}</button>
+              ))}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p+1))}
+                disabled={page === totalPages}
+                className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition"
+              ><ChevronRight size={13}/></button>
+            </div>
+          )}
+          {totalPages <= 1 && <span className="text-xs text-gray-400 ml-auto italic">Click any cell to cycle status</span>}
         </div>
       </div>
 
