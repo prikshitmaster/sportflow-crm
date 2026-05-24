@@ -1542,7 +1542,11 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const [form, setForm] = useState({
     name: '', role: '', phone: '', age: '', sports: defaultSports, status: 'Active', staffType: 'coach',
   })
-  const [sportInput, setSportInput] = useState('')
+  // Keep sports in sync with the owner's selected sport — the field is no
+  // longer shown in the UI but the form still needs to carry the value.
+  useEffect(() => {
+    setForm(f => ({ ...f, sports: selectedSport && selectedSport !== 'All' ? [selectedSport] : [] }))
+  }, [selectedSport])
   const [giveAccess,   setGiveAccess]   = useState(false)
   const [portalType,   setPortalType]   = useState('field')  // 'field' | 'office'
   const [accessRole,   setAccessRole]   = useState('coach')
@@ -1558,9 +1562,6 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const FIELD_PERMS = ['attendance.manage', 'students.view', 'batches.view']
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const toggleSport = sp => setForm(f => ({
-    ...f, sports: f.sports.includes(sp) ? f.sports.filter(s => s !== sp) : [...f.sports, sp],
-  }))
 
   const handlePhoto = e => {
     const file = e.target.files?.[0]
@@ -1590,6 +1591,11 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const handleSave = async () => {
     const errs = {}
     if (!form.name.trim()) errs.name = 'Name is required'
+    if (!form.role.trim()) errs.role = 'HR role is required'
+    const ageNum = Number(form.age)
+    if (!form.age || !Number.isFinite(ageNum) || ageNum < 16 || ageNum > 70) {
+      errs.age = 'Enter an age between 16 and 70'
+    }
     const phoneDigits = form.phone.replace('+91', '')
     if (phoneDigits.length !== 10) errs.phone = 'Enter a valid 10-digit number'
     if (Object.keys(errs).length) { setFieldErrors(errs); return }
@@ -1724,12 +1730,16 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="label">HR Role</label>
-                <input className="input" placeholder="e.g. Head Coach, Admin…" value={form.role} onChange={e => set('role', e.target.value)} />
+                <label className="label">HR Role *</label>
+                <input className={`input ${fieldErrors.role ? 'border-red-400' : ''}`} placeholder="e.g. Head Coach, Admin…" value={form.role}
+                  onChange={e => { set('role', e.target.value); setFieldErrors(f => ({ ...f, role: '' })) }} />
+                {fieldErrors.role && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.role}</p>}
               </div>
               <div>
-                <label className="label">Age</label>
-                <input className="input" placeholder="Years" type="number" min="16" max="70" value={form.age} onChange={e => set('age', e.target.value)} />
+                <label className="label">Age *</label>
+                <input className={`input ${fieldErrors.age ? 'border-red-400' : ''}`} placeholder="Years" type="number" min="16" max="70" value={form.age}
+                  onChange={e => { set('age', e.target.value); setFieldErrors(f => ({ ...f, age: '' })) }} />
+                {fieldErrors.age && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.age}</p>}
               </div>
             </div>
             <div>
@@ -1751,39 +1761,12 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
               </div>
               {fieldErrors.phone && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.phone}</p>}
             </div>
-            <div>
-              <label className="label">Sports / Activities</label>
-              {/* Tag chips */}
-              {form.sports.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {form.sports.map(sp => (
-                    <span key={sp} className="flex items-center gap-1 bg-brand-600 text-white text-xs font-semibold px-2.5 py-1 rounded-lg">
-                      {sp}
-                      <button type="button" onClick={() => set('sports', form.sports.filter(s => s !== sp))} className="opacity-70 hover:opacity-100 ml-0.5">
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              <input
-                className="input"
-                placeholder="Type a sport and press Enter (e.g. Cricket)"
-                value={sportInput}
-                onChange={e => setSportInput(e.target.value)}
-                onKeyDown={e => {
-                  if ((e.key === 'Enter' || e.key === ',') && sportInput.trim()) {
-                    e.preventDefault()
-                    const val = sportInput.trim().replace(/,$/, '')
-                    if (val && !form.sports.includes(val)) set('sports', [...form.sports, val])
-                    setSportInput('')
-                  } else if (e.key === 'Backspace' && !sportInput && form.sports.length > 0) {
-                    set('sports', form.sports.slice(0, -1))
-                  }
-                }}
-              />
-              <p className="text-[10px] text-gray-400 mt-1">Press Enter or comma to add each sport</p>
-            </div>
+            {form.sports.length > 0 && (
+              <div className="text-[11px] text-gray-400 -mt-1">
+                Sport: <span className="font-semibold text-gray-600">{form.sports.join(', ')}</span>
+                <span className="ml-1">(auto-linked from your sport selection)</span>
+              </div>
+            )}
           </div>
         </div>
 
