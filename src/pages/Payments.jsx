@@ -237,7 +237,10 @@ export default function Payments() {
     const stu     = studentMap[p.studentId]
     const matchSport = sportFilter === 'All' || stu?.sport === sportFilter
     const matchBatch = batchFilter === 'All' || stu?.batch === batchFilter || String(stu?.batchId) === batchFilter
-    const matchMonth = !monthFilter || p.isVirtual || (p.date && p.date.slice(0, 7) === monthFilter)
+    // Match by date (Paid/Overdue with a paid date) OR by billing month (Pending where date is NULL)
+    const matchMonth = !monthFilter || p.isVirtual ||
+      (p.date && p.date.slice(0, 7) === monthFilter) ||
+      (!p.date && p.month === monthFilter)
     return matchQ && matchS && matchSport && matchBatch && matchMonth
   })
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -247,7 +250,7 @@ export default function Payments() {
     ? payments.filter(p => p.status === 'Paid'    && p.date?.slice(0,7) === monthFilter)
     : payments.filter(p => p.status === 'Paid')
   const pendingBase = monthFilter
-    ? payments.filter(p => p.status === 'Pending' && p.date?.slice(0,7) === monthFilter)
+    ? payments.filter(p => p.status === 'Pending' && (p.date?.slice(0,7) === monthFilter || (!p.date && p.month === monthFilter)))
     : payments.filter(p => p.status === 'Pending')
   // Overdue is always all-time — not filtered by month
   const overdueBase  = [...payments.filter(p => p.status === 'Overdue'), ...overdueRows]
