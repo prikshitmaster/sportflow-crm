@@ -693,8 +693,16 @@ function BranchView({
               </div>
               <p className="text-lg font-black text-gray-900 mb-0.5">{b.branchName}</p>
               {b.managerId && staffById[b.managerId] && (
-                <p className="flex items-center gap-1 text-[11px] text-indigo-600 font-semibold mb-1">
-                  <ShieldCheck size={10} className="flex-shrink-0" />
+                <p className="flex items-center gap-1.5 text-[11px] text-indigo-600 font-semibold mb-1">
+                  {staffById[b.managerId].photoUrl ? (
+                    <img
+                      src={staffById[b.managerId].photoUrl}
+                      alt={staffById[b.managerId].name}
+                      className="w-5 h-5 rounded-full object-cover flex-shrink-0 ring-1 ring-indigo-100"
+                    />
+                  ) : (
+                    <ShieldCheck size={10} className="flex-shrink-0" />
+                  )}
                   {staffById[b.managerId].name}
                 </p>
               )}
