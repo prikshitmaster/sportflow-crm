@@ -310,9 +310,24 @@ export function AppProvider({ children }) {
   // ── Restore Supabase session on app open ──────────────
   useEffect(() => {
     async function restore() {
+      // Diagnostic — captures auth state at app open so we can debug
+      // "I opened incognito and was already logged in" reports. View via
+      // DevTools: `window.__sf_auth`. Most common cause is incognito
+      // persisting localStorage across tabs within the same private session.
+      const diag = {
+        at: new Date().toISOString(),
+        hasStaffToken:   !!localStorage.getItem('sf_staff'),
+        hasStudentToken: !!localStorage.getItem('sf_student'),
+        hasSupabaseAuth: Object.keys(localStorage).some(k => k.startsWith('sb-') && k.includes('auth')),
+        path: 'restore-start',
+      }
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
+          diag.path = 'supabase-jwt'
+          diag.supabaseUserId = session.user.id
+          diag.supabaseExpiresAt = session.expires_at
+          if (typeof window !== 'undefined') window.__sf_auth = diag
           const profile = await db.fetchProfile(session.user.id)
           if (profile) {
             const academy = await db.fetchAcademy(profile.academy_id)
@@ -416,7 +431,13 @@ export function AppProvider({ children }) {
         }
       } catch (err) {
         console.error('Session restore failed:', err)
+        diag.path = 'error'
+        diag.error = err?.message || String(err)
       }
+      if (diag.path === 'restore-start') diag.path = 'no-session'
+      if (typeof window !== 'undefined') window.__sf_auth = diag
+      // Visible in DevTools: tells you which auth path was taken at boot
+      console.info('[auth] restore complete', diag)
       setLoading(false)
     }
     restore()
