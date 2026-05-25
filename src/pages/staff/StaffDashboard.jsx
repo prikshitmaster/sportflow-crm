@@ -26,6 +26,11 @@ export default function StaffDashboard() {
   const { user, batches, students, attendanceData, leaveRequests, loadLeaveRequests, dataLoading, announcements, hasPermission, trials, showToast } = useApp()
   const navigate = useNavigate()
 
+  // Office staff belong on the desktop CRM, not this mobile portal
+  useEffect(() => {
+    if (user?.staffType === 'office') navigate('/dashboard', { replace: true })
+  }, [user?.staffType])
+
   const [gateQRToken,   setGateQRToken]   = useState(null)
   const [gateQROpen,    setGateQROpen]    = useState(false)
   const [gateQRLoading, setGateQRLoading] = useState(false)
