@@ -1865,9 +1865,7 @@ export function AppProvider({ children }) {
     return filteredStaff.filter(s => {
       // Branch filter: exclude staff from a different branch
       if (staffBranchId && s.branchId && s.branchId !== staffBranchId) return false
-      // Branch-confirmed staff are always visible regardless of sport
-      if (staffBranchId && s.branchId === staffBranchId) return true
-      // If the logged-in staff has sports assigned, only show colleagues who share at least one sport
+      // Sport filter: if both sides have sports, must share at least one
       if (staffSports.size > 0 && s.sports?.length > 0) {
         return s.sports.some(sp => staffSports.has(sp.toLowerCase()))
       }

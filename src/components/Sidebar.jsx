@@ -123,7 +123,10 @@ export default function Sidebar({ collapsed, setCollapsed }) {
           <p className="text-xs text-gray-400">Academy</p>
           <p className="text-xs font-semibold text-gray-200 truncate">{user.academy}</p>
           <span className="inline-block mt-1 text-[10px] bg-brand-800 text-brand-300 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
-            {user.role === 'owner' ? 'Owner' : user.role}
+            {user.role === 'owner' ? 'Owner'
+              : user.accessRole === 'branch_manager' ? 'Branch Manager'
+              : user.accessRole === 'office' ? 'Office'
+              : 'Staff'}
           </span>
         </div>
       )}
