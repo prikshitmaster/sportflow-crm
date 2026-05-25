@@ -149,7 +149,7 @@ function OwnerRoute({ children }) {
   const { role, loading, selectedSport, user } = useApp()
   if (loading) return <PageLoading />
   if (role === 'staff' && !user) return <PageLoading />
-  const isOfficeStaff = role === 'staff' && user?.staffType === 'office'
+  const isOfficeStaff = role === 'staff' && user?.accessRole && user.accessRole !== 'coach'
   if (!isOfficeStaff && role !== 'owner') return <Navigate to="/login" replace />
   if (role === 'owner' && !selectedSport) return <Navigate to="/sport-select" replace />
   return children
@@ -165,7 +165,7 @@ function SportSelectRoute({ children }) {
 function StaffRoute({ children }) {
   const { role, loading, user } = useApp()
   if (loading || (role === 'staff' && !user)) return <PageLoading />
-  if (role === 'staff' && user?.staffType === 'office') return <Navigate to="/dashboard" replace />
+  if (role === 'staff' && user?.accessRole && user.accessRole !== 'coach') return <Navigate to="/dashboard" replace />
   if (role === 'staff') return children
   return <Navigate to="/staff-login" replace />
 }
@@ -208,7 +208,7 @@ function NotFound() {
   if (loading) return <PageLoading />
   if (!role) return <Navigate to="/login" replace />
   const home = role === 'owner'   ? '/dashboard'
-             : role === 'staff'   ? (user?.staffType === 'office' ? '/dashboard' : '/staff/home')
+             : role === 'staff'   ? (user?.accessRole && user.accessRole !== 'coach' ? '/dashboard' : '/staff/home')
              : role === 'student' ? '/student/dashboard'
              : role === 'parent'  ? '/parent/home'
              : '/login'
@@ -237,7 +237,7 @@ function PublicRoute({ children }) {
   const { role, loading, user } = useApp()
   if (loading) return <PageLoading />
   if (role === 'owner')   return <Navigate to="/dashboard" replace />
-  if (role === 'staff')   return <Navigate to={user?.staffType === 'office' ? '/dashboard' : '/staff/home'} replace />
+  if (role === 'staff')   return <Navigate to={user?.accessRole && user.accessRole !== 'coach' ? '/dashboard' : '/staff/home'} replace />
   if (role === 'student') return <Navigate to="/student/dashboard" replace />
   if (role === 'parent')  return <Navigate to="/parent/home" replace />
   return children

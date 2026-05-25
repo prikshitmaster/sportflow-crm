@@ -603,7 +603,7 @@ export function AppProvider({ children }) {
       entityId: member.id, entityName: member.name, academyId,
     })
     _startOps('staff', member.id, member.name, academyId, academyName)
-    return { staffType: member.staff_type }
+    return { accessRole: member.access_role }
   }
 
   const logoutStaff = async () => {

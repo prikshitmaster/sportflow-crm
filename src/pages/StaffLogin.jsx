@@ -22,7 +22,7 @@ export default function StaffLogin() {
     try {
       const result = await loginStaff(email.trim(), password)
       reset()
-      navigate(result?.staffType === 'office' ? '/dashboard' : '/staff/home')
+      navigate(result?.accessRole && result.accessRole !== 'coach' ? '/dashboard' : '/staff/home')
     } catch (err) {
       recordFailure()
       setError(err.message || 'Login failed')
