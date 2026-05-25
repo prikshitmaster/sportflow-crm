@@ -679,6 +679,8 @@ const AUDIT_CATS = [
   { id: 'student',    label: 'Students' },
   { id: 'payment',    label: 'Payments' },
   { id: 'staff',      label: 'Staff'    },
+  { id: 'batch',      label: 'Batches'  },
+  { id: 'trial',      label: 'Trials'   },
   { id: 'attendance', label: 'Attend'   },
   { id: 'assessment', label: 'Assess'   },
 ]

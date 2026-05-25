@@ -166,6 +166,17 @@ export default function Reports() {
   const { user, students, payments, trials, batches, attendanceData, selectedSport, selectedBranch, sportBranches } = useApp()
   const [activeTab, setActiveTab] = useState('overview')
 
+  // Header summary stats — live, not hardcoded
+  const headerStats = useMemo(() => {
+    const active     = students.filter(s => s.status === 'Active').length
+    const currMonth  = today.toISOString().slice(0, 7)
+    const collected  = payments.filter(p => p.status === 'Paid' && (p.date || '').slice(0, 7) === currMonth)
+                                .reduce((s, p) => s + p.amount, 0)
+    const expected   = students.filter(s => s.status === 'Active').reduce((s, st) => s + (st.fees || 0), 0)
+    const rate       = expected > 0 ? Math.round((collected / expected) * 100) : 0
+    return { active, collected, expected, rate }
+  }, [students, payments])
+
   // Multi-batch enrolments — without this, students who train in a non-primary batch
   // had their payments invisible to that batch's "collected" total. (QA_AUDIT H2)
   // We fetch once on mount; if the table doesn't exist, the lookup gracefully returns []
@@ -191,11 +202,23 @@ export default function Reports() {
   return (
     <div className="space-y-5 max-w-[1400px]">
       {/* Page header */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">SportFlow CRM</p>
           <h2 className="text-2xl font-black text-gray-900 leading-none">Reports & Analytics</h2>
           <p className="text-xs text-gray-400 mt-1">Generated {generatedAt}</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {[
+            { label: 'Active Students', value: headerStats.active,                                     color: 'text-brand-700',   bg: 'bg-brand-50'   },
+            { label: 'Collected This Month', value: `₹${headerStats.collected >= 100000 ? (headerStats.collected/100000).toFixed(1)+'L' : headerStats.collected >= 1000 ? (headerStats.collected/1000).toFixed(0)+'k' : headerStats.collected}`, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+            { label: 'Collection Rate', value: `${headerStats.rate}%`,                                 color: headerStats.rate >= 80 ? 'text-emerald-700' : headerStats.rate >= 60 ? 'text-amber-600' : 'text-red-600', bg: headerStats.rate >= 80 ? 'bg-emerald-50' : headerStats.rate >= 60 ? 'bg-amber-50' : 'bg-red-50' },
+          ].map(({ label, value, color, bg }) => (
+            <div key={label} className={`${bg} rounded-xl px-4 py-2.5 text-center`}>
+              <p className={`text-lg font-black tabular-nums leading-none ${color}`}>{value}</p>
+              <p className="text-[10px] text-gray-500 mt-0.5 font-semibold uppercase tracking-wide">{label}</p>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -321,8 +344,8 @@ function OverviewTab({ students, payments, trials, batches, batchToStudents = {}
                 formatter={(v, n) => [INR(v), n === 'collected' ? 'Collected' : 'Pending']}
                 contentStyle={{ borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 12, boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}
               />
-              <Bar dataKey="pending"   fill="#fde68a" radius={[4,4,0,0]} name="pending" />
-              <Bar dataKey="collected" fill="#10b981" radius={[4,4,0,0]} name="collected" />
+              <Bar dataKey="pending"   stackId="a" fill="#fde68a" radius={[0,0,0,0]} name="pending" />
+              <Bar dataKey="collected" stackId="a" fill="#10b981" radius={[4,4,0,0]} name="collected" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -342,6 +365,90 @@ function OverviewTab({ students, payments, trials, batches, batchToStudents = {}
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* ── Trial Funnel + Student Health ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        {/* Trial conversion funnel */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <SectionHeader title="Trial Pipeline" subtitle="Lead → Conversion funnel" />
+          {trials.length === 0 ? (
+            <p className="text-xs text-gray-400 py-4 text-center">No trial data yet</p>
+          ) : (() => {
+            const total     = trials.length
+            const converted = trials.filter(t => t.converted).length
+            const active    = trials.filter(t => !t.converted).length
+            const followUp  = trials.filter(t => !t.converted && t.followUp && t.followUp <= todayStr).length
+            const convRate  = pct(converted, total)
+            const stages = [
+              { label: 'Total Leads',       count: total,     pct: 100,      color: 'bg-brand-500',   text: 'text-brand-700'   },
+              { label: 'Active Trials',     count: active,    pct: pct(active, total), color: 'bg-amber-400',   text: 'text-amber-700'   },
+              { label: 'Follow-ups Due',    count: followUp,  pct: pct(followUp, total), color: 'bg-orange-400',  text: 'text-orange-700'  },
+              { label: 'Converted',         count: converted, pct: convRate, color: 'bg-emerald-500', text: 'text-emerald-700' },
+            ]
+            return (
+              <div className="space-y-3">
+                {stages.map(s => (
+                  <div key={s.label}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="font-semibold text-gray-700">{s.label}</span>
+                      <span className={`font-black tabular-nums ${s.text}`}>{s.count}</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${s.color}`} style={{ width: `${s.pct}%` }} />
+                    </div>
+                  </div>
+                ))}
+                <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Conversion Rate</span>
+                  <span className={`text-xl font-black tabular-nums ${convRate >= 30 ? 'text-emerald-600' : convRate >= 15 ? 'text-amber-600' : 'text-red-500'}`}>{convRate}%</span>
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+
+        {/* Student health / retention */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          <SectionHeader title="Student Health" subtitle="Retention & engagement snapshot" />
+          {(() => {
+            const active   = students.filter(s => s.status === 'Active')
+            const susp     = students.filter(s => s.status === 'Suspended')
+            const threeM   = new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().slice(0, 10)
+            const retained = active.filter(s => s.joinDate && s.joinDate <= threeM).length
+            const newStu   = active.filter(s => !s.joinDate || s.joinDate > threeM).length
+            const total    = active.length || 1
+            const retRate  = pct(retained, total)
+            const rows = [
+              { label: 'Active (3+ months)',  count: retained, pct: pct(retained, total), color: 'bg-emerald-500', text: 'text-emerald-700', desc: 'Long-term retained' },
+              { label: 'Joined < 3 months',  count: newStu,   pct: pct(newStu, total),   color: 'bg-brand-400',   text: 'text-brand-700',   desc: 'Recently enrolled' },
+              { label: 'Suspended',           count: susp.length, pct: pct(susp.length, students.length || 1), color: 'bg-red-400', text: 'text-red-600', desc: 'Fee overdue' },
+            ]
+            return (
+              <div className="space-y-3">
+                {rows.map(r => (
+                  <div key={r.label}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <div>
+                        <span className="font-semibold text-gray-700">{r.label}</span>
+                        <span className="text-gray-400 ml-1.5">{r.desc}</span>
+                      </div>
+                      <span className={`font-black tabular-nums ${r.text}`}>{r.count}</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${r.color}`} style={{ width: `${r.pct}%` }} />
+                    </div>
+                  </div>
+                ))}
+                <div className="pt-3 border-t border-gray-100 flex items-center justify-between">
+                  <span className="text-xs text-gray-500">Retention Rate (3m+)</span>
+                  <span className={`text-xl font-black tabular-nums ${retRate >= 70 ? 'text-emerald-600' : retRate >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{retRate}%</span>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       </div>
 

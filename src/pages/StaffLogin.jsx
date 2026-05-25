@@ -20,9 +20,9 @@ export default function StaffLogin() {
     if (!email || !password) { setError('Please fill all fields'); return }
     setLoading(true); setError('')
     try {
-      await loginStaff(email.trim(), password)
+      const result = await loginStaff(email.trim(), password)
       reset()
-      navigate('/staff/home')
+      navigate(result?.staffType === 'office' ? '/dashboard' : '/staff/home')
     } catch (err) {
       recordFailure()
       setError(err.message || 'Login failed')

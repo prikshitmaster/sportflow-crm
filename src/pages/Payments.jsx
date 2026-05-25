@@ -143,7 +143,8 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user } = useApp()
+  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user, hasPermission } = useApp()
+  const canManage = hasPermission('payments.manage')
   const [editingDate, setEditingDate] = useState(null) // paymentId being edited
   const [markingPaid, setMarkingPaid] = useState(null) // paymentId currently being marked Paid
   const [deleteTarget, setDeleteTarget] = useState(null) // payment pending deletion
@@ -273,7 +274,7 @@ export default function Payments() {
           <p className="text-sm text-gray-500">Track fees, generate receipts, manage collections</p>
         </div>
         <div className="flex items-center gap-2">
-          {overdueCount > 0 && (
+          {canManage && overdueCount > 0 && (
             <button
               onClick={() => setShowBulkWA(true)}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition shadow-sm">
@@ -286,9 +287,11 @@ export default function Payments() {
             <LinkIcon size={14} /> Send Pay Link
           </button>
           */}
-          <button className="btn-primary" onClick={() => setShowModal(true)}>
-            <Plus size={16} /> Record Payment
-          </button>
+          {canManage && (
+            <button className="btn-primary" onClick={() => setShowModal(true)}>
+              <Plus size={16} /> Record Payment
+            </button>
+          )}
         </div>
       </div>
 
@@ -423,7 +426,7 @@ export default function Payments() {
                       ) : (
                         <span className="flex items-center gap-1 group/date">
                           {p.date || '—'}
-                          {!p.isVirtual && (
+                          {!p.isVirtual && canManage && (
                             <button
                               onClick={() => setEditingDate(p.id)}
                               className="opacity-0 group-hover/date:opacity-100 transition p-0.5 rounded hover:bg-gray-100"
@@ -440,6 +443,7 @@ export default function Payments() {
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       {p.isVirtual ? (
+                        canManage ? (
                         <div className="flex items-center gap-3">
                           <button
                             className="text-xs text-red-600 font-semibold hover:underline"
@@ -462,7 +466,9 @@ export default function Payments() {
                             <MessageCircle size={11} /> Remind
                           </button>
                         </div>
+                        ) : <span className="text-xs text-gray-300">—</span>
                       ) : p.status !== 'Paid' ? (
+                        canManage ? (
                         <button
                           className="text-xs text-brand-600 font-semibold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                           onClick={() => handleMarkPaid(p.id)}
@@ -470,6 +476,7 @@ export default function Payments() {
                         >
                           {markingPaid === p.id ? 'Marking…' : 'Mark Paid'}
                         </button>
+                        ) : <span className="text-xs text-gray-300">—</span>
                       ) : (
                         <div className="flex items-center gap-3">
                           <button
@@ -477,6 +484,7 @@ export default function Payments() {
                             className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
                             <Printer size={12} /> Receipt
                           </button>
+                          {canManage && (
                           <button
                             onClick={() => { setDeleteTarget(p); setDeleteNote('') }}
                             className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition"
@@ -484,6 +492,7 @@ export default function Payments() {
                           >
                             <Trash2 size={13} />
                           </button>
+                          )}
                         </div>
                       )}
                     </td>

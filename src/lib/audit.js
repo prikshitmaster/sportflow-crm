@@ -30,6 +30,7 @@ export const ACTIONS = {
   EVENT_DELETE:       'event.delete',
   // Staff
   STAFF_ADD:          'staff.add',
+  STAFF_EDIT:         'staff.edit',
   STAFF_REMOVE:       'staff.remove',
   STAFF_INVITE:       'staff.invite',
   // Announcements
@@ -78,6 +79,7 @@ export const ACTION_LABELS = {
   'event.delete':           'Deleted event',
   // Staff
   'staff.add':              'Added staff member',
+  'staff.edit':             'Edited staff member',
   'staff.remove':           'Removed staff member',
   'staff.invite':           'Invited staff to portal',
   // Announcements
@@ -141,6 +143,7 @@ export const ACTION_CATEGORY = {
   'event.update':           'edit',
   'event.delete':           'delete',
   'staff.add':              'add',
+  'staff.edit':             'edit',
   'staff.remove':           'delete',
   'staff.invite':           'add',
   'announcement.add':       'add',
@@ -173,7 +176,7 @@ export function logAudit({ actor, action, entityType, entityId, entityName, chan
     academy_id:  academyId || null,
     actor_id:    actor?.id ? String(actor.id) : null,
     actor_name:  actor?.name || 'Unknown',
-    actor_role:  actor?.role || actor?.accessRole || 'Staff',
+    actor_role:  (() => { const r = actor?.role || actor?.accessRole || 'Staff'; return r.charAt(0).toUpperCase() + r.slice(1) })(),
     action,
     entity_type: entityType,
     entity_id:   entityId != null ? String(entityId) : null,

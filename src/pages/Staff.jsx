@@ -11,7 +11,12 @@ import * as db from '../lib/db'
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
 
 export default function Staff() {
-  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions } = useApp()
+  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions, hasPermission } = useApp()
+  const isOwner       = role === 'owner'
+  const canManageStaff = hasPermission('staff.manage')
+  // Owners (academy-wide) and branch managers (own branch) may delete staff and
+  // edit an existing staff's access. Other staff.manage holders are create-only.
+  const canManageStaffFull = isOwner || user?.accessRole === 'branch_manager'
   const [profile,    setProfile]    = useState(null)
   const [showModal,  setShowModal]  = useState(false)
   const [activeTab,  setActiveTab]  = useState('staff')  // 'staff' | 'leaves' | 'access'
@@ -29,7 +34,7 @@ export default function Staff() {
           <h2 className="text-xl font-black text-gray-900">Staff & Coaches</h2>
           <p className="text-sm text-gray-500">{staff.filter(s => s.status === 'Active').length} active members</p>
         </div>
-        {(role === 'owner' || role === 'admin') && activeTab === 'staff' && (
+        {canManageStaff && activeTab === 'staff' && (
           <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2 text-sm">
             <Plus size={15} /> Add Staff
           </button>
@@ -103,7 +108,7 @@ export default function Staff() {
         </div>
       </div>
 
-      <StaffSections staff={staff} batches={batches} onSelect={setProfile} onDelete={removeStaffMember} />
+      <StaffSections staff={staff} batches={batches} onSelect={setProfile} onDelete={removeStaffMember} canDelete={canManageStaffFull} currentUserId={user?.id} branchManagerCount={staff.filter(s => s.accessRole === 'branch_manager').length} />
       </>
       )}
 
@@ -111,6 +116,10 @@ export default function Staff() {
         <StaffProfilePanel
           member={staff.find(s => s.id === profile.id) || profile}
           batches={batches}
+          canManageAccess={canManageStaffFull}
+          isOwner={isOwner}
+          currentUserId={user?.id}
+          branchManagerCount={staff.filter(s => s.accessRole === 'branch_manager').length}
           onClose={() => setProfile(null)}
           onAssign={async (batchId) => { await updateBatchCoach(batchId, profile.name) }}
           onUnassign={async (batchId) => { await updateBatchCoach(batchId, '') }}
@@ -123,8 +132,8 @@ export default function Staff() {
       {showModal && (
         <AddStaffModal
           onClose={() => setShowModal(false)}
-          onSave={async (form, photoFile) => {
-            const codes = await addStaffMember({ ...form }, !demoMode ? photoFile : null)
+          onSave={async (form, photoFile, accessConfig) => {
+            const codes = await addStaffMember({ ...form }, !demoMode ? photoFile : null, accessConfig)
             return { activationInfo: codes }
           }}
           demoMode={demoMode}
@@ -136,11 +145,15 @@ export default function Staff() {
 
 // ── Owner-side Leave Requests Panel ──────────────────────────
 
-function StaffCard({ s, batches, onSelect, onDelete }) {
+function StaffCard({ s, batches, onSelect, onDelete, canDelete, currentUserId, branchManagerCount }) {
   const assignedBatches = batches.filter(b => b.coach === s.name)
   const isPending = s.accountStatus === 'pending'
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  const isSelf    = s.userId === currentUserId
+  const isLastBM  = s.accessRole === 'branch_manager' && branchManagerCount <= 1
+  const deleteBlockReason = isSelf ? "You can't delete your own account" : isLastBM ? 'Assign another branch manager first' : null
 
   const handleDelete = async () => {
     setDeleting(true)
@@ -185,15 +198,26 @@ function StaffCard({ s, batches, onSelect, onDelete }) {
           <div className="flex gap-1 mt-1 flex-wrap">
             <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
             {isPending && <span className="badge badge-yellow">Not activated</span>}
+            {s.accessRole === 'branch_manager' && (
+              <span className={`badge ${ACCESS_ROLE_COLOR['branch_manager']}`}>Branch Mgr</span>
+            )}
           </div>
         </div>
-        <button
-          onClick={() => setConfirmDelete(true)}
-          className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition flex-shrink-0"
-          title="Delete staff member"
-        >
-          <Trash2 size={14} />
-        </button>
+        {canDelete && (
+          deleteBlockReason ? (
+            <div title={deleteBlockReason} className="p-1.5 rounded-lg text-gray-200 cursor-not-allowed flex-shrink-0">
+              <Trash2 size={14} />
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition flex-shrink-0"
+              title="Delete staff member"
+            >
+              <Trash2 size={14} />
+            </button>
+          )
+        )}
       </div>
 
       <div className="space-y-2.5">
@@ -255,7 +279,7 @@ function StaffCard({ s, batches, onSelect, onDelete }) {
   )
 }
 
-function StaffSections({ staff, batches, onSelect, onDelete }) {
+function StaffSections({ staff, batches, onSelect, onDelete, canDelete, currentUserId, branchManagerCount }) {
   const coaches = staff.filter(s => s.staffType !== 'office')
   const office  = staff.filter(s => s.staffType === 'office')
 
@@ -275,7 +299,7 @@ function StaffSections({ staff, batches, onSelect, onDelete }) {
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {coaches.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} />)}
+            {coaches.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} canDelete={canDelete} currentUserId={currentUserId} branchManagerCount={branchManagerCount} />)}
           </div>
         )}
       </div>
@@ -294,7 +318,7 @@ function StaffSections({ staff, batches, onSelect, onDelete }) {
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {office.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} />)}
+            {office.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} canDelete={canDelete} currentUserId={currentUserId} branchManagerCount={branchManagerCount} />)}
           </div>
         )}
       </div>
@@ -526,7 +550,7 @@ function dayCount(start, end) {
   return diff >= 0 ? diff + 1 : 0
 }
 
-function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions }) {
+function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, currentUserId, branchManagerCount, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions }) {
   const photoRef = useRef(null)
   const assignedBatches   = batches.filter(b => b.coach === s.name)
   const unassignedBatches = batches.filter(b => b.coach !== s.name)
@@ -536,6 +560,10 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
   const [batchSaving,   setBatchSaving]   = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting,      setDeleting]      = useState(false)
+
+  const isSelf   = s.userId === currentUserId
+  const isLastBM = s.accessRole === 'branch_manager' && branchManagerCount <= 1
+  const deleteBlockReason = isSelf ? "You can't delete your own account" : isLastBM ? 'Assign another branch manager first' : null
 
   // Edit tab state
   const [editName,      setEditName]      = useState(s.name)
@@ -550,6 +578,7 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
   const [accRole,       setAccRole]       = useState(s.accessRole || 'coach')
   const [accPerms,      setAccPerms]      = useState(s.permissions || [])
   const [accSaving,     setAccSaving]     = useState(false)
+  const [accError,      setAccError]      = useState('')
 
   // Copy activation link
   const [linkCopied,    setLinkCopied]    = useState(false)
@@ -593,7 +622,9 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
 
   const handleAccSave = async () => {
     setAccSaving(true)
+    setAccError('')
     try { await onEditPermissions(s.id, { accessRole: accRole, permissions: accPerms }) }
+    catch (err) { setAccError(err.message || 'Failed to save permissions') }
     finally { setAccSaving(false) }
   }
 
@@ -614,6 +645,9 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
             <div className="flex items-center gap-2">
               <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
               {isPending && <span className="badge badge-yellow">Not activated</span>}
+              {s.accessRole === 'branch_manager' && (
+                <span className={`badge ${ACCESS_ROLE_COLOR['branch_manager']}`}>Branch Mgr</span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -651,8 +685,12 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
         <div className="flex border-b border-gray-100 bg-white">
           {[
             { id: 'info',   label: 'Info' },
-            { id: 'edit',   label: 'Edit Profile' },
-            { id: 'access', label: 'Access' },
+            // Edit Profile: owners + branch managers
+            ...(canManageAccess ? [{ id: 'edit', label: 'Edit Profile' }] : []),
+            // Access: owners always; branch managers only for staff with no permissions yet
+            // (migration 0080: non-owners can only do initial-set, not edit existing access)
+            ...(isOwner ? [{ id: 'access', label: 'Access' }] :
+                canManageAccess && !(s.permissions?.length) ? [{ id: 'access', label: 'Set Access' }] : []),
           ].map(t => (
             <button key={t.id} onClick={() => setPanelTab(t.id)}
               className={`flex-1 py-3 text-xs font-bold transition border-b-2 ${
@@ -767,7 +805,11 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
               </div>
             </div>
 
-            {!confirmDelete ? (
+            {canManageAccess && (deleteBlockReason ? (
+              <div className="w-full py-3 px-4 rounded-2xl bg-gray-50 border border-gray-200 text-center">
+                <p className="text-xs text-gray-400">{deleteBlockReason}.</p>
+              </div>
+            ) : !confirmDelete ? (
               <button onClick={() => setConfirmDelete(true)}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-red-50 text-red-600 font-bold text-sm border border-red-100 hover:bg-red-100 transition">
                 <Trash2 size={15} /> Delete Staff Member
@@ -784,7 +826,7 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
                   </button>
                 </div>
               </div>
-            )}
+            ))}
           </>)}
 
           {/* ── EDIT TAB ── */}
@@ -882,6 +924,10 @@ function StaffProfilePanel({ member: s, batches, onClose, onAssign, onUnassign, 
                   ))}
                 </div>
               </div>
+
+              {accError && (
+                <p className="text-sm text-red-600 bg-red-50 rounded-xl px-3 py-2">{accError}</p>
+              )}
 
               <button onClick={handleAccSave} disabled={accSaving}
                 className="w-full btn-primary justify-center py-3 text-sm">
@@ -1534,23 +1580,31 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
 }
 
 function AddStaffModal({ onClose, onSave, demoMode }) {
-  const { selectedSport, selectedBranch, sportBranches } = useApp()
+  const { selectedSport, selectedBranch, sportBranches, role, user, permissions: myPerms } = useApp()
+  const isOwner = role === 'owner'
+  // Non-owner creators may only grant permissions they themselves hold (no escalation).
+  const allowedPerm = (p) => isOwner || (myPerms || []).includes(p)
   const fileRef = useRef(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [photoFile,    setPhotoFile]    = useState(null)
-  const defaultSports = selectedSport && selectedSport !== 'All' ? [selectedSport] : []
-  // Resolve the human-readable name of the auto-linked branch for the hint
-  const linkedBranchName = selectedBranch
-    ? (sportBranches?.find?.(b => b.id === selectedBranch)?.branch_name || null)
+  // Non-owners use their own sports; owners follow the sport filter picker
+  const defaultSports = !isOwner
+    ? (user?.sports || [])
+    : selectedSport && selectedSport !== 'All' ? [selectedSport] : []
+  // Resolve the human-readable name of the auto-linked branch for the hint.
+  // Branch managers: their own branch is always auto-linked (migration 0080 enforces server-side).
+  const effectiveBranchId = selectedBranch || (role !== 'owner' ? user?.branchId : null) || null
+  const linkedBranchName = effectiveBranchId
+    ? (sportBranches?.find?.(b => b.id === effectiveBranchId)?.branch_name || null)
     : null
   const [form, setForm] = useState({
     name: '', role: '', phone: '', age: '', sports: defaultSports, status: 'Active', staffType: 'coach',
   })
-  // Keep sports in sync with the owner's selected sport — the field is no
-  // longer shown in the UI but the form still needs to carry the value.
+  // Keep sports in sync with the owner's selected sport (owners only).
   useEffect(() => {
+    if (!isOwner) return
     setForm(f => ({ ...f, sports: selectedSport && selectedSport !== 'All' ? [selectedSport] : [] }))
-  }, [selectedSport])
+  }, [selectedSport, isOwner])
   const [giveAccess,   setGiveAccess]   = useState(false)
   const [portalType,   setPortalType]   = useState('field')  // 'field' | 'office'
   const [accessRole,   setAccessRole]   = useState('coach')
@@ -1563,7 +1617,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const [saveError,    setSaveError]    = useState('')
   const [fieldErrors,  setFieldErrors]  = useState({})
 
-  const FIELD_PERMS = ['attendance.manage', 'students.view', 'batches.view']
+  const FIELD_PERMS = ['attendance.manage', 'students.view', 'batches.view'].filter(allowedPerm)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -1589,8 +1643,12 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
     prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm]
   )
 
-  // Office staff permission groups — attendance is field-only
-  const OFFICE_GROUPS = Object.entries(PERMISSION_GROUPS).filter(([g]) => g !== 'Attendance')
+  // Office staff permission groups — attendance is field-only.
+  // Non-owners only see permission options they themselves hold.
+  const OFFICE_GROUPS = Object.entries(PERMISSION_GROUPS)
+    .filter(([g]) => g !== 'Attendance')
+    .map(([g, gPerms]) => [g, gPerms.filter(allowedPerm)])
+    .filter(([, gPerms]) => gPerms.length > 0)
 
   const handleSave = async () => {
     const errs = {}
@@ -1770,7 +1828,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
                 {form.sports.length > 0 && (
                   <div>
                     Sport: <span className="font-semibold text-gray-600">{form.sports.join(', ')}</span>
-                    <span className="ml-1">(auto-linked from your sport selection)</span>
+                    <span className="ml-1">{isOwner ? '(auto-linked from your sport selection)' : '(auto-linked from your branch)'}</span>
                   </div>
                 )}
                 {linkedBranchName && (
@@ -1779,7 +1837,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
                     <span className="ml-1">(auto-linked — staff will only see this branch's data)</span>
                   </div>
                 )}
-                {!linkedBranchName && (
+                {!linkedBranchName && isOwner && (
                   <div className="text-amber-600">
                     ⚠ No branch selected — this staff will see <strong>all branches</strong>. Switch to a specific branch first if you want them scoped.
                   </div>

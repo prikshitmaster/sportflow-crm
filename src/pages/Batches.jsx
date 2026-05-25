@@ -15,7 +15,9 @@ const COLOR_HEX      = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
 const COLOR_HEX_DARK = ['#3730a3', '#047857', '#6d28d9', '#b45309', '#be123c']
 
 export default function Batches() {
-  const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch } = useApp()
+  const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch, hasPermission } = useApp()
+  const canManageBatches  = hasPermission('batches.manage')
+  const canManageStudents = hasPermission('students.manage')
   const [showModal, setShowModal] = useState(false)
   const [editingBatch, setEditingBatch] = useState(null)
   const [selectedBatch, setSelectedBatch] = useState(null)
@@ -111,9 +113,11 @@ export default function Batches() {
           <h2 className="text-xl font-black text-gray-900">Batches</h2>
           <p className="text-xs text-gray-500">Tap a batch to view details &amp; manage students</p>
         </div>
-        <button className="btn-primary shrink-0" onClick={() => setShowModal(true)}>
-          <Plus size={15} /> <span className="hidden sm:inline">Create Batch</span><span className="sm:hidden">New</span>
-        </button>
+        {canManageBatches && (
+          <button className="btn-primary shrink-0" onClick={() => setShowModal(true)}>
+            <Plus size={15} /> <span className="hidden sm:inline">Create Batch</span><span className="sm:hidden">New</span>
+          </button>
+        )}
       </div>
 
       {/* Branch jump pills */}
@@ -164,7 +168,7 @@ export default function Batches() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {branchBatches.map((b, idx) => (
-                  <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />
+                  <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
                 ))}
               </div>
             </div>
@@ -179,7 +183,7 @@ export default function Batches() {
         /* Single branch selected — flat grid */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {visibleBatches.map((b, idx) => (
-            <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />
+            <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
           ))}
         </div>
       )}
@@ -187,7 +191,7 @@ export default function Batches() {
       {/* Fallback flat grid when no branches configured */}
       {!grouped && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} />)}
+          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />)}
         </div>
       )}
 
@@ -207,6 +211,8 @@ export default function Batches() {
           batch={selectedBatch}
           students={students}
           staff={staff}
+          canManageBatches={canManageBatches}
+          canManageStudents={canManageStudents}
           onClose={() => setSelectedBatch(null)}
           onEdit={() => { setEditingBatch(selectedBatch); setSelectedBatch(null) }}
           onDelete={async () => { await deleteBatch(selectedBatch.id); setSelectedBatch(null) }}
@@ -221,7 +227,7 @@ export default function Batches() {
   )
 }
 
-function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit }) {
+function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) {
   const enrolled = liveCount
   const pct      = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
   const isFull   = enrolled >= b.capacity
@@ -240,13 +246,15 @@ function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit }) {
         onClick={() => onSelect(b)}
       >
         {/* Edit button top-right */}
-        <button
-          onClick={e => { e.stopPropagation(); onEdit(b) }}
-          className="absolute top-3 right-3 p-1.5 rounded-lg bg-white/20 hover:bg-white/35 active:bg-white/40 transition"
-          title="Edit batch"
-        >
-          <Pencil size={12} className="text-white" />
-        </button>
+        {canEdit && (
+          <button
+            onClick={e => { e.stopPropagation(); onEdit(b) }}
+            className="absolute top-3 right-3 p-1.5 rounded-lg bg-white/20 hover:bg-white/35 active:bg-white/40 transition"
+            title="Edit batch"
+          >
+            <Pencil size={12} className="text-white" />
+          </button>
+        )}
 
         {/* Sport badge */}
         {b.sports?.length > 0 && (
@@ -322,10 +330,14 @@ function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit }) {
 const ALL_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
 function AddBatchModal({ onClose, onSave, staff, initialData }) {
-  const { selectedSport, selectedBranch, sportBranches } = useApp()
+  const { selectedSport, selectedBranch, sportBranches, user, role } = useApp()
   const isEdit = !!initialData
-  const defaultSports = initialData?.sports ?? (selectedSport && selectedSport !== 'All' ? [selectedSport] : [])
-  const sportLocked = !isEdit && Boolean(selectedSport && selectedSport !== 'All')
+  // Sport context: owners use the selected-sport switcher; staff use their single
+  // assigned sport. When there's one clear sport, lock the new batch to it (no picker).
+  const staffSport  = role !== 'owner' && user?.sports?.length === 1 ? user.sports[0] : null
+  const scopedSport = (selectedSport && selectedSport !== 'All') ? selectedSport : staffSport
+  const defaultSports = initialData?.sports ?? (scopedSport ? [scopedSport] : [])
+  const sportLocked = !isEdit && Boolean(scopedSport)
   const branchName = selectedBranch
     ? sportBranches.find(b => b.id === selectedBranch)?.branchName
     : null
@@ -359,9 +371,16 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
   const sportOptions = [...new Set(
     (sportBranches || []).map(b => b.sportName).filter(Boolean).concat(SPORTS)
   )]
+  // Staff may only tag a batch with sports they're assigned to — otherwise they
+  // could create a batch in a sport their own sport-scoped view then hides.
+  // Owners and sport-less office staff get the full catalogue.
+  const pickerSports = role === 'staff' && user?.sports?.length > 0 ? user.sports : SPORTS
   const handleDevFill = () => {
     if (isEdit) return
-    const data = fillBatch({ sportOptions })
+    // Constrain the random sport to what the user is allowed to pick, so DevFill
+    // can't silently set an out-of-scope sport (which would hide the new batch).
+    const data = fillBatch({ sportOptions: pickerSports })
+    if (sportLocked) data.sports = [scopedSport]
     setForm(f => ({ ...f, ...data, coach: staff[0]?.name || data.coach }))
   }
 
@@ -414,12 +433,12 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
           <label className="label">Sport</label>
           {sportLocked ? (
             <div className="input flex items-center gap-2 bg-gray-50 cursor-default">
-              <span className="text-sm font-semibold text-gray-800">{selectedSport}</span>
+              <span className="text-sm font-semibold text-gray-800">{scopedSport}</span>
               {branchName && <span className="text-xs text-gray-400 font-medium">· {branchName}</span>}
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {SPORTS.map(s => (
+              {pickerSports.map(s => (
                 <button key={s} type="button" onClick={() => toggleSport(s)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
                     form.sports.includes(s) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
@@ -460,7 +479,7 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
   )
 }
 
-function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete, onAssignCoach, onEnrolledChange }) {
+function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canManageStudents, onClose, onEdit, onDelete, onAssignCoach, onEnrolledChange }) {
   const { user } = useApp()
   const [mbEnrolments, setMbEnrolments] = useState([])
   const [assignSearch, setAssignSearch] = useState('')
@@ -564,6 +583,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
             <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition">
               <X size={16} className="text-white" />
             </button>
+            {canManageBatches && (
             <div className="flex items-center gap-2">
               <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition text-white text-xs font-semibold">
                 <Pencil size={12} /> Edit
@@ -572,6 +592,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
                 <Trash2 size={12} /> Delete
               </button>
             </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <h2 className="text-2xl font-black text-white">{b.name}</h2>
@@ -617,9 +638,11 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Assigned Coach</p>
-              <button onClick={() => setEditCoach(e => !e)} className="text-xs text-brand-600 font-semibold hover:underline">
-                {editCoach ? 'Cancel' : 'Change'}
-              </button>
+              {canManageBatches && (
+                <button onClick={() => setEditCoach(e => !e)} className="text-xs text-brand-600 font-semibold hover:underline">
+                  {editCoach ? 'Cancel' : 'Change'}
+                </button>
+              )}
             </div>
             {editCoach ? (
               <div className="flex gap-2">
@@ -645,6 +668,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
           </div>
 
           {/* Assign Student */}
+          {canManageStudents && (
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <div className="flex items-center gap-2 mb-3">
               <UserPlus size={14} className="text-brand-600" />
@@ -692,6 +716,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
               <p className="text-xs text-gray-400 text-center py-3">No students found</p>
             )}
           </div>
+          )}
 
           {/* Student list */}
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
@@ -727,26 +752,34 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
                           <p className="text-xs text-gray-400">{s.sport} · {s.age} yrs</p>
                         </div>
                         {/* Position chip / button */}
-                        <button
-                          onClick={() => posEditId === s.id ? closePosEdit() : openPosEdit(s)}
-                          className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition flex-shrink-0 ${
-                            pos
-                              ? posCol
-                                ? `${posCol.bg} ${posCol.text} border-current`
-                                : 'bg-gray-100 text-gray-600 border-gray-200'
-                              : 'bg-gray-50 text-gray-400 border-dashed border-gray-300 hover:border-gray-400'
-                          }`}
-                        >
-                          {pos || '+ Pos'}
-                        </button>
-                        {canUnassign ? (
+                        {canManageStudents ? (
                           <button
-                            onClick={() => handleUnassign(s.id)}
-                            disabled={unassigning === s.id}
-                            className="text-[10px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition disabled:opacity-40 flex-shrink-0"
+                            onClick={() => posEditId === s.id ? closePosEdit() : openPosEdit(s)}
+                            className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition flex-shrink-0 ${
+                              pos
+                                ? posCol
+                                  ? `${posCol.bg} ${posCol.text} border-current`
+                                  : 'bg-gray-100 text-gray-600 border-gray-200'
+                                : 'bg-gray-50 text-gray-400 border-dashed border-gray-300 hover:border-gray-400'
+                            }`}
                           >
-                            {unassigning === s.id ? '…' : 'Remove'}
+                            {pos || '+ Pos'}
                           </button>
+                        ) : pos ? (
+                          <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border flex-shrink-0 ${posCol ? `${posCol.bg} ${posCol.text} border-current` : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                            {pos}
+                          </span>
+                        ) : null}
+                        {canUnassign ? (
+                          canManageStudents && (
+                            <button
+                              onClick={() => handleUnassign(s.id)}
+                              disabled={unassigning === s.id}
+                              className="text-[10px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded-lg transition disabled:opacity-40 flex-shrink-0"
+                            >
+                              {unassigning === s.id ? '…' : 'Remove'}
+                            </button>
+                          )
                         ) : (
                           <span className="badge badge-green text-[10px] flex-shrink-0">Primary</span>
                         )}
@@ -798,8 +831,8 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
             )}
           </div>
 
-          {/* Delete trigger button — always visible at bottom of panel */}
-          {!confirmDelete && (
+          {/* Delete trigger button — only for users who can manage batches */}
+          {canManageBatches && !confirmDelete && (
             <button
               onClick={() => setConfirmDelete(true)}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-red-200 text-red-600 text-sm font-bold hover:bg-red-50 active:bg-red-100 transition"
@@ -809,7 +842,7 @@ function BatchDetailPanel({ batch: b, students, staff, onClose, onEdit, onDelete
           )}
 
           {/* Delete confirmation */}
-          {confirmDelete && (
+          {canManageBatches && confirmDelete && (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Trash2 size={16} className="text-red-600" />

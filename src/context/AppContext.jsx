@@ -137,9 +137,15 @@ export function AppProvider({ children }) {
   }, [setSelectedSport, setSelectedBranch])
 
   // Wrapper: auto-injects the active sport + branch so every audit entry is branch-scoped.
-  const logAuditSport = useCallback((args) =>
-    logAudit({ ...args, sport: selectedSport || null, branchId: selectedBranch || null })
-  , [selectedSport, selectedBranch])
+  // For staff, selectedSport is null (no switcher) — fall back to their assigned sport.
+  const logAuditSport = useCallback((args) => {
+    const sport    = selectedSport || (role === 'staff' ? (user?.sports?.[0] || null) : null)
+    const branchId = selectedBranch || (role === 'staff' ? (user?.branchId || null) : null)
+    const actorRole = args.actor?.role
+      ? args.actor.role.charAt(0).toUpperCase() + args.actor.role.slice(1)
+      : undefined
+    logAudit({ ...args, actor: { ...args.actor, role: actorRole || args.actor?.role }, sport, branchId })
+  }, [selectedSport, selectedBranch, role, user?.sports, user?.branchId])
 
   const [suspendAfterDays, setSuspendAfterDaysState] = useState(getSuspendDays)
   const updateSuspendAfterDays = useCallback((n) => {
@@ -173,7 +179,13 @@ export function AppProvider({ children }) {
 
   const hasPermission = useCallback((perm) => {
     if (role === 'owner') return true
-    return permissions.includes(perm)
+    if (permissions.includes(perm)) return true
+    // "manage" implies "view": a user who can manage a module can also view it.
+    // Guards a manage-only grant from locking the user out of a .view-gated page.
+    if (perm.endsWith('.view')) {
+      return permissions.includes(perm.slice(0, -5) + '.manage')
+    }
+    return false
   }, [role, permissions])
 
   // ── Load all academy-scoped data ──────────────────────
@@ -591,6 +603,7 @@ export function AppProvider({ children }) {
       entityId: member.id, entityName: member.name, academyId,
     })
     _startOps('staff', member.id, member.name, academyId, academyName)
+    return { staffType: member.staff_type }
   }
 
   const logoutStaff = async () => {
@@ -1026,8 +1039,10 @@ export function AppProvider({ children }) {
   const updateStudentStatus = async (id, status) => {
     try {
       await db.updateStudentStatus(id, status)
-      setStudents(prev => prev.map(s => s.id === id ? { ...s, status } : s))
+      const s = students.find(x => x.id === id)
+      setStudents(prev => prev.map(x => x.id === id ? { ...x, status } : x))
       showToast(`Student marked as ${status}`)
+      logAuditSport({ actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student', entityId: id, entityName: s?.name, changes: { Status: { old: s?.status, new: status } }, academyId: user?.academyId })
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
     }
@@ -1247,9 +1262,11 @@ export function AppProvider({ children }) {
 
   const deleteTrial = async (id) => {
     try {
+      const t = trials.find(x => x.id === id)
       await db.deleteTrial(id)
-      setTrials(prev => prev.filter(t => t.id !== id))
+      setTrials(prev => prev.filter(x => x.id !== id))
       showToast('Trial lead deleted')
+      logAuditSport({ actor: user, action: ACTIONS.TRIAL_DELETE, entityType: 'trial', entityId: id, entityName: t?.name, changes: { sport: t?.sport || '—', stage: t?.stage || '—' }, academyId: user?.academyId })
     } catch (err) { showToast(err.message || 'Delete failed', 'error') }
   }
 
@@ -1294,33 +1311,40 @@ export function AppProvider({ children }) {
       const created = await db.insertFeePlan({ ...plan, academyId: user?.academyId })
       setFeePlans(prev => [...prev, created])
       showToast('Plan created')
+      logAuditSport({ actor: user, action: ACTIONS.BATCH_ADD, entityType: 'batch', entityId: created.id, entityName: created.name, changes: { amount: String(created.amount || 0), plan: created.plan || '—' }, note: 'fee plan', academyId: user?.academyId })
       return created
     } catch (err) { showToast(err.message || 'Failed', 'error'); throw err }
   }
 
   const editFeePlan = async (id, plan) => {
     try {
+      const old = feePlans.find(p => p.id === id)
       await db.updateFeePlan(id, plan)
       setFeePlans(prev => prev.map(p => p.id === id ? { ...p, ...plan } : p))
       showToast('Plan updated')
+      logAuditSport({ actor: user, action: ACTIONS.BATCH_EDIT, entityType: 'batch', entityId: id, entityName: plan.name || old?.name, changes: { amount: { old: String(old?.amount || 0), new: String(plan.amount || 0) } }, note: 'fee plan', academyId: user?.academyId })
     } catch (err) { showToast(err.message || 'Failed', 'error') }
   }
 
   const removeFeePlan = async (id) => {
     try {
+      const old = feePlans.find(p => p.id === id)
       await db.deleteFeePlan(id)
       setFeePlans(prev => prev.filter(p => p.id !== id))
       showToast('Plan deleted')
+      logAuditSport({ actor: user, action: ACTIONS.BATCH_DELETE, entityType: 'batch', entityId: id, entityName: old?.name, note: 'fee plan', academyId: user?.academyId })
     } catch (err) { showToast(err.message || 'Failed', 'error') }
   }
 
   const updateBatchFee = async (batchId, defaultFee, defaultPlan) => {
     try {
+      const old = batches.find(b => b.id === batchId)
       await db.updateBatchFee(batchId, defaultFee, defaultPlan)
       setBatches(prev => prev.map(b => b.id === batchId
         ? { ...b, defaultFee: Number(defaultFee) || 0, defaultPlan: defaultPlan || 'monthly' }
         : b))
       showToast('Batch fee updated')
+      logAuditSport({ actor: user, action: ACTIONS.BATCH_EDIT, entityType: 'batch', entityId: batchId, entityName: old?.name, changes: { 'Default Fee': { old: String(old?.defaultFee || 0), new: String(defaultFee) }, 'Default Plan': { old: old?.defaultPlan || '—', new: defaultPlan || '—' } }, academyId: user?.academyId })
     } catch (err) {
       showToast(err.message || 'Failed', 'error')
     }
@@ -1442,10 +1466,10 @@ export function AppProvider({ children }) {
   const addStaffMember = async (s, photoFile = null, accessConfig = null) => {
     const staffCode = await db.fetchNextStaffCode(s.staffType || 'coach')
     const joinCode  = generateJoinCode()
-    // Auto-link the new staff to the owner's currently selected branch so
-    // they only see students from that branch when they log in. Without
-    // this, branch_id stays NULL and the staff sees the whole academy.
-    const branchId = s.branchId || selectedBranch || null
+    // Auto-link the new staff to the branch manager's own branch (staff session),
+    // or the owner's currently selected branch (owner session). Without this,
+    // branch_id stays NULL and the staff sees the whole academy.
+    const branchId = s.branchId || selectedBranch || (role === 'staff' ? user?.branchId : null) || null
     const created   = await db.insertStaff({ ...s, branchId, academyId: user?.academyId, staffCode, joinCode })
     // Upload photo AFTER insert so we have the real staff ID for fixed-path storage
     let photoUrl = created.photoUrl || null
@@ -1529,18 +1553,25 @@ export function AppProvider({ children }) {
   }
 
   const editStaffMember = async (id, { name, phone, photoFile, photoUrl: existingUrl, age }) => {
+    const old = staff.find(s => s.id === id)
     let photoUrl = existingUrl
     if (photoFile) { try { photoUrl = await db.uploadStaffPhoto(photoFile, id) } catch (_) {} }
     await db.updateStaffProfile(id, { name, phone, photoUrl })
     if (age !== undefined) await db.upsertStaffProfileExtra(id, { age })
     setStaff(prev => prev.map(s => s.id === id ? { ...s, name, phone, photoUrl: photoUrl || s.photoUrl, age } : s))
     showToast('Staff updated')
+    const changes = {}
+    if (old?.name !== name) changes.Name = { old: old?.name || '—', new: name }
+    if (old?.phone !== phone) changes.Phone = { old: old?.phone || '—', new: phone || '—' }
+    logAuditSport({ actor: user, action: ACTIONS.STAFF_EDIT, entityType: 'staff', entityId: id, entityName: name, changes, academyId: user?.academyId })
   }
 
   const editStaffPermissions = async (staffId, { accessRole, permissions }) => {
+    const old = staff.find(s => s.id === staffId)
     await db.updateStaffPermissions(staffId, { accessRole, permissions })
     setStaff(prev => prev.map(s => s.id === staffId ? { ...s, accessRole, permissions } : s))
     showToast('Permissions updated')
+    logAuditSport({ actor: user, action: ACTIONS.STAFF_EDIT, entityType: 'staff', entityId: staffId, entityName: old?.name, changes: { Role: { old: old?.accessRole || '—', new: accessRole }, Permissions: { old: (old?.permissions || []).join(', ') || '—', new: (permissions || []).join(', ') || '—' } }, academyId: user?.academyId })
   }
 
   // ── Branches ──────────────────────────────────────────
@@ -1834,6 +1865,8 @@ export function AppProvider({ children }) {
     return filteredStaff.filter(s => {
       // Branch filter: exclude staff from a different branch
       if (staffBranchId && s.branchId && s.branchId !== staffBranchId) return false
+      // Branch-confirmed staff are always visible regardless of sport
+      if (staffBranchId && s.branchId === staffBranchId) return true
       // If the logged-in staff has sports assigned, only show colleagues who share at least one sport
       if (staffSports.size > 0 && s.sports?.length > 0) {
         return s.sports.some(sp => staffSports.has(sp.toLowerCase()))

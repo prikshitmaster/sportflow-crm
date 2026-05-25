@@ -639,6 +639,37 @@ export async function insertBatch(b) {
 
 // ── Staff ─────────────────────────────────────────────────
 export async function fetchStaff(academyId) {
+  // Staff portal uses the anon key, which cannot read staff_auth (locked in
+  // security-v3). Route through a scoped SECURITY DEFINER RPC so access_role,
+  // permissions and staff_code are populated. Owners (JWT) keep the PostgREST
+  // path, which already has an owner-scoped read policy on staff_auth.
+  const token = _sessionToken()
+  if (token) {
+    const { data, error } = await supabase.rpc('secure_fetch_staff', { p_token: token })
+    if (error) throw error
+    return (data || []).map(row => ({
+      id:            row.id,
+      name:          row.name,
+      role:          row.role,
+      phone:         row.phone,
+      sports:        row.sports || [],
+      salary:        row.salary,
+      joinDate:      row.join_date,
+      status:        row.status,
+      attendance:    row.attendance,
+      photoUrl:      row.photo_url || null,
+      userId:        row.user_id   || null,
+      staffCode:     row.staff_code   || null,
+      joinCode:      row.join_code    || null,
+      staffType:     row.staff_type   || 'coach',
+      accountStatus: row.account_status || null,
+      accessRole:    row.access_role  || 'coach',
+      permissions:   row.permissions  || [],
+      age:           row.age          || null,
+      licenceUrl:    row.licence_url  || null,
+      branchId:      row.branch_id || null,
+    }))
+  }
   let query = supabase.from('staff')
     .select('*, staff_auth(staff_code, join_code, status, staff_type, access_role, permissions), staff_profiles(age, licence_url)')
     .order('name')
@@ -2737,6 +2768,30 @@ export async function createPaymentLink({ studentId, amount, description = null,
 // Public — fetch a payment link by short_code (anon callable)
 export async function fetchPaymentLink(shortCode) {
   const { data, error } = await supabase.rpc('secure_fetch_payment_link', { p_short_code: shortCode })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+// ── Staff Clock-In ─────────────────────────────────────────────────────────
+
+export async function getTodayCheckin() {
+  const token = _sessionToken()
+  if (!token) return null
+  const { data } = await supabase.rpc('secure_get_today_checkin', { p_token: token })
+  return (typeof data === 'string' ? JSON.parse(data) : data) || null
+}
+
+export async function clockIn() {
+  const { data, error } = await supabase.rpc('secure_clock_in', { p_token: _sessionToken() })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+export async function clockOut(checkinId) {
+  const { data, error } = await supabase.rpc('secure_clock_out', {
+    p_checkin_id: checkinId,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
   return typeof data === 'string' ? JSON.parse(data) : data
 }

@@ -66,6 +66,8 @@ export default function Students() {
   const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, hasPermission } = useApp()
   const canManageStudents = hasPermission('students.manage')
   const canManageTrials   = hasPermission('trials.manage')
+  const canManagePayments = hasPermission('payments.manage')
+  const isStaffRole = user?.role === 'staff'
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
@@ -237,16 +239,10 @@ export default function Students() {
       {activeTab === 'suspended' && (
         <div className="space-y-4">
           {/* Summary */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="card p-4 text-center">
               <p className="text-2xl font-black text-red-600">{suspendedStudents.length}</p>
               <p className="text-xs text-gray-500 mt-1">Suspended</p>
-            </div>
-            <div className="card p-4 text-center">
-              <p className="text-2xl font-black text-amber-600">
-                ₹{suspendedStudents.reduce((s, x) => s + (x.fees || 0), 0).toLocaleString('en-IN')}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">Monthly at Risk</p>
             </div>
             <div className="card p-4 text-center">
               <p className="text-2xl font-black text-gray-600">{suspBatches.length}</p>
@@ -303,13 +299,13 @@ export default function Students() {
                       <td className="px-4 py-3 font-semibold text-gray-900">₹{(s.fees || 0).toLocaleString('en-IN')}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {s.paidTill && s.paidTill >= today ? (
-                            <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition" onClick={() => reactivateStudent(s)}>Reactivate</button>
-                          ) : (
-                            <button className="btn-primary text-xs py-1.5 px-3" onClick={() => { setPayStudent(s); setShowPayModal(true) }}>Record Payment</button>
-                          )}
-                          <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition flex items-center gap-1" onClick={() => setEditStudent(s)}><Pencil size={11} /> Edit</button>
-                          <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-red-100 text-red-600 hover:bg-red-200 transition" onClick={() => setDeleteTarget(s)}>Delete</button>
+                          {s.paidTill && s.paidTill >= today
+                            ? (canManageStudents && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition" onClick={() => reactivateStudent(s)}>Reactivate</button>)
+                            : (canManagePayments && <button className="btn-primary text-xs py-1.5 px-3" onClick={() => { setPayStudent(s); setShowPayModal(true) }}>Record Payment</button>)
+                          }
+                          {canManageStudents && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition flex items-center gap-1" onClick={() => setEditStudent(s)}><Pencil size={11} /> Edit</button>}
+                          {canManageStudents && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-red-100 text-red-600 hover:bg-red-200 transition" onClick={() => setDeleteTarget(s)}>Delete</button>}
+                          {!canManageStudents && !canManagePayments && <span className="text-xs text-gray-300">—</span>}
                         </div>
                       </td>
                     </tr>
@@ -355,15 +351,16 @@ export default function Students() {
                     )}
                   </div>
                 </div>
+                {(canManageStudents || canManagePayments) && (
                 <div className="flex gap-2 flex-wrap">
-                  {s.paidTill && s.paidTill >= today ? (
-                    <button className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 text-white active:scale-95 transition" onClick={() => reactivateStudent(s)}>Reactivate</button>
-                  ) : (
-                    <button className="flex-1 btn-primary justify-center py-2.5" onClick={() => { setPayStudent(s); setShowPayModal(true) }}>Record Payment</button>
-                  )}
-                  <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 active:scale-95 transition flex items-center gap-1" onClick={() => setEditStudent(s)}><Pencil size={13} /> Edit</button>
-                  <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-100 text-red-600 active:scale-95 transition" onClick={() => setDeleteTarget(s)}>Delete</button>
+                  {s.paidTill && s.paidTill >= today
+                    ? (canManageStudents && <button className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 text-white active:scale-95 transition" onClick={() => reactivateStudent(s)}>Reactivate</button>)
+                    : (canManagePayments && <button className="flex-1 btn-primary justify-center py-2.5" onClick={() => { setPayStudent(s); setShowPayModal(true) }}>Record Payment</button>)
+                  }
+                  {canManageStudents && <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 active:scale-95 transition flex items-center gap-1" onClick={() => setEditStudent(s)}><Pencil size={13} /> Edit</button>}
+                  {canManageStudents && <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-100 text-red-600 active:scale-95 transition" onClick={() => setDeleteTarget(s)}>Delete</button>}
                 </div>
+                )}
               </div>
             ))}
             {suspFiltered.length > PAGE_SIZE && (
@@ -440,7 +437,7 @@ export default function Students() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                {['Student / ID', 'Parent / Phone', 'Age', 'Sport', 'Batch', 'Fee', 'Status', 'Account', ''].map(h => (
+                {['Student / ID', 'Parent / Phone', 'Age', 'Sport', 'Batch', 'Fee', 'Status', ...(isStaffRole ? [] : ['Account']), ''].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -495,6 +492,7 @@ export default function Students() {
                       {isNoPayment(s) && <span className="badge badge-gray   text-[10px]">No Payment</span>}
                     </div>
                   </td>
+                  {!isStaffRole && (
                   <td className="px-4 py-3">
                     {s.accountStatus ? (
                       <div className="space-y-1">
@@ -513,12 +511,13 @@ export default function Students() {
                       </div>
                     ) : <span className="text-xs text-gray-400">—</span>}
                   </td>
+                  )}
                   <td className="px-4 py-3 relative">
-                    <button className="p-1.5 rounded-lg hover:bg-gray-100 transition relative z-10"
+                    {canManageStudents && <button className="p-1.5 rounded-lg hover:bg-gray-100 transition relative z-10"
                       onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === s.id ? null : s.id) }}>
                       <MoreVertical size={15} className="text-gray-500" />
-                    </button>
-                    {openMenu === s.id && <StudentMenu s={s} onEdit={() => { setEditStudent(s); setOpenMenu(null) }} onSuspend={() => { suspendStudent(s); setOpenMenu(null) }} onStatus={() => { updateStudentStatus(s.id, s.status === 'Active' ? 'Inactive' : 'Active'); setOpenMenu(null) }} onReset={() => handleReset(s)} onCopy={() => { copyToClipboard(`Student ID: ${s.studentCode}\nActivate at: /activate`, s.id); setOpenMenu(null) }} onDelete={() => { setDeleteTarget(s); setOpenMenu(null) }} copied={copied === s.id} />}
+                    </button>}
+                    {canManageStudents && openMenu === s.id && <StudentMenu s={s} onEdit={() => { setEditStudent(s); setOpenMenu(null) }} onSuspend={() => { suspendStudent(s); setOpenMenu(null) }} onStatus={() => { updateStudentStatus(s.id, s.status === 'Active' ? 'Inactive' : 'Active'); setOpenMenu(null) }} onReset={() => handleReset(s)} onCopy={() => { copyToClipboard(`Student ID: ${s.studentCode}\nActivate at: /activate`, s.id); setOpenMenu(null) }} onDelete={() => { setDeleteTarget(s); setOpenMenu(null) }} copied={copied === s.id} />}
                   </td>
                 </tr>
               ))}
@@ -556,6 +555,7 @@ export default function Students() {
                     {s.studentCode && <p className="text-[10px] font-mono text-gray-400">{s.studentCode}</p>}
                     <p className="text-xs text-gray-500 mt-0.5 truncate">{s.parent}{s.phone ? ` · ${s.phone}` : ''}</p>
                   </div>
+                  {canManageStudents && (
                   <div className="relative flex-shrink-0">
                     <button className="p-2 rounded-xl hover:bg-gray-100 transition"
                       onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === s.id ? null : s.id) }}>
@@ -563,6 +563,7 @@ export default function Students() {
                     </button>
                     {openMenu === s.id && <StudentMenu s={s} mobile onEdit={() => { setEditStudent(s); setOpenMenu(null) }} onSuspend={() => { suspendStudent(s); setOpenMenu(null) }} onStatus={() => { updateStudentStatus(s.id, s.status === 'Active' ? 'Inactive' : 'Active'); setOpenMenu(null) }} onReset={() => handleReset(s)} onCopy={() => { copyToClipboard(`Student ID: ${s.studentCode}\nActivate at: /activate`, s.id); setOpenMenu(null) }} onDelete={() => { setDeleteTarget(s); setOpenMenu(null) }} copied={copied === s.id} />}
                   </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1.5 flex-wrap mt-2">
@@ -651,6 +652,7 @@ export default function Students() {
       {profile && (
         <StudentProfileModal
           student={profile}
+          canManage={canManageStudents}
           payments={payments.filter(p => p.studentId === profile.id)}
           onClose={() => setProfile(null)}
           onEdit={(s) => { setProfile(null); setEditStudent(s) }}
@@ -760,20 +762,27 @@ const FEE_PLAN_OPTIONS = [
 const FEE_LABEL = { monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *', custom: 'Plan Fee (₹) *' }
 
 function AddStudentModal({ onClose, onSave }) {
-  const { batches, selectedSport, selectedBranch, sportBranches, branches } = useApp()
-  // Only catalog-valid sports show in the dropdown — legacy free-text entries
-  // (e.g. "Football _ARA _ branch 2") are filtered out. Match is case-insensitive
-  // and we emit the canonical Title Case label from the catalog.
+  const { batches, selectedSport, selectedBranch, sportBranches, branches, user } = useApp()
+  // Combine sports from both tables: old academy_branches + new sport_branches.
+  // Cricket (and any sport added via sport_branches) was missing from the dropdown
+  // because it only existed in sport_branches, not academy_branches.
   const catalogLower = SPORT_CATALOG.map(s => s.toLowerCase())
-  const configuredCatalogSports = (branches || [])
-    .filter(b => catalogLower.includes(String(b).toLowerCase()))
-    .map(b => SPORT_CATALOG[catalogLower.indexOf(String(b).toLowerCase())])
+  const sportNamesFromBranches = (branches || []).map(b => String(b))
+  const sportNamesFromSportBranches = [...new Set((sportBranches || []).map(b => b.sportName))]
+  const allSportNames = [...new Set([...sportNamesFromBranches, ...sportNamesFromSportBranches])]
+  const configuredCatalogSports = allSportNames
+    .filter(b => catalogLower.includes(b.toLowerCase()))
+    .map(b => SPORT_CATALOG[catalogLower.indexOf(b.toLowerCase())])
   const sportOptions = configuredCatalogSports.length > 0 ? configuredCatalogSports : SPORTS
+  // Staff single-sport default: if staff has exactly one assigned sport, pre-select it
+  const staffSingleSport = (user?.sports?.length === 1)
+    ? (SPORT_CATALOG.find(s => s.toLowerCase() === user.sports[0].toLowerCase()) || null)
+    : null
   const defaultSport = selectedSport && catalogLower.includes(String(selectedSport).toLowerCase())
     ? SPORT_CATALOG[catalogLower.indexOf(String(selectedSport).toLowerCase())]
-    : ''
-  // When scoped to a specific sport (not "All"), lock sport + branch — no need to pick
-  const sportLocked = Boolean(defaultSport && selectedSport !== 'All')
+    : (staffSingleSport || '')
+  // Lock sport when scoped to a specific sport (owner) or staff has only one sport
+  const sportLocked = Boolean(defaultSport && selectedSport !== 'All') || Boolean(staffSingleSport && !selectedSport)
   const branchName = selectedBranch
     ? sportBranches.find(b => b.id === selectedBranch)?.branchName
     : null
@@ -1056,7 +1065,7 @@ function AddStudentModal({ onClose, onSave }) {
   )
 }
 
-function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusChange, onReset, onSuspend }) {
+function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit, onStatusChange, onReset, onSuspend }) {
   const paid    = payments.filter(p => p.status === 'Paid')
   const pending = payments.filter(p => p.status !== 'Paid')
   const totalPaid = paid.reduce((sum, p) => sum + p.amount, 0)
@@ -1119,7 +1128,8 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
               <p className="text-[10px] text-brand-200">Status</p>
             </div>
           </div>
-          {/* Action buttons — always visible below stats */}
+          {/* Action buttons — only for users who can manage students */}
+          {canManage && (
           <div className="flex flex-wrap gap-2 mt-4">
             <button
               onClick={() => onEdit(s)}
@@ -1150,6 +1160,7 @@ function StudentProfileModal({ student: s, payments, onClose, onEdit, onStatusCh
               </button>
             )}
           </div>
+          )}
         </div>
 
         {/* Body */}
