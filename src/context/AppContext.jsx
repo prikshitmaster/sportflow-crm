@@ -443,12 +443,11 @@ export function AppProvider({ children }) {
           if (typeof window !== 'undefined') window.__sf_auth = diag
           const profile = await db.fetchProfile(session.user.id)
           if (profile) {
-            const academy = await db.fetchAcademy(profile.academy_id)
-            const flags   = await db.fetchFeatureFlags(profile.academy_id)
-            let permsData = null
-            if (profile.role !== 'owner') {
-              permsData = await db.fetchUserPermissions(session.user.id)
-            }
+            const [academy, flags, permsData] = await Promise.all([
+              db.fetchAcademy(profile.academy_id),
+              db.fetchFeatureFlags(profile.academy_id),
+              profile.role !== 'owner' ? db.fetchUserPermissions(session.user.id) : Promise.resolve(null),
+            ])
             const ctxRole = resolveContextRole(profile.role)
             setUser({
               id:          profile.id,
@@ -589,8 +588,10 @@ export function AppProvider({ children }) {
     }
     if (!profile) throw new Error('Account setup incomplete. Please contact support.')
     if (profile.role !== 'owner') throw new Error('This account is not an owner account.')
-    const academy = await db.fetchAcademy(profile.academy_id)
-    const flags   = await db.fetchFeatureFlags(profile.academy_id)
+    const [academy, flags] = await Promise.all([
+      db.fetchAcademy(profile.academy_id),
+      db.fetchFeatureFlags(profile.academy_id),
+    ])
     setUser({ id: profile.id, name: profile.name, email, academy: academy.name, academyId: academy.id, joinCode: academy.join_code, academyLogo: academy.logo_url || null, role: 'owner' })
     setFeatures(flags)
     setSelectedSport(null)
@@ -620,7 +621,8 @@ export function AppProvider({ children }) {
     const expiry      = member.expires_at
     const academyId   = member.academy_id
     // Clear any stale owner Supabase session and student token so staff session is exclusive.
-    await supabase.auth.signOut().catch(() => {})
+    // Fire-and-forget — staff never have a Supabase session; no reason to block login on this.
+    supabase.auth.signOut().catch(() => {})
     clearStudentSession()
     const [flags, academyData] = await Promise.all([
       db.fetchFeatureFlags(academyId),
@@ -700,8 +702,8 @@ export function AppProvider({ children }) {
     const token   = student.token
     const expiry  = student.expires_at
     // Clear any stale owner/staff session so the student session has exclusive control.
-    // Without this, a lingering owner Supabase JWT would override the student on next restore.
-    await supabase.auth.signOut().catch(() => {})
+    // Fire-and-forget — students never have a Supabase session; no reason to block login on this.
+    supabase.auth.signOut().catch(() => {})
     clearStaffSession()
     setStudentSession(token, expiry, {
       id: student.id, studentCode: student.student_code, name: student.name,
