@@ -142,8 +142,10 @@ export default function StudentAttendance() {
               const status  = attMap[dateStr]
               const isToday = dateStr === today
               const off     = isOffDay(day)
-              // Off-day takes precedence — alternate students shouldn't see "Absent" on days they don't train
-              if (off) {
+              // Off-day ✕ only when there's no real attendance — alternate students
+              // shouldn't see "Absent" on days they don't train. But if they DID
+              // attend (Present/Late/Leave), show that instead of masking it as off.
+              if (off && (!status || status === 'Absent')) {
                 return (
                   <div
                     key={idx}
