@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
 import { supabase } from '../../lib/supabase'
-import { ChevronLeft, ChevronRight, CalendarCheck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarCheck, Download } from 'lucide-react'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -86,10 +86,31 @@ export default function StudentAttendance() {
   // LOCAL today (not UTC) — toISOString returns UTC, gives wrong day in early-morning IST
   const today = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`
 
-  // Off-day = Alternate student + date's day name is NOT in their batch's training days
+  // Off-day = Alternate student + date's day name is NOT in their batch's training days.
+  // Past months are never retroactively locked — batch schedule changes should not
+  // rewrite a student's historical view of their own attendance.
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth()
   const isOffDay = (day) => {
+    if (!isCurrentMonth) return false
     if (!isAlternate || !batchDays || batchDays.length === 0) return false
     return !batchDays.includes(DAYS[new Date(year, month, day).getDay()])
+  }
+
+  const exportCSV = () => {
+    const rows = [['Date', 'Day', 'Status']]
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`
+      const status  = attMap[dateStr] || '—'
+      rows.push([dateStr, DAYS[new Date(year, month, d).getDay()], status])
+    }
+    const csv  = rows.map(r => r.join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url
+    a.download = `attendance_${MONTHS[month]}_${year}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const present = Object.values(attMap).filter(v => v === 'Present').length
@@ -98,9 +119,17 @@ export default function StudentAttendance() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-5 space-y-5">
-      <div>
-        <h1 className="text-xl font-black text-gray-900">Attendance</h1>
-        <p className="text-sm text-gray-500">Your monthly attendance record</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-black text-gray-900">Attendance</h1>
+          <p className="text-sm text-gray-500">Your monthly attendance record</p>
+        </div>
+        <button
+          onClick={exportCSV}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-xs font-semibold hover:bg-gray-200 transition"
+        >
+          <Download size={13} /> Export CSV
+        </button>
       </div>
 
       {/* Month navigator */}

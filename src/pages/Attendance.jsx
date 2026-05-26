@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import * as db from '../lib/db'
-import { fetchBatchEnrolments, fetchAllBatchEnrolments } from '../lib/db'
+import { fetchBatchEnrolments, fetchAllBatchEnrolments, fetchAttendanceForStudents } from '../lib/db'
 import * as XLSX from 'xlsx'
 
 const STATUS_CYCLE = ['Present', 'Absent', 'Late', 'Leave']
@@ -112,12 +112,25 @@ export default function Attendance() {
   const loadMonth = useCallback(async () => {
     setLoading(true)
     try {
-      setMonthData(await db.fetchAttendanceForMonth(year, month, selectedBatch?.id ?? null))
-      setDirty(new Set())  // fresh load = no pending changes
+      let data
+      if (selectedBatch) {
+        // Fetch by student IDs so history is never lost when students transfer batches.
+        // batch_id on the DB row is audit context; we always read by student identity.
+        const primaryIds = activeStudents
+          .filter(s => s.batchId === selectedBatch.id || s.batch === selectedBatch.name)
+          .map(s => s.id)
+        const allIds = [...new Set([...primaryIds, ...Array.from(mbStudentIds)])]
+        data = await fetchAttendanceForStudents(year, month, allIds)
+      } else {
+        data = await db.fetchAttendanceForMonth(year, month, null)
+      }
+      setMonthData(data)
+      setDirty(new Set())
     }
     catch { showToast('Failed to load attendance', 'error') }
     finally { setLoading(false) }
-  }, [year, month, selectedBatch?.id])
+  // mbStudentIds.size triggers a reload after the async enrollment fetch completes
+  }, [year, month, selectedBatch?.id, mbStudentIds.size])
 
   useEffect(() => { loadMonth() }, [loadMonth])
 
@@ -165,7 +178,8 @@ export default function Attendance() {
   const cycle = (sid, day) => {
     if (isFuture(day)) return
     const student = students.find(s => s.id === sid)
-    if (student && isOffDay(student, day)) return
+    // Only block cycling on off-days if there's no existing mark — never lock a cell that has data
+    if (student && isOffDay(student, day) && !getStatus(sid, day)) return
     const cur  = getStatus(sid, day)
     const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length]
     setMonthData(prev => ({ ...prev, [sid]: { ...(prev[sid] || {}), [day]: next } }))
@@ -253,7 +267,9 @@ export default function Attendance() {
   }, [students, batches])
 
   // Is this date an off-day for this student? (Alternate students only, requires batch days)
+  // Past months are never retroactively locked — batch day changes should not rewrite history.
   const isOffDay = (student, day) => {
+    if (!isCurrentMonth) return false
     if (student.trainingType !== 'Alternate') return false
     const b = batchByStudent[student.id]
     if (!b?.days?.length) return false
@@ -509,12 +525,13 @@ export default function Attendance() {
               const st  = getStatus(s.id, mobileDay)
               const cfg = st ? S[st] : null
               const off = isOffDay(s, mobileDay)
+              const mobileDisabled = off && !cfg
               return (
                 <button
                   key={s.id}
                   onClick={() => cycle(s.id, mobileDay)}
-                  disabled={off}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 transition text-left ${off ? 'opacity-50 bg-gray-50/60' : 'active:bg-gray-50'}`}
+                  disabled={mobileDisabled}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 transition text-left ${mobileDisabled ? 'opacity-50 bg-gray-50/60' : 'active:bg-gray-50'}`}
                 >
                   <span className="text-xs text-gray-400 w-5 flex-shrink-0 font-medium">{(page-1)*PAGE_SIZE+idx+1}</span>
                   <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center text-sm font-bold text-brand-700 flex-shrink-0">
@@ -530,7 +547,7 @@ export default function Attendance() {
                     </div>
                     <p className="text-xs text-gray-400 truncate">{s.sport} · {s.batch}</p>
                   </div>
-                  {off ? (
+                  {off && !cfg ? (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border border-gray-200 text-gray-400">
                       ✕ Off day
                     </span>
@@ -627,7 +644,8 @@ export default function Attendance() {
                       const cfg     = st ? S[st] : null
                       const off     = isOffDay(s, d)
                       const future  = isFuture(d)
-                      const locked  = future || off
+                      // A cell with existing data is never locked — always allow editing
+                      const locked  = future || (off && !cfg)
                       return (
                         <td key={d}
                           onClick={() => cycle(s.id, d)}
@@ -643,7 +661,7 @@ export default function Attendance() {
                                      `${s.name} — ${dayName(year,month,d)} ${d} — ${st||'Not marked'}`
                           }
                         >
-                          {off ? (
+                          {off && !cfg ? (
                             <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-gray-300 text-[12px] font-bold">✕</span>
                           ) : cfg ? (
                             <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold text-white ${cfg.bg} ${!locked && 'hover:opacity-80'} transition`}>{cfg.icon}</span>

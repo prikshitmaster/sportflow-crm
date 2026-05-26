@@ -1002,6 +1002,34 @@ export async function fetchAttendanceForMonth(year, month, batchId = null) {
   return result
 }
 
+// Fetch attendance for a specific set of student IDs for a month.
+// Used by the batch view so attendance is never lost when students transfer
+// between batches — filters by student identity, not by which batch_id the
+// record was tagged with at save time.
+// Returns: { [studentId]: { [day]: 'Present'|'Absent'|'Late'|'Leave' } }
+export async function fetchAttendanceForStudents(year, month, studentIds) {
+  if (!studentIds || studentIds.length === 0) return {}
+  const pad = n => String(n).padStart(2, '0')
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const start = `${year}-${pad(month + 1)}-01`
+  const end   = `${year}-${pad(month + 1)}-${pad(lastDay)}`
+  const { data, error } = await supabase
+    .from('attendance')
+    .select('student_id, date, present, status')
+    .gte('date', start)
+    .lte('date', end)
+    .in('student_id', studentIds)
+  if (error) throw error
+  const result = {}
+  data.forEach(row => {
+    const day = parseInt(String(row.date).slice(8, 10), 10)
+    if (!result[row.student_id]) result[row.student_id] = {}
+    const st = row.status || (row.present ? 'Present' : 'Absent')
+    result[row.student_id][day] = _bestStatus(result[row.student_id][day], st)
+  })
+  return result
+}
+
 // Save entire month's attendance in one upsert.
 // batchId = null → legacy/admin mark; batchId = number → batch-scoped.
 export async function saveAttendanceMonth(year, month, monthData, batchId = null) {
