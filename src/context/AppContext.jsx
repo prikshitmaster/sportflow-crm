@@ -361,13 +361,13 @@ export function AppProvider({ children }) {
     })
   }, [user, studentUser, role])
 
-  // ── Restore Supabase session on app open ──────────────
+  // ── Restore session on app open ───────────────────────
+  // Priority: student localStorage → staff localStorage → Supabase (owner/parent).
+  // Student and staff use custom DB tokens stored in localStorage; owner uses
+  // Supabase Auth JWTs. Checking custom tokens FIRST prevents a stale owner
+  // Supabase session from hijacking a student or staff login on the same device.
   useEffect(() => {
     async function restore() {
-      // Diagnostic — captures auth state at app open so we can debug
-      // "I opened incognito and was already logged in" reports. View via
-      // DevTools: `window.__sf_auth`. Most common cause is incognito
-      // persisting localStorage across tabs within the same private session.
       const diag = {
         at: new Date().toISOString(),
         hasStaffToken:   !!localStorage.getItem('sf_staff'),
@@ -376,6 +376,65 @@ export function AppProvider({ children }) {
         path: 'restore-start',
       }
       try {
+        // ── 1. Student session (highest priority) ────────────
+        const stuSess = getStudentSession()
+        if (stuSess?.token) {
+          diag.path = 'student-token'
+          const student = await db.validateStudentSession(stuSess.token)
+          if (student) {
+            setStudentUser(student)
+            setRole('student')
+            _startOps('student', student.id, student.name, student.academy_id, '')
+            if (typeof window !== 'undefined') window.__sf_auth = diag
+            setLoading(false)
+            return
+          }
+          clearStudentSession()
+        }
+
+        // ── 2. Staff session ──────────────────────────────────
+        const stfSess = getStaffSession()
+        if (stfSess?.token) {
+          diag.path = 'staff-token'
+          const member = await db.validateStaffSession(stfSess.token)
+          if (member) {
+            const academyId   = member.academy_id
+            const [flags, academyData2] = await Promise.all([
+              db.fetchFeatureFlags(academyId),
+              academyId ? db.fetchAcademy(academyId).catch(() => null) : Promise.resolve(null),
+            ])
+            const academyName = academyData2?.name || ''
+            const perms       = member.permissions?.length ? member.permissions : (ROLE_PRESETS[member.access_role] || ROLE_PRESETS['coach'])
+            setUser({
+              id:          member.id,
+              name:        member.name,
+              staffCode:   member.staff_code,
+              staffType:   member.staff_type,
+              sports:      member.sports       || [],
+              photoUrl:    member.photo_url    || null,
+              phone:       member.phone        || '',
+              age:         member.age          || null,
+              licenceUrl:  member.licence_url  || null,
+              branchId:    member.branch_id    || null,
+              academy:     academyName,
+              academyId,
+              academyLogo: academyData2?.logo_url || null,
+              role:        'staff',
+              accessRole:  member.access_role  || 'coach',
+            })
+            setFeatures(flags)
+            setPermissions(perms)
+            setSelectedSport(null)
+            setRole('staff')
+            _startOps('staff', member.id, member.name, academyId, academyName)
+            if (typeof window !== 'undefined') window.__sf_auth = diag
+            setLoading(false)
+            return
+          }
+          clearStaffSession()
+        }
+
+        // ── 3. Supabase session (owner or parent) ─────────────
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
           diag.path = 'supabase-jwt'
@@ -428,60 +487,7 @@ export function AppProvider({ children }) {
               setLoading(false)
               return
             }
-          } catch { /* fall through to staff/student session checks */ }
-        }
-        // 2. Check staff session (custom localStorage token)
-        const stfSess = getStaffSession()
-        if (stfSess?.token) {
-          const member = await db.validateStaffSession(stfSess.token)
-          if (member) {
-            const academyId   = member.academy_id
-            const [flags, academyData2] = await Promise.all([
-              db.fetchFeatureFlags(academyId),
-              academyId ? db.fetchAcademy(academyId).catch(() => null) : Promise.resolve(null),
-            ])
-            const academyName = academyData2?.name || ''
-            const perms       = member.permissions?.length ? member.permissions : (ROLE_PRESETS[member.access_role] || ROLE_PRESETS['coach'])
-            setUser({
-              id:          member.id,
-              name:        member.name,
-              staffCode:   member.staff_code,
-              staffType:   member.staff_type,
-              sports:      member.sports       || [],
-              photoUrl:    member.photo_url    || null,
-              phone:       member.phone        || '',
-              age:         member.age          || null,
-              licenceUrl:  member.licence_url  || null,
-              branchId:    member.branch_id    || null,
-              academy:     academyName,
-              academyId,
-              academyLogo: academyData2?.logo_url || null,
-              role:        'staff',
-              accessRole:  member.access_role  || 'coach',
-            })
-            setFeatures(flags)
-            setPermissions(perms)
-            setSelectedSport(null)
-            setRole('staff')
-            _startOps('staff', member.id, member.name, academyId, academyName)
-            setLoading(false)
-            return
-          }
-          clearStaffSession()
-        }
-
-        // 3. Check student session (custom localStorage token)
-        const stuSess = getStudentSession()
-        if (stuSess?.token) {
-          const student = await db.validateStudentSession(stuSess.token)
-          if (student) {
-            setStudentUser(student)
-            setRole('student')
-            _startOps('student', student.id, student.name, student.academy_id, '')
-            setLoading(false)
-            return
-          }
-          clearStudentSession()
+          } catch { /* no parent either — fall through to no-session */ }
         }
       } catch (err) {
         console.error('Session restore failed:', err)
@@ -490,7 +496,6 @@ export function AppProvider({ children }) {
       }
       if (diag.path === 'restore-start') diag.path = 'no-session'
       if (typeof window !== 'undefined') window.__sf_auth = diag
-      // Visible in DevTools: tells you which auth path was taken at boot
       console.info('[auth] restore complete', diag)
       setLoading(false)
     }
@@ -572,6 +577,9 @@ export function AppProvider({ children }) {
   const loginOwner = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
+    // Clear any stale student/staff localStorage sessions so owner session is exclusive.
+    clearStudentSession()
+    clearStaffSession()
     // First request after a new JWT can be silently blocked by PostgREST before the
     // token propagates — retry once with a short delay to avoid the 1-second error flash
     let profile = await db.fetchProfile(data.user.id)
@@ -611,6 +619,9 @@ export function AppProvider({ children }) {
     const token       = member.token
     const expiry      = member.expires_at
     const academyId   = member.academy_id
+    // Clear any stale owner Supabase session and student token so staff session is exclusive.
+    await supabase.auth.signOut().catch(() => {})
+    clearStudentSession()
     const [flags, academyData] = await Promise.all([
       db.fetchFeatureFlags(academyId),
       academyId ? db.fetchAcademy(academyId).catch(() => null) : Promise.resolve(null),
@@ -688,6 +699,10 @@ export function AppProvider({ children }) {
     const student = await db.loginStudentAccount(studentCode, hash)
     const token   = student.token
     const expiry  = student.expires_at
+    // Clear any stale owner/staff session so the student session has exclusive control.
+    // Without this, a lingering owner Supabase JWT would override the student on next restore.
+    await supabase.auth.signOut().catch(() => {})
+    clearStaffSession()
     setStudentSession(token, expiry, {
       id: student.id, studentCode: student.student_code, name: student.name,
     })
