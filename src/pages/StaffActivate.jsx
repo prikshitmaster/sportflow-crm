@@ -27,7 +27,8 @@ export default function StaffActivate() {
     if (!staffId.trim() || !joinCode.trim()) { setError('Both fields are required'); return }
     setLoading(true); setError('')
     try {
-      await db.verifyStaffCodes(staffId.trim().toUpperCase(), joinCode.trim().toUpperCase())
+      const result = await db.verifyStaffCodes(staffId.trim().toUpperCase(), joinCode.trim().toUpperCase())
+      setStaffName(result?.name || '')
       setStep(2)
     } catch (err) {
       setError(err.message || 'Invalid codes.')
@@ -152,7 +153,7 @@ export default function StaffActivate() {
           {/* ── Step 2: Email + Password ── */}
           {step === 2 && (
             <>
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center">
                   <Mail size={20} className="text-purple-600" />
                 </div>
@@ -161,6 +162,16 @@ export default function StaffActivate() {
                   <p className="text-xs text-gray-500">Your email and password to sign in</p>
                 </div>
               </div>
+              {staffName && (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-5">
+                  <CheckCircle size={16} className="text-emerald-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-bold text-emerald-800">Activating account for:</p>
+                    <p className="text-sm font-semibold text-emerald-900">{staffName}</p>
+                    <p className="text-[11px] text-emerald-600 mt-0.5">Not you? Go back and enter the correct ID.</p>
+                  </div>
+                </div>
+              )}
 
               {error && <ErrorBox msg={error} />}
 

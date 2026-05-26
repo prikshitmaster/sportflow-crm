@@ -69,7 +69,12 @@ export default function Sidebar({ collapsed, setCollapsed }) {
   const isItemVisible = (item) => {
     const featureOk  = item.feature === null || isFeatureOn(item.feature)
     const permOk     = role === 'owner' || item.permission === null || hasPermission(item.permission)
-    const footballOk = !item.footballOnly || !selectedSport || selectedSport.toLowerCase() === 'football'
+    // For non-owners use their own sport(s) to evaluate the football filter,
+    // since selectedSport is null in their session (owner-only concept).
+    const effectiveSport = role === 'owner'
+      ? selectedSport
+      : (user?.sports?.[0] || null)
+    const footballOk = !item.footballOnly || !effectiveSport || effectiveSport.toLowerCase() === 'football'
     return featureOk && permOk && footballOk
   }
 

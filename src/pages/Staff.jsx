@@ -147,6 +147,10 @@ export default function Staff() {
 // ── Owner-side Leave Requests Panel ──────────────────────────
 
 function StaffCard({ s, batches, onSelect, onDelete, canDelete, currentUserId, branchManagerCount }) {
+  const { sportBranches } = useApp()
+  const branchName = s.branchId
+    ? (sportBranches || []).find(b => b.id === s.branchId)?.branchName || null
+    : null
   const assignedBatches = batches.filter(b => b.coach === s.name)
   const isPending = s.accountStatus === 'pending'
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -242,6 +246,9 @@ function StaffCard({ s, batches, onSelect, onDelete, canDelete, currentUserId, b
             <Award size={13} className="text-gray-400 flex-shrink-0" />
             <div className="flex flex-wrap gap-1">
               {s.sports.map(sp => <span key={sp} className="badge badge-blue">{sp}</span>)}
+              {branchName && (
+                <span className="badge bg-purple-100 text-purple-700">{branchName}</span>
+              )}
             </div>
           </div>
         )}

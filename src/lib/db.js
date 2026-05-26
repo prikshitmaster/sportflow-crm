@@ -795,13 +795,15 @@ export async function fetchNextStaffCode(type) {
 }
 
 export async function verifyStaffCodes(staffCode, joinCode) {
-  // Routed through secure_verify_staff_codes (security-v3/04).
+  // Routed through secure_verify_staff_codes (migration 0091).
   // Validates staff_code + join_code server-side; raises if invalid/used.
-  const { error } = await supabase.rpc('secure_verify_staff_codes', {
+  // Returns { name } so the activation UI can confirm the right person.
+  const { data, error } = await supabase.rpc('secure_verify_staff_codes', {
     p_staff_code: staffCode,
     p_join_code:  joinCode,
   })
   if (error) throw new Error(error.message)
+  return data || {}
 }
 
 export async function activateStaffAccount(staffCode, joinCode, passwordHash, { email }) {
