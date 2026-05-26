@@ -11,7 +11,7 @@ import * as db from '../lib/db'
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
 
 export default function Staff() {
-  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions, hasPermission } = useApp()
+  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions, hasPermission, showToast } = useApp()
   const isOwner       = role === 'owner'
   const canManageStaff = hasPermission('staff.manage')
   // Owners (academy-wide) and branch managers (own branch) may delete staff and
@@ -127,6 +127,12 @@ export default function Staff() {
           onDelete={removeStaffMember}
           onEdit={editStaffMember}
           onEditPermissions={editStaffPermissions}
+          onResetAccount={async () => {
+            try {
+              const result = await db.resetStaffAccount(profile.id)
+              showToast(`Account reset. New join code: ${result.joinCode}`)
+            } catch (e) { showToast(e.message || 'Reset failed', 'error') }
+          }}
         />
       )}
 
@@ -203,6 +209,9 @@ function StaffCard({ s, batches, onSelect, onDelete, canDelete, currentUserId, b
           <div className="flex gap-1 mt-1 flex-wrap">
             <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
             {isPending && <span className="badge badge-yellow">Not activated</span>}
+            {!isPending && s.accountStatus === 'active' && !s.email && (
+              <span className="badge bg-orange-100 text-orange-700">Login broken</span>
+            )}
             {s.accessRole === 'branch_manager' && (
               <span className={`badge ${ACCESS_ROLE_COLOR['branch_manager']}`}>Branch Mgr</span>
             )}
@@ -558,9 +567,10 @@ function dayCount(start, end) {
   return diff >= 0 ? diff + 1 : 0
 }
 
-function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPermission, currentUserId, branchManagerCount, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions }) {
+function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPermission, currentUserId, branchManagerCount, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions, onResetAccount }) {
   const { selectedSport } = useApp()
   const isFootball = (selectedSport || '').toLowerCase() === 'football'
+  const isBrokenAccount = s.accountStatus === 'active' && !s.email
   const photoRef = useRef(null)
   const assignedBatches   = batches.filter(b => b.coach === s.name)
   const unassignedBatches = batches.filter(b => b.coach !== s.name)
@@ -883,9 +893,20 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPe
                 <label className="label">Email</label>
                 {s.email
                   ? <input className="input bg-gray-50 text-gray-500 cursor-not-allowed" value={s.email} readOnly />
-                  : <div className="input bg-gray-50 text-gray-400 text-sm">Not activated yet</div>
+                  : isBrokenAccount
+                    ? <div className="input bg-orange-50 text-orange-600 text-sm border-orange-200">Account active but no email — reset needed</div>
+                    : <div className="input bg-gray-50 text-gray-400 text-sm">Not activated yet</div>
                 }
                 <p className="text-[11px] text-gray-400 mt-1">Set by staff during account activation — cannot be changed here</p>
+                {isBrokenAccount && isOwner && onResetAccount && (
+                  <button
+                    type="button"
+                    onClick={onResetAccount}
+                    className="mt-2 text-xs font-semibold text-orange-600 hover:text-orange-800 underline"
+                  >
+                    Reset account — generate new activation codes
+                  </button>
+                )}
               </div>
 
               {isField && s.licenceUrl && (

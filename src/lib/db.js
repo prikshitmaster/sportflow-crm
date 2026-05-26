@@ -723,6 +723,17 @@ export async function fetchStaff(academyId) {
   })
 }
 
+export async function resetStaffAccount(staffId) {
+  // Routed through secure_reset_staff_account (migration 0092) — owner-only.
+  // Resets a broken account (active but no email) back to pending with a new join_code.
+  const { data, error } = await supabase.rpc('secure_reset_staff_account', {
+    p_staff_id: staffId,
+    p_token:    _sessionToken(),
+  })
+  if (error) throw new Error(error.message)
+  return data || {}
+}
+
 export async function deleteStaff(id) {
   // Routed through secure_delete_staff (migration 0033) — owner-only.
   // Cascade for leave_requests + staff_attendance happens server-side.
