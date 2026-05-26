@@ -686,7 +686,7 @@ export async function fetchStaff(academyId) {
     }))
   }
   let query = supabase.from('staff')
-    .select('*, staff_auth(staff_code, join_code, status, staff_type, access_role, permissions), staff_profiles(age, licence_url)')
+    .select('*, staff_auth(staff_code, join_code, status, staff_type, access_role, permissions, email), staff_profiles(age, licence_url)')
     .order('name')
   if (academyId) query = query.eq('academy_id', academyId)
   const { data, error } = await query
@@ -715,6 +715,7 @@ export async function fetchStaff(academyId) {
       accountStatus: auth?.status       || null,
       accessRole:    auth?.access_role  || 'coach',
       permissions:   auth?.permissions  || [],
+      email:         auth?.email        || null,
       age:           profile?.age          || null,
       licenceUrl:    profile?.licence_url  || null,
       branchId:      row.branch_id || null,
