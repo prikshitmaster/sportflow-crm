@@ -163,7 +163,7 @@ const TABS = [
 // ── Main ──────────────────────────────────────────────────
 
 export default function Reports() {
-  const { user, students, payments, trials, batches, attendanceData, selectedSport, selectedBranch, sportBranches } = useApp()
+  const { user, role, students, payments, trials, batches, attendanceData, selectedSport, selectedBranch, sportBranches } = useApp()
   const [activeTab, setActiveTab] = useState('overview')
 
   // Header summary stats — live, not hardcoded
@@ -245,7 +245,7 @@ export default function Reports() {
         {activeTab === 'ageing'       && <AgeingTab     key={`${selectedSport}-${selectedBranch}`} students={students} payments={payments} />}
         {activeTab === 'attendance'   && <AttendanceTab key={`${selectedSport}-${selectedBranch}`} students={students} batches={batches} attendanceData={attendanceData} />}
         {activeTab === 'performance'  && <PerformanceTab students={students} batches={batches} academyId={user?.academyId} />}
-        {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} selectedSport={selectedSport} selectedBranch={selectedBranch} sportBranches={sportBranches} />}
+        {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} selectedSport={role === 'staff' ? (user?.sports?.[0] || null) : selectedSport} selectedBranch={role === 'staff' ? (user?.branchId || null) : selectedBranch} sportBranches={sportBranches} />}
       </div>
     </div>
   )
@@ -1578,7 +1578,9 @@ function AuditEntry({ log, branchName, expanded, onToggle }) {
   const changes    = log.changes || {}
   const hasChanges = Object.keys(changes).length > 0
   const label      = ACTION_LABELS[log.action] || log.action
-  const roleColor  = ROLE_COLORS[log.actor_role] || ROLE_COLORS.Staff
+  // Normalize role casing so legacy rows ("owner") render identically to new ones ("Owner").
+  const roleLabel  = (() => { const r = log.actor_role || 'Staff'; return r.charAt(0).toUpperCase() + r.slice(1).toLowerCase() })()
+  const roleColor  = ROLE_COLORS[roleLabel] || ROLE_COLORS.Staff
   const entityColor = ENTITY_COLORS[log.entity_type] || { bg: 'bg-gray-100', text: 'text-gray-600' }
   const cat        = ACTION_CATEGORY[log.action]
   const catColor   = cat === 'add' ? 'text-emerald-500' : cat === 'delete' ? 'text-red-400' : 'text-amber-500'
@@ -1598,7 +1600,7 @@ function AuditEntry({ log, branchName, expanded, onToggle }) {
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm font-bold text-gray-900">{log.actor_name}</span>
             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${roleColor.bg} ${roleColor.text}`}>
-              {log.actor_role}
+              {roleLabel}
             </span>
           </div>
           {/* Action + entity */}
@@ -1734,13 +1736,14 @@ function AuditTab({ academyId, selectedSport, selectedBranch, sportBranches }) {
     setSearch(''); setDateFrom(''); setDateTo('')
   }
 
-  // Summary counts
+  // Summary counts — computed over the FILTERED set so the cards always match
+  // the entries actually shown below them (no divergence when filters are on).
   const counts = useMemo(() => ({
-    total:   logs.length,
-    adds:    logs.filter(l => ACTION_CATEGORY[l.action] === 'add').length,
-    edits:   logs.filter(l => ACTION_CATEGORY[l.action] === 'edit').length,
-    deletes: logs.filter(l => ACTION_CATEGORY[l.action] === 'delete').length,
-  }), [logs])
+    total:   filtered.length,
+    adds:    filtered.filter(l => ACTION_CATEGORY[l.action] === 'add').length,
+    edits:   filtered.filter(l => ACTION_CATEGORY[l.action] === 'edit').length,
+    deletes: filtered.filter(l => ACTION_CATEGORY[l.action] === 'delete').length,
+  }), [filtered])
 
   return (
     <div className="space-y-4">

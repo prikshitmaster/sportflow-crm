@@ -480,11 +480,13 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
 }
 
 function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canManageStudents, onClose, onEdit, onDelete, onAssignCoach, onEnrolledChange }) {
-  const { user } = useApp()
+  const { user, reassignPrimaryBatch, batches } = useApp()
   const [mbEnrolments, setMbEnrolments] = useState([])
   const [assignSearch, setAssignSearch] = useState('')
   const [assigning, setAssigning] = useState(null)
   const [unassigning, setUnassigning] = useState(null)
+  const [moveId, setMoveId]       = useState(null)   // primary student being moved
+  const [movingId, setMovingId]   = useState(null)
   const [editCoach, setEditCoach] = useState(false)
   const [newCoach, setNewCoach] = useState(b.coach || '')
   const [saving, setSaving] = useState(false)
@@ -520,6 +522,23 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
   const allEnrolled = [...primaryEnrolled, ...mbOnly]
   const enrolledIds = useMemo(() => new Set(allEnrolled.map(s => s.id)), [allEnrolled])
 
+  // Target batches for moving a primary student: other batches in the SAME
+  // sport+branch (branchId is unique per sport-branch), excluding this one.
+  const moveTargets = useMemo(
+    () => (batches || []).filter(x => x.id !== b.id && x.branchId === b.branchId),
+    [batches, b.id, b.branchId]
+  )
+
+  const doMove = async (student, target) => {
+    setMovingId(student.id)
+    try {
+      await reassignPrimaryBatch(student, target.id, target.name)
+      setMoveId(null)
+      onEnrolledChange?.(b.id, -1)   // student left this batch's primary roster
+    } catch { /* error toast shown by context */ }
+    finally { setMovingId(null) }
+  }
+
   const nameMatch = (s) => s.name.toLowerCase().includes(assignSearch.toLowerCase())
   const isAlternateBlocked = (s) => s.trainingType === 'Alternate' && !!s.batchId
 
@@ -542,7 +561,7 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
       await assignStudentToBatch(student.id, b.id, b.name, user?.academyId)
       setMbEnrolments(prev => [...prev, { student_id: student.id, batch_id: b.id }])
       onEnrolledChange?.(b.id, 1)
-      logAudit({ actor: user, action: ACTIONS.BATCH_ASSIGN, entityType: 'batch', entityId: b.id, entityName: b.name, changes: { student: student.name }, academyId: user?.academyId })
+      logAudit({ actor: user, action: ACTIONS.BATCH_ASSIGN, entityType: 'batch', entityId: b.id, entityName: b.name, changes: { student: student.name }, academyId: user?.academyId, sport: b.sports?.[0] ?? null, branchId: b.branchId ?? null })
       setAssignSearch('')
     } finally {
       setAssigning(null)
@@ -556,7 +575,7 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
       setMbEnrolments(prev => prev.filter(e => e.student_id !== studentId))
       onEnrolledChange?.(b.id, -1)
       const removedS = students.find(s => s.id === studentId)
-      logAudit({ actor: user, action: ACTIONS.BATCH_UNASSIGN, entityType: 'batch', entityId: b.id, entityName: b.name, changes: { student: removedS?.name || String(studentId) }, academyId: user?.academyId })
+      logAudit({ actor: user, action: ACTIONS.BATCH_UNASSIGN, entityType: 'batch', entityId: b.id, entityName: b.name, changes: { student: removedS?.name || String(studentId) }, academyId: user?.academyId, sport: b.sports?.[0] ?? null, branchId: b.branchId ?? null })
     } finally {
       setUnassigning(null)
     }
@@ -781,7 +800,17 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
                             </button>
                           )
                         ) : (
-                          <span className="badge badge-green text-[10px] flex-shrink-0">Primary</span>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="badge badge-green text-[10px]">Primary</span>
+                            {canManageStudents && moveTargets.length > 0 && (
+                              <button
+                                onClick={() => { setMoveId(moveId === s.id ? null : s.id); closePosEdit() }}
+                                className="text-[10px] font-bold text-brand-600 bg-brand-50 hover:bg-brand-100 px-2 py-1 rounded-lg transition"
+                              >
+                                Move
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                       {/* Inline position editor */}
@@ -821,6 +850,21 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
                             <button onClick={closePosEdit} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
                               Cancel
                             </button>
+                          </div>
+                        </div>
+                      )}
+                      {/* Inline "move to another batch" picker for primary students */}
+                      {moveId === s.id && (
+                        <div className="px-3 pb-3 pt-1 bg-gray-50 border-t border-gray-100">
+                          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-2">Move to another batch</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {moveTargets.map(t => (
+                              <button key={t.id} type="button" disabled={movingId === s.id}
+                                onClick={() => doMove(s, t)}
+                                className="px-2.5 py-1 rounded-lg text-xs font-bold border bg-white text-gray-600 border-gray-200 hover:bg-brand-50 hover:text-brand-700 transition disabled:opacity-50">
+                                {movingId === s.id ? '…' : t.name}
+                              </button>
+                            ))}
                           </div>
                         </div>
                       )}

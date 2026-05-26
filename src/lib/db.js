@@ -208,6 +208,21 @@ export async function updateStudent(id, s) {
   return data
 }
 
+// Move a student's PRIMARY batch only. Minimal payload so secure_update_student
+// touches just batch_id + batch (its CASE WHEN p_payload ? 'key' leaves every
+// other field untouched) — unlike updateStudent, which sends the full record.
+export async function reassignStudentBatch(studentId, batchId, batchName) {
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: studentId,
+    p_payload: {
+      batchId:   batchId != null ? String(batchId) : null,
+      batchName: batchName || '',
+    },
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+}
+
 // ── Payments ──────────────────────────────────────────────
 export async function fetchPayments(academyId) {
   let query = supabase.from('payments').select('*').order('created_at', { ascending: false })
@@ -886,8 +901,9 @@ export async function uploadStaffLicence(file, staffId) {
 }
 
 export async function updateStaffPermissions(staffId, { accessRole, permissions }) {
-  // Routed through secure_update_staff_permissions (migration 0041).
-  // Owner-only — the RPC rejects any non-owner caller with 42501.
+  // Routed through secure_update_staff_permissions. Owners may edit anyone;
+  // branch managers may edit staff in their own branch (migrations 0081/0083),
+  // capped to permissions the caller holds (no escalation). Enforced server-side.
   const { error } = await supabase.rpc('secure_update_staff_permissions', {
     p_staff_id:    staffId,
     p_access_role: accessRole,
@@ -1497,6 +1513,7 @@ export async function insertEvent(e) {
       flyerUrl:     e.flyerUrl     || '',
       bracketType:  e.bracketType  || '',
       participants: e.participants  || [],
+      branchId:     e.branchId      || '',
     },
     p_token: _sessionToken(),
   })
@@ -2170,8 +2187,11 @@ export async function fetchAllStudentBatches(academyId) {
 export async function fetchAuditLogs(academyId, limit = 300, sport = null, branchId = null) {
   let q = supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(limit)
   if (academyId) q = q.eq('academy_id', academyId)
-  // Branch filter is STRICT (no null bleed) — when a branch is selected, only its entries show.
-  // Sport filter includes null-sport entries (old/untagged) so historical logs aren't lost.
+  // STRICT branch isolation: when a branch is selected, show ONLY that branch's
+  // entries — no null/other-branch bleed. New entries are reliably branch-tagged
+  // at write time (see logAuditSport + the entity-scope resolver), so nothing
+  // legitimate is hidden. When no branch is selected but a sport is, scope to
+  // that sport (plus null-sport legacy rows so old history isn't lost).
   if (branchId) {
     q = q.eq('branch_id', branchId)
   } else if (sport) {

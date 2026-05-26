@@ -118,6 +118,7 @@ export default function Staff() {
           batches={batches}
           canManageAccess={canManageStaffFull}
           isOwner={isOwner}
+          hasPermission={hasPermission}
           currentUserId={user?.id}
           branchManagerCount={staff.filter(s => s.accessRole === 'branch_manager').length}
           onClose={() => setProfile(null)}
@@ -550,7 +551,7 @@ function dayCount(start, end) {
   return diff >= 0 ? diff + 1 : 0
 }
 
-function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, currentUserId, branchManagerCount, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions }) {
+function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPermission, currentUserId, branchManagerCount, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions }) {
   const photoRef = useRef(null)
   const assignedBatches   = batches.filter(b => b.coach === s.name)
   const unassignedBatches = batches.filter(b => b.coach !== s.name)
@@ -629,7 +630,12 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, curre
   }
 
   const togglePerm = (p) => setAccPerms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
-  const applyPreset = (role) => { setAccRole(role); setAccPerms(ROLE_PRESETS[role] || []) }
+  const applyPreset = (role) => {
+    setAccRole(role)
+    const preset = ROLE_PRESETS[role] || []
+    // Non-owners can only grant permissions they hold themselves (mirrors the backend escalation guard).
+    setAccPerms(isOwner || !hasPermission ? preset : preset.filter(p => hasPermission(p)))
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-end">
@@ -687,10 +693,10 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, curre
             { id: 'info',   label: 'Info' },
             // Edit Profile: owners + branch managers
             ...(canManageAccess ? [{ id: 'edit', label: 'Edit Profile' }] : []),
-            // Access: owners always; branch managers only for staff with no permissions yet
-            // (migration 0080: non-owners can only do initial-set, not edit existing access)
-            ...(isOwner ? [{ id: 'access', label: 'Access' }] :
-                canManageAccess && !(s.permissions?.length) ? [{ id: 'access', label: 'Set Access' }] : []),
+            // Access: owners + branch managers may edit access. secure_update_staff_permissions
+            // (migrations 0081/0083) lets branch managers edit an EXISTING staff's access too,
+            // enforcing branch scope + a no-escalation guard server-side — so it's safe to surface.
+            ...(canManageAccess ? [{ id: 'access', label: (isOwner || s.permissions?.length) ? 'Access' : 'Set Access' }] : []),
           ].map(t => (
             <button key={t.id} onClick={() => setPanelTab(t.id)}
               className={`flex-1 py-3 text-xs font-bold transition border-b-2 ${
@@ -908,17 +914,26 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, curre
                     <div key={group}>
                       <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">{group}</p>
                       <div className="space-y-1">
-                        {perms.map(p => (
-                          <label key={p} className="flex items-center gap-2.5 cursor-pointer group">
-                            <div onClick={() => togglePerm(p)}
-                              className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition ${
-                                accPerms.includes(p) ? 'bg-brand-600 border-brand-600' : 'border-gray-300 group-hover:border-brand-400'
-                              }`}>
-                              {accPerms.includes(p) && <Check size={10} className="text-white" strokeWidth={3} />}
-                            </div>
-                            <span className="text-xs text-gray-700">{PERM_LABEL[p]}</span>
-                          </label>
-                        ))}
+                        {perms.map(p => {
+                          const isChecked = accPerms.includes(p)
+                          // Escalation guard (mirrors the backend): a non-owner can't grant a
+                          // permission they don't hold themselves. They may still remove one
+                          // that's already set. Owners can grant anything.
+                          const cannotGrant = !isOwner && hasPermission && !hasPermission(p)
+                          const locked = cannotGrant && !isChecked
+                          return (
+                            <label key={p} className={`flex items-center gap-2.5 group ${locked ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                              title={locked ? "You can't grant a permission you don't have" : undefined}>
+                              <div onClick={() => { if (!locked) togglePerm(p) }}
+                                className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition ${
+                                  isChecked ? 'bg-brand-600 border-brand-600' : 'border-gray-300 group-hover:border-brand-400'
+                                }`}>
+                                {isChecked && <Check size={10} className="text-white" strokeWidth={3} />}
+                              </div>
+                              <span className="text-xs text-gray-700">{PERM_LABEL[p]}</span>
+                            </label>
+                          )
+                        })}
                       </div>
                     </div>
                   ))}
@@ -1580,17 +1595,17 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
 }
 
 function AddStaffModal({ onClose, onSave, demoMode }) {
-  const { selectedSport, selectedBranch, sportBranches, role, user, permissions: myPerms } = useApp()
+  const { selectedSport, selectedBranch, sportBranches, role, user, permissions: myPerms, allStaff } = useApp()
   const isOwner = role === 'owner'
   // Non-owner creators may only grant permissions they themselves hold (no escalation).
   const allowedPerm = (p) => isOwner || (myPerms || []).includes(p)
   const fileRef = useRef(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [photoFile,    setPhotoFile]    = useState(null)
-  // Non-owners use their own sports; owners follow the sport filter picker
-  const defaultSports = !isOwner
-    ? (user?.sports || [])
-    : selectedSport && selectedSport !== 'All' ? [selectedSport] : []
+  // Owners: auto-set from selected sport. Non-owners: pre-select their own sport (still editable).
+  const defaultSports = isOwner
+    ? (selectedSport && selectedSport !== 'All' ? [selectedSport] : [])
+    : (user?.sports?.length ? [user.sports[0]] : [])
   // Resolve the human-readable name of the auto-linked branch for the hint.
   // Branch managers: their own branch is always auto-linked (migration 0080 enforces server-side).
   const effectiveBranchId = selectedBranch || (role !== 'owner' ? user?.branchId : null) || null
@@ -1658,8 +1673,13 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
     if (!form.age || !Number.isFinite(ageNum) || ageNum < 16 || ageNum > 70) {
       errs.age = 'Enter an age between 16 and 70'
     }
-    const phoneDigits = form.phone.replace('+91', '')
+    const phoneDigits = form.phone.replace('+91', '').replace(/\D/g, '')
     if (phoneDigits.length !== 10) errs.phone = 'Enter a valid 10-digit number'
+    else {
+      const dup = (allStaff || []).find(m => m.phone?.replace(/^\+91/, '').replace(/\D/g, '') === phoneDigits)
+      if (dup) errs.phone = `Number already used by ${dup.name}`
+    }
+    if (!isOwner && form.sports.length === 0) errs.sport = 'Select a sport'
     if (Object.keys(errs).length) { setFieldErrors(errs); return }
     setFieldErrors({})
     setLoading(true)
@@ -1722,7 +1742,12 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
 
   const handleDevFill = () => {
     const data = fillStaff({ sportOptions: selectedSport && selectedSport !== 'All' ? [selectedSport] : SPORTS })
-    setForm(f => ({ ...f, name: data.name, role: data.role, phone: data.phone, age: data.age, sports: data.sports }))
+    setForm(f => ({
+      ...f,
+      name: data.name, role: data.role, phone: data.phone, age: data.age,
+      // Non-owners have sport locked to their branch — don't override it
+      ...(isOwner ? { sports: data.sports } : {}),
+    }))
     setGiveAccess(true)
     selectPortalType(Math.random() > 0.5 ? 'field' : 'office')
   }
@@ -1823,23 +1848,46 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
               </div>
               {fieldErrors.phone && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.phone}</p>}
             </div>
-            {(form.sports.length > 0 || linkedBranchName) && (
-              <div className="text-[11px] text-gray-400 -mt-1 space-y-0.5">
-                {form.sports.length > 0 && (
-                  <div>
-                    Sport: <span className="font-semibold text-gray-600">{form.sports.join(', ')}</span>
-                    <span className="ml-1">{isOwner ? '(auto-linked from your sport selection)' : '(auto-linked from your branch)'}</span>
+            {/* Sport: owners see a read-only hint; branch managers pick explicitly */}
+            {isOwner ? (
+              (form.sports.length > 0 || linkedBranchName) && (
+                <div className="text-[11px] text-gray-400 -mt-1 space-y-0.5">
+                  {form.sports.length > 0 && (
+                    <div>
+                      Sport: <span className="font-semibold text-gray-600">{form.sports.join(', ')}</span>
+                      <span className="ml-1">(auto-linked from your sport selection)</span>
+                    </div>
+                  )}
+                  {linkedBranchName && (
+                    <div>
+                      Branch: <span className="font-semibold text-gray-600">{linkedBranchName}</span>
+                      <span className="ml-1">(auto-linked — staff will only see this branch's data)</span>
+                    </div>
+                  )}
+                  {!linkedBranchName && (
+                    <div className="text-amber-600">
+                      ⚠ No branch selected — this staff will see <strong>all branches</strong>. Switch to a specific branch first if you want them scoped.
+                    </div>
+                  )}
+                </div>
+              )
+            ) : (
+              <div className="-mt-1 space-y-1.5">
+                <div>
+                  <label className="label">Sport</label>
+                  <div className="input bg-gray-50 text-gray-700 flex items-center gap-2 cursor-not-allowed select-none">
+                    {form.sports[0] || '—'}
+                    <span className="ml-auto text-[10px] text-gray-400 font-semibold uppercase tracking-wide">locked to your branch</span>
                   </div>
-                )}
+                  {fieldErrors.sport && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.sport}</p>}
+                </div>
                 {linkedBranchName && (
                   <div>
-                    Branch: <span className="font-semibold text-gray-600">{linkedBranchName}</span>
-                    <span className="ml-1">(auto-linked — staff will only see this branch's data)</span>
-                  </div>
-                )}
-                {!linkedBranchName && isOwner && (
-                  <div className="text-amber-600">
-                    ⚠ No branch selected — this staff will see <strong>all branches</strong>. Switch to a specific branch first if you want them scoped.
+                    <label className="label">Branch</label>
+                    <div className="input bg-gray-50 text-gray-700 flex items-center gap-2 cursor-not-allowed select-none">
+                      {linkedBranchName}
+                      <span className="ml-auto text-[10px] text-gray-400 font-semibold uppercase tracking-wide">locked to your branch</span>
+                    </div>
                   </div>
                 )}
               </div>

@@ -8,6 +8,7 @@ export const ALL_PERMISSIONS = [
   'trials.manage',
   'batches.view',
   'batches.manage',
+  'training.manage',
   'reports.view',
   'staff.manage',
   'settings.manage',
@@ -16,7 +17,7 @@ export const ALL_PERMISSIONS = [
 ]
 
 export const ROLE_PRESETS = {
-  coach:          ['attendance.manage', 'students.view', 'batches.view'],
+  coach:          ['attendance.manage', 'students.view', 'batches.view', 'training.manage'],
   receptionist:   ['students.view', 'students.manage', 'trials.manage'],
   accountant:     ['payments.view', 'payments.manage', 'reports.view'],
   admin:          [...ALL_PERMISSIONS],
@@ -31,6 +32,7 @@ export const PERMISSION_GROUPS = {
   Payments:   ['payments.view', 'payments.manage'],
   Trials:     ['trials.manage'],
   Batches:    ['batches.view', 'batches.manage'],
+  Training:   ['training.manage'],
   Reports:    ['reports.view'],
   Staff:      ['staff.manage'],
   Settings:   ['settings.manage'],
@@ -48,6 +50,7 @@ export const PERM_LABEL = {
   'trials.manage':     'Manage Trials',
   'batches.view':      'View Batches',
   'batches.manage':    'Manage Batches',
+  'training.manage':   'Session & Drill Plans',
   'reports.view':      'View Reports',
   'staff.manage':      'Manage Staff',
   'settings.manage':   'Manage Settings',

@@ -22,3 +22,5 @@ playwright.config.js
 # Local Claude Code settings (machine-specific; may contain secrets)
 .claude/settings.local.json
 
+
+.vercel

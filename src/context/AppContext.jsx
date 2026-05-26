@@ -136,16 +136,52 @@ export function AppProvider({ children }) {
     setSelectedBranch(branchId)
   }, [setSelectedSport, setSelectedBranch])
 
-  // Wrapper: auto-injects the active sport + branch so every audit entry is branch-scoped.
-  // For staff, selectedSport is null (no switcher) — fall back to their assigned sport.
+  // Holds the latest entity arrays so audit entries can be tagged with the
+  // affected ENTITY's real sport + branch — not just whatever the viewer is
+  // currently filtered to. Kept in a ref so logAuditSport stays stable and
+  // never reads a stale closure. Populated by an effect after the data state.
+  const auditDataRef = useRef({ students: [], batches: [], staff: [], trials: [], events: [], announcements: [], payments: [] })
+
+  // Resolve an entity's true { sport, branchId } from its type + id. Returns
+  // null when the row can't be found (e.g. just-created rows that aren't in
+  // state yet — those callers pass sport/branchId explicitly instead).
+  const resolveAuditScope = useCallback((entityType, entityId) => {
+    if (entityId == null) return null
+    const d = auditDataRef.current
+    const find = (arr) => (arr || []).find(x => String(x.id) === String(entityId))
+    switch (entityType) {
+      case 'student':      { const e = find(d.students);      return e ? { sport: e.sport ?? null,      branchId: e.branchId ?? null } : null }
+      case 'batch':        { const e = find(d.batches);       return e ? { sport: e.sports?.[0] ?? null, branchId: e.branchId ?? null } : null }
+      case 'staff':        { const e = find(d.staff);         return e ? { sport: e.sports?.[0] ?? null, branchId: e.branchId ?? null } : null }
+      case 'trial':        { const e = find(d.trials);        return e ? { sport: e.sport ?? null,      branchId: e.branchId ?? null } : null }
+      case 'event':        { const e = find(d.events);        return e ? { sport: e.sport ?? null,      branchId: e.branch_id ?? e.branchId ?? null } : null }
+      case 'announcement': { const e = find(d.announcements); return e ? { sport: e.sport ?? null,      branchId: e.branchId ?? null } : null }
+      case 'payment':      { const p = find(d.payments); const s = p && (d.students || []).find(x => String(x.id) === String(p.studentId)); return s ? { sport: s.sport ?? null, branchId: s.branchId ?? null } : null }
+      default: return null
+    }
+  }, [])
+
+  // Wrapper: tags every audit entry with the affected entity's sport + branch.
+  // Precedence: explicit args → entity-derived scope → the viewer's current
+  // filter. This keeps the branch-scoped audit log both complete (nothing
+  // silently dropped) and correct (an action lands in the branch it belongs to).
   const logAuditSport = useCallback((args) => {
-    const sport    = selectedSport || (role === 'staff' ? (user?.sports?.[0] || null) : null)
-    const branchId = selectedBranch || (role === 'staff' ? (user?.branchId || null) : null)
+    const viewerSport  = selectedSport || (role === 'staff' ? (user?.sports?.[0] || null) : null)
+    const viewerBranch = selectedBranch || (role === 'staff' ? (user?.branchId || null) : null)
+    // Use an explicit value ONLY when it's actually present (non-null). A null
+    // explicit branch/sport (e.g. a create path where selectedBranch is null for
+    // staff) must NOT win — fall through to the entity scope, then the viewer's
+    // own scope. This guarantees a branch manager's actions are tagged to their
+    // branch and never lost to a null field.
+    const needScope = args.sport == null || args.branchId == null
+    const scope = needScope ? resolveAuditScope(args.entityType, args.entityId) : null
+    const sport    = args.sport    != null ? args.sport    : (scope?.sport    ?? viewerSport)
+    const branchId = args.branchId != null ? args.branchId : (scope?.branchId ?? viewerBranch)
     const actorRole = args.actor?.role
       ? args.actor.role.charAt(0).toUpperCase() + args.actor.role.slice(1)
       : undefined
     logAudit({ ...args, actor: { ...args.actor, role: actorRole || args.actor?.role }, sport, branchId })
-  }, [selectedSport, selectedBranch, role, user?.sports, user?.branchId])
+  }, [selectedSport, selectedBranch, role, user?.sports, user?.branchId, resolveAuditScope])
 
   const [suspendAfterDays, setSuspendAfterDaysState] = useState(getSuspendDays)
   const updateSuspendAfterDays = useCallback((n) => {
@@ -168,6 +204,12 @@ export function AppProvider({ children }) {
   const [trialSources,   setTrialSources]   = useState([])
   const [toast,          setToast]          = useState(null)
   const [dataLoading,    setDataLoading]    = useState(false)
+
+  // Feed the audit scope resolver with the latest data so entity branch/sport
+  // can be looked up at log time without stale closures or dep churn.
+  useEffect(() => {
+    auditDataRef.current = { students, batches, staff, trials, events, announcements, payments }
+  }, [students, batches, staff, trials, events, announcements, payments])
 
   // ── Toast ─────────────────────────────────────────────
   const showToast = (message, type = 'success') => {
@@ -601,6 +643,7 @@ export function AppProvider({ children }) {
       actor: { id: member.id, name: member.name, role: 'Staff', accessRole: member.access_role },
       action: ACTIONS.AUTH_STAFF_LOGIN, entityType: 'auth',
       entityId: member.id, entityName: member.name, academyId,
+      sport: member.sports?.[0] || null, branchId: member.branch_id || null,
     })
     _startOps('staff', member.id, member.name, academyId, academyName)
     return { accessRole: member.access_role }
@@ -614,6 +657,7 @@ export function AppProvider({ children }) {
         actor: { id: user.id, name: user.name, role: 'Staff', accessRole: user.accessRole },
         action: ACTIONS.AUTH_STAFF_LOGOUT, entityType: 'auth',
         entityId: user.id, entityName: user.name, academyId: user.academyId,
+        sport: user.sports?.[0] || null, branchId: user.branchId || null,
       })
     }
     if (sess?.token) await db.deleteStaffSession(sess.token).catch(() => {})
@@ -631,6 +675,7 @@ export function AppProvider({ children }) {
       actor: { id: member.id, name: member.name, role: 'Staff', accessRole: member.access_role },
       action: ACTIONS.AUTH_STAFF_ACTIVATE, entityType: 'auth',
       entityId: member.id, entityName: member.name, academyId: member.academy_id,
+      sport: member.sports?.[0] || null, branchId: member.branch_id || null,
     })
     return member
   }
@@ -652,6 +697,7 @@ export function AppProvider({ children }) {
       actor: { id: student.id, name: student.name, role: 'Student' },
       action: ACTIONS.AUTH_STUDENT_LOGIN, entityType: 'auth',
       entityId: student.id, entityName: student.name, academyId: student.academy_id,
+      sport: student.sport || null, branchId: student.branch_id || null,
     })
     _startOps('student', student.id, student.name, student.academy_id, '')
     return student
@@ -665,6 +711,7 @@ export function AppProvider({ children }) {
         actor: { id: studentUser.id, name: studentUser.name, role: 'Student' },
         action: ACTIONS.AUTH_STUDENT_LOGOUT, entityType: 'auth',
         entityId: studentUser.id, entityName: studentUser.name, academyId: studentUser.academy_id,
+        sport: studentUser.sport || null, branchId: studentUser.branch_id || null,
       })
     }
     if (sess?.token) await db.deleteStudentSession(sess.token).catch(() => {})
@@ -681,6 +728,7 @@ export function AppProvider({ children }) {
       action: ACTIONS.AUTH_STUDENT_ACTIVATE, entityType: 'auth',
       entityId: result?.id || studentCode, entityName: result?.name || studentCode,
       academyId: result?.academy_id || null,
+      sport: result?.sport || null, branchId: result?.branch_id || null,
     })
     return result
   }
@@ -902,7 +950,7 @@ export function AppProvider({ children }) {
       // }
 
       showToast(`Student created — Code: ${studentCode} · Join: ${joinCode}`, 'success')
-      logAuditSport({ actor: user, action: ACTIONS.STUDENT_ADD, entityType: 'student', entityId: mapped.id, entityName: mapped.name, changes: { batch: mapped.batch || '—', sport: mapped.sport, fees: String(mapped.fees) }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.STUDENT_ADD, entityType: 'student', entityId: mapped.id, entityName: mapped.name, changes: { batch: mapped.batch || '—', sport: mapped.sport, fees: String(mapped.fees) }, academyId: user?.academyId, sport: mapped.sport ?? null, branchId: mapped.branchId ?? null })
       return mapped
     } catch (err) {
       showToast(err.message || 'Failed to add student', 'error')
@@ -1119,6 +1167,12 @@ export function AppProvider({ children }) {
       }, ...prev])
 
       const student = students.find(s => String(s.id) === String(p.studentId))
+
+      // Log the payment NOW — the record already exists. Logging before the
+      // downstream student update means a failure there can never silently drop
+      // the audit entry. Branch falls back to the actor's branch via logAuditSport.
+      logAuditSport({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId, sport: student?.sport ?? null, branchId: student?.branchId ?? null })
+
       if (student) {
         if (student.status === 'Suspended') {
           const batchId   = p.batchId   || student.batchId
@@ -1139,7 +1193,6 @@ export function AppProvider({ children }) {
           } : s))
         }
       }
-      logAuditSport({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId })
       showToast('Payment recorded')
       // Notify student — fire and forget
       if (p.studentId) {
@@ -1224,7 +1277,7 @@ export function AppProvider({ children }) {
     try {
       const created = await db.insertTrial({ ...t, academyId: user?.academyId, branchId: selectedBranch || null })
       setTrials(prev => [created, ...prev])
-      logAuditSport({ actor: user, action: ACTIONS.TRIAL_ADD, entityType: 'trial', entityId: created.id, entityName: t.name, changes: { sport: t.sport || '—', source: t.source || '—', date: t.trialDate || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.TRIAL_ADD, entityType: 'trial', entityId: created.id, entityName: t.name, changes: { sport: t.sport || '—', source: t.source || '—', date: t.trialDate || '—' }, academyId: user?.academyId, sport: t.sport ?? null, branchId: created.branch_id ?? (selectedBranch || null) })
       showToast('Trial lead added')
       // If staff added the trial, notify the owner
       if (role === 'staff' && user?.academyId) {
@@ -1299,7 +1352,7 @@ export function AppProvider({ children }) {
         defaultFee: created.default_fee || 0, defaultPlan: created.default_plan || 'monthly',
         branchId: created.branch_id || null,
       }])
-      logAuditSport({ actor: user, action: ACTIONS.BATCH_ADD, entityType: 'batch', entityId: created.id, entityName: created.name, changes: { sport: (b.sports || []).join(', '), capacity: String(b.capacity), coach: b.coach || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.BATCH_ADD, entityType: 'batch', entityId: created.id, entityName: created.name, changes: { sport: (b.sports || []).join(', '), capacity: String(b.capacity), coach: b.coach || '—' }, academyId: user?.academyId, sport: (b.sports?.[0]) ?? null, branchId: created.branch_id ?? (selectedBranch || null) })
       showToast('Batch created')
     } catch (err) {
       showToast(err.message || 'Failed to create batch', 'error')
@@ -1362,6 +1415,37 @@ export function AppProvider({ children }) {
     }
   }
 
+  // Move a student's PRIMARY batch to another batch (the batch screen never
+  // leaves a student batch-less — removal is always a reassignment). Adjusts
+  // both batches' enrolment counts and logs a branch-scoped audit entry.
+  const reassignPrimaryBatch = async (student, newBatchId, newBatchName) => {
+    const oldBatchId = student.batchId ? Number(student.batchId) : null
+    const targetId   = newBatchId ? Number(newBatchId) : null
+    if (!targetId || targetId === oldBatchId) return
+    try {
+      await db.reassignStudentBatch(student.id, targetId, newBatchName)
+      if (oldBatchId) await db.updateBatchEnrolled(oldBatchId, -1)
+      await db.updateBatchEnrolled(targetId, 1)
+      setStudents(prev => prev.map(s => s.id === student.id
+        ? { ...s, batchId: targetId, batch: newBatchName } : s))
+      setBatches(prev => prev.map(b => {
+        if (b.id === oldBatchId) return { ...b, enrolled: Math.max(0, (b.enrolled || 0) - 1) }
+        if (b.id === targetId)   return { ...b, enrolled: (b.enrolled || 0) + 1 }
+        return b
+      }))
+      logAuditSport({
+        actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student',
+        entityId: student.id, entityName: student.name,
+        changes: { Batch: { old: student.batch || '—', new: newBatchName } },
+        academyId: user?.academyId, sport: student.sport ?? null, branchId: student.branchId ?? null,
+      })
+      showToast(`${student.name} moved to ${newBatchName}`)
+    } catch (err) {
+      showToast(err.message || 'Move failed', 'error')
+      throw err
+    }
+  }
+
   const updateBatch = async (batchId, b) => {
     try {
       const oldBatch = batches.find(x => x.id === batchId)
@@ -1399,9 +1483,12 @@ export function AppProvider({ children }) {
 
   const addEvent = async (e) => {
     try {
-      const created = await db.insertEvent({ ...e, academyId: user?.academyId })
+      // Tag with the creator's branch (owner: selected branch; staff: own branch).
+      // null = academy-wide, visible to every branch.
+      const eventBranch = role === 'staff' ? (user?.branchId || null) : (selectedBranch || null)
+      const created = await db.insertEvent({ ...e, academyId: user?.academyId, branchId: eventBranch })
       setEvents(prev => [...prev, created].sort((a, b) => a.date.localeCompare(b.date)))
-      logAuditSport({ actor: user, action: ACTIONS.EVENT_ADD, entityType: 'event', entityId: created.id, entityName: e.title, changes: { type: e.type || '—', date: e.date || '—', venue: e.venue || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.EVENT_ADD, entityType: 'event', entityId: created.id, entityName: e.title, changes: { type: e.type || '—', date: e.date || '—', venue: e.venue || '—' }, academyId: user?.academyId, sport: e.sport ?? created.sport ?? null, branchId: created.branch_id ?? (selectedBranch || null) })
       showToast('Event added')
       return created
     } catch (err) {
@@ -1506,7 +1593,7 @@ export function AppProvider({ children }) {
       staffType:     s.staffType || 'coach',
       accountStatus: 'pending',
     }])
-    logAuditSport({ actor: user, action: ACTIONS.STAFF_ADD, entityType: 'staff', entityId: created.id, entityName: s.name, changes: { role: s.role || '—', sport: (s.sports || []).join(', ') || '—' }, academyId: user?.academyId })
+    logAuditSport({ actor: user, action: ACTIONS.STAFF_ADD, entityType: 'staff', entityId: created.id, entityName: s.name, changes: { role: s.role || '—', sport: (s.sports || []).join(', ') || '—' }, academyId: user?.academyId, sport: (s.sports?.[0]) ?? null, branchId: branchId ?? null })
     showToast('Staff member added')
     return { staffCode, joinCode }
   }
@@ -1722,7 +1809,7 @@ export function AppProvider({ children }) {
       }
       const created = await db.insertAnnouncement(ann)
       setAnnouncements(prev => [created, ...prev])
-      logAuditSport({ actor: user, action: ACTIONS.ANNOUNCEMENT_ADD, entityType: 'announcement', entityId: created.id, entityName: a.title, changes: { type: a.type || '—' }, academyId: user?.academyId })
+      logAuditSport({ actor: user, action: ACTIONS.ANNOUNCEMENT_ADD, entityType: 'announcement', entityId: created.id, entityName: a.title, changes: { type: a.type || '—' }, academyId: user?.academyId, sport: ann.sport ?? null, branchId: ann.branchId ?? null })
       showToast('Announcement posted')
       // Notify all staff and active students — fire and forget
       const preview = (a.content || a.body || '').slice(0, 80)
@@ -1877,29 +1964,44 @@ export function AppProvider({ children }) {
   // Events use the existing `sport` column; announcements use the new sport/branchId fields.
   // audience_type === 'staff_members' events are shown only if the logged-in staff is in audience_ids.
   const staffScopedEvents = useMemo(() => {
-    if (role !== 'staff') return events
-    const staffSports   = new Set((user?.sports || []).map(s => s.toLowerCase()))
-    const staffBranchId = user?.branchId
+    const isStaff   = role === 'staff'
+    const effBranch = isStaff ? (user?.branchId || null) : (selectedBranch || null)
+    const effSport  = isStaff ? null : (selectedSport && selectedSport !== 'All' ? selectedSport.toLowerCase() : null)
+    const staffSports = isStaff ? new Set((user?.sports || []).map(s => s.toLowerCase())) : null
     return events.filter(e => {
-      if (e.audience_type === 'staff_members') return (e.audience_ids || []).includes(user?.id)
-      if (staffBranchId && e.branch_id && e.branch_id !== staffBranchId) return false
-      if (staffSports.size > 0 && e.sport) return staffSports.has(e.sport.toLowerCase())
+      // Staff-targeted events are only visible to the targeted staff.
+      if (isStaff && e.audience_type === 'staff_members') return (e.audience_ids || []).includes(user?.id)
+      // Branch: academy-wide (null branch) shows everywhere; else must match the active branch.
+      if (effBranch && e.branch_id && e.branch_id !== effBranch) return false
+      // Sport: staff use their assigned sports; owner uses the selected sport.
+      if (isStaff) {
+        if (staffSports.size > 0 && e.sport) return staffSports.has(e.sport.toLowerCase())
+      } else if (effSport && e.sport && e.sport.toLowerCase() !== effSport) {
+        return false
+      }
       return true
     })
-  }, [events, role, user?.sports, user?.branchId, user?.id])
+  }, [events, role, user?.sports, user?.branchId, user?.id, selectedSport, selectedBranch])
 
   const staffScopedAnnouncements = useMemo(() => {
-    if (role !== 'staff') return announcements
-    const staffSports   = new Set((user?.sports || []).map(s => s.toLowerCase()))
-    const staffBranchId = user?.branchId
+    const isStaff   = role === 'staff'
+    const effBranch = isStaff ? (user?.branchId || null) : (selectedBranch || null)
+    const effSport  = isStaff ? null : (selectedSport && selectedSport !== 'All' ? selectedSport.toLowerCase() : null)
+    const staffSports = isStaff ? new Set((user?.sports || []).map(s => s.toLowerCase())) : null
     return announcements.filter(a => {
-      // Academy-wide announcements (no sport, no branch) are always visible
+      // Academy-wide announcements (no sport, no branch) are always visible.
       if (!a.sport && !a.branchId) return true
-      if (staffBranchId && a.branchId && a.branchId !== staffBranchId) return false
-      if (staffSports.size > 0 && a.sport) return staffSports.has(a.sport.toLowerCase())
+      // Branch: academy-wide (null) shows everywhere; else must match the active branch.
+      if (effBranch && a.branchId && a.branchId !== effBranch) return false
+      // Sport: staff use assigned sports; owner uses the selected sport.
+      if (isStaff) {
+        if (staffSports.size > 0 && a.sport) return staffSports.has(a.sport.toLowerCase())
+      } else if (effSport && a.sport && a.sport.toLowerCase() !== effSport) {
+        return false
+      }
       return true
     })
-  }, [announcements, role, user?.sports, user?.branchId])
+  }, [announcements, role, user?.sports, user?.branchId, selectedSport, selectedBranch])
 
   // Fee plans inherit scope through their batch_id. If we can see the batch,
   // we can see its fee plans. Outside any sport scope → show everything.
@@ -1939,7 +2041,7 @@ export function AppProvider({ children }) {
       trials: staffScopedTrials, addTrial, updateTrialStatus, deleteTrial,
       trialSources, addTrialSource, removeTrialSource,
       refreshData: loadAll,
-      batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, updateBatch, updateBatchFee, deleteBatch,
+      batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, reassignPrimaryBatch, updateBatch, updateBatchFee, deleteBatch,
       feePlans: filteredFeePlans, addFeePlan, editFeePlan, removeFeePlan,
       events: staffScopedEvents, addEvent, updateEvent, updateEventStatus, removeEvent,
       staff: staffScopedStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,

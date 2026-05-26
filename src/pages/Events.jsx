@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
 import {
   Plus, Calendar, MapPin, Users, Trophy, Trash2, Pencil,
-  X, Check, RotateCcw, Image,
+  X, Check, RotateCcw, Image, Search,
 } from 'lucide-react'
 import DevFillButton from '../components/DevFillButton'
 import { fillEvent } from '../lib/devFill'
@@ -511,17 +511,28 @@ export default function Events() {
   const [tournamentEvent, setTournamentEvent] = useState(null)
   const [typeFilter,      setTypeFilter]      = useState('all')
   const [timeFilter,      setTimeFilter]      = useState('upcoming')
+  const [statusFilter,    setStatusFilter]    = useState('all')
+  const [search,          setSearch]          = useState('')
+  const [dateFrom,        setDateFrom]         = useState('')
+  const [dateTo,          setDateTo]           = useState('')
   const [deletingId,      setDeletingId]      = useState(null)
 
   const today     = new Date().toISOString().slice(0, 10)
   const allEvents = events || []
 
   const filtered = allEvents.filter(e => {
-    if (typeFilter !== 'all' && e.type !== typeFilter) return false
-    if (timeFilter === 'upcoming') return e.date >= today || e.status === 'Upcoming' || e.status === 'Ongoing'
-    if (timeFilter === 'past')     return e.date < today  || e.status === 'Completed' || e.status === 'Cancelled'
+    if (typeFilter !== 'all'   && e.type !== typeFilter)     return false
+    if (statusFilter !== 'all' && e.status !== statusFilter) return false
+    if (search.trim() && !(e.title || '').toLowerCase().includes(search.toLowerCase().trim())) return false
+    if (dateFrom && (e.date || '') < dateFrom) return false
+    if (dateTo   && (e.date || '') > dateTo)   return false
+    if (timeFilter === 'upcoming' && !(e.date >= today || e.status === 'Upcoming' || e.status === 'Ongoing'))  return false
+    if (timeFilter === 'past'     && !(e.date <  today || e.status === 'Completed' || e.status === 'Cancelled')) return false
     return true
   })
+
+  const hasFilters = search || dateFrom || dateTo || statusFilter !== 'all' || typeFilter !== 'all' || timeFilter !== 'upcoming'
+  const clearFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setStatusFilter('all'); setTypeFilter('all'); setTimeFilter('upcoming') }
 
   const audienceLabel = (e) => {
     if (e.audience_type === 'students')      return 'All Students'
@@ -581,6 +592,37 @@ export default function Events() {
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${timeFilter===v?'bg-white text-gray-900 shadow-sm':'text-gray-500'}`}>{l}</button>
           ))}
         </div>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+          className="input text-xs py-1.5 px-2 bg-white">
+          {['all','Upcoming','Ongoing','Completed','Cancelled'].map(s => (
+            <option key={s} value={s}>{s === 'all' ? 'Any status' : s}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Search + date range */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search event name…"
+            className="input w-full pl-9 text-sm" />
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <Calendar size={14} className="text-gray-400" />
+          <input type="date" value={dateFrom} max={dateTo || undefined}
+            onChange={e => setDateFrom(e.target.value)} className="input text-xs py-1.5" />
+          <span>–</span>
+          <input type="date" value={dateTo} min={dateFrom || undefined}
+            onChange={e => setDateTo(e.target.value)} className="input text-xs py-1.5" />
+        </div>
+        {hasFilters && (
+          <button onClick={clearFilters}
+            className="text-xs font-bold text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg hover:bg-gray-100 flex items-center gap-1">
+            <X size={12} /> Clear
+          </button>
+        )}
+        <span className="text-xs text-gray-400 ml-auto">{filtered.length} shown</span>
       </div>
 
       {filtered.length === 0 && (

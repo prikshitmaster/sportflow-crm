@@ -341,6 +341,8 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
         entityName: student.name,
         changes:    { month, position: position || '—', batch: student.batch || '—', note: notes || '—' },
         academyId:  user?.academyId,
+        sport:      sport || student.sport || null,
+        branchId:   student.branchId ?? user?.branchId ?? null,
       })
       onSaved(result || { student_id: student.id, scores, notes, assessed_month: month, batch_id: batchId, position })
     } catch (e) {

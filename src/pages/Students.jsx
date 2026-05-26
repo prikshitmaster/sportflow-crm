@@ -762,7 +762,7 @@ const FEE_PLAN_OPTIONS = [
 const FEE_LABEL = { monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *', custom: 'Plan Fee (₹) *' }
 
 function AddStudentModal({ onClose, onSave }) {
-  const { batches, selectedSport, selectedBranch, sportBranches, branches, user } = useApp()
+  const { batches, selectedSport, selectedBranch, sportBranches, branches, user, allStudents } = useApp()
   // Combine sports from both tables: old academy_branches + new sport_branches.
   // Cricket (and any sport added via sport_branches) was missing from the dropdown
   // because it only existed in sport_branches, not academy_branches.
@@ -823,6 +823,10 @@ function AddStudentModal({ onClose, onSave }) {
     const e = {}
     if (!form.name.trim())              e.name         = 'Required'
     if (!/^\d{10}$/.test(form.phone))   e.phone        = 'Enter 10-digit number'
+    else {
+      const dup = (allStudents || []).find(s => s.phone?.replace(/^\+91/, '').replace(/\D/g, '') === form.phone)
+      if (dup) e.phone = `Already registered to ${dup.name}`
+    }
     if (!form.sport)                    e.sport        = 'Select a sport'
     if (!form.batchId)                  e.batchId      = 'Select a batch'
     if (!form.trainingType)             e.trainingType = 'Select a training type'
@@ -1309,6 +1313,7 @@ function DeleteStudentModal({ student: s, onClose, onConfirm }) {
 }
 
 function EditStudentModal({ student: s, batches, onClose, onSave }) {
+  const { allStudents } = useApp()
   // Normalize paidTill to match the input type:
   // custom → YYYY-MM-DD (pad if YYYY-MM), standard → YYYY-MM (truncate if YYYY-MM-DD)
   const isCustom = s.feePlan === 'custom'
@@ -1365,6 +1370,10 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     const e = {}
     if (!form.name.trim())            e.name         = 'Required'
     if (!/^\d{10}$/.test(form.phone)) e.phone        = 'Enter 10-digit number'
+    else {
+      const dup = (allStudents || []).find(x => x.id !== s.id && x.phone?.replace(/^\+91/, '').replace(/\D/g, '') === form.phone)
+      if (dup) e.phone = `Already registered to ${dup.name}`
+    }
     if (!form.trainingType)           e.trainingType = 'Select a training type'
     setErrors(e)
     return Object.keys(e).length === 0

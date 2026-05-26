@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X, Send } from 'lucide-react'
+import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X, Send, Search } from 'lucide-react'
 import { Modal } from './Students'
 import SendStaffNoticeModal from '../components/SendStaffNoticeModal'
 import DevFillButton from '../components/DevFillButton'
@@ -19,10 +19,16 @@ const TYPES = Object.keys(TYPE_CONFIG)
 export default function Community() {
   const { announcements, addAnnouncement, sendStaffNotice, staff } = useApp()
   const [filter,     setFilter]     = useState('All')
+  const [search,     setSearch]     = useState('')
   const [showModal,  setShowModal]  = useState(false)
   const [showNotice, setShowNotice] = useState(false)
 
-  const filtered = filter === 'All' ? announcements : announcements.filter(a => a.type === filter)
+  const q = search.toLowerCase().trim()
+  const filtered = announcements.filter(a => {
+    if (filter !== 'All' && a.type !== filter) return false
+    if (q && !((a.title || '').toLowerCase().includes(q) || (a.body || '').toLowerCase().includes(q))) return false
+    return true
+  })
 
   return (
     <div className="space-y-5 max-w-[800px]">
@@ -40,6 +46,14 @@ export default function Community() {
             <Plus size={16} /> New Announcement
           </button>
         </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search announcements…"
+          className="input w-full pl-9 text-sm" />
       </div>
 
       {/* Filter chips */}
