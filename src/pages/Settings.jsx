@@ -488,6 +488,8 @@ function FeaturesTab() {
     { key: 'community',  label: 'Community',         desc: 'Notices, announcements, holidays' },
     { key: 'events',     label: 'Events & Tournaments', desc: 'Manage upcoming events' },
     { key: 'gate_qr',    label: 'Gate QR Attendance', desc: 'QR code-based entry attendance' },
+    { key: 'training',   label: 'Training',           desc: 'Sessions, drills and training planner' },
+    { key: 'backups',    label: 'Backups',             desc: 'Data backup and restore' },
   ]
 
   return (

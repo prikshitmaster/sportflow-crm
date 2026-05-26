@@ -27,13 +27,13 @@ const nav = [
   { to: '/gate-qr',    label: 'Gate QR',    icon: QrCode,          feature: 'gate_qr',   permission: 'attendance.manage', group: 'qr' },
   { to: '/staff-qr',   label: 'Staff QR',   icon: QrCode,          feature: 'attendance', permission: 'staff.manage',      group: 'qr' },
   { to: '/events',     label: 'Events',     icon: Trophy,          feature: 'events',     permission: 'events.manage' },
-  { to: '/sessions',   label: 'Sessions',   icon: CalendarDays,    feature: null,         permission: 'training.manage', footballOnly: true, group: 'training' },
-  { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: null,         permission: 'training.manage', footballOnly: true, group: 'training' },
+  { to: '/sessions',   label: 'Sessions',   icon: CalendarDays,    feature: 'training',   permission: 'training.manage', footballOnly: true, group: 'training' },
+  { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: 'training',   permission: 'training.manage', footballOnly: true, group: 'training' },
   { to: '/coaches',    label: 'Staff',      icon: UserCog,         feature: 'staff',      permission: 'staff.manage' },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,       feature: 'reports',    permission: 'reports.view' },
   { to: '/community',  label: 'Community',  icon: Megaphone,       feature: 'community',  permission: 'community.manage' },
   { to: '/settings',   label: 'Settings',   icon: Settings,        feature: null,         permission: 'settings.manage' },
-  { to: '/backups',    label: 'Backups',    icon: ShieldCheck,     feature: null,         permission: 'settings.manage' },
+  { to: '/backups',    label: 'Backups',    icon: ShieldCheck,     feature: 'backups',    permission: 'settings.manage' },
 ]
 
 const GROUP_META = {

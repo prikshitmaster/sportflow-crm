@@ -203,6 +203,13 @@ function PermRequired({ perm, children }) {
   )
 }
 
+// Blocks direct URL access when a feature is disabled — redirects to dashboard.
+function FeatureRoute({ feature, children }) {
+  const { isFeatureOn } = useApp()
+  if (!isFeatureOn(feature)) return <Navigate to="/dashboard" replace />
+  return children
+}
+
 function NotFound() {
   const { role, loading, user } = useApp()
   if (loading) return <PageLoading />
@@ -256,20 +263,20 @@ function AppRoutes() {
         <Route path="dashboard"  element={<Dashboard />} />
         <Route path="students"   element={<Students />} />
         <Route path="parents"    element={<Parents />} />
-        <Route path="attendance" element={<Attendance />} />
-        <Route path="payments"   element={<Payments />} />
-        <Route path="trials"     element={<Trials />} />
-        <Route path="batches"    element={<Batches />} />
-        <Route path="coaches"    element={<Staff />} />
-        <Route path="reports"    element={<Reports />} />
-        <Route path="community"  element={<Community />} />
+        <Route path="attendance" element={<FeatureRoute feature="attendance"><Attendance /></FeatureRoute>} />
+        <Route path="payments"   element={<FeatureRoute feature="payments"><Payments /></FeatureRoute>} />
+        <Route path="trials"     element={<FeatureRoute feature="trials"><Trials /></FeatureRoute>} />
+        <Route path="batches"    element={<FeatureRoute feature="batches"><Batches /></FeatureRoute>} />
+        <Route path="coaches"    element={<FeatureRoute feature="staff"><Staff /></FeatureRoute>} />
+        <Route path="reports"    element={<FeatureRoute feature="reports"><Reports /></FeatureRoute>} />
+        <Route path="community"  element={<FeatureRoute feature="community"><Community /></FeatureRoute>} />
         <Route path="settings"   element={<Settings />} />
-        <Route path="backups"    element={<Backups />} />
-        <Route path="gate-qr"    element={<AdminQR />} />
-        <Route path="staff-qr"   element={<StaffAttendanceQR />} />
-        <Route path="events"     element={<Events />} />
-        <Route path="drills"     element={<Drills />} />
-        <Route path="sessions"   element={<Sessions />} />
+        <Route path="backups"    element={<FeatureRoute feature="backups"><Backups /></FeatureRoute>} />
+        <Route path="gate-qr"    element={<FeatureRoute feature="gate_qr"><AdminQR /></FeatureRoute>} />
+        <Route path="staff-qr"   element={<FeatureRoute feature="attendance"><StaffAttendanceQR /></FeatureRoute>} />
+        <Route path="events"     element={<FeatureRoute feature="events"><Events /></FeatureRoute>} />
+        <Route path="drills"     element={<FeatureRoute feature="training"><Drills /></FeatureRoute>} />
+        <Route path="sessions"   element={<FeatureRoute feature="training"><Sessions /></FeatureRoute>} />
       </Route>
 
       {/* Staff */}
