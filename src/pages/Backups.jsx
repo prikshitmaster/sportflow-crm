@@ -6,11 +6,13 @@ import { Download, ShieldCheck, RefreshCw, Filter, ChevronDown, ChevronUp, FileS
 import { SkeletonRows } from '../components/Skeleton'
 
 const SHEET_OPTIONS = [
-  { key: 'students',   label: 'Students' },
-  { key: 'payments',   label: 'Payments' },
-  { key: 'attendance', label: 'Attendance' },
-  { key: 'trials',     label: 'Trials' },
-  { key: 'batches',    label: 'Batches' },
+  { key: 'students',        label: 'Students' },
+  { key: 'student_summary', label: 'Student Summary' },
+  { key: 'payments',        label: 'Payments' },
+  { key: 'att_matrix',      label: 'Att. Matrix' },
+  { key: 'attendance',      label: 'Att. Records' },
+  { key: 'trials',          label: 'Trials' },
+  { key: 'batches',         label: 'Batches' },
 ]
 
 export default function Backups() {
@@ -24,7 +26,7 @@ export default function Backups() {
   const [dateFrom,  setDateFrom]  = useState('')
   const [dateTo,    setDateTo]    = useState('')
   const [sport,     setSport]     = useState('')
-  const [sheets,    setSheets]    = useState(SHEET_OPTIONS.map(s => s.key))
+  const [sheets, setSheets] = useState(SHEET_OPTIONS.map(s => s.key))
 
   const load = async () => {
     setLoading(true)
