@@ -42,9 +42,13 @@ const GROUP_META = {
 }
 
 export default function Sidebar({ collapsed, setCollapsed }) {
-  const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport, selectedBranch, sportBranches } = useApp()
-  const currentBranchName = selectedBranch
-    ? (sportBranches || []).find(b => b.id === selectedBranch)?.branchName
+  const { user, role, isFeatureOn, hasPermission, logoutOwner, selectedSport, selectedBranch, sportBranches, allStaff } = useApp()
+  const currentBranchData = selectedBranch
+    ? (sportBranches || []).find(b => b.id === selectedBranch)
+    : null
+  const currentBranchName = currentBranchData?.branchName || null
+  const branchManagerName = currentBranchData?.managerId
+    ? (allStaff || []).find(s => s.id === currentBranchData.managerId)?.name || null
     : null
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -122,12 +126,17 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         <div className="px-4 py-3 border-b border-gray-800">
           <p className="text-xs text-gray-400">Academy</p>
           <p className="text-xs font-semibold text-gray-200 truncate">{user.academy}</p>
-          <span className="inline-block mt-1 text-[10px] bg-brand-800 text-brand-300 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
-            {user.role === 'owner' ? 'Owner'
-              : user.accessRole === 'branch_manager' ? 'Branch Manager'
-              : user.accessRole === 'office' ? 'Office'
-              : 'Staff'}
-          </span>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className="text-[10px] bg-brand-800 text-brand-300 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
+              {user.role === 'owner' ? 'Owner'
+                : user.accessRole === 'branch_manager' ? 'Branch Manager'
+                : user.accessRole === 'office' ? 'Office'
+                : 'Staff'}
+            </span>
+            {user.role !== 'owner' && user.name && (
+              <span className="text-[10px] text-gray-300 font-medium truncate">{user.name}</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -151,6 +160,9 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                   <p className="text-sm font-bold text-white truncate">{selectedSport}</p>
                   {currentBranchName && (
                     <p className="text-[10px] text-purple-300 truncate leading-tight">· {currentBranchName}</p>
+                  )}
+                  {branchManagerName && (
+                    <p className="text-[10px] text-gray-500 truncate leading-tight">Mgr: {branchManagerName}</p>
                   )}
                 </div>
               </div>
