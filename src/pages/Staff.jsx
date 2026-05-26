@@ -552,6 +552,8 @@ function dayCount(start, end) {
 }
 
 function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPermission, currentUserId, branchManagerCount, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions }) {
+  const { selectedSport } = useApp()
+  const isFootball = (selectedSport || '').toLowerCase() === 'football'
   const photoRef = useRef(null)
   const assignedBatches   = batches.filter(b => b.coach === s.name)
   const unassignedBatches = batches.filter(b => b.coach !== s.name)
@@ -910,7 +912,7 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPe
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Permissions</p>
                 <div className="space-y-3">
-                  {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => (
+                  {Object.entries(PERMISSION_GROUPS).filter(([group]) => group !== 'Training' || isFootball).map(([group, perms]) => (
                     <div key={group}>
                       <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">{group}</p>
                       <div className="space-y-1">
@@ -1321,6 +1323,7 @@ function InviteModal({ onClose, onGenerated, inviteStaff, initialName = '' }) {
             <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50">
               {Object.entries(PERMISSION_GROUPS)
                 .filter(([group]) => accessRole === 'coach' || group !== 'Batches')
+                .filter(([group]) => group !== 'Training' || (selectedSport || '').toLowerCase() === 'football')
                 .map(([group, perms]) => (
                 <div key={group} className="px-4 py-3">
                   <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">{group}</p>
@@ -1376,6 +1379,8 @@ function InviteModal({ onClose, onGenerated, inviteStaff, initialName = '' }) {
 // ── Permission Panel (slide-over) ─────────────────────────
 
 function PermissionPanel({ target, onClose, onSave }) {
+  const { selectedSport } = useApp()
+  const isFootball = (selectedSport || '').toLowerCase() === 'football'
   const [accessRole,  setAccessRole]  = useState(target.accessRole || 'staff')
   const [permissions, setPermissions] = useState([...(target.permissions || [])])
   const [saving,      setSaving]      = useState(false)
@@ -1438,7 +1443,7 @@ function PermissionPanel({ target, onClose, onSave }) {
           <div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Permissions</p>
             <div className="border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-50">
-              {Object.entries(PERMISSION_GROUPS).map(([group, perms]) => (
+              {Object.entries(PERMISSION_GROUPS).filter(([group]) => group !== 'Training' || isFootball).map(([group, perms]) => (
                 <div key={group} className="px-4 py-3">
                   <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">{group}</p>
                   <div className="space-y-2">
@@ -1662,6 +1667,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   // Non-owners only see permission options they themselves hold.
   const OFFICE_GROUPS = Object.entries(PERMISSION_GROUPS)
     .filter(([g]) => g !== 'Attendance')
+    .filter(([g]) => g !== 'Training' || (selectedSport || '').toLowerCase() === 'football')
     .map(([g, gPerms]) => [g, gPerms.filter(allowedPerm)])
     .filter(([, gPerms]) => gPerms.length > 0)
 
