@@ -183,56 +183,7 @@ export function downloadExcel(data) {
   XLSX.writeFile(wb, `${data.sport}_backup_${date}.xlsx`)
 }
 
-// ── Style helpers ────────────────────────────────────────────
-const S = {
-  headerFill:   { fgColor: { rgb: '1E3A5F' } },
-  headerFont:   { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
-  headerAlign:  { horizontal: 'center', vertical: 'center' },
-  headerBorder: { top: { style: 'thin', color: { rgb: 'CCCCCC' } }, bottom: { style: 'medium', color: { rgb: '2563EB' } }, left: { style: 'thin', color: { rgb: 'CCCCCC' } }, right: { style: 'thin', color: { rgb: 'CCCCCC' } } },
-  cellFont:     { name: 'Calibri', sz: 10 },
-  cellBorder:   { top: { style: 'thin', color: { rgb: 'E5E7EB' } }, bottom: { style: 'thin', color: { rgb: 'E5E7EB' } }, left: { style: 'thin', color: { rgb: 'E5E7EB' } }, right: { style: 'thin', color: { rgb: 'E5E7EB' } } },
-  altFill:      { fgColor: { rgb: 'F8FAFF' } },
-  totalFill:    { fgColor: { rgb: 'EFF6FF' } },
-  totalFont:    { name: 'Calibri', sz: 10, bold: true },
-  currency:     { numFmt: '₹#,##0' },
-  date:         { numFmt: 'DD-MMM-YYYY' },
-  pct:          { numFmt: '0"%"' },
-}
-
-function applySheet(headers, rows, colWidths) {
-  // Build AOA (array-of-arrays): header row + data rows
-  const aoa = [headers, ...rows]
-  const ws = XLSX.utils.aoa_to_sheet(aoa)
-
-  const nCols = headers.length
-  const nRows = rows.length
-
-  // Style each cell
-  for (let R = 0; R < aoa.length; R++) {
-    for (let C = 0; C < nCols; C++) {
-      const addr = XLSX.utils.encode_cell({ r: R, c: C })
-      if (!ws[addr]) ws[addr] = { t: 'z', v: '' }
-      if (R === 0) {
-        ws[addr].s = { fill: S.headerFill, font: S.headerFont, alignment: S.headerAlign, border: S.headerBorder }
-      } else {
-        const isAlt = R % 2 === 0
-        ws[addr].s = { fill: isAlt ? S.altFill : {}, font: S.cellFont, border: S.cellBorder, alignment: { vertical: 'center' } }
-      }
-    }
-  }
-
-  // Column widths
-  ws['!cols'] = colWidths.map(w => ({ wpx: w }))
-  // Row height for header
-  ws['!rows'] = [{ hpx: 28 }]
-  // Freeze top row
-  ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' }
-  // Auto-filter on header row
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: nRows, c: nCols - 1 } }) }
-
-  return ws
-}
-
+// ── Shared helpers ────────────────────────────────────────────
 function fmtDate(val) {
   if (!val) return ''
   const d = new Date(val)
@@ -245,52 +196,255 @@ function fmtTime(val) {
   if (isNaN(d)) return val
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
+function bar(pct, w = 18) {
+  const filled = Math.min(w, Math.round(Math.max(0, pct) / 100 * w))
+  return '█'.repeat(filled) + '░'.repeat(w - filled)
+}
+function revFmt(n) {
+  if (!n) return '₹0'
+  return n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : `₹${n.toLocaleString('en-IN')}`
+}
 
-function makeCoverSheet(meta) {
-  const { academyName, exportedAt, filters, counts } = meta
-  const ws = XLSX.utils.aoa_to_sheet([])
+// ── Professional data-sheet builder ──────────────────────────
+function applySheet(headers, rows, colWidths) {
+  const aoa = [headers, ...rows]
+  const ws  = XLSX.utils.aoa_to_sheet(aoa)
+  const nC  = headers.length
+  const nR  = rows.length
+  const bd  = { top:{style:'thin',color:{rgb:'E2E8F0'}}, bottom:{style:'thin',color:{rgb:'E2E8F0'}}, left:{style:'thin',color:{rgb:'E2E8F0'}}, right:{style:'thin',color:{rgb:'E2E8F0'}} }
+  for (let R = 0; R < aoa.length; R++) {
+    for (let C = 0; C < nC; C++) {
+      const a = XLSX.utils.encode_cell({ r:R, c:C })
+      if (!ws[a]) ws[a] = { t:'s', v:'' }
+      ws[a].s = R === 0
+        ? { fill:{fgColor:{rgb:'1E3A5F'}}, font:{name:'Calibri',sz:10,bold:true,color:{rgb:'FFFFFF'}}, alignment:{horizontal:'center',vertical:'center'}, border:{...bd,bottom:{style:'medium',color:{rgb:'2563EB'}}} }
+        : { fill:{fgColor:{rgb: R%2===0 ? 'F0F6FF' : 'FFFFFF'}}, font:{name:'Calibri',sz:10,color:{rgb:'374151'}}, alignment:{vertical:'center'}, border:bd }
+    }
+  }
+  ws['!cols']       = colWidths.map(w => ({ wpx:w }))
+  ws['!rows']       = [{ hpx:26 }]
+  ws['!freeze']     = { xSplit:0, ySplit:1, topLeftCell:'A2', activePane:'bottomLeft' }
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:nR,c:nC-1} }) }
+  return ws
+}
 
-  const setCell = (addr, val, style) => {
-    ws[addr] = { t: typeof val === 'number' ? 'n' : 's', v: val, s: style }
-  }
-  const TitleStyle  = { font: { name: 'Calibri', sz: 18, bold: true, color: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-  const SubStyle    = { font: { name: 'Calibri', sz: 11, color: { rgb: '6B7280' } }, alignment: { horizontal: 'center' } }
-  const LabelStyle  = { font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '374151' } } }
-  const ValueStyle  = { font: { name: 'Calibri', sz: 11, color: { rgb: '111827' } } }
-  const BigNumStyle = { font: { name: 'Calibri', sz: 24, bold: true, color: { rgb: '2563EB' } }, alignment: { horizontal: 'center' } }
-  const SmallLabel  = { font: { name: 'Calibri', sz: 9, color: { rgb: '9CA3AF' } }, alignment: { horizontal: 'center' } }
-  const SectionHdr  = { font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'left' } }
+// ── Corporate dashboard Summary sheet ────────────────────────
+function makeCoverSheet({ academyName, exportedAt, filters, students, payments, attendance, trials, batches }) {
+  // ─── Metrics ─────────────────────────────────────────────
+  const totalStu   = students.length
+  const active     = students.filter(s => (s.status||'').toLowerCase() === 'active').length
+  const suspended  = students.filter(s => (s.status||'').toLowerCase() === 'suspended').length
+  const inactive   = totalStu - active - suspended
 
-  setCell('A1', 'SPORTFLOW CRM', TitleStyle)
-  setCell('A2', 'Academy Data Export Report', SubStyle)
-  setCell('A3', '─────────────────────────────────────────────────────────', SubStyle)
-  setCell('A5', 'Academy', LabelStyle); setCell('B5', academyName || '—', ValueStyle)
-  setCell('A6', 'Exported On', LabelStyle); setCell('B6', fmtTime(exportedAt), ValueStyle)
-  if (filters.dateFrom || filters.dateTo) {
-    setCell('A7', 'Date Range', LabelStyle)
-    setCell('B7', `${filters.dateFrom || '—'} → ${filters.dateTo || '—'}`, ValueStyle)
+  const paid       = payments.filter(p => (p.status||'').toLowerCase() === 'paid')
+  const unpaid     = payments.filter(p => (p.status||'').toLowerCase() !== 'paid')
+  const totalRev   = paid.reduce((s, p) => s + (p.amount || 0), 0)
+  const pendingRev = unpaid.reduce((s, p) => s + (p.amount || 0), 0)
+  const paidShare  = payments.length ? Math.round(paid.length / payments.length * 100) : 0
+
+  const attTotal   = attendance.length || 1
+  const presentCt  = attendance.filter(a => a.status === 'Present' || a.present).length
+  const absentCt   = attendance.filter(a => a.status === 'Absent'  || (!a.status && !a.present)).length
+  const lateCt     = attendance.filter(a => a.status === 'Late').length
+  const leaveCt    = attendance.filter(a => a.status === 'Leave').length
+  const attRate    = Math.round(presentCt / attTotal * 100)
+
+  const converted  = trials.filter(t => t.converted).length
+  const convRate   = trials.length ? Math.round(converted / trials.length * 100) : 0
+
+  // ─── Cell factory ─────────────────────────────────────────
+  const ws     = {}
+  const merges = []
+  const enc    = (r, c) => XLSX.utils.encode_cell({ r, c })
+  const COLS   = 10  // columns A–J (0-indexed 0–9)
+
+  const setC = (r, c, val, s, z) => {
+    const a = enc(r, c)
+    ws[a] = { t: typeof val === 'number' ? 'n' : 's', v: val ?? '' }
+    if (s) ws[a].s = s
+    if (z) ws[a].z = z
   }
-  if (filters.sport) {
-    setCell('A8', 'Sport Filter', LabelStyle); setCell('B8', filters.sport, ValueStyle)
-  }
-  setCell('A10', 'EXPORT SUMMARY', SectionHdr)
-  const statCols = [['A', 'Students'], ['C', 'Payments'], ['E', 'Attendance'], ['G', 'Trials'], ['I', 'Batches']]
-  const statRow1 = 12, statRow2 = 13
-  statCols.forEach(([col, label]) => {
-    const count = counts[label.toLowerCase()] ?? 0
-    setCell(`${col}${statRow1}`, count, BigNumStyle)
-    setCell(`${col}${statRow2}`, label, SmallLabel)
+  const fill = (r, c1, c2, s) => { for (let c = c1; c <= c2; c++) setC(r, c, '', s) }
+  const mg   = (r1,c1,r2,c2) => merges.push({ s:{r:r1,c:c1}, e:{r:r2,c:c2} })
+
+  // ─── Style primitives ─────────────────────────────────────
+  const f   = rgb => ({ fgColor: { rgb } })
+  const fnt = (sz, bold, rgb) => ({ name:'Calibri', sz, bold:!!bold, color:{ rgb } })
+  const al  = (h, v='center') => ({ horizontal:h, vertical:v })
+  const bdr = (rgb, w='thin') => ({ top:{style:w,color:{rgb}}, bottom:{style:w,color:{rgb}}, left:{style:w,color:{rgb}}, right:{style:w,color:{rgb}} })
+  const bdrB = (rgb) => ({ bottom:{style:'medium',color:{rgb}} })
+
+  // Named styles
+  const TH  = { fill:f('1E3A5F'), font:fnt(9,true,'FFFFFF'),  alignment:al('center'), border:bdr('334155') }
+  const TC  = alt => ({ fill:f(alt?'F0F6FF':'FFFFFF'), font:fnt(9,false,'374151'), alignment:al('center'), border:bdr('E2E8F0') })
+  const TL  = alt => ({ fill:f(alt?'F0F6FF':'FFFFFF'), font:fnt(9,false,'374151'), alignment:{horizontal:'left',vertical:'center'}, border:bdr('E2E8F0') })
+  const TT  = { fill:f('DBEAFE'), font:fnt(9,true,'1E3A5F'),  alignment:al('center'), border:bdr('93C5FD','medium') }
+  const TTL = { fill:f('DBEAFE'), font:fnt(9,true,'1E3A5F'),  alignment:{horizontal:'left',vertical:'center'}, border:bdr('93C5FD','medium') }
+
+  // ─── Row 0: Title banner ──────────────────────────────────
+  fill(0, 0, COLS-1, { fill:f('0F172A') })
+  setC(0, 0, '  SPORTFLOW CRM  —  ACADEMY PERFORMANCE REPORT', {
+    fill:f('0F172A'), font:fnt(15,true,'FFFFFF'), alignment:al('left','center'),
+  })
+  mg(0, 0, 0, COLS-1)
+
+  // ─── Row 1: Subtitle ──────────────────────────────────────
+  const periodStr = filters.dateFrom
+    ? `${filters.dateFrom} → ${filters.dateTo || 'today'}`
+    : 'All time'
+  const subParts = [
+    academyName || 'Academy',
+    `Exported: ${fmtDate(exportedAt)}`,
+    `Period: ${periodStr}`,
+    filters.sport ? `Sport: ${filters.sport}` : 'All sports',
+  ]
+  fill(1, 0, COLS-1, { fill:f('1E40AF') })
+  setC(1, 0, `  ${subParts.join('     ·     ')}`, {
+    fill:f('1E40AF'), font:fnt(9,false,'BFDBFE'), alignment:al('left','center'),
+  })
+  mg(1, 0, 1, COLS-1)
+
+  // ─── Row 2: spacer ────────────────────────────────────────
+
+  // ─── Row 3: "KEY PERFORMANCE INDICATORS" header ───────────
+  fill(3, 0, COLS-1, { fill:f('1E3A5F') })
+  setC(3, 0, '   KEY PERFORMANCE INDICATORS', {
+    fill:f('1E3A5F'), font:fnt(9,true,'94A3B8'), alignment:al('left','center'),
+  })
+  mg(3, 0, 3, COLS-1)
+
+  // ─── Rows 4-6: KPI cards (5 × 2 columns) ─────────────────
+  const kpis = [
+    { label:'STUDENTS',          val: String(totalStu),         sub:`${active} active  ·  ${suspended} susp.`, accent:'1D4ED8', dark:'1E3A5F' },
+    { label:'TOTAL REVENUE',     val: revFmt(totalRev),         sub:`${revFmt(pendingRev)} pending`,            accent:'047857', dark:'064E3B' },
+    { label:'ATTENDANCE RATE',   val: `${attRate}%`,            sub:`${presentCt} / ${attTotal} sessions`,      accent:'1D4ED8', dark:'1E3A5F' },
+    { label:'TRIAL CONVERSION',  val: `${convRate}%`,           sub:`${converted} of ${trials.length} leads`,   accent:'B45309', dark:'78350F' },
+    { label:'ACTIVE BATCHES',    val: String(batches.length),   sub:`${totalStu} total enrolled`,               accent:'6D28D9', dark:'4C1D95' },
+  ]
+  kpis.forEach(({ label, val, sub, accent, dark }, i) => {
+    const col = i * 2
+    // label row
+    fill(4, col, col+1, { fill:f(accent) })
+    setC(4, col, `  ${label}`, { fill:f(accent), font:fnt(8,true,'DBEAFE'), alignment:al('left','center') })
+    mg(4, col, 4, col+1)
+    // value row
+    fill(5, col, col+1, { fill:f(dark) })
+    setC(5, col, val, { fill:f(dark), font:fnt(20,true,'FFFFFF'), alignment:al('center','center') })
+    mg(5, col, 5, col+1)
+    // sub row
+    fill(6, col, col+1, { fill:f(dark) })
+    setC(6, col, sub, { fill:f(dark), font:fnt(8,false,'93C5FD'), alignment:al('center','center') })
+    mg(6, col, 6, col+1)
   })
 
-  ws['!cols'] = [{ wpx: 130 }, { wpx: 220 }, { wpx: 80 }, { wpx: 130 }, { wpx: 80 }, { wpx: 130 }, { wpx: 80 }, { wpx: 130 }, { wpx: 80 }]
-  ws['!rows'] = [{ hpx: 36 }, { hpx: 20 }, { hpx: 16 }, { hpx: 10 }, { hpx: 22 }, { hpx: 22 }, { hpx: 22 }, { hpx: 22 }, { hpx: 14 }, { hpx: 24 }, { hpx: 12 }, { hpx: 32 }, { hpx: 20 }]
-  ws['!ref'] = 'A1:I14'
+  // ─── Row 7: spacer ────────────────────────────────────────
+
+  // ─── Row 8: two-section header ────────────────────────────
+  fill(8, 0, 4,      { fill:f('1E3A5F') })
+  fill(8, 5, COLS-1, { fill:f('1E3A5F') })
+  setC(8, 0, '   PAYMENT BREAKDOWN', { fill:f('1E3A5F'), font:fnt(9,true,'94A3B8'), alignment:al('left','center') })
+  setC(8, 5, '   STUDENT STATUS',    { fill:f('1E3A5F'), font:fnt(9,true,'94A3B8'), alignment:al('left','center') })
+  mg(8, 0, 8, 4); mg(8, 5, 8, COLS-1)
+
+  // ─── Row 9: table headers ─────────────────────────────────
+  ;['Status','Records','Revenue','Avg. Fee','Collection %'].forEach((h,i) => setC(9, i, h, TH))
+  ;['Status','Count','% Share','Bar Chart (18 units)',''].forEach((h,i) => setC(9, 5+i, i<4?h:'', i<4?TH:{ fill:f('1E3A5F'), border:bdr('334155') }))
+  mg(9, 8, 9, 9)
+
+  // ─── Rows 10-11: Payment rows ─────────────────────────────
+  const payRows = [
+    ['Paid',   paid.length,   totalRev,   paid.length   ? Math.round(totalRev/paid.length)   : 0, `${bar(paidShare)} ${paidShare}%`,    true],
+    ['Unpaid', unpaid.length, pendingRev, unpaid.length ? Math.round(pendingRev/unpaid.length): 0, `${bar(100-paidShare)} ${100-paidShare}%`, false],
+  ]
+  payRows.forEach(([st,n,amt,avg,barStr], ri) => {
+    const alt = ri%2===0
+    const barStyle = { ...TC(alt), font:{name:'Courier New',sz:8,color:{rgb:ri===0?'059669':'DC2626'}} }
+    setC(10+ri,0,st,TL(alt)); setC(10+ri,1,n,TC(alt)); setC(10+ri,2,amt,{...TC(alt),z:'₹#,##0'})
+    setC(10+ri,3,avg,{...TC(alt),z:'₹#,##0'}); setC(10+ri,4,barStr,barStyle)
+  })
+  // ─── Row 12: Payment total ────────────────────────────────
+  setC(12,0,'TOTAL',TTL); setC(12,1,payments.length,TT); setC(12,2,totalRev+pendingRev,{...TT,z:'₹#,##0'})
+  setC(12,3,payments.length?Math.round((totalRev+pendingRev)/payments.length):0,{...TT,z:'₹#,##0'})
+  setC(12,4,`${bar(100)} 100%`,{ ...TT, font:{name:'Courier New',sz:8,color:{rgb:'1E3A5F'}} })
+
+  // ─── Rows 10-12: Student status rows ─────────────────────
+  const stuT = totalStu || 1
+  const stuPct = n => Math.round(n/stuT*100)
+  const stuRows = [
+    ['Active',    active,    stuPct(active),    '059669'],
+    ['Suspended', suspended, stuPct(suspended), 'DC2626'],
+    ['Inactive',  inactive,  stuPct(inactive),  '6B7280'],
+  ]
+  stuRows.forEach(([st,n,pct,barClr], ri) => {
+    const alt = ri%2===0
+    setC(10+ri,5,st,TL(alt)); setC(10+ri,6,n,TC(alt)); setC(10+ri,7,`${pct}%`,TC(alt))
+    setC(10+ri,8,`${bar(pct)} ${pct}%`,{ ...TC(alt), font:{name:'Courier New',sz:8,color:{rgb:barClr}} })
+    setC(10+ri,9,'',TC(alt))
+  })
+  // ─── Row 13: Student total ────────────────────────────────
+  setC(13,5,'TOTAL',TTL); setC(13,6,totalStu,TT); setC(13,7,'100%',TT)
+  setC(13,8,`${bar(100)} 100%`,{ ...TT, font:{name:'Courier New',sz:8,color:{rgb:'1E3A5F'}} }); setC(13,9,'',TT)
+  // fill empty payment cols on row 13
+  for (let c = 0; c < 5; c++) setC(13,c,'',{ fill:f('FFFFFF'), border:bdr('E2E8F0') })
+
+  // ─── Row 14: spacer ───────────────────────────────────────
+
+  // ─── Row 15: Attendance header ────────────────────────────
+  fill(15, 0, COLS-1, { fill:f('1E3A5F') })
+  setC(15, 0, '   ATTENDANCE OVERVIEW', { fill:f('1E3A5F'), font:fnt(9,true,'94A3B8'), alignment:al('left','center') })
+  mg(15, 0, 15, COLS-1)
+
+  // ─── Row 16: Attendance table headers ────────────────────
+  ;['Status','Sessions','% Share','Bar Chart (20 units)','','Rate Indicator'].forEach((h,i) => {
+    if (i===3)      { setC(16,3,h,TH); mg(16,3,16,5) }
+    else if (i < 3) setC(16,i,h,TH)
+  })
+  setC(16,6,'Rate Indicator',TH); mg(16,6,16,COLS-1)
+
+  // ─── Rows 17-20: Attendance data ─────────────────────────
+  const attRows = [
+    ['Present', presentCt, attRate,                     '059669'],
+    ['Absent',  absentCt,  Math.round(absentCt/attTotal*100), 'DC2626'],
+    ['Late',    lateCt,    Math.round(lateCt/attTotal*100),   'D97706'],
+    ['Leave',   leaveCt,   Math.round(leaveCt/attTotal*100),  '2563EB'],
+  ]
+  attRows.forEach(([st,n,pct,barClr], ri) => {
+    const alt = ri%2===0
+    setC(17+ri,0,st,TL(alt)); setC(17+ri,1,n,TC(alt)); setC(17+ri,2,`${pct}%`,TC(alt))
+    setC(17+ri,3,`${bar(pct,20)} ${pct}%`,{ ...TC(alt), font:{name:'Courier New',sz:8,color:{rgb:barClr}} })
+    setC(17+ri,4,'',TC(alt)); setC(17+ri,5,'',TC(alt))
+    mg(17+ri,3,17+ri,5)
+    const rateLbl = ri===0 ? (pct>=80?'Excellent':pct>=60?'Good':'Below Target') : ''
+    const rateClr = pct>=80?'059669':pct>=60?'D97706':'DC2626'
+    setC(17+ri,6, ri===0 ? rateLbl : '', ri===0
+      ? { fill:f(pct>=80?'D1FAE5':pct>=60?'FEF3C7':'FEE2E2'), font:fnt(9,true,rateClr), alignment:al('center') }
+      : TC(alt))
+    mg(17+ri,6,17+ri,COLS-1)
+  })
+  // ─── Row 21: Attendance total ─────────────────────────────
+  setC(21,0,'TOTAL',TTL); setC(21,1,attendance.length,TT); setC(21,2,'100%',TT)
+  setC(21,3,`${bar(attRate,20)} ${attRate}%`,{ ...TT, font:{name:'Courier New',sz:8,color:{rgb:'1E3A5F'}} })
+  setC(21,4,'',TT); setC(21,5,'',TT); mg(21,3,21,5)
+  const totalRateLbl = attRate>=80?'Excellent':attRate>=60?'Good':'Below Target'
+  const totalRateClr = attRate>=80?'059669':attRate>=60?'D97706':'DC2626'
+  setC(21,6,totalRateLbl,{ fill:f(attRate>=80?'D1FAE5':attRate>=60?'FEF3C7':'FEE2E2'), font:fnt(9,true,totalRateClr), alignment:al('center'), border:bdr('93C5FD','medium') })
+  mg(21,6,21,COLS-1)
+
+  // ─── Sheet config ─────────────────────────────────────────
+  ws['!merges'] = merges
+  ws['!ref']    = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:21,c:COLS-1} })
+  ws['!cols']   = [130,110,100,130,120,110,80,110,90,80].map(w => ({ wpx:w }))
+  ws['!rows']   = [
+    {hpx:32},{hpx:22},{hpx:8}, {hpx:22},{hpx:20},{hpx:38},{hpx:18},{hpx:8},
+    {hpx:22},{hpx:22},{hpx:20},{hpx:20},{hpx:20},{hpx:20},{hpx:8},
+    {hpx:22},{hpx:22},{hpx:20},{hpx:20},{hpx:20},{hpx:20},{hpx:20},
+  ]
   return ws
 }
 
 // ── Full-academy backup: professional multi-sheet Excel ──────
-// Filters: { dateFrom, dateTo, sport, sheets, download }
-export async function exportAcademyData(academyId, { download = true, dateFrom, dateTo, sport, sheets } = {}) {
+// Filters: { dateFrom, dateTo, sport, sheets, download, academyName }
+export async function exportAcademyData(academyId, { download = true, dateFrom, dateTo, sport, sheets, academyName } = {}) {
   const enabledSheets = sheets || ['students', 'payments', 'attendance', 'trials', 'batches']
 
   // Build Supabase queries with optional date/sport filters
@@ -338,20 +492,13 @@ export async function exportAcademyData(academyId, { download = true, dateFrom, 
 
   const stamp = new Date().toISOString().slice(0, 10)
   const wb = XLSX.utils.book_new()
-  const academyName = undefined // passed from caller if needed
 
   // ── Cover Sheet ──
   XLSX.utils.book_append_sheet(wb, makeCoverSheet({
     academyName: academyName || 'Academy',
-    exportedAt: new Date().toISOString(),
-    filters: { dateFrom, dateTo, sport },
-    counts: {
-      students:   enabledSheets.includes('students')   ? students.length   : '—',
-      payments:   enabledSheets.includes('payments')   ? payments.length   : '—',
-      attendance: enabledSheets.includes('attendance') ? attendance.length : '—',
-      trials:     enabledSheets.includes('trials')     ? trials.length     : '—',
-      batches:    enabledSheets.includes('batches')    ? batches.length    : '—',
-    },
+    exportedAt:  new Date().toISOString(),
+    filters:     { dateFrom, dateTo, sport },
+    students, payments, attendance, trials, batches,
   }), 'Summary')
 
   // ── Students sheet ──

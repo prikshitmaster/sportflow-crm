@@ -42,11 +42,12 @@ export default function Backups() {
     setBusy(true)
     try {
       await exportAcademyData(user.academyId, {
-        download: true,
-        dateFrom: dateFrom || undefined,
-        dateTo:   dateTo   || undefined,
-        sport:    sport    || undefined,
+        download:     true,
+        dateFrom:     dateFrom     || undefined,
+        dateTo:       dateTo       || undefined,
+        sport:        sport        || undefined,
         sheets,
+        academyName:  user?.academy,
       })
       showToast('Export downloaded')
     }
