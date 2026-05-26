@@ -1717,6 +1717,7 @@ function AuditTab({ academyId, selectedSport, selectedBranch, sportBranches }) {
   const actors = useMemo(() => ['All', ...[...new Set(logs.map(l => l.actor_name).filter(Boolean))].sort()], [logs])
 
   const filtered = useMemo(() => logs.filter(l => {
+    if ((l.actor_role || '').toLowerCase() === 'student') return false
     const matchEntity = entityFilter === 'All' || l.entity_type === entityFilter
     const matchAction = actionFilter === 'all' || ACTION_CATEGORY[l.action] === actionFilter
     const matchActor  = actorFilter === 'All' || l.actor_name === actorFilter
