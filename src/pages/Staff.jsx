@@ -872,13 +872,14 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPe
                 <label className="label">Age</label>
                 <input className="input" value={editAge} onChange={e => setEditAge(e.target.value)} type="number" min="16" max="70" placeholder="Years" />
               </div>
-              {s.email && (
-                <div>
-                  <label className="label">Email</label>
-                  <input className="input bg-gray-50 text-gray-500 cursor-not-allowed" value={s.email} readOnly />
-                  <p className="text-[11px] text-gray-400 mt-1">Email is set by the staff member during account activation</p>
-                </div>
-              )}
+              <div>
+                <label className="label">Email</label>
+                {s.email
+                  ? <input className="input bg-gray-50 text-gray-500 cursor-not-allowed" value={s.email} readOnly />
+                  : <div className="input bg-gray-50 text-gray-400 text-sm">Not activated yet</div>
+                }
+                <p className="text-[11px] text-gray-400 mt-1">Set by staff during account activation — cannot be changed here</p>
+              </div>
 
               {isField && s.licenceUrl && (
                 <div className="flex items-center gap-2 text-xs text-brand-600 bg-brand-50 rounded-xl px-3 py-2.5">
