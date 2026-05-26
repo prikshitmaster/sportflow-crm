@@ -827,6 +827,8 @@ function AddStudentModal({ onClose, onSave }) {
       const dup = (allStudents || []).find(s => s.phone?.replace(/^\+91/, '').replace(/\D/g, '') === form.phone)
       if (dup) e.phone = `Already registered to ${dup.name}`
     }
+    if (!form.parent?.trim())            e.parent       = 'Parent name is required'
+    if (!form.dob)                      e.dob          = 'Date of birth is required'
     if (!form.sport)                    e.sport        = 'Select a sport'
     if (!form.batchId)                  e.batchId      = 'Select a batch'
     if (!form.trainingType)             e.trainingType = 'Select a training type'
@@ -870,14 +872,15 @@ function AddStudentModal({ onClose, onSave }) {
 
         {/* Parent */}
         <div>
-          <label className="label">Parent Name</label>
-          <input className="input" placeholder="Father / Mother name" value={form.parent}
+          <label className="label">Parent Name *</label>
+          <input className={`input ${errors.parent ? 'border-red-400' : ''}`} placeholder="Father / Mother name" value={form.parent}
             onChange={e => set('parent', e.target.value)} />
+          {errors.parent && <p className="text-[11px] text-red-500 mt-1">{errors.parent}</p>}
         </div>
 
         {/* Date of Birth */}
         <div>
-          <label className="label">Date of Birth</label>
+          <label className="label">Date of Birth *</label>
           <div className="relative">
             <DobInput value={form.dob} onChange={v => set('dob', v)} hasError={!!errors.dob} />
             {form.dob && calcAge(form.dob) !== null && (
@@ -886,6 +889,7 @@ function AddStudentModal({ onClose, onSave }) {
               </span>
             )}
           </div>
+          {errors.dob && <p className="text-[11px] text-red-500 mt-1">{errors.dob}</p>}
         </div>
 
         {/* Student Phone */}
