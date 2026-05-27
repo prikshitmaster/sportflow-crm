@@ -1631,8 +1631,12 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
   // Month view derived
   const daysInMonth    = new Date(selY, selM, 0).getDate()
   const isCurrentMonth = selY === now.getFullYear() && selM === now.getMonth() + 1
-  const lastDay        = isCurrentMonth ? now.getDate() : daysInMonth
+  const lastDay        = daysInMonth
   const isNextDisabled = selY > now.getFullYear() || (selY === now.getFullYear() && selM >= now.getMonth() + 1)
+  const DAY_LETTERS    = ['Su','Mo','Tu','We','Th','Fr','Sa']
+  const getDayLetter   = d => DAY_LETTERS[new Date(selY, selM - 1, d).getDay()]
+  const isWeekendDay   = d => { const w = new Date(selY, selM - 1, d).getDay(); return w === 0 || w === 6 }
+  const isFutureDay    = d => isCurrentMonth && d > now.getDate()
 
   const monthPresence = {}
   for (const r of monthRec) {
@@ -1763,8 +1767,9 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
                   <tr className="bg-gray-50 border-b border-gray-100">
                     <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide sticky left-0 bg-gray-50 min-w-[140px]">Staff</th>
                     {Array.from({ length: lastDay }, (_, i) => i + 1).map(d => (
-                      <th key={d} className={`text-center py-3 w-8 font-bold ${d === now.getDate() && isCurrentMonth ? 'text-brand-600' : 'text-gray-400'}`}>
-                        {d}
+                      <th key={d} className={`text-center py-2 w-8 ${isWeekendDay(d) ? 'bg-orange-50/60' : ''}`}>
+                        <div className={`text-[9px] font-bold leading-tight ${isWeekendDay(d) ? 'text-orange-300' : 'text-gray-300'}`}>{getDayLetter(d)}</div>
+                        <div className={`text-xs font-bold leading-tight ${d === now.getDate() && isCurrentMonth ? 'text-brand-600' : isFutureDay(d) ? 'text-gray-200' : 'text-gray-400'}`}>{d}</div>
                       </th>
                     ))}
                     <th className="text-right px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide sticky right-0 bg-gray-50 min-w-[70px]">Total</th>
@@ -1772,8 +1777,9 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
                 </thead>
                 <tbody>
                   {activeStaff.map((s, idx) => {
-                    const present = monthPresence[String(s.id)] || new Set()
-                    const pct = lastDay > 0 ? Math.round((present.size / lastDay) * 100) : 0
+                    const present    = monthPresence[String(s.id)] || new Set()
+                    const countedDays = isCurrentMonth ? now.getDate() : daysInMonth
+                    const pct        = countedDays > 0 ? Math.round((present.size / countedDays) * 100) : 0
                     return (
                       <tr key={s.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}>
                         <td className={`px-4 py-3 sticky left-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
@@ -1786,9 +1792,11 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
                           </div>
                         </td>
                         {Array.from({ length: lastDay }, (_, i) => i + 1).map(d => (
-                          <td key={d} className="text-center py-3">
+                          <td key={d} className={`text-center py-3 ${isWeekendDay(d) ? 'bg-orange-50/30' : ''}`}>
                             {present.has(d) ? (
                               <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-600 font-bold text-[9px]">✓</span>
+                            ) : isFutureDay(d) ? (
+                              <span className="inline-flex items-center justify-center w-5 h-5 text-gray-200 text-[9px]">·</span>
                             ) : (
                               <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-300 text-[9px]">—</span>
                             )}
@@ -1796,7 +1804,7 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
                         ))}
                         <td className={`px-4 py-3 text-right sticky right-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
                           <span className="font-black text-gray-900">{present.size}</span>
-                          <span className="text-gray-400">/{lastDay}</span>
+                          <span className="text-gray-400">/{countedDays}</span>
                           <p className={`text-[10px] font-bold ${pct >= 75 ? 'text-emerald-600' : pct >= 50 ? 'text-amber-500' : 'text-red-400'}`}>{pct}%</p>
                         </td>
                       </tr>
