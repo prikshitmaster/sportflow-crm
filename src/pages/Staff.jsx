@@ -36,9 +36,9 @@ export default function Staff() {
     const compute = (records, year, month, daysInPeriod) => {
       const map = {}
       for (const r of records) {
-        const id = r.profile_id
+        const id = String(r.staff_id)
         if (!map[id]) map[id] = new Set()
-        map[id].add(r.check_in_date)
+        map[id].add(r.date)
       }
       const result = {}
       for (const [id, dates] of Object.entries(map)) {
@@ -1604,8 +1604,8 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
   }, [date, user?.academyId, demoMode])
 
   const activeStaff = staff.filter(s => s.status === 'Active')
-  const presentSet  = new Set(records.map(r => r.staff_name?.toLowerCase().trim()))
-  const presentCount = activeStaff.filter(s => presentSet.has(s.name?.toLowerCase().trim())).length
+  const presentIds   = new Set(records.map(r => String(r.staff_id)))
+  const presentCount = activeStaff.filter(s => presentIds.has(String(s.id))).length
 
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long',
@@ -1672,7 +1672,7 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
           </div>
           <div className="divide-y divide-gray-50">
             {activeStaff.map(s => {
-              const record = records.find(r => r.staff_name?.toLowerCase().trim() === s.name?.toLowerCase().trim())
+              const record = records.find(r => String(r.staff_id) === String(s.id))
               return (
                 <div key={s.id} className="grid md:grid-cols-[2fr_1fr_1fr_1fr] gap-3 md:gap-4 items-center px-5 py-3.5">
                   <div className="flex items-center gap-3">
@@ -1697,7 +1697,7 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs font-semibold text-gray-600">{record ? record.check_in_time : '—'}</p>
+                  <p className="text-xs font-semibold text-gray-600">{record?.clock_in ? new Date(record.clock_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}</p>
                 </div>
               )
             })}

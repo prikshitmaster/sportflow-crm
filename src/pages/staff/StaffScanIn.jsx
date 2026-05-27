@@ -103,7 +103,7 @@ export default function StaffScanIn() {
     // which locked the coach out of retrying the next day if the bad write was near midnight.
     if (user?.academyId && user?.id) {
       try {
-        await db.logStaffAttendance(user.academyId, user.id, user.name, today, timeStr)
+        await db.clockIn()
       } catch (err) {
         setErrMsg('Clock-in failed — please try again. (' + (err?.message || 'network error') + ')')
         setPhase('error')

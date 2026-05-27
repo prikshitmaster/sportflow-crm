@@ -2091,11 +2091,11 @@ export async function logStaffAttendance(_academyId, profileId, staffName, date,
 
 export async function fetchStaffAttendanceForDate(academyId, date) {
   const { data, error } = await supabase
-    .from('staff_attendance')
-    .select('*')
+    .from('staff_checkins')
+    .select('staff_id, clock_in, clock_out')
     .eq('academy_id', academyId)
-    .eq('check_in_date', date)
-    .order('check_in_time', { ascending: true })
+    .eq('date', date)
+    .order('clock_in', { ascending: true })
   if (error) throw error
   return data || []
 }
@@ -2106,11 +2106,11 @@ export async function fetchStaffAttendanceForMonth(academyId, year, month) {
   const start = `${year}-${pad(month)}-01`
   const end   = `${year}-${pad(month)}-${pad(lastDay)}`
   const { data, error } = await supabase
-    .from('staff_attendance')
-    .select('profile_id, check_in_date')
+    .from('staff_checkins')
+    .select('staff_id, date')
     .eq('academy_id', academyId)
-    .gte('check_in_date', start)
-    .lte('check_in_date', end)
+    .gte('date', start)
+    .lte('date', end)
   if (error) return []
   return data || []
 }
