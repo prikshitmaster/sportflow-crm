@@ -140,18 +140,18 @@ export default function Staff() {
       {/* Staff list — hidden when on leaves/access tab */}
       {activeTab === 'staff' && (
       <>
-      <div className="grid grid-cols-3 gap-4">
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-gray-900">{staff.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Total Staff</p>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="card p-3 sm:p-4 text-center">
+          <p className="text-xl sm:text-2xl font-black text-gray-900">{staff.length}</p>
+          <p className="text-[10px] sm:text-xs text-gray-500 mt-1">Total</p>
         </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-brand-600">{staff.filter(s => s.status === 'Active').length}</p>
-          <p className="text-xs text-gray-500 mt-1">Active</p>
+        <div className="card p-3 sm:p-4 text-center">
+          <p className="text-xl sm:text-2xl font-black text-brand-600">{staff.filter(s => s.status === 'Active').length}</p>
+          <p className="text-[10px] sm:text-xs text-gray-500 mt-1">Active</p>
         </div>
-        <div className="card p-4 text-center">
-          <p className="text-2xl font-black text-emerald-600">{avgAttendance}%</p>
-          <p className="text-xs text-gray-500 mt-1">Avg Attendance</p>
+        <div className="card p-3 sm:p-4 text-center">
+          <p className="text-xl sm:text-2xl font-black text-emerald-600">{avgAttendance}%</p>
+          <p className="text-[10px] sm:text-xs text-gray-500 mt-1">Attendance</p>
         </div>
       </div>
 

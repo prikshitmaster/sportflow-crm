@@ -634,7 +634,7 @@ function FinancialTab({ payments, students }) {
       </div>
 
       {/* ── Accounts Receivable table ───────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
         {/* Table header bar */}
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -742,7 +742,7 @@ function FinancialTab({ payments, students }) {
       </div>
 
       {/* ── Payment Transactions (collapsible) ─────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
         <button className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50/40 transition"
           onClick={() => setShowTx(v => !v)}>
           <div className="text-left">
@@ -881,7 +881,7 @@ function BatchTab({ batches, students, payments, attendanceData, batchToStudents
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
         <TableHead cols={cols} />
         {rows.length === 0 ? (
           <div className="py-14 text-center text-sm text-gray-400">No batch data</div>
@@ -1019,7 +1019,7 @@ function StudentLedgerTab({ students, payments }) {
                   <p className="text-xs text-gray-400">{student.studentCode} · {student.batch || '—'} · {student.sport || '—'}</p>
                 </div>
               </div>
-              <div className="flex gap-6 text-center">
+              <div className="flex flex-wrap gap-4 text-center">
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Monthly Fee</p><p className="text-sm font-black text-gray-800">{INR(student.fees)}</p></div>
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Total Paid</p><p className="text-sm font-black text-emerald-700">{INR(totalPaid)}</p></div>
                 <div><p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Outstanding</p><p className="text-sm font-black text-red-600">{INR(totalPending)}</p></div>
@@ -1030,7 +1030,7 @@ function StudentLedgerTab({ students, payments }) {
           </div>
 
           {/* Ledger table */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
             <TableHead cols={cols} />
             {ledgerWithBalance.length === 0 ? (
               <div className="py-12 text-center text-sm text-gray-400">No payment records found</div>
@@ -1156,7 +1156,7 @@ function AgeingTab({ students, payments, batches = [] }) {
       </div>
 
       {/* Ageing table */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
         <TableHead cols={cols} />
         {ageing.length === 0 ? (
           <div className="py-16 text-center">
@@ -1306,7 +1306,7 @@ function AttendanceTab({ students, batches }) {
       </div>
 
       {/* Student list */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Student-wise</p>
           <span className="text-xs text-gray-400">{filtered.length} students</span>

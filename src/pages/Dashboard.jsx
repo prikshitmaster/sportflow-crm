@@ -202,11 +202,11 @@ export default function Dashboard() {
               + Add Student
             </Link>
             <Link to="/coaches"
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/10 transition">
+              className="hidden sm:flex px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/10 transition">
               + Add Staff
             </Link>
             <Link to="/reports"
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/10 transition">
+              className="hidden sm:flex px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/10 transition">
               Reports
             </Link>
             <Link to="/payments"
@@ -312,10 +312,10 @@ export default function Dashboard() {
               </Link>
             </div>
 
-            <div className="flex items-center gap-8">
+            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
               {/* Ring */}
               {expectedAmt > 0 && (
-                <div className="relative flex-shrink-0 w-28 h-28">
+                <div className="relative flex-shrink-0 w-24 h-24 sm:w-28 sm:h-28">
                   <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
                     <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f3f4f6" strokeWidth="3.2" />
                     <circle cx="18" cy="18" r="15.9" fill="none"
@@ -334,7 +334,7 @@ export default function Dashboard() {
               )}
 
               {/* Three metrics */}
-              <div className="grid grid-cols-3 gap-3 flex-1">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full sm:flex-1">
                 <MetricBox label="Collected" value={`₹${fmtAmt(collectedAmt)}`} accent="emerald" />
                 <MetricBox label="Pending" value={`₹${fmtAmt(pendingAmt)}`} accent="amber" />
                 <MetricBox label="Overdue" value={`₹${fmtAmt(overdueAmt)}`} accent="red" />

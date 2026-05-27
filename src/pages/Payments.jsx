@@ -136,6 +136,12 @@ function printReceipt(p, student, academyName, logoUrl) {
   setTimeout(() => { w.print() }, 400)
 }
 
+function fmtMoney(n) {
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`
+  if (n >= 1000)   return `₹${(n / 1000).toFixed(0)}k`
+  return `₹${n.toLocaleString('en-IN')}`
+}
+
 const STATUS_MAP = {
   Paid:    { cls: 'badge-green',  icon: CheckCircle, iconCls: 'text-emerald-500' },
   Pending: { cls: 'badge-yellow', icon: Clock,       iconCls: 'text-amber-500' },
@@ -306,10 +312,10 @@ export default function Payments() {
           </button>
         </div>
       )}
-      <div className="grid grid-cols-3 gap-4">
-        <SummaryCard label="Collected" value={`₹${paid.toLocaleString('en-IN')}`} count={paidBase.length} color="emerald" period={monthLabel} />
-        <SummaryCard label="Pending"   value={`₹${pending.toLocaleString('en-IN')}`} count={pendingBase.length} color="amber" period={monthLabel} />
-        <SummaryCard label="Overdue"   value={`₹${overdueAmt.toLocaleString('en-IN')}`} count={overdueCount} color="red" period={monthLabel} />
+      <div className="grid grid-cols-3 gap-3">
+        <SummaryCard label="Collected" value={fmtMoney(paid)} count={paidBase.length} color="emerald" period={monthLabel} />
+        <SummaryCard label="Pending"   value={fmtMoney(pending)} count={pendingBase.length} color="amber" period={monthLabel} />
+        <SummaryCard label="Overdue"   value={fmtMoney(overdueAmt)} count={overdueCount} color="red" period={monthLabel} />
       </div>
 
       {/* Revenue chart */}
@@ -381,8 +387,67 @@ export default function Payments() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="card overflow-hidden">
+      {/* Mobile card list */}
+      <div className="sm:hidden card overflow-hidden divide-y divide-gray-50">
+        {paged.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <CreditCard size={32} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No payments found</p>
+          </div>
+        ) : paged.map(p => {
+          const sm = STATUS_MAP[p.status] || STATUS_MAP.Overdue
+          return (
+            <div key={p.id}
+              className={`p-4 ${p.isVirtual ? 'bg-red-50/40' : ''}`}
+              onClick={() => !p.isVirtual && setDetailPayment({ payment: p, student: studentMap[p.studentId] })}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-gray-900 text-sm">{p.student}</span>
+                    {p.isSuspended && <span className="text-[10px] font-bold bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full">Suspended</span>}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">{p.month}{p.mode ? ` · ${p.mode}` : ''}{p.date ? ` · ${p.date}` : ''}</p>
+                  {!p.isVirtual && <p className="text-[10px] font-mono text-gray-300 mt-0.5">{p.id}</p>}
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  <p className="font-black text-gray-900">₹{(p.amount ?? 0).toLocaleString('en-IN')}</p>
+                  <span className={`badge text-[10px] ${sm.cls}`}>{p.status}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mt-2.5" onClick={e => e.stopPropagation()}>
+                {p.isVirtual ? (
+                  canManage ? (<>
+                    <button className="text-xs text-red-600 font-semibold" onClick={() => setPayForStudent(studentMap[p.studentId])}>Record</button>
+                    <button className="text-xs text-emerald-600 font-semibold flex items-center gap-1" onClick={() => { const stu = studentMap[p.studentId]; if (stu) openWhatsAppLink(stu.parentPhone || stu.phone, buildFeesReminderMessage({ student: stu, academy: user?.academy })) }}>
+                      <MessageCircle size={11} /> Remind
+                    </button>
+                  </>) : null
+                ) : p.status !== 'Paid' ? (
+                  canManage ? (
+                    <button className="text-xs text-brand-600 font-semibold disabled:opacity-50" onClick={() => handleMarkPaid(p.id)} disabled={markingPaid === p.id}>
+                      {markingPaid === p.id ? 'Marking…' : 'Mark Paid'}
+                    </button>
+                  ) : null
+                ) : (<>
+                  <button className="text-xs text-gray-400 flex items-center gap-1" onClick={() => printReceipt(p, studentMap[p.studentId], user?.academy, user?.academyLogo)}>
+                    <Printer size={11} /> Receipt
+                  </button>
+                  {canManage && <button className="text-xs text-gray-300 hover:text-red-500" onClick={() => { setDeleteTarget(p); setDeleteNote('') }}><Trash2 size={13} /></button>}
+                </>)}
+              </div>
+            </div>
+          )
+        })}
+        {filtered.length > PAGE_SIZE && (
+          <div className="px-4 py-2 border-t border-gray-100">
+            <Paginator page={page} total={filtered.length} onChange={setPage} />
+          </div>
+        )}
+      </div>
+
+      {/* Table — desktop only */}
+      <div className="hidden sm:block card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -505,6 +570,7 @@ export default function Payments() {
         <div className="px-4 py-2 border-t border-gray-100">
           <Paginator page={page} total={filtered.length} onChange={setPage} />
         </div>
+      </div>
       </div>
 
       {showModal && (
@@ -737,12 +803,12 @@ function PaymentDetailModal({ payment: p, student, onClose, onPrint }) {
 }
 
 function SummaryCard({ label, value, count, color, period }) {
-  const c = { emerald: 'text-emerald-600 bg-emerald-50', amber: 'text-amber-600 bg-amber-50', red: 'text-red-600 bg-red-50' }[color]
+  const c = { emerald: 'text-emerald-600', amber: 'text-amber-600', red: 'text-red-600' }[color]
   return (
-    <div className="card p-5">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{label}</p>
-      <p className={`text-2xl font-black ${c.split(' ')[0]}`}>{value}</p>
-      <p className="text-xs text-gray-400 mt-1">{count} {count === 1 ? 'payment' : 'payments'}{period ? ` · ${period}` : ''}</p>
+    <div className="card p-3 sm:p-5">
+      <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</p>
+      <p className={`text-lg sm:text-2xl font-black ${c}`}>{value}</p>
+      <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{count} {count === 1 ? 'record' : 'records'}</p>
     </div>
   )
 }
