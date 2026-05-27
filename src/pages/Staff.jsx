@@ -67,7 +67,7 @@ export default function Staff() {
   // Merge real attendance into staff list
   const staffWithAttendance = staff.map(s => ({
     ...s,
-    attendance: attendanceMap[s.id] !== undefined ? attendanceMap[s.id] : (s.attendance ?? 0),
+    attendance: attendanceMap[s.id] ?? 0,
   }))
 
   const avgAttendance = staffWithAttendance.filter(s => s.status === 'Active').length
@@ -1588,60 +1588,123 @@ function PermissionPanel({ target, onClose, onSave }) {
 
 // ── Staff Attendance Panel (owner view) ───────────────────
 
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
 function StaffAttendancePanel({ staff, user, demoMode }) {
-  const today = new Date().toISOString().split('T')[0]
-  const [date,    setDate]    = useState(today)
-  const [records, setRecords] = useState([])
-  const [loading, setLoading] = useState(false)
+  const now     = new Date()
+  const todayStr = now.toISOString().split('T')[0]
+
+  const [view,        setView]        = useState('day')
+  // Day view
+  const [date,        setDate]        = useState(todayStr)
+  const [dayRec,      setDayRec]      = useState([])
+  const [dayLoading,  setDayLoading]  = useState(false)
+  // Month view
+  const [selY,        setSelY]        = useState(now.getFullYear())
+  const [selM,        setSelM]        = useState(now.getMonth() + 1)
+  const [monthRec,    setMonthRec]    = useState([])
+  const [monthLoading,setMonthLoading]= useState(false)
 
   useEffect(() => {
-    if (demoMode || !user?.academyId) return
-    setLoading(true)
+    if (view !== 'day' || demoMode || !user?.academyId) return
+    setDayLoading(true)
     db.fetchStaffAttendanceForDate(user.academyId, date)
-      .then(setRecords)
-      .catch(() => setRecords([]))
-      .finally(() => setLoading(false))
-  }, [date, user?.academyId, demoMode])
+      .then(setDayRec).catch(() => setDayRec([]))
+      .finally(() => setDayLoading(false))
+  }, [date, user?.academyId, demoMode, view])
+
+  useEffect(() => {
+    if (view !== 'month' || demoMode || !user?.academyId) return
+    setMonthLoading(true)
+    db.fetchStaffAttendanceForMonth(user.academyId, selY, selM)
+      .then(setMonthRec).catch(() => setMonthRec([]))
+      .finally(() => setMonthLoading(false))
+  }, [selY, selM, user?.academyId, demoMode, view])
 
   const activeStaff = staff.filter(s => s.status === 'Active')
-  const presentIds   = new Set(records.map(r => String(r.staff_id)))
-  const presentCount = activeStaff.filter(s => presentIds.has(String(s.id))).length
 
-  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  })
+  // Day view derived
+  const presentIds   = new Set(dayRec.map(r => String(r.staff_id)))
+  const presentCount = activeStaff.filter(s => presentIds.has(String(s.id))).length
+  const dateLabel    = new Date(date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  // Month view derived
+  const daysInMonth    = new Date(selY, selM, 0).getDate()
+  const isCurrentMonth = selY === now.getFullYear() && selM === now.getMonth() + 1
+  const lastDay        = isCurrentMonth ? now.getDate() : daysInMonth
+  const isNextDisabled = selY > now.getFullYear() || (selY === now.getFullYear() && selM >= now.getMonth() + 1)
+
+  const monthPresence = {}
+  for (const r of monthRec) {
+    const id  = String(r.staff_id)
+    const day = parseInt((r.date || '').split('-')[2] || '0', 10)
+    if (!monthPresence[id]) monthPresence[id] = new Set()
+    if (day > 0) monthPresence[id].add(day)
+  }
+
+  const goPrevMonth = () => { if (selM === 1) { setSelY(y => y - 1); setSelM(12) } else setSelM(m => m - 1) }
+  const goNextMonth = () => { if (!isNextDisabled) { if (selM === 12) { setSelY(y => y + 1); setSelM(1) } else setSelM(m => m + 1) } }
+
+  const Spinner = () => (
+    <div className="card p-8 flex items-center justify-center">
+      <svg className="animate-spin h-6 w-6 text-brand-600" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+    </div>
+  )
+
+  const StaffAvatar = ({ s }) => s.photoUrl
+    ? <img src={s.photoUrl} alt={s.name} className="w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+    : <div className="w-7 h-7 bg-gradient-to-br from-brand-400 to-brand-600 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{s.name[0]}</div>
 
   return (
     <div className="space-y-4">
-      {/* Header row */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-semibold text-gray-700">Date</label>
-          <input
-            type="date"
-            className="input py-1.5 text-sm"
-            value={date}
-            max={today}
-            onChange={e => setDate(e.target.value)}
-          />
+      {/* Controls row */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Day / Month toggle */}
+        <div className="flex bg-gray-100 rounded-xl p-1 gap-0.5">
+          <button onClick={() => setView('day')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            Day
+          </button>
+          <button onClick={() => setView('month')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${view === 'month' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            Month
+          </button>
         </div>
-        <p className="text-xs text-gray-400 hidden sm:block">{dateLabel}</p>
-        <div className="flex items-center gap-3 ml-auto">
-          <div className="text-center">
-            <p className="text-xl font-black text-emerald-600">{presentCount}</p>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">Present</p>
+
+        {view === 'day' ? (
+          <>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-semibold text-gray-700">Date</label>
+              <input type="date" className="input py-1.5 text-sm" value={date} max={todayStr} onChange={e => setDate(e.target.value)} />
+            </div>
+            <p className="text-xs text-gray-400 hidden sm:block">{dateLabel}</p>
+            <div className="flex items-center gap-3 ml-auto">
+              <div className="text-center">
+                <p className="text-xl font-black text-emerald-600">{presentCount}</p>
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">Present</p>
+              </div>
+              <div className="w-px h-8 bg-gray-200" />
+              <div className="text-center">
+                <p className="text-xl font-black text-red-400">{activeStaff.length - presentCount}</p>
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">Absent</p>
+              </div>
+              <div className="w-px h-8 bg-gray-200" />
+              <div className="text-center">
+                <p className="text-xl font-black text-gray-900">{activeStaff.length}</p>
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">Total</p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button onClick={goPrevMonth} className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 text-sm font-bold transition-colors">‹</button>
+            <span className="text-sm font-bold text-gray-900 w-24 text-center">{MONTH_NAMES[selM - 1]} {selY}</span>
+            <button onClick={goNextMonth} disabled={isNextDisabled} className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 text-sm font-bold transition-colors disabled:opacity-30 disabled:cursor-not-allowed">›</button>
           </div>
-          <div className="w-px h-8 bg-gray-200" />
-          <div className="text-center">
-            <p className="text-xl font-black text-red-400">{activeStaff.length - presentCount}</p>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">Absent</p>
-          </div>
-          <div className="w-px h-8 bg-gray-200" />
-          <div className="text-center">
-            <p className="text-xl font-black text-gray-900">{activeStaff.length}</p>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold">Total</p>
-          </div>
-        </div>
+        )}
       </div>
 
       {demoMode ? (
@@ -1650,59 +1713,100 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
           <p className="text-sm font-semibold text-gray-500">Not available in demo mode</p>
           <p className="text-xs text-gray-400 mt-1">Staff QR check-ins are recorded here in production</p>
         </div>
-      ) : loading ? (
-        <div className="card p-8 flex items-center justify-center">
-          <svg className="animate-spin h-6 w-6 text-brand-600" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-          </svg>
-        </div>
       ) : activeStaff.length === 0 ? (
         <div className="card p-8 text-center">
           <p className="text-sm text-gray-400">No active staff members found.</p>
         </div>
+      ) : view === 'day' ? (
+        dayLoading ? <Spinner /> : (
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+            <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Name</span>
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Role</span>
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Status</span>
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Clock In</span>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {activeStaff.map(s => {
+                const record = dayRec.find(r => String(r.staff_id) === String(s.id))
+                return (
+                  <div key={s.id} className="grid md:grid-cols-[2fr_1fr_1fr_1fr] gap-3 md:gap-4 items-center px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <StaffAvatar s={s} />
+                      <p className="text-sm font-semibold text-gray-900">{s.name}</p>
+                    </div>
+                    <p className="text-xs text-gray-500">{s.role}</p>
+                    <div>
+                      {record ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-full">
+                          <CheckCircle size={11} /> Present
+                        </span>
+                      ) : (
+                        <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-0.5 rounded-full">Absent</span>
+                      )}
+                    </div>
+                    <p className="text-xs font-semibold text-gray-600">
+                      {record?.clock_in ? new Date(record.clock_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
       ) : (
-        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
-          {/* Table header */}
-          <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100">
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Name</span>
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Role</span>
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Status</span>
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Clock In</span>
+        monthLoading ? <Spinner /> : (
+          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="text-left px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide sticky left-0 bg-gray-50 min-w-[140px]">Staff</th>
+                    {Array.from({ length: lastDay }, (_, i) => i + 1).map(d => (
+                      <th key={d} className={`text-center py-3 w-8 font-bold ${d === now.getDate() && isCurrentMonth ? 'text-brand-600' : 'text-gray-400'}`}>
+                        {d}
+                      </th>
+                    ))}
+                    <th className="text-right px-4 py-3 text-xs font-bold text-gray-500 uppercase tracking-wide sticky right-0 bg-gray-50 min-w-[70px]">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeStaff.map((s, idx) => {
+                    const present = monthPresence[String(s.id)] || new Set()
+                    const pct = lastDay > 0 ? Math.round((present.size / lastDay) * 100) : 0
+                    return (
+                      <tr key={s.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}>
+                        <td className={`px-4 py-3 sticky left-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                          <div className="flex items-center gap-2">
+                            <StaffAvatar s={s} />
+                            <div>
+                              <p className="font-semibold text-gray-900 leading-tight">{s.name}</p>
+                              <p className="text-[10px] text-gray-400">{s.role}</p>
+                            </div>
+                          </div>
+                        </td>
+                        {Array.from({ length: lastDay }, (_, i) => i + 1).map(d => (
+                          <td key={d} className="text-center py-3">
+                            {present.has(d) ? (
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-600 font-bold text-[9px]">✓</span>
+                            ) : (
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 text-gray-300 text-[9px]">—</span>
+                            )}
+                          </td>
+                        ))}
+                        <td className={`px-4 py-3 text-right sticky right-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                          <span className="font-black text-gray-900">{present.size}</span>
+                          <span className="text-gray-400">/{lastDay}</span>
+                          <p className={`text-[10px] font-bold ${pct >= 75 ? 'text-emerald-600' : pct >= 50 ? 'text-amber-500' : 'text-red-400'}`}>{pct}%</p>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="divide-y divide-gray-50">
-            {activeStaff.map(s => {
-              const record = records.find(r => String(r.staff_id) === String(s.id))
-              return (
-                <div key={s.id} className="grid md:grid-cols-[2fr_1fr_1fr_1fr] gap-3 md:gap-4 items-center px-5 py-3.5">
-                  <div className="flex items-center gap-3">
-                    {s.photoUrl ? (
-                      <img src={s.photoUrl} alt={s.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-8 h-8 bg-gradient-to-br from-brand-400 to-brand-600 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                        {s.name[0]}
-                      </div>
-                    )}
-                    <p className="text-sm font-semibold text-gray-900">{s.name}</p>
-                  </div>
-                  <p className="text-xs text-gray-500">{s.role}</p>
-                  <div>
-                    {record ? (
-                      <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-full">
-                        <CheckCircle size={11} /> Present
-                      </span>
-                    ) : (
-                      <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-0.5 rounded-full">
-                        Absent
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs font-semibold text-gray-600">{record?.clock_in ? new Date(record.clock_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}</p>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        )
       )}
     </div>
   )
