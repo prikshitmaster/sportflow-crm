@@ -240,13 +240,17 @@ function NotFound() {
   )
 }
 
-function PublicRoute({ children }) {
+// skipOwnerRedirect — used for /staff-login and /student-login so an active
+// owner Supabase session on a shared device doesn't block staff/students from
+// reaching their own login form. Staff and students are still redirected if
+// they're already authenticated.
+function PublicRoute({ children, skipOwnerRedirect = false }) {
   const { role, loading, user } = useApp()
   if (loading) return <PageLoading />
-  if (role === 'owner')   return <Navigate to="/dashboard" replace />
+  if (!skipOwnerRedirect && role === 'owner')  return <Navigate to="/dashboard" replace />
+  if (!skipOwnerRedirect && role === 'parent') return <Navigate to="/parent/home" replace />
   if (role === 'staff')   return <Navigate to={user?.accessRole && user.accessRole !== 'coach' ? '/dashboard' : '/staff/home'} replace />
   if (role === 'student') return <Navigate to="/student/dashboard" replace />
-  if (role === 'parent')  return <Navigate to="/parent/home" replace />
   return children
 }
 
@@ -280,7 +284,7 @@ function AppRoutes() {
       </Route>
 
       {/* Staff */}
-      <Route path="/staff-login"     element={<PublicRoute><StaffLogin /></PublicRoute>} />
+      <Route path="/staff-login"     element={<PublicRoute skipOwnerRedirect><StaffLogin /></PublicRoute>} />
       <Route path="/staff-activate"  element={<StaffActivate />} />
       <Route path="/staff" element={<StaffRoute><StaffLayout /></StaffRoute>}>
         <Route path="home"       element={<StaffDashboard />} />
@@ -315,7 +319,7 @@ function AppRoutes() {
       </Route>
 
       {/* Student */}
-      <Route path="/student-login" element={<PublicRoute><StudentLogin /></PublicRoute>} />
+      <Route path="/student-login" element={<PublicRoute skipOwnerRedirect><StudentLogin /></PublicRoute>} />
       <Route path="/activate"      element={<Activate />} />
       <Route path="/student" element={<StudentRoute><StudentLayout /></StudentRoute>}>
         <Route path="dashboard"   element={<StudentDashboard />} />

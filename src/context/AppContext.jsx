@@ -435,6 +435,15 @@ export function AppProvider({ children }) {
         }
 
         // ── 3. Supabase session (owner or parent) ─────────────
+        // Skip on staff/student login pages — an active owner Supabase session
+        // must not prevent staff or students from reaching their own login form
+        // on a shared device where the owner previously signed in.
+        const _path = typeof window !== 'undefined' ? window.location.pathname : ''
+        if (_path === '/staff-login' || _path === '/student-login') {
+          if (typeof window !== 'undefined') window.__sf_auth = diag
+          setLoading(false)
+          return
+        }
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
           diag.path = 'supabase-jwt'
@@ -490,6 +499,10 @@ export function AppProvider({ children }) {
         }
       } catch (err) {
         console.error('Session restore failed:', err)
+        // Clear custom tokens so a corrupt/unexpected session doesn't block
+        // the user from reaching the login page on the next load.
+        clearStaffSession()
+        clearStudentSession()
         diag.path = 'error'
         diag.error = err?.message || String(err)
       }
