@@ -11,7 +11,7 @@ import * as db from '../lib/db'
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
 
 export default function Staff() {
-  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions, hasPermission, showToast } = useApp()
+  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions, hasPermission, showToast, refreshData } = useApp()
   const isOwner       = role === 'owner'
   const canManageStaff = hasPermission('staff.manage')
   // Owners (academy-wide) and branch managers (own branch) may delete staff and
@@ -20,12 +20,59 @@ export default function Staff() {
   const [profile,    setProfile]    = useState(null)
   const [showModal,  setShowModal]  = useState(false)
   const [activeTab,  setActiveTab]  = useState('staff')  // 'staff' | 'leaves' | 'access'
+  const [attendanceMap, setAttendanceMap] = useState({}) // staffId -> monthly %
 
   useEffect(() => { loadLeaveRequests?.() }, [])
 
+  // Compute real monthly attendance from staff_attendance check-ins.
+  // Falls back to previous month if current month has no records.
+  useEffect(() => {
+    if (!user?.academyId || demoMode) return
+    const now   = new Date()
+    const year  = now.getFullYear()
+    const month = now.getMonth() + 1
+    const todayDay = now.getDate()
+
+    const compute = (records, year, month, daysInPeriod) => {
+      const map = {}
+      for (const r of records) {
+        const id = r.profile_id
+        if (!map[id]) map[id] = new Set()
+        map[id].add(r.check_in_date)
+      }
+      const result = {}
+      for (const [id, dates] of Object.entries(map)) {
+        result[id] = Math.min(100, Math.round((dates.size / daysInPeriod) * 100))
+      }
+      return result
+    }
+
+    db.fetchStaffAttendanceForMonth(user.academyId, year, month).then(records => {
+      if (records.length > 0) {
+        setAttendanceMap(compute(records, year, month, todayDay))
+      } else {
+        // fallback: previous month
+        const prevMonth = month === 1 ? 12 : month - 1
+        const prevYear  = month === 1 ? year - 1 : year
+        const prevDays  = new Date(prevYear, prevMonth, 0).getDate()
+        db.fetchStaffAttendanceForMonth(user.academyId, prevYear, prevMonth).then(prev => {
+          setAttendanceMap(compute(prev, prevYear, prevMonth, prevDays))
+        }).catch(() => {})
+      }
+    }).catch(() => {})
+  }, [user?.academyId, demoMode])
+
   const pendingLeaves = (leaveRequests || []).filter(r => r.status === 'Pending').length
 
-  const avgAttendance = staff.length ? Math.round(staff.reduce((s, m) => s + m.attendance, 0) / staff.length) : 0
+  // Merge real attendance into staff list
+  const staffWithAttendance = staff.map(s => ({
+    ...s,
+    attendance: attendanceMap[s.id] !== undefined ? attendanceMap[s.id] : 0,
+  }))
+
+  const avgAttendance = staffWithAttendance.filter(s => s.status === 'Active').length
+    ? Math.round(staffWithAttendance.filter(s => s.status === 'Active').reduce((acc, s) => acc + s.attendance, 0) / staffWithAttendance.filter(s => s.status === 'Active').length)
+    : 0
 
   return (
     <div className="space-y-5 max-w-[1200px]">
@@ -108,13 +155,13 @@ export default function Staff() {
         </div>
       </div>
 
-      <StaffSections staff={staff} batches={batches} onSelect={setProfile} onDelete={removeStaffMember} canDelete={canManageStaffFull} currentUserId={user?.id} branchManagerCount={staff.filter(s => s.accessRole === 'branch_manager').length} />
+      <StaffSections staff={staffWithAttendance} batches={batches} onSelect={setProfile} onDelete={removeStaffMember} canDelete={canManageStaffFull} currentUserId={user?.id} branchManagerCount={staff.filter(s => s.accessRole === 'branch_manager').length} onReset={() => refreshData?.()} />
       </>
       )}
 
       {profile && (
         <StaffProfilePanel
-          member={staff.find(s => s.id === profile.id) || profile}
+          member={staffWithAttendance.find(s => s.id === profile.id) || profile}
           batches={batches}
           canManageAccess={canManageStaffFull}
           isOwner={isOwner}
@@ -152,15 +199,29 @@ export default function Staff() {
 
 // ── Owner-side Leave Requests Panel ──────────────────────────
 
-function StaffCard({ s, batches, onSelect, onDelete, canDelete, currentUserId, branchManagerCount }) {
-  const { sportBranches } = useApp()
+function StaffCard({ s, batches, onSelect, onDelete, canDelete, currentUserId, branchManagerCount, onReset }) {
+  const { sportBranches, role, showToast } = useApp()
+  const isOwner = role === 'owner'
   const branchName = s.branchId
     ? (sportBranches || []).find(b => b.id === s.branchId)?.branchName || null
     : null
   const assignedBatches = batches.filter(b => b.coach === s.name)
   const isPending = s.accountStatus === 'pending'
+  const isBroken = isOwner && !isPending && s.accountStatus === 'active' && !s.email
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [resetting, setResetting] = useState(false)
+
+  const handleReset = async (e) => {
+    e.stopPropagation()
+    setResetting(true)
+    try {
+      const result = await db.resetStaffAccount(s.id)
+      showToast(`Account reset. New join code: ${result.joinCode}`)
+      onReset?.()
+    } catch (err) { showToast(err.message || 'Reset failed', 'error') }
+    finally { setResetting(false) }
+  }
 
   const isSelf    = s.userId === currentUserId
   const isLastBM  = s.accessRole === 'branch_manager' && branchManagerCount <= 1
@@ -207,11 +268,9 @@ function StaffCard({ s, batches, onSelect, onDelete, canDelete, currentUserId, b
           <h3 className="font-bold text-gray-900 truncate">{s.name}</h3>
           <p className="text-xs text-gray-500">{s.role}</p>
           <div className="flex gap-1 mt-1 flex-wrap">
-            <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
+            {!isPending && <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>}
             {isPending && <span className="badge badge-yellow">Not activated</span>}
-            {!isPending && s.accountStatus === 'active' && !s.email && (
-              <span className="badge bg-orange-100 text-orange-700">Login broken</span>
-            )}
+            {isBroken && <span className="badge bg-orange-100 text-orange-700">Login broken</span>}
             {s.accessRole === 'branch_manager' && (
               <span className={`badge ${ACCESS_ROLE_COLOR['branch_manager']}`}>Branch Mgr</span>
             )}
@@ -292,11 +351,24 @@ function StaffCard({ s, batches, onSelect, onDelete, canDelete, currentUserId, b
       >
         View Profile & Assign Batch <ChevronRight size={12} />
       </button>
+
+      {isBroken && (
+        <button
+          onClick={handleReset}
+          disabled={resetting}
+          className="w-full mt-2 flex items-center justify-center gap-2 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition disabled:opacity-50"
+        >
+          {resetting
+            ? <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+            : <><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Reset Account</>
+          }
+        </button>
+      )}
     </div>
   )
 }
 
-function StaffSections({ staff, batches, onSelect, onDelete, canDelete, currentUserId, branchManagerCount }) {
+function StaffSections({ staff, batches, onSelect, onDelete, canDelete, currentUserId, branchManagerCount, onReset }) {
   const coaches = staff.filter(s => s.staffType !== 'office')
   const office  = staff.filter(s => s.staffType === 'office')
 
@@ -316,7 +388,7 @@ function StaffSections({ staff, batches, onSelect, onDelete, canDelete, currentU
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {coaches.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} canDelete={canDelete} currentUserId={currentUserId} branchManagerCount={branchManagerCount} />)}
+            {coaches.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} canDelete={canDelete} currentUserId={currentUserId} branchManagerCount={branchManagerCount} onReset={onReset} />)}
           </div>
         )}
       </div>
@@ -335,7 +407,7 @@ function StaffSections({ staff, batches, onSelect, onDelete, canDelete, currentU
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {office.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} canDelete={canDelete} currentUserId={currentUserId} branchManagerCount={branchManagerCount} />)}
+            {office.map(s => <StaffCard key={s.id} s={s} batches={batches} onSelect={onSelect} onDelete={onDelete} canDelete={canDelete} currentUserId={currentUserId} branchManagerCount={branchManagerCount} onReset={onReset} />)}
           </div>
         )}
       </div>
@@ -570,7 +642,7 @@ function dayCount(start, end) {
 function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPermission, currentUserId, branchManagerCount, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions, onResetAccount }) {
   const { selectedSport } = useApp()
   const isFootball = (selectedSport || '').toLowerCase() === 'football'
-  const isBrokenAccount = s.accountStatus === 'active' && !s.email
+  const isBrokenAccount = isOwner && s.accountStatus === 'active' && !s.email
   const photoRef = useRef(null)
   const assignedBatches   = batches.filter(b => b.coach === s.name)
   const unassignedBatches = batches.filter(b => b.coach !== s.name)
@@ -902,9 +974,10 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPe
                   <button
                     type="button"
                     onClick={onResetAccount}
-                    className="mt-2 text-xs font-semibold text-orange-600 hover:text-orange-800 underline"
+                    className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition"
                   >
-                    Reset account — generate new activation codes
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    Reset Account — Generate New Activation Codes
                   </button>
                 )}
               </div>

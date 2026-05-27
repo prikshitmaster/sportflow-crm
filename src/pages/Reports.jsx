@@ -242,8 +242,8 @@ export default function Reports() {
         {activeTab === 'financial'    && <FinancialTab  payments={payments} students={students} />}
         {activeTab === 'by_batch'     && <BatchTab      batches={batches} students={students} payments={payments} attendanceData={attendanceData} batchToStudents={batchToStudents} />}
         {activeTab === 'students'     && <StudentLedgerTab students={students} payments={payments} />}
-        {activeTab === 'ageing'       && <AgeingTab     key={`${selectedSport}-${selectedBranch}`} students={students} payments={payments} />}
-        {activeTab === 'attendance'   && <AttendanceTab key={`${selectedSport}-${selectedBranch}`} students={students} batches={batches} attendanceData={attendanceData} />}
+        {activeTab === 'ageing'       && <AgeingTab     key={`${selectedSport}-${selectedBranch}`} students={students} payments={payments} batches={batches} />}
+        {activeTab === 'attendance'   && <AttendanceTab key={`${selectedSport}-${selectedBranch}`} students={students} batches={batches} />}
         {activeTab === 'performance'  && <PerformanceTab students={students} batches={batches} academyId={user?.academyId} />}
         {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} selectedSport={role === 'staff' ? (user?.sports?.[0] || null) : selectedSport} selectedBranch={role === 'staff' ? (user?.branchId || null) : selectedBranch} sportBranches={sportBranches} />}
       </div>
@@ -1084,16 +1084,22 @@ function StudentLedgerTab({ students, payments }) {
 
 // ── Ageing Report ─────────────────────────────────────────
 
-function AgeingTab({ students, payments }) {
+function AgeingTab({ students, payments, batches = [] }) {
   const [batchFilter, setBatchFilter] = useState('All')
 
-  const batches = [...new Set(students.map(s => s.batch).filter(Boolean))].sort()
+  // Use current batch names from the filtered batches list (not stale names from student records).
+  // Fall back to student-derived names only if no batches prop is available.
+  const batchNames = batches.length
+    ? [...batches].sort((a, b) => a.name.trim().localeCompare(b.name.trim())).map(b => b.name.trim())
+    : [...new Set(students.map(s => s.batch?.trim()).filter(Boolean))].sort()
 
   const ageing = useMemo(() => {
     const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
+    // Match by trimmed batch name OR by batch ID (handles renamed / trailing-space batch names)
+    const selectedBatch = batches.find(b => b.name.trim() === batchFilter)
     const overdueStudents = students.filter(s =>
       isOutstanding(s, firstOfMonth) &&
-      (batchFilter === 'All' || s.batch === batchFilter)
+      (batchFilter === 'All' || s.batch?.trim() === batchFilter || (selectedBatch && s.batchId === selectedBatch.id))
     )
     return overdueStudents.map(s => {
       const days = ruleDaysOverdue(s, today)
@@ -1128,7 +1134,7 @@ function AgeingTab({ students, payments }) {
         <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">Batch</span>
         <Sel value={batchFilter} onChange={setBatchFilter}>
           <option value="All">All Batches</option>
-          {batches.map(b => <option key={b}>{b}</option>)}
+          {batchNames.map(b => <option key={b}>{b}</option>)}
         </Sel>
         <span className="text-xs text-gray-400 ml-2">As of {today.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</span>
         <div className="ml-auto"><ExportBtn onClick={handleExport} /></div>
@@ -1194,7 +1200,7 @@ function AgeingTab({ students, payments }) {
 
 // ── Attendance ────────────────────────────────────────────
 
-function AttendanceTab({ students, batches, attendanceData }) {
+function AttendanceTab({ students, batches }) {
   const [date,        setDate]        = useState(todayStr)
   const [batchFilter, setBatchFilter] = useState('All')
   const [markerData,  setMarkerData]  = useState({})  // { [studentId]: { status, markedBy } }
@@ -1205,15 +1211,19 @@ function AttendanceTab({ students, batches, attendanceData }) {
     db.fetchAttendanceWithMarker(date).then(setMarkerData).catch(() => {})
   }, [date])
 
-  const attForDay = attendanceData[date] || {}
   const activeStu = students.filter(s => s.status === 'Active')
+  const selectedBatch = batches.find(b => b.name.trim() === batchFilter)
   const filtered  = batchFilter === 'All'
     ? activeStu
-    : activeStu.filter(s => s.batch === batchFilter || String(s.batchId) === batchFilter)
+    : activeStu.filter(s => s.batch?.trim() === batchFilter || (selectedBatch && s.batchId === selectedBatch.id))
 
-  const present  = filtered.filter(s => attForDay[s.id] === 'Present').length
-  const absent   = filtered.filter(s => attForDay[s.id] === 'Absent').length
-  const late     = filtered.filter(s => attForDay[s.id] === 'Late').length
+  // Use markerData (fetched fresh per date) as source of truth — attForDay from context
+  // is only cached when the owner visits the Attendance page for that exact date.
+  const getStatus = (id) => markerData[id]?.status || null
+
+  const present  = filtered.filter(s => getStatus(s.id) === 'Present').length
+  const absent   = filtered.filter(s => getStatus(s.id) === 'Absent').length
+  const late     = filtered.filter(s => getStatus(s.id) === 'Late').length
   const unmarked = filtered.length - present - absent - late
   const attPct   = filtered.length ? pct(present, filtered.length) : 0
 
@@ -1241,7 +1251,7 @@ function AttendanceTab({ students, batches, attendanceData }) {
           className="text-xs font-semibold bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 focus:outline-none focus:border-brand-400" />
         <Sel value={batchFilter} onChange={setBatchFilter} className="ml-2">
           <option value="All">All Batches</option>
-          {batches.map(b => <option key={b.id} value={b.name}>{b.name}</option>)}
+          {batches.map(b => <option key={b.id} value={b.name.trim()}>{b.name.trim()}</option>)}
         </Sel>
         <div className="ml-auto"><ExportBtn onClick={handleExport} /></div>
       </FilterBar>
@@ -1269,11 +1279,11 @@ function AttendanceTab({ students, batches, attendanceData }) {
         </div>
         <div className="divide-y divide-gray-50">
           {batches.map(b => {
-            const bs   = activeStu.filter(s => s.batch === b.name || s.batchId === b.id)
+            const bs   = activeStu.filter(s => s.batch?.trim() === b.name?.trim() || s.batchId === b.id)
             if (bs.length === 0) return null
-            const pres = bs.filter(s => attForDay[s.id] === 'Present').length
-            const abs  = bs.filter(s => attForDay[s.id] === 'Absent').length
-            const late = bs.filter(s => attForDay[s.id] === 'Late').length
+            const pres = bs.filter(s => getStatus(s.id) === 'Present').length
+            const abs  = bs.filter(s => getStatus(s.id) === 'Absent').length
+            const late = bs.filter(s => getStatus(s.id) === 'Late').length
             const p    = pct(pres, bs.length)
             return (
               <div key={b.id} className="grid grid-cols-[2fr_repeat(4,_80px)_150px] gap-3 px-4 py-3 items-center hover:bg-gray-50/50 text-sm">
@@ -1304,7 +1314,7 @@ function AttendanceTab({ students, batches, attendanceData }) {
         <TableHead cols={cols} />
         <div className="divide-y divide-gray-50 max-h-[480px] overflow-y-auto">
           {filtered.map(s => {
-            const st = attForDay[s.id] || 'Unmarked'
+            const st = getStatus(s.id) || 'Unmarked'
             const mb = markerData[s.id]?.markedBy || null
             const chip = { Present: 'bg-emerald-50 text-emerald-700 border-emerald-200', Absent: 'bg-red-50 text-red-600 border-red-200', Late: 'bg-amber-50 text-amber-700 border-amber-200', Unmarked: 'bg-gray-50 text-gray-400 border-gray-200' }
             return (

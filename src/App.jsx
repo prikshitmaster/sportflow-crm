@@ -286,16 +286,16 @@ function AppRoutes() {
         <Route path="home"       element={<StaffDashboard />} />
         <Route path="profile"    element={<StaffProfile />} />
         <Route path="me"         element={<StaffMe />} />
-        <Route path="roster"     element={<StaffRoster />} />
+        <Route path="roster"     element={<PermRequired perm="students.view">     <StaffRoster />    </PermRequired>} />
         <Route path="notices"    element={<StaffNotices />} />
-        <Route path="attendance" element={<StaffAttendance />} />
+        <Route path="attendance" element={<PermRequired perm="attendance.manage"><StaffAttendance /></PermRequired>} />
         <Route path="scan-in"    element={<StaffScanIn />} />
-        <Route path="assess"     element={<StaffAssess />} />
+        <Route path="assess"     element={<PermRequired perm="training.manage">  <StaffAssess />    </PermRequired>} />
         <Route path="pulse"      element={<StaffPulse />} />
         {/* Permission-gated admin pages rendered inside staff portal */}
-        <Route path="students"  element={<PermRequired perm="students.view">  <Students />  </PermRequired>} />
-        <Route path="payments"  element={<PermRequired perm="payments.view">  <Payments />  </PermRequired>} />
-        <Route path="sessions"   element={<SessionPlanner />} />
+        <Route path="students"  element={<PermRequired perm="students.view">   <Students />     </PermRequired>} />
+        <Route path="payments"  element={<PermRequired perm="payments.view">   <Payments />     </PermRequired>} />
+        <Route path="sessions"  element={<PermRequired perm="training.manage"> <SessionPlanner /></PermRequired>} />
         <Route path="trials"    element={<PermRequired perm="trials.manage">  <StaffTrials /></PermRequired>} />
         <Route path="batches"   element={<PermRequired perm="batches.view">   <Batches />   </PermRequired>} />
         <Route path="reports"   element={<PermRequired perm="reports.view">   <Reports />   </PermRequired>} />

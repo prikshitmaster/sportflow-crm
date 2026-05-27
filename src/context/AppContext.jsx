@@ -1877,7 +1877,7 @@ export function AppProvider({ children }) {
   }, [batches, selectedSport, isAllSports])
 
   const sportStaff = useMemo(() =>
-    isAllSports ? staff : staff.filter(s => !s.sports?.length || s.sports.includes(selectedSport))
+    isAllSports ? staff : staff.filter(s => !s.sports?.length || s.sports.some(sp => sp.toLowerCase() === selectedSport?.toLowerCase()))
   , [staff, selectedSport, isAllSports])
 
   const sportPayments = useMemo(() => {

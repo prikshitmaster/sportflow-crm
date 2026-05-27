@@ -56,14 +56,19 @@ export default function StaffLayout() {
     import('../pages/staff/SessionPlanner')
   }, [])
 
-  const isOffice = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)
-  const hasTrials = hasPermission('trials.manage')
+  const isOffice    = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)
+  const hasTrials   = hasPermission('trials.manage')
   const hasTraining = hasPermission('training.manage')
-  // Sessions tab is football-only AND gated by the Session & Drill Plans permission.
+  const hasAttend   = hasPermission('attendance.manage')
+  // Filter coach tabs by sport (football-only) and permissions
   const coachTabs = (isFootball
     ? BASE_COACH_TABS
     : BASE_COACH_TABS.filter(t => t.to !== '/staff/sessions' && t.to !== '/staff/assess')
-  ).filter(t => t.to !== '/staff/sessions' || hasTraining)
+  ).filter(t =>
+    (t.to !== '/staff/sessions'   || hasTraining) &&
+    (t.to !== '/staff/assess'     || hasTraining) &&
+    (t.to !== '/staff/attendance' || hasAttend)
+  )
   const baseTabs  = isOffice ? BASE_OFFICE_TABS : coachTabs
   const tabs = hasTrials
     ? isOffice

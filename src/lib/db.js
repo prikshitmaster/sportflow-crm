@@ -614,7 +614,7 @@ export async function fetchBatches(academyId) {
   }
   return data.map(row => ({
     id:          row.id,
-    name:        row.name,
+    name:        row.name?.trim() ?? row.name,
     code:        row.code        || null,
     time:        row.time,
     sports:      row.sports      || [],
@@ -2097,6 +2097,21 @@ export async function fetchStaffAttendanceForDate(academyId, date) {
     .eq('check_in_date', date)
     .order('check_in_time', { ascending: true })
   if (error) throw error
+  return data || []
+}
+
+export async function fetchStaffAttendanceForMonth(academyId, year, month) {
+  const pad = n => String(n).padStart(2, '0')
+  const lastDay = new Date(year, month, 0).getDate()
+  const start = `${year}-${pad(month)}-01`
+  const end   = `${year}-${pad(month)}-${pad(lastDay)}`
+  const { data, error } = await supabase
+    .from('staff_attendance')
+    .select('profile_id, check_in_date')
+    .eq('academy_id', academyId)
+    .gte('check_in_date', start)
+    .lte('check_in_date', end)
+  if (error) return []
   return data || []
 }
 
