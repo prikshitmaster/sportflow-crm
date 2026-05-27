@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,7 +12,10 @@
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
     "test:students": "playwright test add-student",
-    "test:payments": "playwright test payments"
+    "test:payments": "playwright test payments",
+    "electron:dev": "concurrently -n vite,electron -c blue,green \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:preview": "vite build --base ./ && electron .",
+    "electron:build": "vite build --base ./ && electron-builder"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
@@ -39,11 +43,15 @@
     "@types/node": "^25.8.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.1",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "pg": "^8.21.0",
     "postcss": "^8.4.41",
     "tailwindcss": "^3.4.10",
     "typescript": "^6.0.3",
     "vite": "^5.4.1",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "wait-on": "^8.0.5"
   }
 }

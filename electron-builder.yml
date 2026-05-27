@@ -1,0 +1,33 @@
+appId: com.sportflow.crm
+productName: SportFlow CRM
+copyright: Copyright © 2024 SportFlow
+
+directories:
+  output: dist-electron
+  buildResources: build
+
+files:
+  - electron/**
+  - dist/**
+  - package.json
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: SportFlow-CRM-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+mac:
+  target: dmg
+  category: public.app-category.business
+
+linux:
+  target: AppImage
+  category: Office
