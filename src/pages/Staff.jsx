@@ -67,7 +67,7 @@ export default function Staff() {
   // Merge real attendance into staff list
   const staffWithAttendance = staff.map(s => ({
     ...s,
-    attendance: attendanceMap[s.id] !== undefined ? attendanceMap[s.id] : 0,
+    attendance: attendanceMap[s.id] !== undefined ? attendanceMap[s.id] : (s.attendance ?? 0),
   }))
 
   const avgAttendance = staffWithAttendance.filter(s => s.status === 'Active').length
