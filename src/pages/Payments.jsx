@@ -571,7 +571,6 @@ export default function Payments() {
           <Paginator page={page} total={filtered.length} onChange={setPage} />
         </div>
       </div>
-      </div>
 
       {showModal && (
         <RecordPaymentModal
