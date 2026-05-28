@@ -1836,7 +1836,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   // Branch managers: their own branch is always auto-linked (migration 0080 enforces server-side).
   const effectiveBranchId = selectedBranch || (role !== 'owner' ? user?.branchId : null) || null
   const linkedBranchName = effectiveBranchId
-    ? (sportBranches?.find?.(b => b.id === effectiveBranchId)?.branch_name || null)
+    ? (sportBranches?.find?.(b => b.id === effectiveBranchId)?.branchName || null)
     : null
   const [form, setForm] = useState({
     name: '', role: '', phone: '', age: '', sports: defaultSports, status: 'Active', staffType: 'coach',
