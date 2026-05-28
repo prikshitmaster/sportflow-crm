@@ -1186,24 +1186,26 @@ export function AppProvider({ children }) {
       const payDate      = collectionDate.toISOString().split('T')[0]
       const coverageStart = baseDate.toISOString().split('T')[0]
       const invoiceId    = await db.fetchNextInvoiceId()
-      const paymentRow   = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, academyId: user?.academyId }
+      const isChequeEarly = p.mode === 'Cheque'
+      const paymentRow   = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, academyId: user?.academyId, status: isChequeEarly ? 'Pending' : 'Paid' }
       // DB insert first — if it fails (PK collision, RLS reject), no optimistic row gets left behind.
       await db.insertPayment(paymentRow, invoiceId)
+
+      // Cheque payments are pending until cleared — don't advance paidTill yet
+      const isCheque = p.mode === 'Cheque'
+      const insertStatus = isCheque ? 'Pending' : 'Paid'
 
       // Optimistic state update — only runs if DB insert succeeded above.
       setPayments(prev => [{
         ...paymentRow, id: invoiceId,
-        date: payDate, status: 'Paid', month: monthLabel, coverageStart,
+        date: payDate, status: insertStatus, month: monthLabel, coverageStart,
       }, ...prev])
 
       const student = students.find(s => String(s.id) === String(p.studentId))
 
-      // Log the payment NOW — the record already exists. Logging before the
-      // downstream student update means a failure there can never silently drop
-      // the audit entry. Branch falls back to the actor's branch via logAuditSport.
       logAuditSport({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId, sport: student?.sport ?? null, branchId: student?.branchId ?? null })
 
-      if (student) {
+      if (!isCheque && student) {
         if (student.status === 'Suspended') {
           const batchId   = p.batchId   || student.batchId
           const batchName = p.batchName || student.batch
@@ -1223,7 +1225,7 @@ export function AppProvider({ children }) {
           } : s))
         }
       }
-      showToast('Payment recorded')
+      showToast(isCheque ? 'Cheque recorded as Pending — mark Paid once cleared' : 'Payment recorded')
       // Notify student — fire and forget
       if (p.studentId) {
         notify({
@@ -1287,14 +1289,30 @@ export function AppProvider({ children }) {
     }
   }
 
-  const markPaymentPaid = async (id, mode = 'UPI') => {
+  const markPaymentPaid = async (id, mode = 'UPI', clearedDate = null) => {
     try {
+      const today = clearedDate || new Date().toISOString().split('T')[0]
+      const payment = payments.find(p => p.id === id)
       await db.updatePaymentStatus(id, 'Paid', mode)
       setPayments(prev => prev.map(p =>
-        p.id === id ? { ...p, status: 'Paid', mode, date: new Date().toISOString().split('T')[0] } : p
+        p.id === id ? { ...p, status: 'Paid', mode, date: today } : p
       ))
-      const paidPay = payments.find(p => p.id === id)
-      logAuditSport({ actor: user, action: ACTIONS.PAYMENT_PAID, entityType: 'payment', entityId: id, entityName: paidPay?.student, changes: { mode }, academyId: user?.academyId })
+
+      // When clearing a cheque (Pending→Paid), advance the student's paidTill
+      if (payment?.status === 'Pending') {
+        const student = students.find(s => String(s.id) === String(payment.studentId))
+        if (student) {
+          const base   = new Date((payment.coverageStart || today) + 'T00:00:00')
+          const months = payment.monthsCovered || 1
+          const newPaidTill = new Date(base.getFullYear(), base.getMonth() + months, 0).toISOString().split('T')[0]
+          if (!student.paidTill || newPaidTill > student.paidTill) {
+            await db.updateStudentPaidTill(student.id, newPaidTill, null)
+            setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
+          }
+        }
+      }
+
+      logAuditSport({ actor: user, action: ACTIONS.PAYMENT_PAID, entityType: 'payment', entityId: id, entityName: payment?.student, changes: { mode }, academyId: user?.academyId })
       showToast('Payment marked as paid')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')

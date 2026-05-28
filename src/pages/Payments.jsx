@@ -236,17 +236,22 @@ export default function Payments() {
   const canManage = hasPermission('payments.manage')
   const [editingDate,            setEditingDate]            = useState(null)
   const [markingPaid,            setMarkingPaid]            = useState(null)
+  const [markPaidTarget,         setMarkPaidTarget]         = useState(null)
   const [deleteTarget,           setDeleteTarget]           = useState(null)
   const [deleteNote,             setDeleteNote]             = useState('')
   const [deleting,               setDeleting]               = useState(false)
   const [selectedStudentHistory, setSelectedStudentHistory] = useState(null)
   const [exportingAll,           setExportingAll]           = useState(false)
 
-  const handleMarkPaid = async (id) => {
-    if (markingPaid) return
+  const handleMarkPaid = (id) => {
+    const payment = allRecords.find(p => p.id === id)
+    if (payment) setMarkPaidTarget(payment)
+  }
+
+  const executeMarkPaid = async (id, mode, clearedDate) => {
     setMarkingPaid(id)
-    try { await markPaymentPaid(id, 'UPI') }
-    finally { setMarkingPaid(null) }
+    try { await markPaymentPaid(id, mode, clearedDate) }
+    finally { setMarkingPaid(null); setMarkPaidTarget(null) }
   }
 
   const [search,          setSearch]          = useState('')
@@ -502,7 +507,7 @@ export default function Payments() {
                     <button className="font-semibold text-gray-900 text-sm hover:text-brand-600 transition" onClick={e => { e.stopPropagation(); const s = studentMap[p.studentId]; if (s) setSelectedStudentHistory(s) }}>{p.student}</button>
                     {p.isSuspended && <span className="text-[10px] font-bold bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full">Suspended</span>}
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">{p.month}{p.mode ? ` · ${p.mode}` : ''}{p.date ? ` · ${p.date}` : ''}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{p.month}{p.mode ? ` · ${p.mode}` : ''}{p.date ? ` · ${p.date}` : ''}{p.mode==='Cheque'&&p.notes?.startsWith('Cheque #') ? ` · ${p.notes.split('\n')[0]}` : ''}</p>
                   {!p.isVirtual && <p className="text-[10px] font-mono text-gray-300 mt-0.5">{p.id}</p>}
                 </div>
                 <div className="flex-shrink-0 text-right">
@@ -566,7 +571,10 @@ export default function Payments() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{p.month}</td>
                     <td className="px-4 py-3 font-bold text-gray-900">₹{(p.amount ?? 0).toLocaleString('en-IN')}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{p.mode || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">
+                      <div>{p.mode || '—'}</div>
+                      {p.mode==='Cheque'&&p.notes?.startsWith('Cheque #') && <div className="text-[10px] text-gray-400 font-mono mt-0.5">{p.notes.split('\n')[0]}</div>}
+                    </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {!p.isVirtual && editingDate === p.id ? (
                         <input
@@ -693,6 +701,16 @@ export default function Payments() {
         <SendPayLinkModal
           students={students}
           onClose={() => setShowPayLink(false)}
+        />
+      )}
+
+      {markPaidTarget && (
+        <ConfirmMarkPaidModal
+          payment={markPaidTarget}
+          studentMap={studentMap}
+          isLoading={!!markingPaid}
+          onConfirm={executeMarkPaid}
+          onClose={() => setMarkPaidTarget(null)}
         />
       )}
 
@@ -1189,6 +1207,112 @@ function StudentPaymentPanel({ student, payments, studentMap, onClose, showToast
   )
 }
 
+// ── Double-confirmation Mark Paid modal ───────────────────────
+function ConfirmMarkPaidModal({ payment, studentMap, onConfirm, onClose, isLoading }) {
+  const [step,        setStep]        = useState(1)
+  const [mode,        setMode]        = useState(payment?.mode === 'Cheque' ? 'Cheque' : (payment?.mode || 'UPI'))
+  const [clearedDate, setClearedDate] = useState(new Date().toISOString().split('T')[0])
+  const [confirmText, setConfirmText] = useState('')
+  const student = studentMap[payment?.studentId]
+
+  const isChq  = payment?.mode === 'Cheque'
+  const chqMatch = isChq ? (payment?.notes || '').match(/^Cheque #([^·]+)·\s*(.+)/) : null
+  const chqNo  = chqMatch?.[1]?.trim()
+  const chqBank = chqMatch?.[2]?.split('\n')[0]?.trim()
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={!isLoading ? onClose : undefined} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-slide-up overflow-hidden">
+
+        {/* Header */}
+        <div className={`px-5 pt-5 pb-4 ${step === 2 ? 'bg-amber-50 border-b border-amber-100' : 'border-b border-gray-100'}`}>
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${step === 2 ? 'bg-amber-100' : 'bg-emerald-100'}`}>
+                <CheckCircle size={18} className={step === 2 ? 'text-amber-600' : 'text-emerald-600'} />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm">{step === 1 ? 'Mark Payment as Paid' : 'Confirm Action'}</h3>
+                <p className="text-xs text-gray-400">{step === 1 ? 'Review details before confirming' : 'Step 2 of 2 — type CONFIRM to proceed'}</p>
+              </div>
+            </div>
+            <button onClick={onClose} disabled={isLoading} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><X size={15} /></button>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          {/* Payment summary */}
+          <div className="bg-gray-50 rounded-xl p-3.5 space-y-2 text-xs">
+            <div className="flex justify-between"><span className="text-gray-400">Student</span><span className="font-bold text-gray-900">{payment?.student}</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Amount</span><span className="font-black text-emerald-700 text-sm">₹{(payment?.amount||0).toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between"><span className="text-gray-400">Period</span><span className="font-semibold text-gray-700">{payment?.month}</span></div>
+            {isChq && chqNo && (
+              <div className="flex justify-between"><span className="text-gray-400">Cheque</span><span className="font-semibold text-gray-700">#{chqNo}{chqBank ? ` · ${chqBank}` : ''}</span></div>
+            )}
+          </div>
+
+          {step === 1 && (
+            <>
+              {isChq && (
+                <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 text-xs text-blue-700">
+                  <span className="text-base leading-none mt-0.5">🏦</span>
+                  <span>Confirm cheque <strong>#{chqNo || '—'}</strong>{chqBank ? ` from ${chqBank}` : ''} has successfully cleared.</span>
+                </div>
+              )}
+              {/* Mode + date override */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Payment Mode</label>
+                  <select className="input text-xs py-2" value={mode} onChange={e => setMode(e.target.value)}>
+                    {['UPI','Cash','Bank Transfer','Cheque','Card'].map(m => <option key={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Cleared Date</label>
+                  <input type="date" className="input text-xs py-2" value={clearedDate} max={new Date().toISOString().split('T')[0]} onChange={e => setClearedDate(e.target.value)} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {step === 2 && (
+            <div>
+              <p className="text-xs text-gray-600 mb-2">Type <strong className="text-gray-900">CONFIRM</strong> to mark this payment as paid. This cannot be undone.</p>
+              <input
+                className="input font-mono tracking-widest text-center"
+                placeholder="Type CONFIRM"
+                value={confirmText}
+                onChange={e => setConfirmText(e.target.value.toUpperCase())}
+                autoFocus
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 pb-5 flex gap-3">
+          <button onClick={step === 1 ? onClose : () => setStep(1)} disabled={isLoading}
+            className="btn-secondary flex-1 justify-center text-sm">
+            {step === 1 ? 'Cancel' : '← Back'}
+          </button>
+          {step === 1 ? (
+            <button onClick={() => setStep(2)} className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold transition">
+              Continue →
+            </button>
+          ) : (
+            <button
+              onClick={() => onConfirm(payment.id, mode, clearedDate)}
+              disabled={confirmText !== 'CONFIRM' || isLoading}
+              className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-sm font-bold transition">
+              {isLoading ? 'Processing…' : 'Mark as Paid'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SummaryCard({ label, value, count, color, period }) {
   const c = { emerald: 'text-emerald-600', amber: 'text-amber-600', red: 'text-red-600' }[color]
   return (
@@ -1223,6 +1347,8 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const [customMonths,   setCustomMonths]  = useState(2)
   const [lateFee,        setLateFee]       = useState(0)
   const [showLateFee,    setShowLateFee]   = useState(false)
+  const [chequeNo,       setChequeNo]      = useState('')
+  const [bankName,       setBankName]      = useState('')
   // Required when amount is >30% off the expected total — staff must type CONFIRM
   const [confirmText,    setConfirmText]   = useState('')
 
@@ -1294,7 +1420,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     if (!form.studentId || finalAmount <= 0) return
     setLoading(true)
     try {
-      await onSave({ ...form, amount: finalAmount, monthsCovered: months, lateFee: lateFeeAmt, paymentDate, advanceStart })
+      const isCheque = form.mode === 'Cheque'
+      const chequePrefix = isCheque && chequeNo ? `Cheque #${chequeNo} · ${bankName || 'Unknown Bank'}\n` : ''
+      const notes = chequePrefix + (form.notes || '')
+      await onSave({ ...form, notes, amount: finalAmount, monthsCovered: months, lateFee: lateFeeAmt, paymentDate, advanceStart })
     } finally {
       setLoading(false)
     }
@@ -1750,6 +1879,26 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             </select>
           </div>
         </div>
+
+        {/* Cheque details */}
+        {form.mode === 'Cheque' && (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800">
+              <span className="text-base leading-none mt-0.5">🏦</span>
+              <span>Cheque payments are saved as <strong>Pending</strong> until you mark them Paid once the cheque clears.</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Cheque Number</label>
+                <input className="input font-mono" placeholder="e.g. 001234" value={chequeNo} onChange={e => setChequeNo(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Bank Name</label>
+                <input className="input" placeholder="e.g. SBI, HDFC…" value={bankName} onChange={e => setBankName(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
       {(sanityMismatch || isDuplicate) && (
