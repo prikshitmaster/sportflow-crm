@@ -15,114 +15,197 @@ import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/
 
 function buildReceiptHTML(p, student, academyName, logoUrl) {
   const logo     = logoUrl || ''
-  const fmtDate  = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'
-  const today    = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
   const initials = (academyName || 'A').charAt(0).toUpperCase()
+  const fmtDate  = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+  const today    = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 
-  const rows = [
-    ['Receipt No.',   p.id || '—'],
-    ['Student Name',  p.student || '—'],
-    ['Student ID',    student?.studentCode || '—'],
-    ['Sport',         student?.sport || '—'],
-    ['Batch',         student?.batch || '—'],
-    ['Period',        p.month || '—'],
-    ['Months Covered', p.monthsCovered > 1 ? `${p.monthsCovered} months` : '1 month'],
-    ['Payment Mode',  p.mode || 'Cash'],
-    ['Payment Date',  fmtDate(p.date)],
-    ['Receipt Date',  today],
-  ]
+  // Amount breakdown logic (same as DetailModal)
+  const trialMatch   = (p.notes || '').match(/Trial fee deducted[^₹]*₹([\d,]+)/)
+  const joiningMatch = (p.notes || '').match(/Joining fee included[^₹]*₹([\d,]+)/)
+  const trialAmt   = trialMatch   ? Number(trialMatch[1].replace(/,/g,''))  : 0
+  const joiningAmt = joiningMatch ? Number(joiningMatch[1].replace(/,/g,'')) : 0
+  const months     = p.monthsCovered || 1
+  const baseFee    = (p.amount ?? 0) + trialAmt - joiningAmt
+  const planLabel  = { monthly:'Monthly', quarterly:'Quarterly', yearly:'Yearly', custom:'Custom' }[student?.feePlan] || 'Monthly'
+
+  const lineItems = []
+  lineItems.push({ desc: `${planLabel} Training Fee${months > 1 ? ` × ${months} months` : ''}`, sub: `${student?.sport || ''} · ${student?.batch || ''}`, qty: months, unit: Math.round(baseFee / months), total: baseFee })
+  if (trialAmt > 0)   lineItems.push({ desc: 'Trial Fee Adjustment', sub: 'Deducted from first month', qty: '', unit: '', total: -trialAmt, cls: 'red' })
+  if (joiningAmt > 0) lineItems.push({ desc: 'Joining Fee', sub: 'One-time registration', qty: '', unit: '', total: joiningAmt, cls: 'purple' })
+
+  const subtotal = lineItems.reduce((s, l) => s + l.total, 0)
 
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Receipt — ${p.id}</title>
+<html><head><meta charset="utf-8"><title>Receipt ${p.id || ''}</title>
 <style>
-  @page { size: A5; margin: 0; }
+  @page { size: A4; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; background: #fff; color: #1a1a2e; }
-  .page { width: 148mm; min-height: 210mm; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+  body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background: #fff; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 210mm; min-height: 297mm; display: flex; flex-direction: column; position: relative; }
 
-  .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%); padding: 20px 24px 16px; color: #fff; display: flex; align-items: center; gap: 16px; }
-  .logo-wrap { width: 60px; height: 60px; background: rgba(255,255,255,0.12); border-radius: 10px; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(255,255,255,0.2); flex-shrink: 0; overflow: hidden; }
+  /* ── Top bar ── */
+  .topbar { height: 6px; background: linear-gradient(90deg, #1d4ed8 0%, #7c3aed 100%); }
+
+  /* ── Header ── */
+  .header { display: flex; align-items: flex-start; justify-content: space-between; padding: 28px 36px 20px; border-bottom: 1px solid #e5e7eb; }
+  .logo-area { display: flex; align-items: center; gap: 14px; }
+  .logo-wrap { width: 52px; height: 52px; border-radius: 10px; background: #1d4ed8; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
   .logo-wrap img { width: 100%; height: 100%; object-fit: contain; }
-  .logo-init { font-size: 22px; font-weight: 900; color: rgba(255,255,255,0.75); }
-  .acad-name { font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
-  .acad-sub { font-size: 9px; color: rgba(255,255,255,0.5); margin-top: 2px; text-transform: uppercase; letter-spacing: 1px; }
+  .logo-init { font-size: 20px; font-weight: 900; color: #fff; }
+  .acad-name { font-size: 17px; font-weight: 800; color: #111827; letter-spacing: -0.3px; }
+  .acad-tag  { font-size: 10px; color: #6b7280; margin-top: 2px; }
+  .receipt-meta { text-align: right; }
+  .receipt-title { font-size: 22px; font-weight: 900; color: #1d4ed8; letter-spacing: -0.5px; text-transform: uppercase; }
+  .receipt-no { font-size: 11px; color: #6b7280; margin-top: 4px; font-family: 'Courier New', monospace; }
+  .receipt-dates { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+  .date-row { font-size: 10px; color: #374151; }
+  .date-lbl { color: #9ca3af; margin-right: 6px; }
 
-  .title-band { background: #16a34a; padding: 7px 24px; display: flex; align-items: center; justify-content: space-between; }
-  .band-title { color: #fff; font-size: 12px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
-  .band-inv { color: rgba(255,255,255,0.8); font-size: 10px; font-family: monospace; }
+  /* ── Two-col section: Bill To + Payment Info ── */
+  .info-section { display: flex; gap: 0; padding: 20px 36px; border-bottom: 1px solid #f3f4f6; }
+  .bill-to { flex: 1; padding-right: 24px; border-right: 1px solid #f3f4f6; }
+  .pay-info { flex: 1; padding-left: 24px; }
+  .section-label { font-size: 9px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+  .student-name { font-size: 14px; font-weight: 800; color: #111827; margin-bottom: 2px; }
+  .student-sub { font-size: 11px; color: #6b7280; line-height: 1.6; }
+  .pi-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid #f9fafb; }
+  .pi-row:last-child { border-bottom: none; }
+  .pi-lbl { font-size: 10px; color: #9ca3af; }
+  .pi-val { font-size: 10px; font-weight: 700; color: #374151; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 9px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; }
+  .badge-paid { background: #dcfce7; color: #166534; }
+  .badge-pending { background: #fef3c7; color: #92400e; }
 
-  .body { flex: 1; padding: 20px 24px; }
+  /* ── Line items table ── */
+  .table-section { padding: 20px 36px; flex: 1; }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { background: #1d4ed8; }
+  thead th { padding: 9px 12px; font-size: 9.5px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.8px; text-align: left; }
+  thead th:last-child, thead th.r { text-align: right; }
+  tbody tr { border-bottom: 1px solid #f3f4f6; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:nth-child(even) { background: #f9fafb; }
+  td { padding: 10px 12px; font-size: 10.5px; color: #374151; vertical-align: top; }
+  td.r { text-align: right; }
+  .item-name { font-weight: 700; color: #111827; font-size: 11px; }
+  .item-sub { font-size: 9px; color: #9ca3af; margin-top: 2px; }
+  .td-red { color: #dc2626; font-weight: 700; }
+  .td-purple { color: #7c3aed; font-weight: 700; }
 
-  .info-box { border: 1.5px solid #e8eaf0; border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
-  .info-box-hd { background: #f5f6fa; padding: 5px 14px; font-size: 8.5px; font-weight: 700; color: #6b7280; letter-spacing: 1.5px; text-transform: uppercase; border-bottom: 1px solid #e8eaf0; }
-  .row { display: flex; border-bottom: 1px solid #f0f0f5; }
-  .row:last-child { border-bottom: none; }
-  .lbl { width: 110px; padding: 7px 14px; font-size: 9.5px; color: #6b7280; font-weight: 600; background: #fafafa; border-right: 1px solid #f0f0f5; flex-shrink: 0; display: flex; align-items: center; }
-  .val { flex: 1; padding: 7px 14px; font-size: 10.5px; font-weight: 700; color: #1a1a2e; display: flex; align-items: center; }
+  /* ── Totals box ── */
+  .totals { display: flex; justify-content: flex-end; padding: 0 36px 16px; }
+  .totals-box { width: 200px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+  .tot-row { display: flex; justify-content: space-between; padding: 7px 14px; border-bottom: 1px solid #f3f4f6; font-size: 10.5px; }
+  .tot-row:last-child { border-bottom: none; }
+  .tot-lbl { color: #6b7280; }
+  .tot-val { font-weight: 700; color: #111827; }
+  .tot-final { background: #1d4ed8; }
+  .tot-final .tot-lbl, .tot-final .tot-val { color: #fff; font-weight: 800; font-size: 12px; }
 
-  .amt-box { background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1.5px solid #86efac; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
-  .amt-lbl { font-size: 9px; color: #166534; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
-  .amt-val { font-size: 26px; font-weight: 900; color: #15803d; }
-  .paid-badge { background: #15803d; color: #fff; font-size: 10px; font-weight: 900; padding: 4px 14px; border-radius: 20px; letter-spacing: 1px; }
+  /* ── Signature ── */
+  .sig-section { display: flex; gap: 0; padding: 16px 36px; border-top: 1px solid #f3f4f6; }
+  .sig-block { flex: 1; text-align: center; padding: 0 12px; }
+  .sig-line { height: 36px; border-bottom: 1.5px solid #d1d5db; margin-bottom: 4px; }
+  .sig-lbl { font-size: 9px; color: #9ca3af; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
 
-  .sig-row { display: flex; gap: 14px; margin-bottom: 10px; }
-  .sig-block { flex: 1; text-align: center; }
-  .sig-space { height: 32px; border-bottom: 1.5px solid #374151; margin-bottom: 3px; }
-  .sig-lbl { font-size: 8.5px; color: #6b7280; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-
-  .footer { background: #1a1a2e; padding: 7px 24px; display: flex; align-items: center; justify-content: space-between; }
-  .ft-txt { font-size: 8px; color: rgba(255,255,255,0.4); }
-  .ft-official { font-size: 8px; color: #4ade80; font-weight: 700; letter-spacing: 1px; }
-
-  .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-30deg); font-size: 72px; font-weight: 900; color: rgba(0,0,0,0.025); pointer-events: none; white-space: nowrap; z-index: 0; text-transform: uppercase; }
+  /* ── Footer ── */
+  .footer { padding: 10px 36px 14px; border-top: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: space-between; }
+  .ft-msg { font-size: 9px; color: #9ca3af; }
+  .ft-stamp { font-size: 9px; font-weight: 800; color: #1d4ed8; letter-spacing: 1px; text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
+  .ft-stamp::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #1d4ed8; }
+  .bottombar { height: 4px; background: linear-gradient(90deg, #1d4ed8 0%, #7c3aed 100%); }
 </style>
 </head><body>
 <div class="page">
-  <div class="watermark">${(academyName || '').split(' ')[0]}</div>
+  <div class="topbar"></div>
 
+  <!-- Header -->
   <div class="header">
-    <div class="logo-wrap">
-      ${logo ? `<img src="${logo}" />` : `<span class="logo-init">${initials}</span>`}
-    </div>
-    <div>
-      <div class="acad-name">${academyName || 'Academy'}</div>
-      <div class="acad-sub">Payment Receipt</div>
-    </div>
-  </div>
-
-  <div class="title-band">
-    <span class="band-title">Payment Receipt</span>
-    <span class="band-inv">${p.id || '—'}</span>
-  </div>
-
-  <div class="body">
-    <div class="info-box">
-      <div class="info-box-hd">Payment Details</div>
-      ${rows.map(([l, v]) => `
-      <div class="row">
-        <div class="lbl">${l}</div>
-        <div class="val">${v}</div>
-      </div>`).join('')}
-    </div>
-
-    <div class="amt-box">
-      <div>
-        <div class="amt-lbl">Amount Received</div>
-        <div class="amt-val">₹${(p.amount ?? 0).toLocaleString('en-IN')}</div>
+    <div class="logo-area">
+      <div class="logo-wrap">
+        ${logo ? `<img src="${logo}" />` : `<span class="logo-init">${initials}</span>`}
       </div>
-      <div class="paid-badge">PAID</div>
+      <div>
+        <div class="acad-name">${academyName || 'Academy'}</div>
+        <div class="acad-tag">Sports Academy · CRM</div>
+      </div>
     </div>
-
-    <div class="sig-row">
-      <div class="sig-block"><div class="sig-space"></div><div class="sig-lbl">Received By</div></div>
-      <div class="sig-block"><div class="sig-space"></div><div class="sig-lbl">Parent / Guardian</div></div>
+    <div class="receipt-meta">
+      <div class="receipt-title">Receipt</div>
+      <div class="receipt-no">${p.id || '—'}</div>
+      <div class="receipt-dates">
+        <div class="date-row"><span class="date-lbl">Payment Date</span>${fmtDate(p.date)}</div>
+        <div class="date-row"><span class="date-lbl">Print Date</span>${today}</div>
+      </div>
     </div>
   </div>
 
+  <!-- Bill To + Payment Info -->
+  <div class="info-section">
+    <div class="bill-to">
+      <div class="section-label">Bill To</div>
+      <div class="student-name">${p.student || '—'}</div>
+      <div class="student-sub">
+        ${student?.studentCode ? `ID: ${student.studentCode}<br>` : ''}
+        ${student?.sport ? `${student.sport}` : ''}${student?.batch ? ` · ${student.batch}` : ''}<br>
+        ${student?.trainingType || 'Regular'} Training
+      </div>
+    </div>
+    <div class="pay-info">
+      <div class="section-label">Payment Info</div>
+      <div class="pi-row"><span class="pi-lbl">Status</span><span class="badge badge-${p.status === 'Paid' ? 'paid' : 'pending'}">${p.status || 'Paid'}</span></div>
+      <div class="pi-row"><span class="pi-lbl">Payment Mode</span><span class="pi-val">${p.mode || 'Cash'}</span></div>
+      <div class="pi-row"><span class="pi-lbl">Period Covered</span><span class="pi-val">${p.month || '—'}</span></div>
+      ${months > 1 ? `<div class="pi-row"><span class="pi-lbl">Months</span><span class="pi-val">${months}</span></div>` : ''}
+    </div>
+  </div>
+
+  <!-- Line items -->
+  <div class="table-section">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:50%">Description</th>
+          <th class="r" style="width:15%">Qty</th>
+          <th class="r" style="width:17%">Unit Price</th>
+          <th class="r" style="width:18%">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${lineItems.map(l => `
+        <tr>
+          <td><div class="item-name">${l.desc}</div>${l.sub ? `<div class="item-sub">${l.sub}</div>` : ''}</td>
+          <td class="r">${l.qty !== '' ? l.qty : '—'}</td>
+          <td class="r">${l.unit !== '' ? `₹${Number(l.unit).toLocaleString('en-IN')}` : '—'}</td>
+          <td class="r ${l.cls === 'red' ? 'td-red' : l.cls === 'purple' ? 'td-purple' : ''}">
+            ${l.cls === 'red' ? `− ₹${Math.abs(l.total).toLocaleString('en-IN')}` : `₹${l.total.toLocaleString('en-IN')}`}
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Totals -->
+  <div class="totals">
+    <div class="totals-box">
+      <div class="tot-row"><span class="tot-lbl">Subtotal</span><span class="tot-val">₹${subtotal.toLocaleString('en-IN')}</span></div>
+      <div class="tot-row tot-final"><span class="tot-lbl">Total Paid</span><span class="tot-val">₹${(p.amount ?? 0).toLocaleString('en-IN')}</span></div>
+    </div>
+  </div>
+
+  <!-- Signatures -->
+  <div class="sig-section">
+    <div class="sig-block"><div class="sig-line"></div><div class="sig-lbl">Authorised Signatory</div></div>
+    <div class="sig-block"><div class="sig-line"></div><div class="sig-lbl">Parent / Guardian</div></div>
+    <div class="sig-block"><div class="sig-line"></div><div class="sig-lbl">Student</div></div>
+  </div>
+
+  <!-- Footer -->
   <div class="footer">
-    <span class="ft-txt">Thank you for your payment. Please retain this receipt.</span>
-    <span class="ft-official">OFFICIAL RECEIPT</span>
+    <div class="ft-msg">Thank you for your payment. Please retain this receipt for your records.</div>
+    <div class="ft-stamp">Official Receipt</div>
   </div>
+  <div class="bottombar"></div>
 </div>
 </body></html>`
 }
