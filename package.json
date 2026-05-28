@@ -26,6 +26,7 @@
     "@sentry/react": "^10.53.1",
     "@supabase/supabase-js": "^2.105.1",
     "date-fns": "^3.6.0",
+    "exceljs": "^4.4.0",
     "html5-qrcode": "^2.3.8",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.436.0",
