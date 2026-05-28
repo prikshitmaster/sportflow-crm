@@ -322,7 +322,7 @@ export default function Attendance() {
           <h2 className="text-xl font-black text-gray-900">Attendance</h2>
           <p className="text-xs text-gray-400">{MONTH_NAMES[month]} {year}</p>
         </div>
-        <button onClick={() => setShowExport(true)} className="btn-secondary text-xs">
+        <button onClick={() => setShowExport(true)} className="btn-secondary text-xs whitespace-nowrap flex-shrink-0">
           <FileSpreadsheet size={14} /> Export Excel
         </button>
       </div>
@@ -607,13 +607,13 @@ export default function Attendance() {
           </div>
         ) : (
           <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-            <table className="text-xs border-collapse" style={{ minWidth: `${totalDays * 36 + 220}px` }}>
+            <table className="text-xs border-collapse" style={{ minWidth: `${totalDays * 28 + 200}px` }}>
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="sticky left-0 bg-gray-50 z-20 text-center px-2 py-3 font-semibold text-gray-400 w-8 border-r border-gray-100">#</th>
                   <th className="sticky left-8 bg-gray-50 z-20 text-left px-3 py-3 font-semibold text-gray-500 w-40 border-r border-gray-100 whitespace-nowrap">Student</th>
                   {days.map(d => (
-                    <th key={d} className={`py-2 w-9 text-center font-medium
+                    <th key={d} className={`py-2 w-7 text-center font-medium
                       ${isSun(year,month,d) ? 'text-red-400 bg-red-50/60' : 'text-gray-500'}
                       ${isCurrentMonth && d===todayDay ? 'bg-brand-50 text-brand-700' : ''}`}>
                       <div className="font-bold">{d}</div>
