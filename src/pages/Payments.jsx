@@ -1842,19 +1842,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
           )}
         </div>
 
-        {/* Batch */}
-        <div>
-          <label className="label">Assign Batch {isSuspended ? '— last: ' + (selectedStudent?.lastBatchName || '—') : ''}</label>
-          <select className="input" value={form.batchId} onChange={e => handleBatchChange(e.target.value)}>
-            <option value="">— No batch —</option>
-            {batches.map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name}{b.code ? ` (${b.code})` : ''} · {b.capacity - b.enrolled} seats left
-              </option>
-            ))}
-          </select>
-        </div>
-
         {/* Notes */}
         <div>
           <label className="label">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
