@@ -548,7 +548,7 @@ function FinancialTab({ payments, students }) {
 
   const expected     = students.filter(s => s.status === 'Active').reduce((sum, s) => sum + (s.fees || 0), 0)
   const recCollected = payments.filter(p => monthKey(p.date) === period).reduce((sum, p) => sum + p.amount, 0)
-  const recOutstanding = receivables.filter(r => !r.isPaid).reduce((sum, r) => sum + (r.s.fees || 0), 0)
+  const recOutstanding = receivables.reduce((sum, r) => sum + r.outstanding, 0)
   const rate         = pct(recCollected, expected)
 
   const paidCount    = receivables.filter(r => r.status === 'Paid').length
@@ -1231,7 +1231,7 @@ function AttendanceTab({ students, batches }) {
     const headers = ['Student','Student Code','Batch','Sport','Status','Marked By']
     downloadCSV(headers, filtered.map(s => [
       s.name, s.studentCode||'', s.batch||'', s.sport||'',
-      attForDay[s.id]||'Unmarked', markerData[s.id]?.markedBy || '—'
+      getStatus(s.id)||'Unmarked', markerData[s.id]?.markedBy || '—'
     ]), `attendance-${date}.csv`)
   }
 
