@@ -228,12 +228,13 @@ export default function Batches() {
 }
 
 function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) {
-  const enrolled = liveCount
-  const pct      = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
-  const isFull   = enrolled >= b.capacity
-  const hex      = COLOR_HEX[idx % COLOR_HEX.length]
-  const hexDark  = COLOR_HEX_DARK[idx % COLOR_HEX_DARK.length]
-  const barColor = isFull ? '#ef4444' : pct > 80 ? '#f59e0b' : hex
+  const enrolled      = liveCount
+  const pct           = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
+  const isFull        = enrolled >= b.capacity
+  const hex           = COLOR_HEX[idx % COLOR_HEX.length]
+  const hexDark       = COLOR_HEX_DARK[idx % COLOR_HEX_DARK.length]
+  const barColor      = isFull ? '#ef4444' : pct > 80 ? '#f59e0b' : hex
+  const todayDayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]
 
   const coachStaff = b.coach ? staff.find(s => s.name === b.coach) : null
 
@@ -275,7 +276,11 @@ function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit, canEdi
             </span>
           )}
           {b.days?.map(d => (
-            <span key={d} className="text-[10px] bg-white/25 text-white px-1.5 py-0.5 rounded font-bold">{d}</span>
+            <span key={d} className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+              d === todayDayShort
+                ? 'bg-white/70 text-gray-800'
+                : 'bg-white/15 text-white/45'
+            }`}>{d}</span>
           ))}
         </div>
         {b.ground && <p className="text-white/50 text-[10px] mt-1 truncate">{b.ground}</p>}
@@ -626,7 +631,14 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
           )}
           {b.days?.length > 0 && (
             <div className="flex gap-1.5 mt-2">
-              {b.days.map(d => <span key={d} className="text-[10px] bg-white/15 text-white px-2 py-0.5 rounded-full font-semibold">{d}</span>)}
+              {b.days.map(d => {
+                const isToday = d === ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]
+                return (
+                  <span key={d} className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                    isToday ? 'bg-white/65 text-gray-800' : 'bg-white/15 text-white/45'
+                  }`}>{d}</span>
+                )
+              })}
             </div>
           )}
           <div className="grid grid-cols-3 gap-3 mt-5">

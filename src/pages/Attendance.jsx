@@ -254,24 +254,14 @@ export default function Attendance() {
     return { present, absent, late, total, avg: total>0 ? Math.round((present/total)*100) : 0 }
   }, [monthData, displayed, days])
 
-  // Student → primary batch lookup (for Alternate off-day cross-out)
-  const batchByStudent = useMemo(() => {
-    const byId   = Object.fromEntries(batches.map(b => [b.id, b]))
-    const byName = Object.fromEntries(batches.map(b => [b.name, b]))
-    const map = {}
-    students.forEach(s => {
-      const b = byId[s.batchId] || byName[s.batch]
-      if (b) map[s.id] = b
-    })
-    return map
-  }, [students, batches])
-
   // Is this date an off-day for this student? (Alternate students only, requires batch days)
+  // Uses the currently-selected batch's schedule — not the student's primary batch —
+  // because attendance is per-batch, so off-days must reflect the viewed batch.
   // Past months are never retroactively locked — batch day changes should not rewrite history.
   const isOffDay = (student, day) => {
     if (!isCurrentMonth) return false
     if (student.trainingType !== 'Alternate') return false
-    const b = batchByStudent[student.id]
+    const b = selectedBatch
     if (!b?.days?.length) return false
     return !b.days.includes(dayName(year, month, day))
   }
@@ -612,14 +602,18 @@ export default function Attendance() {
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="sticky left-0 bg-gray-50 z-20 text-center px-2 py-3 font-semibold text-gray-400 w-8 border-r border-gray-100">#</th>
                   <th className="sticky left-8 bg-gray-50 z-20 text-left px-3 py-3 font-semibold text-gray-500 w-40 border-r border-gray-100 whitespace-nowrap">Student</th>
-                  {days.map(d => (
+                  {days.map(d => {
+                    const dn = dayName(year, month, d)
+                    const isBatchDay = !selectedBatch?.days?.length || selectedBatch.days.includes(dn)
+                    return (
                     <th key={d} className={`py-2 w-7 text-center font-medium
-                      ${isSun(year,month,d) ? 'text-red-400 bg-red-50/60' : 'text-gray-500'}
+                      ${isSun(year,month,d) ? 'text-red-400 bg-red-50/60' : isBatchDay ? 'text-gray-500' : 'text-gray-300 bg-gray-50/80'}
                       ${isCurrentMonth && d===todayDay ? 'bg-brand-50 text-brand-700' : ''}`}>
                       <div className="font-bold">{d}</div>
-                      <div className="text-[9px] opacity-70">{dayName(year,month,d)}</div>
+                      <div className="text-[9px] opacity-70">{dn}</div>
                     </th>
-                  ))}
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
