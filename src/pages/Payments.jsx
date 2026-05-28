@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
-import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer, Link as LinkIcon, MessageCircle } from 'lucide-react'
+import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer, Link as LinkIcon, MessageCircle, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { isOutstanding } from '../lib/studentRules'
@@ -149,13 +149,15 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user, hasPermission } = useApp()
+  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user, hasPermission, showToast } = useApp()
   const canManage = hasPermission('payments.manage')
-  const [editingDate, setEditingDate] = useState(null) // paymentId being edited
-  const [markingPaid, setMarkingPaid] = useState(null) // paymentId currently being marked Paid
-  const [deleteTarget, setDeleteTarget] = useState(null) // payment pending deletion
-  const [deleteNote,   setDeleteNote]   = useState('')
-  const [deleting,     setDeleting]     = useState(false)
+  const [editingDate,            setEditingDate]            = useState(null)
+  const [markingPaid,            setMarkingPaid]            = useState(null)
+  const [deleteTarget,           setDeleteTarget]           = useState(null)
+  const [deleteNote,             setDeleteNote]             = useState('')
+  const [deleting,               setDeleting]               = useState(false)
+  const [selectedStudentHistory, setSelectedStudentHistory] = useState(null)
+  const [exportingAll,           setExportingAll]           = useState(false)
 
   const handleMarkPaid = async (id) => {
     if (markingPaid) return
@@ -293,6 +295,16 @@ export default function Payments() {
             <LinkIcon size={14} /> Send Pay Link
           </button>
           */}
+          <button
+            onClick={async () => {
+              setExportingAll(true)
+              try { await exportPaymentsToExcel({ records: filtered, studentMap, title: `PAYMENT REPORT${monthLabel ? ' — ' + monthLabel : ''}`, showToast }) }
+              finally { setExportingAll(false) }
+            }}
+            disabled={exportingAll || filtered.length === 0}
+            className="btn-secondary text-xs disabled:opacity-50">
+            <FileSpreadsheet size={14} /> {exportingAll ? 'Exporting…' : 'Export Excel'}
+          </button>
           {canManage && (
             <button className="btn-primary" onClick={() => setShowModal(true)}>
               <Plus size={16} /> Record Payment
@@ -404,7 +416,7 @@ export default function Payments() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-gray-900 text-sm">{p.student}</span>
+                    <button className="font-semibold text-gray-900 text-sm hover:text-brand-600 transition" onClick={e => { e.stopPropagation(); const s = studentMap[p.studentId]; if (s) setSelectedStudentHistory(s) }}>{p.student}</button>
                     {p.isSuspended && <span className="text-[10px] font-bold bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full">Suspended</span>}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">{p.month}{p.mode ? ` · ${p.mode}` : ''}{p.date ? ` · ${p.date}` : ''}</p>
@@ -465,8 +477,8 @@ export default function Payments() {
                     onClick={() => !p.isVirtual && setDetailPayment({ payment: p, student: studentMap[p.studentId] })}
                   >
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.isVirtual ? '—' : p.id}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-900">
-                      {p.student}
+                    <td className="px-4 py-3 font-semibold text-gray-900" onClick={e => { e.stopPropagation(); const s = studentMap[p.studentId]; if (s) setSelectedStudentHistory(s) }}>
+                      <span className="hover:text-brand-600 cursor-pointer transition">{p.student}</span>
                       {p.isSuspended && <span className="ml-2 text-[10px] font-bold bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full">Suspended</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{p.month}</td>
@@ -598,6 +610,17 @@ export default function Payments() {
         <SendPayLinkModal
           students={students}
           onClose={() => setShowPayLink(false)}
+        />
+      )}
+
+      {selectedStudentHistory && (
+        <StudentPaymentPanel
+          student={selectedStudentHistory}
+          payments={allRecords}
+          studentMap={studentMap}
+          onClose={() => setSelectedStudentHistory(null)}
+          showToast={showToast}
+          user={user}
         />
       )}
 
@@ -793,6 +816,288 @@ function PaymentDetailModal({ payment: p, student, onClose, onPrint }) {
               {infoRow('Training', student.trainingType)}
               {infoRow('Fee Plan', planLabel[student.feePlan] || student.feePlan)}
               {student.fromTrial && infoRow('Source', 'Converted from Trial', 'text-amber-600')}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Professional Excel export for payments ────────────────────
+async function exportPaymentsToExcel({ records, studentMap, title, showToast }) {
+  try {
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'SportFlow CRM'
+    wb.created = new Date()
+
+    const BRAND = '2563eb', DARK = '1e3a5f'
+    const hFont  = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10, name: 'Calibri' }
+    const subFont = { bold: true, color: { argb: 'FF374151' }, size: 9, name: 'Calibri' }
+    const dFont  = { size: 9, name: 'Calibri' }
+    const thin   = { style: 'thin', color: { argb: 'FFe5e7eb' } }
+    const STATUS_FILLS = {
+      Paid:    { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFdcfce7' } },
+      Pending: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFfef3c7' } },
+      Overdue: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFfee2e2' } },
+    }
+
+    // ── Sheet 1: Payment Records ──────────────────────────────
+    const ws = wb.addWorksheet('Payment Records', { views: [{ state: 'frozen', xSplit: 0, ySplit: 3 }] })
+
+    const cols = [
+      { key: 'num',     header: '#',         width: 5 },
+      { key: 'invoice', header: 'Invoice',    width: 18 },
+      { key: 'student', header: 'Student',    width: 22 },
+      { key: 'sport',   header: 'Sport',      width: 14 },
+      { key: 'batch',   header: 'Batch',      width: 18 },
+      { key: 'month',   header: 'Period',     width: 20 },
+      { key: 'amount',  header: 'Amount (₹)', width: 14 },
+      { key: 'mode',    header: 'Mode',       width: 10 },
+      { key: 'date',    header: 'Date',       width: 14 },
+      { key: 'status',  header: 'Status',     width: 10 },
+    ]
+    cols.forEach((c, i) => { ws.getColumn(i + 1).width = c.width })
+
+    // Row 1: title
+    ws.mergeCells(1, 1, 1, cols.length)
+    const t = ws.getCell(1, 1)
+    t.value = title || 'PAYMENT REPORT'
+    t.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' }, name: 'Calibri' }
+    t.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${DARK}` } }
+    t.alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getRow(1).height = 22
+
+    // Row 2: meta
+    ws.mergeCells(2, 1, 2, 4)
+    ws.getCell(2, 1).value = `Exported: ${new Date().toLocaleDateString('en-IN')}`
+    ws.mergeCells(2, 5, 2, cols.length)
+    ws.getCell(2, 5).value = `Total Records: ${records.length}   Total Collected: ₹${records.filter(r=>r.status==='Paid').reduce((s,r)=>s+(r.amount||0),0).toLocaleString('en-IN')}`
+    ;[ws.getCell(2,1), ws.getCell(2,5)].forEach(c => {
+      c.font = { italic: true, size: 9, color: { argb: 'FF6b7280' }, name: 'Calibri' }
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFf8fafc' } }
+    })
+    ws.getRow(2).height = 15
+
+    // Row 3: headers
+    cols.forEach((c, i) => {
+      const cell = ws.getCell(3, i + 1)
+      cell.value = c.header
+      cell.font = hFont
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${BRAND}` } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.border = { bottom: { style: 'medium', color: { argb: 'FF1d4ed8' } } }
+    })
+    ws.getRow(3).height = 18
+
+    // Data rows
+    records.forEach((p, idx) => {
+      const stu = studentMap[p.studentId]
+      const row = ws.getRow(idx + 4)
+      const isEven = idx % 2 === 1
+      const fill = STATUS_FILLS[p.status] || { type: 'pattern', pattern: 'solid', fgColor: { argb: isEven ? 'FFf9fafb' : 'FFffffff' } }
+
+      const vals = [idx+1, p.isVirtual ? '—' : (p.id||'—'), p.student||'—', stu?.sport||'—', stu?.batch||'—', p.month||'—', p.amount||0, p.mode||'—', p.date||'—', p.status||'—']
+      vals.forEach((v, i) => {
+        const cell = row.getCell(i + 1)
+        cell.value = v
+        cell.font = i === 9 ? { ...dFont, bold: true, color: { argb: p.status==='Paid'?'FF166534':p.status==='Pending'?'FF92400e':'FFb91c1c' } } : dFont
+        cell.fill = i === 9 ? (STATUS_FILLS[p.status] || fill) : (isEven ? { type:'pattern',pattern:'solid',fgColor:{argb:'FFf9fafb'} } : { type:'pattern',pattern:'solid',fgColor:{argb:'FFffffff'} })
+        if (i === 6) { cell.numFmt = '₹#,##0'; cell.alignment = { horizontal: 'right' } }
+        cell.border = { bottom: thin }
+      })
+      row.height = 16
+    })
+
+    // ── Sheet 2: Student Summary ──────────────────────────────
+    const ws2 = wb.addWorksheet('Student Summary')
+    const cols2 = ['#','Student','Sport','Batch','Total Paid (₹)','Pending (₹)','Overdue (₹)','Transactions','Last Payment']
+    const widths2 = [5,22,14,18,16,14,14,14,16]
+    cols2.forEach((h,i) => {
+      ws2.getColumn(i+1).width = widths2[i]
+      const cell = ws2.getCell(1, i+1)
+      cell.value = h
+      cell.font = hFont
+      cell.fill = { type:'pattern',pattern:'solid',fgColor:{argb:`FF${BRAND}`} }
+      cell.alignment = { horizontal:'center',vertical:'middle' }
+    })
+    ws2.getRow(1).height = 18
+
+    const byStudent = {}
+    records.forEach(p => {
+      if (p.isVirtual) return
+      const sid = p.studentId
+      if (!byStudent[sid]) byStudent[sid] = { paid:0, pending:0, overdue:0, count:0, lastDate:'' }
+      const b = byStudent[sid]
+      b.count++
+      if (p.status==='Paid')    { b.paid    += p.amount||0; if ((p.date||'') > b.lastDate) b.lastDate = p.date||'' }
+      if (p.status==='Pending') b.pending += p.amount||0
+      if (p.status==='Overdue') b.overdue += p.amount||0
+    })
+
+    let r2 = 2
+    const uniqueStudents = [...new Set(records.filter(p=>!p.isVirtual).map(p=>p.studentId))]
+      .sort((a,b)=>(records.find(r=>r.studentId===a)?.student||'').localeCompare(records.find(r=>r.studentId===b)?.student||''))
+    uniqueStudents.forEach((sid, idx) => {
+      const b = byStudent[sid]
+      const stu = studentMap[sid]
+      const p = records.find(r => r.studentId === sid)
+      const isEven = idx%2===1
+      const rowFill = { type:'pattern',pattern:'solid',fgColor:{argb:isEven?'FFf9fafb':'FFffffff'} }
+      const vals = [idx+1, p?.student||'—', stu?.sport||'—', stu?.batch||'—', b.paid, b.pending, b.overdue, b.count, b.lastDate||'—']
+      vals.forEach((v,i) => {
+        const cell = ws2.getCell(r2, i+1)
+        cell.value = v
+        cell.font = dFont
+        cell.fill = rowFill
+        if (i===4||i===5||i===6) { cell.numFmt='₹#,##0'; cell.alignment={horizontal:'right'} }
+        if (i===4&&b.paid>0) cell.font = {...dFont, color:{argb:'FF166534'}, bold:true}
+        if (i===6&&b.overdue>0) cell.font = {...dFont, color:{argb:'FFb91c1c'}, bold:true}
+        cell.border = { bottom: thin }
+      })
+      ws2.getRow(r2).height = 16
+      r2++
+    })
+
+    // Totals row
+    const totRow = ws2.getRow(r2)
+    totRow.getCell(1).value = ''
+    totRow.getCell(2).value = 'TOTAL'
+    totRow.getCell(2).font = {...subFont, color:{argb:'FF111827'}}
+    totRow.getCell(5).value = uniqueStudents.reduce((s,sid)=>s+(byStudent[sid]?.paid||0),0)
+    totRow.getCell(5).numFmt = '₹#,##0'
+    totRow.getCell(5).font = {bold:true,size:10,color:{argb:'FF166534'},name:'Calibri'}
+    totRow.getCell(6).value = uniqueStudents.reduce((s,sid)=>s+(byStudent[sid]?.pending||0),0)
+    totRow.getCell(6).numFmt = '₹#,##0'
+    ;[1,2,3,4,5,6,7,8,9].forEach(i => {
+      totRow.getCell(i).fill = {type:'pattern',pattern:'solid',fgColor:{argb:'FFf0f9ff'}}
+      totRow.getCell(i).border = {top:{style:'medium',color:{argb:'FF2563eb'}}}
+    })
+    totRow.height = 18
+
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${(title||'payments').replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast('Excel exported successfully')
+  } catch (err) {
+    console.error(err)
+    showToast('Export failed: ' + (err?.message || 'unknown'), 'error')
+  }
+}
+
+// ── Student Payment History Panel ─────────────────────────────
+function StudentPaymentPanel({ student, payments, studentMap, onClose, showToast, user }) {
+  const [exporting, setExporting] = useState(false)
+  const studentPayments = useMemo(() =>
+    payments.filter(p => p.studentId === student.id && !p.isVirtual)
+      .sort((a,b) => (b.date||b.month||'') > (a.date||a.month||'') ? 1 : -1)
+  , [payments, student.id])
+
+  const totals = useMemo(() => {
+    let paid=0, pending=0, overdue=0
+    studentPayments.forEach(p => {
+      if (p.status==='Paid')    paid    += p.amount||0
+      if (p.status==='Pending') pending += p.amount||0
+      if (p.status==='Overdue') overdue += p.amount||0
+    })
+    return { paid, pending, overdue }
+  }, [studentPayments])
+
+  const STATUS_CFG = {
+    Paid:    { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
+    Pending: { cls: 'bg-amber-50 text-amber-700 border-amber-200',       dot: 'bg-amber-400' },
+    Overdue: { cls: 'bg-red-50 text-red-700 border-red-200',             dot: 'bg-red-500' },
+  }
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      await exportPaymentsToExcel({
+        records: studentPayments, studentMap,
+        title: `PAYMENT HISTORY — ${student.name}`, showToast,
+      })
+    } finally { setExporting(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-end">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white h-full w-full max-w-sm shadow-2xl flex flex-col animate-slide-up">
+        {/* Header */}
+        <div className="bg-gradient-to-br from-brand-700 to-brand-900 px-5 py-5">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-white/20 rounded-full flex items-center justify-center text-lg font-black text-white border-2 border-white/30 flex-shrink-0">
+                {student.name[0]}
+              </div>
+              <div>
+                <h2 className="text-base font-black text-white leading-tight">{student.name}</h2>
+                <p className="text-brand-200 text-xs mt-0.5">{student.sport} · {student.batch || 'No batch'}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg bg-white/15 hover:bg-white/25 transition">
+              <X size={15} className="text-white" />
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-4">
+            {[
+              { label: 'Collected', value: `₹${(totals.paid/1000).toFixed(totals.paid>=1000?1:0)}${totals.paid>=1000?'k':''}`, color: 'bg-emerald-500/80' },
+              { label: 'Pending',   value: `₹${(totals.pending/1000).toFixed(totals.pending>=1000?1:0)}${totals.pending>=1000?'k':''}`, color: 'bg-amber-400/80' },
+              { label: 'Overdue',   value: `₹${(totals.overdue/1000).toFixed(totals.overdue>=1000?1:0)}${totals.overdue>=1000?'k':''}`, color: 'bg-red-500/80' },
+            ].map(s => (
+              <div key={s.label} className={`${s.color} rounded-xl p-2 text-center`}>
+                <p className="text-sm font-black text-white">{s.value}</p>
+                <p className="text-[9px] text-white/80">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
+          <span className="text-xs font-semibold text-gray-500">{studentPayments.length} transactions</span>
+          <button onClick={handleExport} disabled={exporting || studentPayments.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-lg transition disabled:opacity-50">
+            <FileSpreadsheet size={12} /> {exporting ? 'Exporting…' : 'Export Excel'}
+          </button>
+        </div>
+
+        {/* Payment list */}
+        <div className="flex-1 overflow-y-auto">
+          {studentPayments.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-2 text-gray-300">
+              <CreditCard size={32} />
+              <p className="text-sm text-gray-400">No payments recorded</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {studentPayments.map(p => {
+                const cfg = STATUS_CFG[p.status] || STATUS_CFG.Pending
+                return (
+                  <div key={p.id} className="px-4 py-3.5 flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${cfg.dot} flex-shrink-0`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">{p.month}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{p.mode || 'Cash'}{p.date ? ` · ${p.date}` : ''}</p>
+                      <p className="text-[10px] font-mono text-gray-300">{p.id}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-black text-gray-900">₹{(p.amount||0).toLocaleString('en-IN')}</p>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${cfg.cls}`}>{p.status}</span>
+                    </div>
+                    <button onClick={() => printReceipt(p, student, user?.academy, user?.academyLogo)}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-300 hover:text-gray-500 transition flex-shrink-0">
+                      <Printer size={13} />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
