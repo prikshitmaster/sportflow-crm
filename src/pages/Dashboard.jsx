@@ -79,6 +79,24 @@ export default function Dashboard() {
     .filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth)
     .reduce((s, p) => s + (p.amount ?? 0), 0)
 
+  // Split collected into "for this month" vs "advance (future months)"
+  const MONTH_MAP = { Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12 }
+  const paidForCurrentMonth = (p) => {
+    const m = p.month
+    if (!m) return true
+    if (/^\d{4}-\d{2}/.test(m)) return m.slice(0, 7) === currentMonth
+    const nameM = m.match(/^([A-Za-z]+)/), yearM = m.match(/(\d{4})/)
+    if (nameM && yearM && MONTH_MAP[nameM[1]])
+      return `${yearM[1]}-${String(MONTH_MAP[nameM[1]]).padStart(2,'0')}` === currentMonth
+    return true
+  }
+  const thisMonthCollected = payments
+    .filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth && paidForCurrentMonth(p))
+    .reduce((s, p) => s + (p.amount ?? 0), 0)
+  const advanceCollected = payments
+    .filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth && !paidForCurrentMonth(p))
+    .reduce((s, p) => s + (p.amount ?? 0), 0)
+
   const studentsWithRecord = new Set(
     payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => String(p.studentId))
   )
@@ -97,6 +115,7 @@ export default function Dashboard() {
   const pendingAmt   = pendingList.reduce((s, p) => s + (p.amount ?? 0), 0)
   const expectedAmt  = activeStudents.reduce((s, st) => s + (st.fees || 0), 0)
   const collectPct   = expectedAmt > 0 ? Math.round((collectedAmt / expectedAmt) * 100) : 0
+  const thisMoPct    = expectedAmt > 0 ? Math.round((thisMonthCollected / expectedAmt) * 100) : 0
 
   const todayDayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()]
 
@@ -263,7 +282,9 @@ export default function Dashboard() {
         <KpiCard
           label="Collected This Month"
           value={`₹${fmtAmt(collectedAmt)}`}
-          sub={`${collectPct}% of ₹${fmtAmt(expectedAmt)} target`}
+          sub={advanceCollected > 0
+            ? `₹${fmtAmt(thisMonthCollected)} for ${now.toLocaleDateString('en-IN',{month:'short'})} · ₹${fmtAmt(advanceCollected)} advance`
+            : `${thisMoPct}% of ₹${fmtAmt(expectedAmt)} target`}
           accentColor="border-emerald-500"
           valueColor="text-emerald-700"
           icon={TrendingUp}
@@ -298,7 +319,7 @@ export default function Dashboard() {
         {/* Left 2/3 */}
         <div className="lg:col-span-2 space-y-5">
 
-          {/* Fee collection with ring */}
+          {/* Fee collection — 3 clear boxes */}
           <div className="card p-6">
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -312,51 +333,55 @@ export default function Dashboard() {
               </Link>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
-              {/* Ring */}
-              {expectedAmt > 0 && (
-                <div className="relative flex-shrink-0 w-24 h-24 sm:w-28 sm:h-28">
-                  <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f3f4f6" strokeWidth="3.2" />
-                    <circle cx="18" cy="18" r="15.9" fill="none"
-                      stroke={collectPct >= 80 ? '#10b981' : collectPct >= 50 ? '#f59e0b' : '#ef4444'}
-                      strokeWidth="3.2"
-                      strokeLinecap="round"
-                      strokeDasharray={`${collectPct} ${100 - collectPct}`}
-                      style={{ transition: 'stroke-dasharray 0.6s ease' }}
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-xl font-black text-gray-900 leading-none">{collectPct}%</span>
-                    <span className="text-[10px] text-gray-400 mt-0.5 font-semibold">collected</span>
-                  </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* This month */}
+              <div className="bg-emerald-50 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">This Month</span>
                 </div>
-              )}
+                <p className="text-2xl font-black text-gray-900">₹{fmtAmt(thisMonthCollected)}</p>
+                {expectedAmt > 0 ? (
+                  <>
+                    <p className="text-xs text-gray-500 mt-1">{thisMoPct}% of ₹{fmtAmt(expectedAmt)} target</p>
+                    <div className="mt-2.5 h-1.5 bg-emerald-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${Math.min(thisMoPct, 100)}%`, background: thisMoPct >= 80 ? '#10b981' : thisMoPct >= 50 ? '#f59e0b' : '#ef4444' }} />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1">no target set</p>
+                )}
+              </div>
 
-              {/* Three metrics */}
-              <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full sm:flex-1">
-                <MetricBox label="Collected" value={`₹${fmtAmt(collectedAmt)}`} accent="emerald" />
-                <MetricBox label="Pending" value={`₹${fmtAmt(pendingAmt)}`} accent="amber" />
-                <MetricBox label="Overdue" value={`₹${fmtAmt(overdueAmt)}`} accent="red" />
+              {/* Advance paid */}
+              <div className="bg-blue-50 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-2 h-2 rounded-full bg-blue-400" />
+                  <span className="text-xs font-bold text-blue-700 uppercase tracking-wide">Advance Paid</span>
+                </div>
+                <p className="text-2xl font-black text-gray-900">₹{fmtAmt(advanceCollected)}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {advanceCollected > 0 ? 'collected for future months' : 'none this month'}
+                </p>
+              </div>
+
+              {/* Outstanding */}
+              <div className={`${overdueAmt + pendingAmt > 0 ? 'bg-red-50' : 'bg-gray-50'} rounded-2xl p-4`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className={`w-2 h-2 rounded-full ${overdueAmt + pendingAmt > 0 ? 'bg-red-400' : 'bg-gray-300'}`} />
+                  <span className={`text-xs font-bold uppercase tracking-wide ${overdueAmt + pendingAmt > 0 ? 'text-red-700' : 'text-gray-500'}`}>Outstanding</span>
+                </div>
+                <p className={`text-2xl font-black ${overdueAmt + pendingAmt > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+                  ₹{fmtAmt(overdueAmt + pendingAmt)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {overdueAmt + pendingAmt > 0
+                    ? `${overdueList.length + pendingList.length} student${(overdueList.length + pendingList.length) !== 1 ? 's' : ''} unpaid`
+                    : 'all clear ✓'}
+                </p>
               </div>
             </div>
-
-            {expectedAmt > 0 && (
-              <div className="mt-5">
-                <div className="flex justify-between text-[11px] text-gray-400 mb-1.5">
-                  <span className="font-semibold text-gray-600">{collectPct}% of target</span>
-                  <span>₹{fmtAmt(expectedAmt)} expected</span>
-                </div>
-                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-700"
-                    style={{
-                      width: `${Math.min(collectPct, 100)}%`,
-                      background: collectPct >= 80 ? '#10b981' : collectPct >= 50 ? '#f59e0b' : '#ef4444',
-                    }}
-                  />
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Today's batches */}
