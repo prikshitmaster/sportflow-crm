@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, CalendarCheck, CreditCard, UserPlus,
   Layers, UserCog, BarChart3, Megaphone, Settings, LogOut,
   Zap, ChevronLeft, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
-  ChevronDown, ChevronRight, UserCircle, ShieldCheck, Package,
+  ChevronDown, ChevronRight, UserCircle, ShieldCheck, Package, MapPin, Sparkles,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -31,7 +31,8 @@ const nav = [
   { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: 'training',   permission: 'training.manage', footballOnly: true, group: 'training' },
   { to: '/coaches',    label: 'Staff',      icon: UserCog,         feature: 'staff',      permission: 'staff.manage' },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,       feature: 'reports',    permission: 'reports.view' },
-  { to: '/inventory',  label: 'Inventory',  icon: Package,         feature: null,         permission: null, premium: true },
+  { to: '/inventory',  label: 'Inventory',  icon: Package,         feature: null,         permission: null, premium: true, group: 'addons' },
+  { to: '/turf',       label: 'Turf Booking', icon: MapPin,        feature: null,         permission: null, premium: true, group: 'addons' },
   { to: '/community',  label: 'Community',  icon: Megaphone,       feature: 'community',  permission: 'community.manage' },
   { to: '/settings',   label: 'Settings',   icon: Settings,        feature: null,         permission: 'settings.manage' },
   { to: '/backups',    label: 'Backups',    icon: ShieldCheck,     feature: 'backups',    permission: 'settings.manage' },
@@ -40,6 +41,7 @@ const nav = [
 const GROUP_META = {
   qr:       { label: 'QR Codes',  icon: QrCode },
   training: { label: 'Training',  icon: CalendarDays },
+  addons:   { label: 'Add-ons',   icon: Sparkles, premium: true },
 }
 
 export default function Sidebar({ collapsed, setCollapsed }) {
@@ -68,6 +70,8 @@ export default function Sidebar({ collapsed, setCollapsed }) {
     })
 
   const isItemVisible = (item) => {
+    // Premium items are always visible (owner-only; locked by page, not sidebar)
+    if (item.premium) return role === 'owner'
     const featureOk  = item.feature === null || isFeatureOn(item.feature)
     const permOk     = role === 'owner' || item.permission === null || hasPermission(item.permission)
     // For non-owners use their own sport(s) to evaluate the football filter,
@@ -236,10 +240,22 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                   ${collapsed ? 'justify-center' : ''}`}
                 title={collapsed ? meta.label : undefined}
               >
-                <GroupIcon size={18} className="flex-shrink-0" />
+                <div className="relative flex-shrink-0">
+                  <GroupIcon size={18} />
+                  {meta.premium && collapsed && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center">
+                      <span className="text-[6px] font-black text-white leading-none">P</span>
+                    </span>
+                  )}
+                </div>
                 {!collapsed && (
                   <>
                     <span className="flex-1 text-left">{meta.label}</span>
+                    {meta.premium && (
+                      <span className="text-[9px] font-black uppercase tracking-widest bg-amber-500 text-white px-1.5 py-0.5 rounded-full leading-none mr-1">
+                        PRO
+                      </span>
+                    )}
                     {isOpen
                       ? <ChevronDown size={13} className="text-gray-500" />
                       : <ChevronRight size={13} className="text-gray-500" />}

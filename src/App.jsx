@@ -40,6 +40,7 @@ const Sessions         = lazy(() => import('./pages/Sessions'))
 const Parents          = lazy(() => import('./pages/Parents'))
 const Backups          = lazy(() => import('./pages/Backups'))
 const Inventory        = lazy(() => import('./pages/Inventory'))
+const TurfBooking      = lazy(() => import('./pages/TurfBooking'))
 
 // Staff pages — lazy loaded
 const StaffDashboard   = lazy(() => import('./pages/staff/StaffDashboard'))
@@ -277,6 +278,7 @@ function AppRoutes() {
         <Route path="community"  element={<FeatureRoute feature="community"><Community /></FeatureRoute>} />
         <Route path="settings"   element={<Settings />} />
         <Route path="inventory"  element={<Inventory />} />
+        <Route path="turf"       element={<TurfBooking />} />
         <Route path="backups"    element={<FeatureRoute feature="backups"><Backups /></FeatureRoute>} />
         <Route path="gate-qr"    element={<FeatureRoute feature="gate_qr"><AdminQR /></FeatureRoute>} />
         <Route path="staff-qr"   element={<FeatureRoute feature="attendance"><StaffAttendanceQR /></FeatureRoute>} />
