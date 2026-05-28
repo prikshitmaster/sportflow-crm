@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, CalendarCheck, CreditCard, UserPlus,
   Layers, UserCog, BarChart3, Megaphone, Settings, LogOut,
   Zap, ChevronLeft, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
-  ChevronDown, ChevronRight, UserCircle, ShieldCheck,
+  ChevronDown, ChevronRight, UserCircle, ShieldCheck, Package,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -31,6 +31,7 @@ const nav = [
   { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: 'training',   permission: 'training.manage', footballOnly: true, group: 'training' },
   { to: '/coaches',    label: 'Staff',      icon: UserCog,         feature: 'staff',      permission: 'staff.manage' },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,       feature: 'reports',    permission: 'reports.view' },
+  { to: '/inventory',  label: 'Inventory',  icon: Package,         feature: null,         permission: null, premium: true },
   { to: '/community',  label: 'Community',  icon: Megaphone,       feature: 'community',  permission: 'community.manage' },
   { to: '/settings',   label: 'Settings',   icon: Settings,        feature: null,         permission: 'settings.manage' },
   { to: '/backups',    label: 'Backups',    icon: ShieldCheck,     feature: 'backups',    permission: 'settings.manage' },
@@ -187,7 +188,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {rendered.map((entry) => {
           if (entry.type === 'item') {
-            const { to, label, icon: Icon } = entry.item
+            const { to, label, icon: Icon, premium } = entry.item
             return (
               <NavLink
                 key={to}
@@ -195,8 +196,22 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                 className={({ isActive }) => navLinkCls(isActive)}
                 title={collapsed ? label : undefined}
               >
-                <Icon size={18} className="flex-shrink-0" />
-                {!collapsed && <span>{label}</span>}
+                <div className="relative flex-shrink-0">
+                  <Icon size={18} />
+                  {premium && collapsed && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center">
+                      <span className="text-[6px] font-black text-white leading-none">P</span>
+                    </span>
+                  )}
+                </div>
+                {!collapsed && (
+                  <span className="flex-1">{label}</span>
+                )}
+                {!collapsed && premium && (
+                  <span className="text-[9px] font-black uppercase tracking-widest bg-amber-500 text-white px-1.5 py-0.5 rounded-full leading-none">
+                    PRO
+                  </span>
+                )}
               </NavLink>
             )
           }
