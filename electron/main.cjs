@@ -12,7 +12,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      zoomFactor: 0.85,
+      zoomFactor: 0.75,
     },
     title: 'SportFlow CRM',
   });
