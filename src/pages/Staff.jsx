@@ -1342,6 +1342,7 @@ function AccessPanel({ staff, user, demoMode, inviteStaff, updateStaffAccess, re
 // ── Invite Modal ──────────────────────────────────────────
 
 function InviteModal({ onClose, onGenerated, inviteStaff, initialName = '' }) {
+  const { selectedSport } = useApp()
   const [name,        setName]        = useState(initialName)
   const [accessRole,  setAccessRole]  = useState('coach')
   const [permissions, setPermissions] = useState([...ROLE_PRESETS.coach])
