@@ -789,7 +789,7 @@ export async function insertStaff(s) {
     p_branch_id:  s.branchId    || null,
   })
   if (error) throw error
-  return { ...s, id: data, attendance: 100 }
+  return { ...s, id: data, attendance: 100, status: s.status || 'Active' }
 }
 
 // ── Staff Auth (custom auth — staff_auth + staff_sessions) ─

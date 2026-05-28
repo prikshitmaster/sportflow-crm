@@ -547,7 +547,7 @@ function FinancialTab({ payments, students }) {
   }), [receivables, recStatus, recSearch])
 
   const expected     = students.filter(s => s.status === 'Active').reduce((sum, s) => sum + (s.fees || 0), 0)
-  const recCollected = payments.filter(p => monthKey(p.date) === period).reduce((sum, p) => sum + p.amount, 0)
+  const recCollected = payments.filter(p => p.status === 'Paid' && monthKey(p.date) === period).reduce((sum, p) => sum + p.amount, 0)
   const recOutstanding = receivables.reduce((sum, r) => sum + r.outstanding, 0)
   const rate         = pct(recCollected, expected)
 
