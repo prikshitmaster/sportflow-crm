@@ -8,6 +8,9 @@ import { initSentry } from './lib/sentry'
 // No-ops if VITE_SENTRY_DSN is not configured.
 initSentry()
 
+// Auto-reload when a Vite lazy chunk fails to load after a new deploy
+window.addEventListener('vite:preloadError', () => window.location.reload())
+
 // Block long-press context menu on Android Chrome (links, images, etc.)
 document.addEventListener('contextmenu', e => e.preventDefault())
 
