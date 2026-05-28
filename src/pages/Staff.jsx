@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { UserCog, Plus, Phone, Award, X, Layers, CheckCircle, ChevronRight, ChevronDown, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor, FileText, ExternalLink } from 'lucide-react'
+import { UserCog, Plus, Phone, Award, X, Layers, CheckCircle, ChevronRight, ChevronLeft, ChevronDown, CalendarDays, CalendarCheck, Hourglass, XCircle, ShieldCheck, Link2, Trash2, Pencil, Copy, Check, Camera, Smartphone, Monitor, FileText, ExternalLink } from 'lucide-react'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import DevFillButton from '../components/DevFillButton'
@@ -1595,7 +1595,8 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
   const now     = new Date()
   const todayStr = now.toISOString().split('T')[0]
 
-  const [view,        setView]        = useState('day')
+  const [view,              setView]              = useState('day')
+  const [selectedStaff,     setSelectedStaff]     = useState(null)
   // Day view
   const [date,        setDate]        = useState(todayStr)
   const [dayRec,      setDayRec]      = useState([])
@@ -1665,6 +1666,13 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
 
   return (
     <div className="space-y-4">
+      {selectedStaff && (
+        <StaffMemberDetailPanel
+          staff={selectedStaff}
+          user={user}
+          onClose={() => setSelectedStaff(null)}
+        />
+      )}
       {/* Controls row */}
       <div className="flex items-center gap-3 flex-wrap">
         {/* Day / Month toggle */}
@@ -1736,10 +1744,10 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
                 const record = dayRec.find(r => String(r.staff_id) === String(s.id))
                 return (
                   <div key={s.id} className="grid md:grid-cols-[2fr_1fr_1fr_1fr] gap-3 md:gap-4 items-center px-5 py-3.5">
-                    <div className="flex items-center gap-3">
+                    <button className="flex items-center gap-3 text-left hover:bg-gray-50 rounded-lg px-1 -mx-1 py-0.5 transition" onClick={() => setSelectedStaff(s)}>
                       <StaffAvatar s={s} />
-                      <p className="text-sm font-semibold text-gray-900">{s.name}</p>
-                    </div>
+                      <p className="text-sm font-semibold text-gray-900 hover:text-brand-600 transition">{s.name}</p>
+                    </button>
                     <p className="text-xs text-gray-500">{s.role}</p>
                     <div>
                       {record ? (
@@ -1784,13 +1792,13 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
                     return (
                       <tr key={s.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}>
                         <td className={`px-4 py-3 sticky left-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
-                          <div className="flex items-center gap-2">
+                          <button className="flex items-center gap-2 text-left hover:bg-gray-100 rounded-lg px-1 -mx-1 py-0.5 transition" onClick={() => setSelectedStaff(s)}>
                             <StaffAvatar s={s} />
                             <div>
-                              <p className="font-semibold text-gray-900 leading-tight">{s.name}</p>
+                              <p className="font-semibold text-gray-900 leading-tight hover:text-brand-600 transition">{s.name}</p>
                               <p className="text-[10px] text-gray-400">{s.role}</p>
                             </div>
-                          </div>
+                          </button>
                         </td>
                         {Array.from({ length: lastDay }, (_, i) => i + 1).map(d => (
                           <td key={d} className={`text-center py-3 ${isWeekendDay(d) ? 'bg-orange-50/30' : ''}`}>
@@ -1817,6 +1825,146 @@ function StaffAttendancePanel({ staff, user, demoMode }) {
           </div>
         )
       )}
+    </div>
+  )
+}
+
+// ── Staff Member Attendance Detail Panel ──────────────────
+function StaffMemberDetailPanel({ staff: s, user, onClose }) {
+  const now = new Date()
+  const [panelYear,  setPanelYear]  = useState(now.getFullYear())
+  const [panelMonth, setPanelMonth] = useState(now.getMonth() + 1)
+  const [records,    setRecords]    = useState([])
+  const [loading,    setLoading]    = useState(false)
+
+  const isCurrentMonth = panelYear === now.getFullYear() && panelMonth === now.getMonth() + 1
+  const daysInMonth    = new Date(panelYear, panelMonth, 0).getDate()
+
+  useEffect(() => {
+    if (!user?.academyId) return
+    setLoading(true)
+    db.fetchStaffAttendanceForMonth(user.academyId, panelYear, panelMonth)
+      .then(rows => setRecords(rows.filter(r => String(r.staff_id) === String(s.id))))
+      .catch(() => setRecords([]))
+      .finally(() => setLoading(false))
+  }, [panelYear, panelMonth, s.id, user?.academyId])
+
+  const presentDays = new Set(records.map(r => parseInt((r.date || '').split('-')[2] || '0', 10)))
+  const countedDays = isCurrentMonth ? now.getDate() : daysInMonth
+  const pct         = countedDays > 0 ? Math.round((presentDays.size / countedDays) * 100) : 0
+
+  const prevMonth = () => { if (panelMonth === 1) { setPanelYear(y => y - 1); setPanelMonth(12) } else setPanelMonth(m => m - 1) }
+  const nextMonth = () => {
+    if (isCurrentMonth) return
+    if (panelMonth === 12) { setPanelYear(y => y + 1); setPanelMonth(1) } else setPanelMonth(m => m + 1)
+  }
+
+  // Calendar grid
+  const firstDow  = new Date(panelYear, panelMonth - 1, 1).getDay()
+  const days      = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+  const calCells  = [...Array(firstDow).fill(null), ...days]
+  const weeks     = []
+  for (let i = 0; i < calCells.length; i += 7) weeks.push(calCells.slice(i, i + 7))
+  const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-end">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white h-full w-full max-w-sm shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-br from-amber-500 to-orange-600 px-5 py-5">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              {s.photoUrl
+                ? <img src={s.photoUrl} alt={s.name} className="w-11 h-11 rounded-full object-cover border-2 border-white/30 flex-shrink-0" />
+                : <div className="w-11 h-11 bg-white/20 rounded-full flex items-center justify-center text-lg font-black text-white border-2 border-white/30 flex-shrink-0">{s.name[0]}</div>
+              }
+              <div>
+                <h2 className="text-base font-black text-white leading-tight">{s.name}</h2>
+                <p className="text-amber-100 text-xs mt-0.5">{s.role}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg bg-white/15 hover:bg-white/25 transition">
+              <X size={15} className="text-white" />
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Present', value: presentDays.size, color: 'bg-emerald-500/80' },
+              { label: 'Absent',  value: countedDays - presentDays.size, color: 'bg-red-500/70' },
+              { label: 'Att%',    value: `${pct}%`, color: 'bg-white/20' },
+            ].map(stat => (
+              <div key={stat.label} className={`${stat.color} rounded-xl p-2 text-center`}>
+                <p className="text-sm font-black text-white">{stat.value}</p>
+                <p className="text-[9px] text-white/80">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Month nav */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-white">
+          <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
+            <ChevronLeft size={16} className="text-gray-600" />
+          </button>
+          <span className="text-sm font-bold text-gray-800">{MONTH_NAMES[panelMonth - 1]} {panelYear}</span>
+          <button onClick={nextMonth} disabled={isCurrentMonth} className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 transition">
+            <ChevronRight size={16} className="text-gray-600" />
+          </button>
+        </div>
+
+        {/* Calendar */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <svg className="animate-spin h-6 w-6 text-amber-500" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-7 gap-1 mb-2">
+                {DAY_LABELS.map(d => (
+                  <div key={d} className={`text-center text-[10px] font-bold py-1 ${d === 'Su' ? 'text-red-400' : 'text-gray-400'}`}>{d}</div>
+                ))}
+              </div>
+              {weeks.map((week, wi) => (
+                <div key={wi} className="grid grid-cols-7 gap-1 mb-1">
+                  {week.map((day, di) => {
+                    if (!day) return <div key={di} />
+                    const isSun    = new Date(panelYear, panelMonth - 1, day).getDay() === 0
+                    const isToday  = isCurrentMonth && day === now.getDate()
+                    const isFuture = isCurrentMonth && day > now.getDate()
+                    const present  = presentDays.has(day)
+                    return (
+                      <div key={day} className={`aspect-square rounded-lg flex flex-col items-center justify-center text-xs font-bold transition
+                        ${isToday ? 'ring-2 ring-amber-400' : ''}
+                        ${isFuture ? 'opacity-30' : ''}
+                        ${present ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                          : isSun ? 'bg-red-50 text-red-300'
+                          : isFuture ? 'bg-gray-50 text-gray-300'
+                          : 'bg-gray-100 text-gray-400'}
+                      `}>
+                        <span>{day}</span>
+                        {!isFuture && <span className="text-[8px] leading-none mt-0.5 font-normal">{present ? '✓' : isSun ? '—' : '✗'}</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+
+              {/* Summary */}
+              <div className="mt-4 bg-gray-50 rounded-xl p-3 space-y-1.5">
+                <div className="flex justify-between text-xs"><span className="text-gray-500">Days counted</span><span className="font-bold text-gray-800">{countedDays}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-gray-500">Present</span><span className="font-bold text-emerald-700">{presentDays.size}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-gray-500">Absent</span><span className="font-bold text-red-600">{countedDays - presentDays.size}</span></div>
+                <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 mt-1">
+                  <span className="text-gray-500 font-semibold">Attendance</span>
+                  <span className={`font-black ${pct >= 75 ? 'text-emerald-600' : pct >= 50 ? 'text-amber-600' : 'text-red-600'}`}>{pct}%</span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
