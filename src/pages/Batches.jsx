@@ -15,9 +15,11 @@ const COLOR_HEX      = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
 const COLOR_HEX_DARK = ['#3730a3', '#047857', '#6d28d9', '#b45309', '#be123c']
 
 export default function Batches() {
-  const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch, hasPermission } = useApp()
+  const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch, role, user, hasPermission } = useApp()
   const canManageBatches  = hasPermission('batches.manage')
   const canManageStudents = hasPermission('students.manage')
+  // Branch is mandatory — a branchless batch would show across every branch.
+  const branchReady = role === 'staff' ? !!user?.branchId : !!selectedBranch
   const [showModal, setShowModal] = useState(false)
   const [editingBatch, setEditingBatch] = useState(null)
   const [selectedBatch, setSelectedBatch] = useState(null)
@@ -114,7 +116,11 @@ export default function Batches() {
           <p className="text-xs text-gray-500">Tap a batch to view details &amp; manage students</p>
         </div>
         {canManageBatches && (
-          <button className="btn-primary shrink-0" onClick={() => setShowModal(true)}>
+          <button
+            className="btn-primary shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!branchReady}
+            title={branchReady ? '' : 'Open a specific branch first to create a batch'}
+            onClick={() => branchReady && setShowModal(true)}>
             <Plus size={15} /> <span className="hidden sm:inline">Create Batch</span><span className="sm:hidden">New</span>
           </button>
         )}

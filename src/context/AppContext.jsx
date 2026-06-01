@@ -852,6 +852,14 @@ export function AppProvider({ children }) {
       showToast('Session expired — please log out and log in again', 'error')
       return
     }
+    // Branch is mandatory — no all-branch students (mirrors DB guard in
+    // security-v3/19). Owners must be inside a specific branch; field staff
+    // are auto-bound to their own branch server-side.
+    const addBranchId = role === 'staff' ? (user?.branchId || null) : (selectedBranch || null)
+    if (!addBranchId) {
+      showToast('Open a specific branch first to add a student', 'error')
+      return
+    }
     try {
       await supabase.auth.refreshSession()
       const studentCode = await db.fetchNextStudentCode()
@@ -890,7 +898,7 @@ export function AppProvider({ children }) {
         academyId: user?.academyId,
         // Owner passes the viewed branch; field staff are forced into their own
         // branch server-side by the RPC. branch_id is now set atomically on insert.
-        branchId: role === 'staff' ? (user?.branchId || null) : (selectedBranch || null),
+        branchId: addBranchId,
       })
 
       // Mark from_trial on student record (fire-and-forget, column added via migration 0013)
@@ -1605,6 +1613,11 @@ export function AppProvider({ children }) {
     // or the owner's currently selected branch (owner session). Without this,
     // branch_id stays NULL and the staff sees the whole academy.
     const branchId = s.branchId || selectedBranch || (role === 'staff' ? user?.branchId : null) || null
+    // Branch is mandatory — no all-branch staff (mirrors DB guard in
+    // security-v3/19). Surfaces in the Add-Staff modal's error banner.
+    if (!branchId) {
+      throw new Error('Open a specific branch first to add staff')
+    }
     const created   = await db.insertStaff({ ...s, branchId, academyId: user?.academyId, staffCode, joinCode })
     // Upload photo AFTER insert so we have the real staff ID for fixed-path storage
     let photoUrl = created.photoUrl || null

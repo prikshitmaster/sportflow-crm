@@ -1264,19 +1264,23 @@ export async function assignStudentBatch(studentId, batchId, batchName) {
 // All three functions scope by academy_id (column added in migration 0031).
 // academyName is kept for display labelling only; academyId drives isolation.
 
-export async function getOrCreateGateQR(_academyId, academyName) {
+export async function getOrCreateGateQR(_academyId, academyName, branchId = null) {
+  // Gate QR is per-branch (security-v3/22). Owner passes the viewed branch;
+  // staff are forced into their own branch server-side.
   const { data, error } = await supabase.rpc('secure_get_or_create_gate_qr', {
     p_academy_name: academyName || 'Academy Gate',
     p_token:        _sessionToken(),
+    p_branch_id:    branchId || null,
   })
   if (error) throw error
   return data
 }
 
-export async function regenerateGateQR(_academyId, academyName) {
+export async function regenerateGateQR(_academyId, academyName, branchId = null) {
   const { data, error } = await supabase.rpc('secure_regenerate_gate_qr', {
     p_academy_name: academyName || 'Academy Gate',
     p_token:        _sessionToken(),
+    p_branch_id:    branchId || null,
   })
   if (error) throw error
   return data

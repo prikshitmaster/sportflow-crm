@@ -11,9 +11,12 @@ import * as db from '../lib/db'
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
 
 export default function Staff() {
-  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions, hasPermission, showToast, refreshData } = useApp()
+  const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, selectedBranch, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions, hasPermission, showToast, refreshData } = useApp()
   const isOwner       = role === 'owner'
   const canManageStaff = hasPermission('staff.manage')
+  // Branch is mandatory — no all-branch staff. Owners must be inside a
+  // specific branch to add; field staff are auto-bound to their own branch.
+  const branchReady = role === 'staff' ? !!user?.branchId : !!selectedBranch
   // Owners (academy-wide) and branch managers (own branch) may delete staff and
   // edit an existing staff's access. Other staff.manage holders are create-only.
   const canManageStaffFull = isOwner || user?.accessRole === 'branch_manager'
@@ -82,7 +85,11 @@ export default function Staff() {
           <p className="text-sm text-gray-500">{staff.filter(s => s.status === 'Active').length} active members</p>
         </div>
         {canManageStaff && activeTab === 'staff' && (
-          <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2 text-sm">
+          <button
+            onClick={() => branchReady && setShowModal(true)}
+            disabled={!branchReady}
+            title={branchReady ? '' : 'Open a specific branch first to add staff'}
+            className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
             <Plus size={15} /> Add Staff
           </button>
         )}

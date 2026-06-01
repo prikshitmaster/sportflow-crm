@@ -38,6 +38,7 @@
 - [x] Two tabs: log out in tab 1 → tab 2 still shows data (ok) but any write fails gracefully
 
 ---
+okay check everything in permision based if there is only view make sure view nothing else high prority if manage then manage fix ui and backend both    level take time 100% fix   
 
 ## 2. Staff Auth
 

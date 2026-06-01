@@ -5,11 +5,13 @@ import { Clock, RefreshCw, Monitor } from 'lucide-react'
 
 const CHECKIN_PREFIX = 'sportflow-staff:'
 
-function generateToken(academyId) {
+// Token is branch-scoped: each branch shows a distinct code, and StaffScanIn
+// hard-blocks a staff member whose branch doesn't match.
+function generateToken(academyId, branchId) {
   const now  = new Date()
   const date = now.toISOString().slice(0, 10)   // "2026-05-08"
   const hour = now.getHours()                    // 0-23
-  return `${CHECKIN_PREFIX}${academyId}:${date}:${hour}`
+  return `${CHECKIN_PREFIX}${academyId}:${branchId}:${date}:${hour}`
 }
 
 function minsUntilNextHour() {
@@ -18,32 +20,28 @@ function minsUntilNextHour() {
 }
 
 export default function StaffAttendanceQR() {
-  const { user } = useApp()
-  const [token,    setToken]    = useState(() => generateToken(user?.academyId || 'demo'))
+  const { user, role, selectedBranch, sportBranches } = useApp()
+  // Branch-scoped: owner uses the branch they're in; a branch manager their own.
+  const effectiveBranch = role === 'staff' ? (user?.branchId || null) : selectedBranch
+  const branchName = effectiveBranch
+    ? ((sportBranches || []).find(b => b.id === effectiveBranch)?.branchName || 'This branch')
+    : null
+  const [token,    setToken]    = useState(() => generateToken(user?.academyId || 'demo', effectiveBranch || 'none'))
   const [timeLeft, setTimeLeft] = useState(minsUntilNextHour())
   const qrRef = useRef(null)
 
-  // Regenerate token every hour on the hour
+  // Regenerate token hourly, and whenever academy/branch changes.
   useEffect(() => {
-    const tick = () => {
-      const now = new Date()
-      const mins = 60 - now.getMinutes()
-      setTimeLeft(mins)
-      setToken(generateToken(user?.academyId || 'demo'))
-    }
-
-    // Check every minute
+    setToken(generateToken(user?.academyId || 'demo', effectiveBranch || 'none'))
     const interval = setInterval(() => {
       const now = new Date()
       setTimeLeft(60 - now.getMinutes())
-      // Regenerate at top of hour
       if (now.getMinutes() === 0) {
-        setToken(generateToken(user?.academyId || 'demo'))
+        setToken(generateToken(user?.academyId || 'demo', effectiveBranch || 'none'))
       }
     }, 60000)
-
     return () => clearInterval(interval)
-  }, [user?.academyId])
+  }, [user?.academyId, effectiveBranch])
 
   const handleDownload = () => {
     const svg = qrRef.current?.querySelector('svg')
@@ -66,11 +64,29 @@ export default function StaffAttendanceQR() {
 
   const hourLabel = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
 
+  if (!effectiveBranch) {
+    return (
+      <div className="space-y-5 max-w-[800px]">
+        <div>
+          <h2 className="text-xl font-black text-gray-900">Staff Attendance QR</h2>
+          <p className="text-sm text-gray-500">Each branch has its own staff clock-in QR.</p>
+        </div>
+        <div className="card p-8 text-center">
+          <div className="w-14 h-14 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Clock size={26} className="text-amber-400" />
+          </div>
+          <p className="font-semibold text-gray-900 mb-1">Open a specific branch first</p>
+          <p className="text-sm text-gray-500">Pick a branch from the switcher to display that branch's staff clock-in QR.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5 max-w-[800px]">
       <div>
         <h2 className="text-xl font-black text-gray-900">Staff Attendance QR</h2>
-        <p className="text-sm text-gray-500">Display this on your entrance monitor. Staff scan it to clock in. Refreshes every hour.</p>
+        <p className="text-sm text-gray-500">Display this at <span className="font-semibold text-brand-600">{branchName}</span>. Only this branch's staff can clock in with it. Refreshes every hour.</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-5">
@@ -82,6 +98,7 @@ export default function StaffAttendanceQR() {
 
           <div className="text-center">
             <p className="text-sm font-bold text-gray-900">{user?.academy}</p>
+            <p className="text-xs font-semibold text-brand-600 mt-0.5">{branchName}</p>
             <p className="text-xs text-gray-400 mt-0.5">Staff Clock-in QR</p>
             <div className="flex items-center justify-center gap-1.5 mt-2">
               <Clock size={12} className="text-amber-500" />

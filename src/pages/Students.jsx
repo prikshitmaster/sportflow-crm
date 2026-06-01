@@ -63,10 +63,13 @@ function DobInput({ value, onChange, hasError }) {
 
 export default function Students() {
   const navigate = useNavigate()
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, hasPermission } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, role, hasPermission } = useApp()
   const canManageStudents = hasPermission('students.manage')
   const canManageTrials   = hasPermission('trials.manage')
   const canManagePayments = hasPermission('payments.manage')
+  // Branch is mandatory — no all-branch students. Owners must be inside a
+  // specific branch to add; field staff are auto-bound to their own branch.
+  const branchReady = role === 'staff' ? !!user?.branchId : !!selectedBranch
   const isStaffRole = user?.role === 'staff'
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
@@ -212,7 +215,11 @@ export default function Students() {
                 </button>
               )}
               {canManageStudents && (
-                <button className="btn-primary" onClick={() => setShowModal(true)}>
+                <button
+                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!branchReady}
+                  title={branchReady ? '' : 'Open a specific branch first to add students'}
+                  onClick={() => branchReady && setShowModal(true)}>
                   <Plus size={16} /> Add Student
                 </button>
               )}

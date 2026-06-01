@@ -5,20 +5,28 @@ import { QrCode, RefreshCw, Download, AlertTriangle, CheckCircle } from 'lucide-
 import { QRCodeSVG } from 'qrcode.react'
 
 export default function AdminQR() {
-  const { user, showToast } = useApp()
+  const { user, role, selectedBranch, sportBranches, showToast } = useApp()
   const [gateQR,    setGateQR]    = useState(null)
   const [loading,   setLoading]   = useState(true)
   const [regenConf, setRegenConf] = useState(false)
   const qrRef = useRef(null)
 
+  // Gate QR is per-branch. Owner uses the branch they've drilled into; a branch
+  // manager is pinned to their own branch.
+  const effectiveBranch = role === 'staff' ? (user?.branchId || null) : selectedBranch
+  const branchName = effectiveBranch
+    ? ((sportBranches || []).find(b => b.id === effectiveBranch)?.branchName || 'This branch')
+    : null
+
   useEffect(() => {
-    loadQR()
-  }, [])
+    if (effectiveBranch) loadQR()
+    else { setGateQR(null); setLoading(false) }
+  }, [effectiveBranch])
 
   const loadQR = async () => {
     setLoading(true)
     try {
-      const qr = await db.getOrCreateGateQR(user?.academyId, user?.academy || 'Academy Gate')
+      const qr = await db.getOrCreateGateQR(user?.academyId, user?.academy || 'Academy Gate', effectiveBranch)
       setGateQR(qr)
     } catch (err) {
       showToast('Failed to load Gate QR', 'error')
@@ -32,7 +40,7 @@ export default function AdminQR() {
     setLoading(true)
     setRegenConf(false)
     try {
-      const qr = await db.regenerateGateQR(user?.academyId, user?.academy || 'Academy Gate')
+      const qr = await db.regenerateGateQR(user?.academyId, user?.academy || 'Academy Gate', effectiveBranch)
       setGateQR(qr)
       showToast('Gate QR regenerated successfully')
     } catch (err) {
@@ -40,6 +48,25 @@ export default function AdminQR() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // No branch in context → can't show a branch-specific QR.
+  if (!effectiveBranch) {
+    return (
+      <div className="space-y-5 max-w-[800px]">
+        <div>
+          <h2 className="text-xl font-black text-gray-900">Gate QR Code</h2>
+          <p className="text-sm text-gray-500">Each branch has its own unique gate QR.</p>
+        </div>
+        <div className="card p-8 text-center">
+          <div className="w-14 h-14 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-4">
+            <QrCode size={26} className="text-amber-400" />
+          </div>
+          <p className="font-semibold text-gray-900 mb-1">Open a specific branch first</p>
+          <p className="text-sm text-gray-500">Pick a branch from the switcher to view and print that branch's gate QR.</p>
+        </div>
+      </div>
+    )
   }
 
   const handleDownload = () => {
@@ -68,7 +95,7 @@ export default function AdminQR() {
       {/* Header */}
       <div>
         <h2 className="text-xl font-black text-gray-900">Gate QR Code</h2>
-        <p className="text-sm text-gray-500">Print this QR code and post it at your academy gate. Students scan it to mark attendance.</p>
+        <p className="text-sm text-gray-500">Unique to <span className="font-semibold text-brand-600">{branchName}</span> — post it at this branch's gate. Only this branch's students can mark attendance with it.</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-5">
@@ -97,6 +124,7 @@ export default function AdminQR() {
 
           <div className="text-center">
             <p className="text-sm font-bold text-gray-900">{user?.academy || 'Academy Gate'}</p>
+            <p className="text-xs font-semibold text-brand-600 mt-0.5">{branchName}</p>
             <p className="text-xs text-gray-400 mt-0.5">Scan to mark attendance</p>
             {gateQR && (
               <p className="text-[10px] font-mono text-gray-300 mt-1 break-all max-w-[220px]">

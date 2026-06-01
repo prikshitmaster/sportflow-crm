@@ -6,19 +6,26 @@ import * as db from '../../lib/db'
 
 const CHECKIN_PREFIX = 'sportflow-staff:'
 
-function validateToken(qrValue, academyId) {
-  if (!qrValue?.startsWith(CHECKIN_PREFIX)) return false
+// Returns { ok, reason }. Token is branch-scoped:
+// sportflow-staff:{academyId}:{branchId}:{date}:{hour}
+function validateToken(qrValue, academyId, branchId) {
+  if (!qrValue?.startsWith(CHECKIN_PREFIX)) return { ok: false, reason: 'Not a staff clock-in QR.' }
   const parts = qrValue.slice(CHECKIN_PREFIX.length).split(':')
-  if (parts.length !== 3) return false
-  const [qrAcademy, qrDate, qrHour] = parts
-  if (qrAcademy !== academyId) return false
+  if (parts.length !== 4) return { ok: false, reason: 'Invalid or expired QR code. Ask your manager to refresh the Staff QR.' }
+  const [qrAcademy, qrBranch, qrDate, qrHour] = parts
+  if (qrAcademy !== academyId) return { ok: false, reason: 'This QR belongs to another academy.' }
+  // HARD branch-lock: staff can only clock in at their own branch.
+  if (qrBranch !== (branchId || '')) {
+    return { ok: false, reason: "This QR is for a different branch — scan your own branch's clock-in code." }
+  }
   const now = new Date()
   const today = now.toISOString().slice(0, 10)
   const currentHour = now.getHours()
   const prevHour = currentHour === 0 ? 23 : currentHour - 1
-  if (qrDate !== today) return false
+  if (qrDate !== today) return { ok: false, reason: 'This QR has expired. Scan the current code on the screen.' }
   const h = parseInt(qrHour)
-  return h === currentHour || h === prevHour  // 10-min grace if hour just flipped
+  if (h === currentHour || h === prevHour) return { ok: true }  // 10-min grace if hour just flipped
+  return { ok: false, reason: 'This QR has expired. Scan the current code on the screen.' }
 }
 
 const CHECKIN_KEY = (uid, date) => `staff_checkin_${uid}_${date}`
@@ -92,8 +99,9 @@ export default function StaffScanIn() {
   }
 
   const processQR = async (qrValue) => {
-    if (!validateToken(qrValue, user?.academyId)) {
-      setErrMsg('Invalid or expired QR code. Ask your manager to refresh the Staff QR.')
+    const v = validateToken(qrValue, user?.academyId, user?.branchId)
+    if (!v.ok) {
+      setErrMsg(v.reason)
       setPhase('error')
       return
     }
