@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
 import { supabase } from '../../lib/supabase'
+import { isOutstanding, firstOfMonthIso } from '../../lib/studentRules'
 import {
   QrCode, CalendarCheck, CreditCard, Megaphone, CheckCircle2, XCircle,
   Clock, ChevronRight, Trophy, Camera, Ban, Target,
@@ -106,6 +107,15 @@ export default function StudentDashboard() {
 
   const latestPayment = payments[0]
   const announceList  = notices
+
+  // Dues can be virtual-only (no Pending/Overdue row exists) — the owner page
+  // derives them from paid_till. Mirror that so the alert isn't silently
+  // suppressed when the latest persisted row happens to be 'Paid'.
+  const openPayment   = payments.find(p => p.status !== 'Paid')
+  const feeOutstanding = !!studentUser && isOutstanding(
+    { status: studentUser.status, paidTill: studentUser.paid_till },
+    firstOfMonthIso(),
+  )
 
   const greeting = () => {
     const h = new Date().getHours()
@@ -243,7 +253,7 @@ export default function StudentDashboard() {
       </div>
 
       {/* Fee alert — only shown when overdue or suspended */}
-      {(studentUser?.status === 'Suspended' || (latestPayment && latestPayment.status !== 'Paid')) && (
+      {(studentUser?.status === 'Suspended' || feeOutstanding || (latestPayment && latestPayment.status !== 'Paid')) && (
         <Link to="/student/payments"
           className="flex items-center gap-4 bg-red-50 border border-red-200 rounded-2xl p-4">
           <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -252,8 +262,8 @@ export default function StudentDashboard() {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black text-red-700">Fees Overdue</p>
             <p className="text-xs text-red-400 mt-0.5">
-              {latestPayment?.month
-                ? `${latestPayment.month} — ₹${latestPayment.amount?.toLocaleString('en-IN')} unpaid`
+              {openPayment?.month
+                ? `${openPayment.month} — ₹${openPayment.amount?.toLocaleString('en-IN')} unpaid`
                 : 'Please clear your dues to continue'}
             </p>
           </div>

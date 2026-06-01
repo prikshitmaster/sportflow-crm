@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
+import { isOutstanding, firstOfMonthIso } from '../../lib/studentRules'
 import { CreditCard, CheckCircle2, Clock, AlertCircle, IndianRupee } from 'lucide-react'
 
 const statusIcon = {
@@ -28,8 +29,33 @@ export default function StudentPayments() {
       .finally(() => setLoading(false))
   }, [studentUser])
 
-  const paid    = payments.filter(p => p.status === 'Paid')
-  const unpaid  = payments.filter(p => p.status !== 'Paid')
+  // The owner's Payments page shows overdue from TWO sources: persisted
+  // 'Overdue' rows AND a virtual row computed from the student's expired
+  // paid_till when no open (Pending/Overdue) record exists. This portal only
+  // read persisted rows, so a student whose dues are virtual-only saw nothing.
+  // Mirror the owner logic (lib/studentRules) so the two views agree.
+  const records = useMemo(() => {
+    const hasOpenRecord = payments.some(p => p.status === 'Overdue' || p.status === 'Pending')
+    const outstanding = !!studentUser && isOutstanding(
+      { status: studentUser.status, paidTill: studentUser.paid_till },
+      firstOfMonthIso(),
+    )
+    if (!outstanding || hasOpenRecord) return payments
+    const virtual = {
+      id:     `DUE-${studentUser.id}`,
+      amount: Number(studentUser.fees) || 0,
+      month:  studentUser.paid_till
+        ? `Due — paid till ${new Date(studentUser.paid_till + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`
+        : 'Fees due',
+      date:   null,
+      status: 'Overdue',
+      mode:   null,
+    }
+    return [virtual, ...payments]
+  }, [payments, studentUser])
+
+  const paid    = records.filter(p => p.status === 'Paid')
+  const unpaid  = records.filter(p => p.status !== 'Paid')
   const totalPaid = paid.reduce((s, p) => s + (p.amount || 0), 0)
   const totalDue  = unpaid.reduce((s, p) => s + (p.amount || 0), 0)
 
@@ -63,14 +89,14 @@ export default function StudentPayments() {
         <div className="space-y-3">
           {[1,2,3].map(i => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)}
         </div>
-      ) : payments.length === 0 ? (
+      ) : records.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
           <CreditCard size={36} className="text-gray-300 mx-auto mb-3" />
           <p className="text-gray-400 text-sm">No payment records yet</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {payments.map(p => (
+          {records.map(p => (
             <div key={p.id} className="bg-white rounded-2xl border border-gray-100 p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
