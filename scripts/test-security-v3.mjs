@@ -98,7 +98,10 @@ console.log('\n=== RPCs that MUST still work ===')
 
 {
   const r = await anonRpc('secure_fetch_next_staff_code', { p_type: 'coach', p_token: null })
-  if (r.status >= 400 && r.body.includes('forbidden')) ok('secure_fetch_next_staff_code(no token) forbidden')
+  // Locked since migration 0082: minting a staff code now requires a valid token
+  // (staff.manage). No-token callers are rejected with 42501 "authentication required".
+  if (r.status >= 400 && (r.body.includes('authentication required') || r.body.includes('forbidden')))
+    ok('secure_fetch_next_staff_code(no token) blocked')
   else bad('fetch_next_staff_code(no token)', `status ${r.status} body ${r.body.slice(0,120)}`)
 }
 
