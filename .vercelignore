@@ -1,0 +1,20 @@
+# Heavy / non-web artifacts — Vercel builds `dist` remotely from source,
+# so none of these should be uploaded. Keeps the deploy bundle small and
+# under the 100 MB single-file limit (dist-electron holds the installer exe).
+node_modules
+.git
+dist
+dist-electron
+android
+electron
+playwright-report
+test-results
+docs
+.claude
+.github
+supabase
+scripts
+*.log
+*.apk
+*.exe
+*.aab
