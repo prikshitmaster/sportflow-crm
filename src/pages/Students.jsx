@@ -16,6 +16,7 @@ import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, upd
 import StudentAvatar from '../components/StudentAvatar'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment } from '../lib/studentRules'
+import { toLocalDateStr } from '../lib/dates'
 
 const accountBadge = {
   pending: 'badge-yellow',
@@ -125,8 +126,8 @@ export default function Students() {
   }, {})
 
   const now     = new Date()
-  const today   = now.toISOString().split('T')[0]
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+  const today   = toLocalDateStr(now)
+  const firstOfMonth = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1))
   // Show Overdue immediately when paidTill < today.
   // Has a batch but no paid_till (historical import) → show "No Payment" badge, never auto-suspended.
   // Logic moved to lib/studentRules; locals are thin wrappers so JSX call sites stay untouched.
@@ -732,7 +733,7 @@ function calcPaidTillFull(joinDate, feePlan) {
   if (!joinDate || feePlan === 'custom') return ''
   const [yr, mo] = joinDate.split('-').map(Number)
   const months = PLAN_MOS_MAP[feePlan] || 1
-  return new Date(yr, mo - 1 + months, 0).toISOString().split('T')[0]
+  return toLocalDateStr(new Date(yr, mo - 1 + months, 0))
 }
 
 function calcPaidTill(joinDate, feePlan) {
@@ -1045,7 +1046,7 @@ function AddStudentModal({ onClose, onSave }) {
         <div>
           <label className="label">Join Date</label>
           <input className="input" type="date" value={form.joinDate}
-            max={new Date().toISOString().split('T')[0]}
+            max={toLocalDateStr()}
             onChange={e => handleJoinDateAdd(e.target.value)} />
         </div>
 
@@ -1480,7 +1481,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
             </div>
           ) : (
             <input className="input" type="date" value={form.joinDate}
-              max={new Date().toISOString().split('T')[0]}
+              max={toLocalDateStr()}
               onChange={e => set('joinDate', e.target.value)} />
           )}
         </div>

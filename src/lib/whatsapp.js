@@ -7,6 +7,8 @@
 // When MSG91 goes live, only this file changes — the buttons stay the
 // same: just swap openWhatsAppLink() for an API call.
 
+import { todayStr } from './dates'
+
 const COUNTRY_CODE = '91'   // India
 
 // Normalize to E.164-ish: digits only, prepend 91 if 10-digit local
@@ -78,7 +80,7 @@ export function buildGenericMessage({ student, academy, body }) {
 }
 
 // localStorage marker so the bulk-send queue doesn't nag the same parent twice today
-const SENT_KEY = (studentId) => `wa_sent_${studentId}_${new Date().toISOString().slice(0, 10)}`
+const SENT_KEY = (studentId) => `wa_sent_${studentId}_${todayStr()}`
 
 export const wasSentToday = (studentId) => {
   try { return !!localStorage.getItem(SENT_KEY(studentId)) } catch { return false }

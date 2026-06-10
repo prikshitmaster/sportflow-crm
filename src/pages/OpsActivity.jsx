@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import * as db from '../lib/db'
 import { ACTION_LABELS } from '../lib/audit'
+import { todayStr as localToday } from '../lib/dates'
 import {
   Shield, RefreshCw, Wifi, WifiOff, Activity,
   ClipboardList, BarChart3, Search, Users, TrendingUp,
@@ -171,7 +172,7 @@ function UserRow({ name, type, device, lastAction, duration, isOnline }) {
 function LiveTab({ sessions, auditLogs }) {
   const now      = Date.now()
   const ONLINE   = 5 * 60 * 1000
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = localToday()
 
   const online         = sessions.filter(s => now - new Date(s.last_active_at).getTime() < ONLINE)
   const studentsOnline = online.filter(s => s.user_type === 'student')
@@ -307,7 +308,7 @@ function LiveTab({ sessions, auditLogs }) {
 function StudentsTab({ sessions, auditLogs }) {
   const now      = Date.now()
   const ONLINE   = 5 * 60 * 1000
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = localToday()
 
   const studentSessions = sessions.filter(s => s.user_type === 'student')
   const onlineStudents  = studentSessions.filter(s => now - new Date(s.last_active_at).getTime() < ONLINE)

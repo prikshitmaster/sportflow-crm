@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
 import { Bell, Calendar, Trophy, MapPin, Send } from 'lucide-react'
 import SendStaffNoticeModal from '../../components/SendStaffNoticeModal'
+import { todayStr } from '../../lib/dates'
 
 export default function StaffNotices() {
   const { announcements, user, hasPermission, sendStaffNotice, staff } = useApp()
@@ -18,7 +19,7 @@ export default function StaffNotices() {
       .finally(() => setLoading(false))
   }, [user?.academyId])
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayStr()
 
   // Events visible to this staff member
   const visibleEvents = events.filter(e => {

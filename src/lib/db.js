@@ -1,4 +1,25 @@
+// ═════════════════════════════════════════════════════════════════════════════
+// db.js — THE DATA ACCESS LAYER (~80 functions). The only file that talks to
+// the database. Think of it as our "API client".
+//
+// TWO KINDS OF FUNCTIONS IN HERE:
+//   READS  → supabase.from('table').select(...)   (PostgREST, filtered by RLS)
+//   WRITES → supabase.rpc('secure_*', {...})       (Postgres functions that
+//            check WHO you are via p_token, WHAT you may do via permissions,
+//            and WHICH branch you may touch — then write with elevated rights)
+//
+// CONVENTIONS:
+//   • Every read maps snake_case DB columns → camelCase JS objects right here,
+//     so the rest of the app never sees SQL naming (row.parent_phone → parentPhone).
+//   • Every write passes p_token: _sessionToken() — staff/student session token
+//     from localStorage; null for owners (their JWT travels automatically and
+//     the RPC falls back to auth.uid()).
+//   • `if (error) throw error` — callers (AppContext actions) catch and toast.
+//   • Error code '42P01' = "table does not exist" → return [] so a half-migrated
+//     dev database doesn't crash the whole app.
+// ═════════════════════════════════════════════════════════════════════════════
 import { supabase } from './supabase'
+import { toLocalDateStr } from './dates'
 
 // Pulls the staff/student session token from localStorage for RPC validation.
 // Returns null when the caller is an owner (JWT path) or unauthenticated —
@@ -162,7 +183,7 @@ export async function suspendStudent(id) {
   // Routed through secure_update_student (migration 0039) — validates
   // caller via current_actor, requires students.manage perm, enforces
   // same-academy scope. Replaces raw .update() to block DevTools bypass.
-  const today = new Date().toISOString().split('T')[0]
+  const today = toLocalDateStr()
   const { error } = await supabase.rpc('secure_update_student', {
     p_student_id: id,
     p_payload:    { status: 'Suspended', suspendedSince: today },
@@ -260,7 +281,7 @@ export async function insertPayment(p, invoiceId) {
       student:        p.student,
       amount:         Number(p.amount),
       month:          p.month,
-      date:           p.date || new Date().toISOString().split('T')[0],
+      date:           p.date || toLocalDateStr(),
       status:         p.status || 'Paid',
       mode:           p.mode,
       paymentType:    p.paymentType || 'monthly',
@@ -458,7 +479,7 @@ export async function updatePaymentStatus(id, status, mode) {
   // same-academy scope so no cross-academy status flips are possible.
   const { error } = await supabase.rpc('secure_update_payment', {
     p_payment_id: id,
-    p_payload: { status, mode, date: new Date().toISOString().split('T')[0] },
+    p_payload: { status, mode, date: toLocalDateStr() },
     p_token: _sessionToken(),
   })
   if (error) throw error
@@ -1113,7 +1134,7 @@ export async function createStudentAccount(s) {
       sport:          s.sport || '',
       batch:          s.batchName || '',
       batch_id:       s.batchId   || null,
-      join_date:      s.joinDate || new Date().toISOString().split('T')[0],
+      join_date:      s.joinDate || toLocalDateStr(),
       status:         'Active',
       fees:           Number(s.fees) || 0,
       student_code:   s.studentCode,
@@ -1147,7 +1168,7 @@ export async function createStudentWithPayment(s) {
     p_sport:          s.sport || '',
     p_batch:          s.batchName || '',
     p_batch_id:       s.batchId || null,
-    p_join_date:      s.joinDate || new Date().toISOString().split('T')[0],
+    p_join_date:      s.joinDate || toLocalDateStr(),
     p_fees:           Number(s.fees) || 0,
     p_fee_amount:     Number(s.feeAmount) || Number(s.fees) || 0,
     p_fee_due_day:    Number(s.feeDueDay) || null,
@@ -2081,17 +2102,6 @@ export async function deleteInvite(id) {
 }
 
 // ── Staff Attendance ──────────────────────────────────────
-
-export async function logStaffAttendance(_academyId, profileId, staffName, date, checkInTime) {
-  const { error } = await supabase.rpc('secure_log_staff_attendance', {
-    p_profile_id:    profileId,
-    p_staff_name:    staffName,
-    p_date:          date,
-    p_check_in_time: checkInTime,
-    p_token:         _sessionToken(),
-  })
-  if (error) throw error
-}
 
 export async function fetchStaffAttendanceForDate(academyId, date) {
   const { data, error } = await supabase

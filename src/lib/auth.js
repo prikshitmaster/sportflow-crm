@@ -1,11 +1,26 @@
-// ── SportFlow Auth Helpers ────────────────────────────────
-// Owner / Staff → Supabase Auth (supabase.auth.*) — no custom storage needed
-// Student      → custom: student_code + hashed password + DB session token
+// ═════════════════════════════════════════════════════════════════════════════
+// auth.js — low-level auth building blocks (no React, no UI).
+//
+// TWO AUTH SYSTEMS COEXIST:
+//   Owner & Parent → Supabase Auth (JWT). Handled by supabase.auth.* directly;
+//                    nothing custom needed here.
+//   Staff & Student → CUSTOM sessions, built from these helpers:
+//        password ──hashPassword()──▶ SHA-256 hash stored in DB
+//        login OK ──generateToken()─▶ random 64-char token, stored BOTH in a
+//                    DB sessions table (server can verify/revoke) AND in
+//                    localStorage ('sf_staff' / 'sf_student') so a page reload
+//                    keeps you logged in. Every RPC call sends this token.
+//
+// WHY hash WITH A SALT? The salt is mixed into the password before hashing so
+// identical passwords don't produce identical hashes, and generic rainbow
+// tables don't match. (Production upgrade path: bcrypt/Argon2 server-side.)
+// ═════════════════════════════════════════════════════════════════════════════
 
 const SALT        = 'sportflow-2026'
 const STUDENT_KEY = 'sf_student'
 
-// ── Password hashing (SHA-256 via SubtleCrypto) ───────────
+// SHA-256 via the browser's built-in WebCrypto (crypto.subtle). Returns the
+// hash as a hex string ("a3f9…"). Async because WebCrypto is promise-based.
 export async function hashPassword(password) {
   const encoder = new TextEncoder()
   const data = encoder.encode(SALT + password)

@@ -1,4 +1,5 @@
 import XLSX from 'xlsx-js-style'
+import { todayStr, toLocalDateStr } from './dates'
 import { supabase } from './supabase'
 import * as db from './db'
 
@@ -92,7 +93,7 @@ export async function exportSportData(sportName) {
 // ── Download as JSON file ─────────────────────────────────
 
 export function downloadJSON(data) {
-  const date = new Date().toISOString().split('T')[0]
+  const date = toLocalDateStr()
   const filename = `${data.sport}_backup_${date}.json`
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
@@ -179,7 +180,7 @@ export function downloadExcel(data) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Trials')
   }
 
-  const date = new Date().toISOString().split('T')[0]
+  const date = toLocalDateStr()
   XLSX.writeFile(wb, `${data.sport}_backup_${date}.xlsx`)
 }
 
@@ -662,7 +663,7 @@ export async function exportAcademyData(academyId, { download = true, dateFrom, 
   const idToCode = {}
   students.forEach(s => { idToName[s.id] = s.name; idToCode[s.id] = s.student_code })
 
-  const stamp = new Date().toISOString().slice(0, 10)
+  const stamp = todayStr()
   const wb = XLSX.utils.book_new()
 
   // ── Cover Sheet ──
@@ -792,7 +793,7 @@ export async function importSportData(data, academyId, existingStudentCodes) {
         age:           s.age           || null,
         sport:         s.sport,
         batch:         s.batch         || '',
-        join_date:     s.join_date     || new Date().toISOString().split('T')[0],
+        join_date:     s.join_date     || toLocalDateStr(),
         status:        s.status        || 'Active',
         fees:          s.fees          || 0,
         paid_till:     s.paid_till     || null,

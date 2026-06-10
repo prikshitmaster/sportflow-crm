@@ -7,6 +7,7 @@ import DevFillButton from '../components/DevFillButton'
 import { fillStaff, fillInvite } from '../lib/devFill'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
 import * as db from '../lib/db'
+import { toLocalDateStr } from '../lib/dates'
 
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
 
@@ -426,7 +427,7 @@ function LeaveRequestsPanel({ leaveRequests, onUpdate, onDelete }) {
   const [loading,      setLoading]      = useState(null)
   const [deleting,     setDeleting]     = useState(null)
   const [showPast,     setShowPast]     = useState(false)
-  const today = new Date().toISOString().split('T')[0]
+  const today = toLocalDateStr()
 
   const handle = async (id, status) => {
     setLoading(id)
@@ -1600,7 +1601,7 @@ const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 
 function StaffAttendancePanel({ staff, user, demoMode }) {
   const now     = new Date()
-  const todayStr = now.toISOString().split('T')[0]
+  const todayStr = toLocalDateStr(now)
 
   const [view,              setView]              = useState('day')
   const [selectedStaff,     setSelectedStaff]     = useState(null)

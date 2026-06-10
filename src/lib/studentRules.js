@@ -1,3 +1,4 @@
+import { toLocalDateStr } from './dates'
 // Pure domain rules for student financial status.
 //
 // Why this file exists:
@@ -21,14 +22,14 @@ const MS_PER_DAY = 86_400_000
  * ISO date helper. Returns 'YYYY-MM-DD' for the given Date (default: now).
  */
 export function todayIso(d = new Date()) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().split('T')[0]
+  return toLocalDateStr(new Date(d.getFullYear(), d.getMonth(), d.getDate()))
 }
 
 /**
  * First-of-current-month ISO date.
  */
 export function firstOfMonthIso(d = new Date()) {
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
+  return toLocalDateStr(new Date(d.getFullYear(), d.getMonth(), 1))
 }
 
 /**

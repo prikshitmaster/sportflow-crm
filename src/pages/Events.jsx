@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import DevFillButton from '../components/DevFillButton'
 import { fillEvent } from '../lib/devFill'
+import { todayStr } from '../lib/dates'
 
 // ── Bracket helpers ──────────────────────────────────────────
 function shuffle(arr) {
@@ -517,7 +518,7 @@ export default function Events() {
   const [dateTo,          setDateTo]           = useState('')
   const [deletingId,      setDeletingId]      = useState(null)
 
-  const today     = new Date().toISOString().slice(0, 10)
+  const today     = todayStr()
   const allEvents = events || []
 
   const filtered = allEvents.filter(e => {

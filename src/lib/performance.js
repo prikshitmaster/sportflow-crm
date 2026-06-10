@@ -1,3 +1,5 @@
+import { toLocalMonthStr } from './dates'
+
 export const FOOTBALL_CATEGORIES = [
   {
     id: 'technical',
@@ -92,7 +94,7 @@ export function getTier(score) {
 }
 
 export function currentMonth() {
-  return new Date().toISOString().slice(0, 7)
+  return toLocalMonthStr()
 }
 
 export function monthLabel(yyyyMM) {

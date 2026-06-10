@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
 import SendPayLinkModal from '../components/SendPayLinkModal'
+import { toLocalDateStr } from '../lib/dates'
 import {
   Users, Search, CheckCircle2, AlertCircle, Phone, Mail, X,
   CreditCard, Loader2, Pencil, Unlink, ChevronRight, UserCheck, UserX,
@@ -309,7 +310,7 @@ function ParentDetailModal({ parentId, onClose, onUpdated, onSendPayLink }) {
               ) : (
                 <div className="space-y-2">
                   {data.children.map(c => {
-                    const today = new Date().toISOString().split('T')[0]
+                    const today = toLocalDateStr()
                     const overdue = c.paid_till && c.paid_till < today.slice(0, 7) + '-01'
                     return (
                       <div key={c.id} className="border border-gray-100 rounded-2xl p-3">

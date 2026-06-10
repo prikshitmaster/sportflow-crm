@@ -1,3 +1,4 @@
+import { toLocalDateStr } from './dates'
 // Demo data generators — used by DevFillButton, which shows in dev or when
 // the user has enabled demo mode on the deployed app via ?demo=1.
 // File adds ~3KB to the production bundle (strings + small generators).
@@ -36,7 +37,7 @@ const isoDate = d =>
 
 const addMonths = (dateStr, n) => {
   const [yr, mo] = dateStr.split('-').map(Number)
-  return new Date(yr, mo - 1 + n, 0).toISOString().split('T')[0]
+  return toLocalDateStr(new Date(yr, mo - 1 + n, 0))
 }
 
 const randomDob = (minAge, maxAge) => {

@@ -1,7 +1,15 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// main.jsx — THE ENTRY POINT of the whole app.
+//
+// index.html has one empty <div id="root">. This file tells React:
+// "render the <App/> component inside that div". Everything else (routes,
+// pages, state) hangs off <App/>. This file also wires up a few global,
+// app-wide behaviours that must exist before any page renders.
+// ─────────────────────────────────────────────────────────────────────────────
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
-import './index.css'
+import './index.css'                    // Tailwind + shared classes (btn-primary, card…)
 import { initSentry } from './lib/sentry'
 
 // Initialize crash + error reporting before anything else runs.
@@ -27,6 +35,8 @@ document.addEventListener('visibilitychange', () => {
   }
 })
 
+// StrictMode is a dev-only safety net: it double-invokes effects to surface
+// bugs (e.g. missing useEffect cleanups). It renders nothing in production.
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />

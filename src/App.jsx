@@ -1,3 +1,19 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// App.jsx — THE ROUTING MAP of the whole app.
+//
+// Three jobs:
+//  1. Declare every URL → which page component renders there.
+//  2. Guard routes by role: OwnerRoute / StaffRoute / StudentRoute / ParentRoute
+//     wrap pages and redirect to the right login if you're not that role.
+//     PermRequired additionally checks fine-grained staff permissions, and
+//     FeatureRoute hides pages behind feature flags (Settings → Add-ons).
+//  3. Lazy-load pages: `lazy(() => import(...))` means each page's code is a
+//     separate file downloaded only when the user first visits it — that keeps
+//     the initial download small. <Suspense> shows a loader during the fetch.
+//
+// Everything is wrapped in <AppProvider> (global state, see context/AppContext)
+// and an <ErrorBoundary> (catches render crashes → friendly screen + Sentry).
+// ─────────────────────────────────────────────────────────────────────────────
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Component, lazy, Suspense } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
@@ -147,6 +163,13 @@ function PageLoading() {
   )
 }
 
+// Route guard pattern: a guard is just a component that either returns its
+// children (access granted) or a <Navigate> redirect (access denied).
+// While auth is still restoring from localStorage (`loading`), show a spinner
+// instead of deciding — otherwise we'd bounce logged-in users to /login.
+//
+// OwnerRoute also lets OFFICE staff in (managers/office use the owner portal
+// with permission gates), but never coaches — coaches live in /staff/*.
 function OwnerRoute({ children }) {
   const { role, loading, selectedSport, user } = useApp()
   if (loading) return <PageLoading />

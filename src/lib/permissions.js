@@ -1,3 +1,20 @@
+// ═════════════════════════════════════════════════════════════════════════════
+// permissions.js — the staff permission system (RBAC: role-based access control).
+//
+// HOW IT WORKS:
+//   • Every sensitive action has a string key like 'payments.manage'.
+//   • Each staff member stores an array of these keys (granted on hire, editable
+//     in Staff page). ROLE_PRESETS are just starting bundles per job title.
+//   • UI check  : hasPermission('payments.manage') from useApp() — hides buttons
+//                 and gates routes (<PermRequired perm="...">) in App.jsx.
+//   • SERVER check: the secure_* RPCs call _require_perm() with the same keys.
+//     This is the one that actually matters — UI checks are convenience only;
+//     a user editing JavaScript in DevTools still can't pass the DB check.
+//   • Owners bypass everything (they implicitly hold all permissions).
+//
+// ADDING A NEW PERMISSION = add the key here, gate the UI, and require it in
+// the RPC migration. All three places, same string.
+// ═════════════════════════════════════════════════════════════════════════════
 export const ALL_PERMISSIONS = [
   'dashboard.view',
   'students.view',

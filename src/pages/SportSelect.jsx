@@ -10,6 +10,7 @@ import {
 import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImport'
 import { SPORT_CATALOG } from '../lib/sportCatalog'
 import SportIcon from '../components/SportIcon'
+import { toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 
 // Per-sport color theme — each card gets a distinct accent so the page
 // has visual identity instead of a sea of identical blue cards.
@@ -72,8 +73,7 @@ export default function SportSelect() {
   // Per-sport stats
   const counts = useMemo(() => {
     const today = new Date()
-    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-      .toISOString().split('T')[0]
+    const firstOfMonth = toLocalDateStr(new Date(today.getFullYear(), today.getMonth(), 1))
 
     const map = {}
     sportList.forEach(sport => {
@@ -84,7 +84,7 @@ export default function SportSelect() {
       ).length
 
       // Monthly revenue: payments for this sport in current month
-      const monthKey = today.toISOString().slice(0, 7)
+      const monthKey = toLocalMonthStr(today)
       const monthlyRevenue = allPayments
         .filter(p => {
           const student = allStudents.find(s => s.id === p.student_id)

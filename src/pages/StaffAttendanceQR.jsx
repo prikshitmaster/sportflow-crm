@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { QRCodeSVG } from 'qrcode.react'
 import { Clock, RefreshCw, Monitor } from 'lucide-react'
+import { toLocalDateStr } from '../lib/dates'
 
 const CHECKIN_PREFIX = 'sportflow-staff:'
 
@@ -9,7 +10,7 @@ const CHECKIN_PREFIX = 'sportflow-staff:'
 // hard-blocks a staff member whose branch doesn't match.
 function generateToken(academyId, branchId) {
   const now  = new Date()
-  const date = now.toISOString().slice(0, 10)   // "2026-05-08"
+  const date = toLocalDateStr(now)              // "2026-05-08"
   const hour = now.getHours()                    // 0-23
   return `${CHECKIN_PREFIX}${academyId}:${branchId}:${date}:${hour}`
 }

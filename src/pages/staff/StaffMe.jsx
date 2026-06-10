@@ -4,6 +4,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
+import { toLocalDateStr } from '../../lib/dates'
 import {
   CalendarDays, LayoutGrid, ChevronDown,
   Clock, CheckCircle, XCircle, Hourglass,
@@ -50,7 +51,7 @@ export default function StaffMe() {
 // ── Apply Leave ───────────────────────────────────────────
 
 function LeaveSection({ leaveRequests, submitLeave, userId, userName }) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = toLocalDateStr()
   const [startDate, setStartDate] = useState('')
   const [endDate,   setEndDate]   = useState('')
   const [reason,    setReason]    = useState('')

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
 import { exportAcademyData } from '../lib/exportImport'
+import { toLocalDateStr } from '../lib/dates'
 import { Download, ShieldCheck, RefreshCw, Filter, ChevronDown, ChevronUp, FileSpreadsheet, Calendar } from 'lucide-react'
 import { SkeletonRows } from '../components/Skeleton'
 
@@ -167,13 +168,13 @@ export default function Backups() {
                   { label: 'This Month', action: () => {
                     const now = new Date()
                     setDateFrom(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`)
-                    setDateTo(new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10))
+                    setDateTo(toLocalDateStr(new Date(now.getFullYear(), now.getMonth()+1, 0)))
                   }},
                   { label: 'Last 3 Months', action: () => {
                     const now = new Date()
                     const from = new Date(now.getFullYear(), now.getMonth()-2, 1)
-                    setDateFrom(from.toISOString().slice(0,10))
-                    setDateTo(now.toISOString().slice(0,10))
+                    setDateFrom(toLocalDateStr(from))
+                    setDateTo(toLocalDateStr(now))
                   }},
                   { label: 'This Year', action: () => {
                     const y = new Date().getFullYear()

@@ -8,6 +8,7 @@ import { CalendarCheck, Users, ChevronRight, QrCode, CreditCard, UserPlus, Layer
 import { useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import * as db from '../../lib/db'
+import { toLocalDateStr } from '../../lib/dates'
 
 const WORK_TILES = [
   { perm: 'students.view',     Icon: Users,           label: 'Students',    bg: 'bg-blue-600',    route: '/staff/students'   },
@@ -53,7 +54,7 @@ export default function StaffDashboard() {
 
   useEffect(() => { if (!leaveRequests.length) loadLeaveRequests() }, [])
 
-  const today    = new Date().toISOString().split('T')[0]
+  const today    = toLocalDateStr()
   const todayAtt = attendanceData[today] || {}
   const dayName  = new Date().toLocaleDateString('en-IN', { weekday: 'long' })
   const dateStr  = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })

@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext'
 import { QrCode, CheckCircle2, XCircle, Camera } from 'lucide-react'
 import jsQR from 'jsqr'
 import * as db from '../../lib/db'
+import { toLocalDateStr, todayStr } from '../../lib/dates'
 
 const CHECKIN_PREFIX = 'sportflow-staff:'
 
@@ -19,7 +20,7 @@ function validateToken(qrValue, academyId, branchId) {
     return { ok: false, reason: "This QR is for a different branch — scan your own branch's clock-in code." }
   }
   const now = new Date()
-  const today = now.toISOString().slice(0, 10)
+  const today = toLocalDateStr(now)
   const currentHour = now.getHours()
   const prevHour = currentHour === 0 ? 23 : currentHour - 1
   if (qrDate !== today) return { ok: false, reason: 'This QR has expired. Scan the current code on the screen.' }
@@ -32,7 +33,7 @@ const CHECKIN_KEY = (uid, date) => `staff_checkin_${uid}_${date}`
 
 export default function StaffScanIn() {
   const { user, demoMode } = useApp()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayStr()
 
   // Check if already clocked in today
   const alreadyToday = () => {

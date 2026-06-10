@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import DevFillButton from '../components/DevFillButton'
 import { fillTrial } from '../lib/devFill'
+import { toLocalDateStr } from '../lib/dates'
 
 // ── Stage config ─────────────────────────────────────────────
 
@@ -1012,7 +1013,7 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
               <div>
                 <label className="label">Join Date</label>
                 <input className="input" type="date" value={form.joinDate}
-                  max={new Date().toISOString().split('T')[0]}
+                  max={toLocalDateStr()}
                   onChange={e => handleJoinDate(e.target.value)} />
               </div>
             )}
@@ -1032,7 +1033,7 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
               <div className="sm:col-span-2 bg-brand-50 border border-brand-100 rounded-xl p-4 grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="label text-brand-700">Join / Start Date</label>
-                  <input className="input" type="date" max={new Date().toISOString().split('T')[0]}
+                  <input className="input" type="date" max={toLocalDateStr()}
                     value={form.joinDate} onChange={e => set('joinDate', e.target.value)} />
                 </div>
                 <div>

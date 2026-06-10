@@ -9,6 +9,7 @@ import {
   createDrill, updateDrill, deleteDrill,
 } from '../../lib/db'
 import { exportSessionPDF } from '../../lib/sessionPDF'
+import { toLocalDateStr } from '../../lib/dates'
 import {
   Plus, ChevronLeft, Edit2, Trash2, Check, Copy,
   Clock, Users, BookOpen, ChevronDown, ChevronUp, X, Save,
@@ -1293,7 +1294,7 @@ function nextValidDate(fromDate, days) {
   if (!days?.length) return fromDate
   const d = new Date(fromDate + 'T00:00:00')
   for (let i = 0; i < 7; i++) {
-    if (days.includes(DAY_NAMES[d.getDay()])) return d.toISOString().split('T')[0]
+    if (days.includes(DAY_NAMES[d.getDay()])) return toLocalDateStr(d)
     d.setDate(d.getDate() + 1)
   }
   return fromDate
@@ -1303,7 +1304,7 @@ function nextValidDate(fromDate, days) {
 function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
   const [batchId, setBatchId] = useState(batches[0]?.id || '')
   const [date, setDate]       = useState(() => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = toLocalDateStr()
     const first = batches[0]
     return first?.days?.length ? nextValidDate(today, first.days) : today
   })

@@ -1,7 +1,10 @@
 # SportFlow CRM — Project Overview
 
 ## What is it?
-A sports academy management system (SaaS) for managing students, payments, attendance, staff, batches, and events. Multi-tenant (one DB, academy-scoped rows). Three separate portals for three user roles.
+A sports academy management system (SaaS) for managing students, payments, attendance, staff, batches, and events. Multi-tenant (one DB, academy-scoped rows). **Four** separate portals: owner, staff, student, parent.
+
+> ⚠️ Parts of this file are from May 2026. For the current state see the root
+> `README.md` and `docs/08_JUNE_2026_AUDIT.md`.
 
 ## Tech Stack
 
@@ -13,7 +16,7 @@ A sports academy management system (SaaS) for managing students, payments, atten
 | Icons | Lucide React |
 | Charts | Recharts |
 | QR codes | qrcode.react |
-| Excel export | xlsx |
+| Excel export | exceljs + xlsx-js-style (the plain `xlsx` package was removed June 2026 — unused + vulnerable) |
 | Backend/DB | Supabase (Postgres + Auth) |
 | Client | Supabase JS v2 |
 
@@ -31,7 +34,8 @@ npm run dev  →  http://localhost:5173
 - Project ID: `vdvpwbhkdlbskewfgref`
 - URL: `https://vdvpwbhkdlbskewfgref.supabase.co`
 - Credentials: `.env` (gitignored)
-- RLS: **OFF** on legacy tables; new tables (`student_batches`, `audit_logs`, `skill_assessments`, `student_badges`) have open anon+authenticated policies
+- RLS: **ON for every table** (verified June 2026). All writes go through
+  `secure_*` SECURITY DEFINER RPCs (migrations 0033–0054); direct anon writes are locked.
 
 ## Project Structure
 

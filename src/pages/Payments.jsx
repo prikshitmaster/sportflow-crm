@@ -10,6 +10,7 @@ import { fillPayment } from '../lib/devFill'
 import SendPayLinkModal from '../components/SendPayLinkModal'
 import WhatsAppBulkModal from '../components/WhatsAppBulkModal'
 import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/whatsapp'
+import { todayStr, toLocalDateStr } from '../lib/dates'
 
 // ── Payment Receipt Printer ───────────────────────────────────
 
@@ -267,7 +268,7 @@ export default function Payments() {
   const [page,            setPage]            = useState(1)
 
   const now          = new Date()
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+  const firstOfMonth = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1))
 
   // Build studentId → student lookup for filter joins
   const studentMap = useMemo(() => {
@@ -581,7 +582,7 @@ export default function Payments() {
                           type="date"
                           className="input py-0.5 px-1.5 text-xs w-36"
                           defaultValue={p.date || ''}
-                          max={new Date().toISOString().split('T')[0]}
+                          max={toLocalDateStr()}
                           autoFocus
                           onBlur={async (e) => {
                             if (e.target.value && e.target.value !== p.date) {
@@ -1082,7 +1083,7 @@ async function exportPaymentsToExcel({ records, studentMap, title, showToast }) 
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${(title||'payments').replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`
+    a.download = `${(title||'payments').replace(/[^a-z0-9]/gi,'_')}_${todayStr()}.xlsx`
     a.click()
     URL.revokeObjectURL(url)
     showToast('Excel exported successfully')
@@ -1211,7 +1212,7 @@ function StudentPaymentPanel({ student, payments, studentMap, onClose, showToast
 function ConfirmMarkPaidModal({ payment, studentMap, onConfirm, onClose, isLoading }) {
   const [step,        setStep]        = useState(1)
   const [mode,        setMode]        = useState(payment?.mode === 'Cheque' ? 'Cheque' : (payment?.mode || 'UPI'))
-  const [clearedDate, setClearedDate] = useState(new Date().toISOString().split('T')[0])
+  const [clearedDate, setClearedDate] = useState(toLocalDateStr())
   const [confirmText, setConfirmText] = useState('')
   const student = studentMap[payment?.studentId]
 
@@ -1270,7 +1271,7 @@ function ConfirmMarkPaidModal({ payment, studentMap, onConfirm, onClose, isLoadi
                 </div>
                 <div>
                   <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">Cleared Date</label>
-                  <input type="date" className="input text-xs py-2" value={clearedDate} max={new Date().toISOString().split('T')[0]} onChange={e => setClearedDate(e.target.value)} />
+                  <input type="date" className="input text-xs py-2" value={clearedDate} max={toLocalDateStr()} onChange={e => setClearedDate(e.target.value)} />
                 </div>
               </div>
             </>
@@ -1343,7 +1344,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const [studentSearch,  setStudentSearch] = useState(initStudent.name || '')
   const [showDropdown,   setShowDropdown]  = useState(false)
   const [amountOverride, setAmountOverride] = useState(null)
-  const [paymentDate,    setPaymentDate]   = useState(new Date().toISOString().split('T')[0])
+  const [paymentDate,    setPaymentDate]   = useState(toLocalDateStr())
   const [customMonths,   setCustomMonths]  = useState(2)
   const [lateFee,        setLateFee]       = useState(0)
   const [showLateFee,    setShowLateFee]   = useState(false)
@@ -1856,7 +1857,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             <label className="label">Payment Date</label>
             <input className="input" type="date"
               value={paymentDate}
-              max={new Date().toISOString().split('T')[0]}
+              max={toLocalDateStr()}
               onChange={e => setPaymentDate(e.target.value)} />
           </div>
           <div>

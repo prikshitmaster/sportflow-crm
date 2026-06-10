@@ -1,6 +1,29 @@
-// ============================================================
-// AppContext — owner-only production auth & global state
-// ============================================================
+// ═════════════════════════════════════════════════════════════════════════════
+// AppContext.jsx — THE HEART OF THE APP. Global state + auth for all 4 roles.
+//
+// HOW IT WORKS (React Context pattern):
+//   <AppProvider> wraps the whole app (see App.jsx). It holds all shared state
+//   in useState hooks and exposes it through a context. Any component anywhere
+//   can then do:   const { students, user, collectPayment } = useApp()
+//   No prop-drilling — pages 10 levels deep read the same single source of truth.
+//
+// WHAT LIVES HERE:
+//   1. AUTH — login/logout/restore for owner (Supabase JWT), staff & student
+//      (custom localStorage tokens), parent (phone OTP). On app open, restore
+//      order is: student token → staff token → JWT (custom tokens FIRST so a
+//      lingering owner JWT on a shared tablet can't hijack a student session).
+//   2. DATA — students, payments, attendance, staff, batches, trials, events…
+//      loaded once after login (loadAll) via lib/db.js, kept in state.
+//   3. FILTERING — the raw arrays are academy-wide; useMemo chains derive what
+//      the current branch + sport should see. Staff are locked to their own
+//      branch (user.branchId); owners pick a branch (selectedBranch).
+//   4. ACTIONS — addStudent, collectPayment, markAttendance… Each action calls
+//      a secure_* RPC via lib/db.js, then updates local state so the UI reacts
+//      instantly, and writes an audit log entry.
+//
+// RULE OF THUMB: pages should never call supabase directly — they call actions
+// from useApp(), which call lib/db.js, which calls supabase. One-way street.
+// ═════════════════════════════════════════════════════════════════════════════
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabase'
@@ -16,6 +39,7 @@ import { logAudit, ACTIONS, diffObjects } from '../lib/audit'
 import { logger } from '../lib/logger'
 import { setSentryUser } from '../lib/sentry'
 import { notify } from '../lib/notifications'
+import { toLocalDateStr } from '../lib/dates'
 
 // Module-level in-flight payment lock — survives across renders, isolated per tab.
 // Used to refuse rapid duplicate submissions before any network round-trip.
@@ -289,7 +313,7 @@ export function AppProvider({ children }) {
           // Skipped — recently ran. Don't even compute the list.
         } else {
         const graceDays = getSuspendDays()
-        const todayStr  = now.toISOString().split('T')[0]
+        const todayStr  = toLocalDateStr(now)
         const toSuspend = s.filter(x => {
           if (x.status !== 'Active' || !x.paidTill) return false
           const diffMs   = now - new Date(x.paidTill + 'T00:00:00')
@@ -869,7 +893,7 @@ export function AppProvider({ children }) {
       let paidTill = s.paidTill || null
       if (paidTill && paidTill.length === 7) {
         const [yr, mo] = paidTill.split('-').map(Number)
-        paidTill = new Date(yr, mo, 0).toISOString().split('T')[0]
+        paidTill = toLocalDateStr(new Date(yr, mo, 0))
       }
 
       // Decide suspend-now BEFORE the write, so the RPC can apply it atomically
@@ -883,7 +907,7 @@ export function AppProvider({ children }) {
       const joiningFee  = Number(s.joiningFee) || 0
       let payment = null
       if (paidTill && fees > 0) {
-        const joinDateStr = s.joinDate || new Date().toISOString().split('T')[0]
+        const joinDateStr = s.joinDate || toLocalDateStr()
         const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, fees, s.feePlan || 'monthly')
         const payAmount = Math.max(0, amount - trialDeduct + joiningFee)
         const invoiceId = await db.fetchNextInvoiceId()
@@ -918,7 +942,7 @@ export function AppProvider({ children }) {
       }
 
       // Build local state from inputs (the RPC returns only the id)
-      const todayStr = addNow.toISOString().split('T')[0]
+      const todayStr = toLocalDateStr(addNow)
       const mapped = {
         id:             newId,
         name:           s.name,
@@ -1001,7 +1025,7 @@ export function AppProvider({ children }) {
       let paidTill = s.paidTill || null
       if (paidTill && paidTill.length === 7) {
         const [yr, mo] = paidTill.split('-').map(Number)
-        paidTill = new Date(yr, mo, 0).toISOString().split('T')[0]
+        paidTill = toLocalDateStr(new Date(yr, mo, 0))
       }
       const oldStudent = students.find(x => x.id === id)
       const oldBatchId = oldStudent?.batchId ? Number(oldStudent.batchId) : null
@@ -1111,7 +1135,7 @@ export function AppProvider({ children }) {
         setBatches(prev => prev.map(b => b.id === student.batchId
           ? { ...b, enrolled: Math.max(0, (b.enrolled || 0) - 1) } : b))
       }
-      const today = new Date().toISOString().split('T')[0]
+      const today = toLocalDateStr()
       setStudents(prev => prev.map(s => s.id === student.id ? {
         ...s, status: 'Suspended', suspendedSince: today,
       } : s))
@@ -1180,8 +1204,7 @@ export function AppProvider({ children }) {
       // For advance payments, coverage starts from the month after the student's current paidTill
       const baseDate  = p.advanceStart ? new Date(p.advanceStart + 'T00:00:00') : collectionDate
       const months    = p.monthsCovered || (p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1)
-      const paidTill  = new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0)
-        .toISOString().split('T')[0]
+      const paidTill  = toLocalDateStr(new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0))
       const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
       const endDate    = new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0)
       const monthLabel = months === 1
@@ -1191,8 +1214,8 @@ export function AppProvider({ children }) {
               ? baseDate.getFullYear()
               : `${baseDate.getFullYear()}/${String(endDate.getFullYear()).slice(2)}`
           }`
-      const payDate      = collectionDate.toISOString().split('T')[0]
-      const coverageStart = baseDate.toISOString().split('T')[0]
+      const payDate      = toLocalDateStr(collectionDate)
+      const coverageStart = toLocalDateStr(baseDate)
       const invoiceId    = await db.fetchNextInvoiceId()
       const isChequeEarly = p.mode === 'Cheque'
       const paymentRow   = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, academyId: user?.academyId, status: isChequeEarly ? 'Pending' : 'Paid' }
@@ -1283,7 +1306,7 @@ export function AppProvider({ children }) {
             const base = new Date((p.coverageStart || p.date) + 'T00:00:00')
             const m    = p.monthsCovered || 1
             const end  = new Date(base.getFullYear(), base.getMonth() + m, 0)
-            return { end, endStr: end.toISOString().split('T')[0] }
+            return { end, endStr: toLocalDateStr(end) }
           })
           newPaidTill = withEnd.sort((a, b) => b.end - a.end)[0].endStr
         }
@@ -1299,7 +1322,7 @@ export function AppProvider({ children }) {
 
   const markPaymentPaid = async (id, mode = 'UPI', clearedDate = null) => {
     try {
-      const today = clearedDate || new Date().toISOString().split('T')[0]
+      const today = clearedDate || toLocalDateStr()
       const payment = payments.find(p => p.id === id)
       await db.updatePaymentStatus(id, 'Paid', mode)
       setPayments(prev => prev.map(p =>
@@ -1312,7 +1335,7 @@ export function AppProvider({ children }) {
         if (student) {
           const base   = new Date((payment.coverageStart || today) + 'T00:00:00')
           const months = payment.monthsCovered || 1
-          const newPaidTill = new Date(base.getFullYear(), base.getMonth() + months, 0).toISOString().split('T')[0]
+          const newPaidTill = toLocalDateStr(new Date(base.getFullYear(), base.getMonth() + months, 0))
           if (!student.paidTill || newPaidTill > student.paidTill) {
             await db.updateStudentPaidTill(student.id, newPaidTill, null)
             setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))

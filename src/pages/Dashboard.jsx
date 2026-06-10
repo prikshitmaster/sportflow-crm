@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom'
 import { isOutstanding } from '../lib/studentRules'
 import { Skeleton, SkeletonCards } from '../components/Skeleton'
 import { fetchAllBatchEnrolments, getTodayCheckin, clockIn, clockOut } from '../lib/db'
+import { toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 
 export default function Dashboard() {
   const {
@@ -67,9 +68,9 @@ export default function Dashboard() {
   , [staff])
 
   const now          = new Date()
-  const currentMonth = now.toISOString().slice(0, 7)
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-  const todayStr     = now.toISOString().split('T')[0]
+  const currentMonth = toLocalMonthStr(now)
+  const firstOfMonth = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1))
+  const todayStr     = toLocalDateStr(now)
   const todayAtt     = attendanceData[todayStr] || {}
 
   const hour = now.getHours()

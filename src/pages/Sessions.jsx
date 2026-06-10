@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import { fetchSessionPlans, fetchSessionPlan, deleteSessionPlan } from '../lib/db'
 import { exportSessionPDF } from '../lib/sessionPDF'
+import { toLocalDateStr } from '../lib/dates'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Clock, Users,
   Trophy, BookOpen, Trash2, X, CheckCircle2, FileDown, Zap,
@@ -276,7 +277,7 @@ export default function Sessions() {
     return { year: y, month: m }
   })
 
-  const todayStr = today.toISOString().split('T')[0]
+  const todayStr = toLocalDateStr(today)
 
   const dayPlans = selectedDay ? (byDate[selectedDay] || []) : []
 

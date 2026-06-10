@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { QrCode, CheckCircle2, XCircle, Camera, ArrowLeft, Lock, CreditCard, Clock } from 'lucide-react'
 import jsQR from 'jsqr'
 import { logAudit, ACTIONS } from '../../lib/audit'
+import { todayStr } from '../../lib/dates'
 
 const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const DAYS_FULL  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
@@ -121,7 +122,7 @@ export default function StudentScan() {
   // Check if student already has attendance for today
   useEffect(() => {
     if (!studentUser?.id) { setAlreadyMarked(false); return }
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayStr()
     supabase.from('attendance')
       .select('id')
       .eq('student_id', studentUser.id)

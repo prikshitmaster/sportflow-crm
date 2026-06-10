@@ -14,6 +14,7 @@ import {
 import * as db from '../lib/db'
 import { ACTION_LABELS, ACTION_CATEGORY, ENTITY_COLORS, ROLE_COLORS } from '../lib/audit'
 import { isOutstanding, daysOverdue as ruleDaysOverdue, ageingBucket, ageingBucketOrder } from '../lib/studentRules'
+import { toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel, FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 
 // ── Utilities ─────────────────────────────────────────────
@@ -169,7 +170,7 @@ export default function Reports() {
   // Header summary stats — live, not hardcoded
   const headerStats = useMemo(() => {
     const active     = students.filter(s => s.status === 'Active').length
-    const currMonth  = today.toISOString().slice(0, 7)
+    const currMonth  = toLocalMonthStr(today)
     const collected  = payments.filter(p => p.status === 'Paid' && (p.date || '').slice(0, 7) === currMonth)
                                 .reduce((s, p) => s + p.amount, 0)
     const expected   = students.filter(s => s.status === 'Active').reduce((s, st) => s + (st.fees || 0), 0)
@@ -416,7 +417,7 @@ function OverviewTab({ students, payments, trials, batches, batchToStudents = {}
           {(() => {
             const active   = students.filter(s => s.status === 'Active')
             const susp     = students.filter(s => s.status === 'Suspended')
-            const threeM   = new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().slice(0, 10)
+            const threeM   = toLocalDateStr(new Date(today.getFullYear(), today.getMonth() - 3, 1))
             const retained = active.filter(s => s.joinDate && s.joinDate <= threeM).length
             const newStu   = active.filter(s => !s.joinDate || s.joinDate > threeM).length
             const total    = active.length || 1
@@ -1555,7 +1556,7 @@ function exportAuditCSV(logs) {
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a'); a.href = url; a.download = `audit-log-${new Date().toISOString().slice(0,10)}.csv`; a.click()
+  const a = document.createElement('a'); a.href = url; a.download = `audit-log-${todayStr}.csv`; a.click()
   URL.revokeObjectURL(url)
 }
 

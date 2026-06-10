@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
 import { CreditCard, AlertCircle, CheckCircle2, Calendar, User } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { toLocalDateStr } from '../../lib/dates'
 
 function formatINR(n) {
   return '₹' + Number(n || 0).toLocaleString('en-IN')
@@ -39,7 +40,7 @@ export default function ParentDashboard() {
   }, [])
 
   const now = new Date()
-  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+  const firstOfMonth = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1))
 
   if (loading) {
     return (

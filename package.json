@@ -27,7 +27,6 @@
     "@supabase/supabase-js": "^2.105.1",
     "date-fns": "^3.6.0",
     "exceljs": "^4.4.0",
-    "html5-qrcode": "^2.3.8",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.436.0",
     "qrcode.react": "^4.2.0",
@@ -35,7 +34,6 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.0",
     "recharts": "^2.12.7",
-    "xlsx": "^0.18.5",
     "xlsx-js-style": "^1.2.0",
     "zod": "^4.4.3"
   },
