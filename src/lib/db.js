@@ -1288,14 +1288,25 @@ export async function assignStudentBatch(studentId, batchId, batchName) {
 // academyName is kept for display labelling only; academyId drives isolation.
 
 export async function getOrCreateGateQR(_academyId, academyName, branchId = null) {
-  // Gate QR is per-branch (security-v3/22). Owner passes the viewed branch;
-  // staff are forced into their own branch server-side.
+  // Try per-branch version first (security-v3/22 adds p_branch_id param).
+  // Fall back to legacy 2-param function if the 3-param overload doesn't exist yet.
   const { data, error } = await supabase.rpc('secure_get_or_create_gate_qr', {
     p_academy_name: academyName || 'Academy Gate',
     p_token:        _sessionToken(),
     p_branch_id:    branchId || null,
   })
-  if (error) throw error
+  if (error) {
+    // 42883 = function does not exist (wrong arg count). Retry without p_branch_id.
+    if (error.code === '42883') {
+      const r2 = await supabase.rpc('secure_get_or_create_gate_qr', {
+        p_academy_name: academyName || 'Academy Gate',
+        p_token:        _sessionToken(),
+      })
+      if (r2.error) throw r2.error
+      return r2.data
+    }
+    throw error
+  }
   return data
 }
 
@@ -1305,7 +1316,17 @@ export async function regenerateGateQR(_academyId, academyName, branchId = null)
     p_token:        _sessionToken(),
     p_branch_id:    branchId || null,
   })
-  if (error) throw error
+  if (error) {
+    if (error.code === '42883') {
+      const r2 = await supabase.rpc('secure_regenerate_gate_qr', {
+        p_academy_name: academyName || 'Academy Gate',
+        p_token:        _sessionToken(),
+      })
+      if (r2.error) throw r2.error
+      return r2.data
+    }
+    throw error
+  }
   return data
 }
 
