@@ -1288,13 +1288,16 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
 }
 
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+const DAY_NAMES_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const DAY_SHORT = { Sunday:'Sun', Monday:'Mon', Tuesday:'Tue', Wednesday:'Wed', Thursday:'Thu', Friday:'Fri', Saturday:'Sat' }
+// DB stores days as short names ('Mon','Wed','Fri'); accept both formats.
+const matchesDay = (days, dayIndex) => days.includes(DAY_NAMES[dayIndex]) || days.includes(DAY_NAMES_SHORT[dayIndex])
 
 function nextValidDate(fromDate, days) {
   if (!days?.length) return fromDate
   const d = new Date(fromDate + 'T00:00:00')
   for (let i = 0; i < 7; i++) {
-    if (days.includes(DAY_NAMES[d.getDay()])) return toLocalDateStr(d)
+    if (matchesDay(days, d.getDay())) return toLocalDateStr(d)
     d.setDate(d.getDate() + 1)
   }
   return fromDate
@@ -1314,7 +1317,7 @@ function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
   const batch     = batches.find(b => b.id === batchId)
   const batchDays = batch?.days || []
   const selDay    = date ? DAY_NAMES[new Date(date + 'T00:00:00').getDay()] : null
-  const dayBlocked = batchDays.length > 0 && selDay && !batchDays.includes(selDay)
+  const dayBlocked = batchDays.length > 0 && selDay && !matchesDay(batchDays, new Date(date + 'T00:00:00').getDay())
 
   const handleBatchChange = (newBatchId) => {
     setBatchId(newBatchId)
@@ -1339,7 +1342,7 @@ function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
     } catch (e) {
       if (e.code === '23505')  setErr('A session already exists for this batch on that date.')
       else if (e.code === '42P01') setErr('Session tables not found — please run migrations 0021–0024 in Supabase.')
-      else if (e.code === '23502') setErr('Missing required field. Check academy / batch setup.')
+      else if (e.code === '23502') setErr(`Missing required field: ${e.message || 'Check academy / batch setup.'}`)
       else setErr(`Error ${e.code || '?'}: ${e.message || 'unknown'}`)
     } finally {
       setSaving(false)

@@ -284,7 +284,9 @@ export async function insertPayment(p, invoiceId) {
       date:           p.date || toLocalDateStr(),
       status:         p.status || 'Paid',
       mode:           p.mode,
-      paymentType:    p.paymentType || 'monthly',
+      // DB constraint allows only monthly|quarterly|yearly — 'custom' is a
+      // UI-only concept (multi-month at monthly rate), so normalise to 'monthly'.
+      paymentType:    (p.paymentType === 'custom' ? 'monthly' : p.paymentType) || 'monthly',
       discountPct:    p.discountPct || 0,
       monthsCovered:  p.monthsCovered || 1,
       coverageStart:  p.coverageStart || null,
@@ -2568,8 +2570,10 @@ export async function fetchSessionPlan(id) {
 }
 
 export async function createSessionPlan(plan) {
+  // jsonb_populate_record sets missing columns to NULL, bypassing DB defaults.
+  // The id column is NOT NULL with DEFAULT gen_random_uuid(), so we must supply it.
   const { data, error } = await supabase.rpc('secure_create_session_plan', {
-    p_payload: plan,
+    p_payload: { id: crypto.randomUUID(), ...plan },
     p_token:   _sessionToken(),
   })
   if (error) throw error
