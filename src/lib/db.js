@@ -1288,46 +1288,70 @@ export async function assignStudentBatch(studentId, batchId, batchName) {
 // academyName is kept for display labelling only; academyId drives isolation.
 
 export async function getOrCreateGateQR(_academyId, academyName, branchId = null) {
-  // Try per-branch version first (security-v3/22 adds p_branch_id param).
-  // Fall back to legacy 2-param function if the 3-param overload doesn't exist yet.
-  const { data, error } = await supabase.rpc('secure_get_or_create_gate_qr', {
-    p_academy_name: academyName || 'Academy Gate',
-    p_token:        _sessionToken(),
-    p_branch_id:    branchId || null,
-  })
-  if (error) {
-    // 42883 = function does not exist (wrong arg count). Retry without p_branch_id.
-    if (error.code === '42883') {
-      const r2 = await supabase.rpc('secure_get_or_create_gate_qr', {
-        p_academy_name: academyName || 'Academy Gate',
-        p_token:        _sessionToken(),
-      })
-      if (r2.error) throw r2.error
-      return r2.data
-    }
-    throw error
+  const token = _sessionToken()
+  // Try the RPC with branch support (security-v3/22)
+  {
+    const { data, error } = await supabase.rpc('secure_get_or_create_gate_qr', {
+      p_academy_name: academyName || 'Academy Gate',
+      p_token:        token,
+      p_branch_id:    branchId || null,
+    })
+    if (!error) return data
   }
-  return data
+  // Fallback: try 2-param version (pre security-v3/22)
+  {
+    const { data, error } = await supabase.rpc('secure_get_or_create_gate_qr', {
+      p_academy_name: academyName || 'Academy Gate',
+      p_token:        token,
+    })
+    if (!error) return data
+  }
+  // Last resort for owners: direct table read (owner JWT → RLS passes).
+  // Handles any RPC mismatch between applied migrations and client code.
+  if (!token && _academyId) {
+    let query = supabase.from('gate_qr').select('*').eq('academy_id', _academyId)
+    if (branchId) query = query.eq('branch_id', branchId)
+    const { data } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (data) return data
+    // Create one if none exists
+    const newToken = crypto.randomUUID()
+    const row = { token: newToken, academy_name: academyName || 'Academy Gate', academy_id: _academyId }
+    if (branchId) row.branch_id = branchId
+    const { data: created, error: insErr } = await supabase.from('gate_qr').insert(row).select().single()
+    if (!insErr) return created
+  }
+  throw new Error('Could not load Gate QR — check branch setup')
 }
 
 export async function regenerateGateQR(_academyId, academyName, branchId = null) {
-  const { data, error } = await supabase.rpc('secure_regenerate_gate_qr', {
-    p_academy_name: academyName || 'Academy Gate',
-    p_token:        _sessionToken(),
-    p_branch_id:    branchId || null,
-  })
-  if (error) {
-    if (error.code === '42883') {
-      const r2 = await supabase.rpc('secure_regenerate_gate_qr', {
-        p_academy_name: academyName || 'Academy Gate',
-        p_token:        _sessionToken(),
-      })
-      if (r2.error) throw r2.error
-      return r2.data
-    }
-    throw error
+  const token = _sessionToken()
+  {
+    const { data, error } = await supabase.rpc('secure_regenerate_gate_qr', {
+      p_academy_name: academyName || 'Academy Gate',
+      p_token:        token,
+      p_branch_id:    branchId || null,
+    })
+    if (!error) return data
   }
-  return data
+  {
+    const { data, error } = await supabase.rpc('secure_regenerate_gate_qr', {
+      p_academy_name: academyName || 'Academy Gate',
+      p_token:        token,
+    })
+    if (!error) return data
+  }
+  // Fallback for owners
+  if (!token && _academyId) {
+    let delQuery = supabase.from('gate_qr').delete().eq('academy_id', _academyId)
+    if (branchId) delQuery = delQuery.eq('branch_id', branchId)
+    await delQuery
+    const newToken = crypto.randomUUID()
+    const row = { token: newToken, academy_name: academyName || 'Academy Gate', academy_id: _academyId }
+    if (branchId) row.branch_id = branchId
+    const { data: created, error: insErr } = await supabase.from('gate_qr').insert(row).select().single()
+    if (!insErr) return created
+  }
+  throw new Error('Could not regenerate Gate QR')
 }
 
 export async function validateGateToken(token, academyId) {
