@@ -2527,8 +2527,9 @@ export async function fetchDrills(academyId, sportName) {
 }
 
 export async function createDrill(drill) {
+  // jsonb_populate_record bypasses DB defaults — supply id client-side
   const { data, error } = await supabase.rpc('secure_create_drill', {
-    p_payload: drill,
+    p_payload: { id: crypto.randomUUID(), ...drill },
     p_token:   _sessionToken(),
   })
   if (error) throw error
