@@ -1039,6 +1039,7 @@ export function AppProvider({ children }) {
         phone:        updated.phone,
         parentPhone:  updated.parent_phone,
         age:          updated.age,
+        dob:          updated.dob || null,
         sport:        updated.sport,
         batch:        updated.batch,
         batchId:      updated.batch_id,
