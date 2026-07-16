@@ -1,4 +1,11 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Bash(git commit -m ' *)",
+      "Bash(npm view *)"
+    ]
+  },
   "enabledPlugins": {
     "code-review@claude-plugins-official": true
   }
