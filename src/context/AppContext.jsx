@@ -794,7 +794,7 @@ export function AppProvider({ children }) {
     return photoUrl
   }
 
-  // Student self-edit of football profile fields (height/weight/foot/wing)
+  // Student self-edit of profile fields (height/weight/foot/wing/CRS)
   const updateStudentProfile = async (fields) => {
     const updated = await db.updateStudentSelfProfile(studentUser.id, fields)
     setStudentUser(prev => ({
@@ -803,6 +803,7 @@ export function AppProvider({ children }) {
       weight_kg:      updated?.weight_kg      ?? prev.weight_kg,
       preferred_foot: updated?.preferred_foot ?? prev.preferred_foot,
       wing:           updated?.wing           ?? prev.wing,
+      crs_number:     updated?.crs_number     ?? prev.crs_number,
     }))
     return updated
   }

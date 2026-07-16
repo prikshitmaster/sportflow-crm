@@ -71,6 +71,8 @@ export async function fetchStudents(academyId) {
     fromTrial:      row.from_trial  || false,
     branchId:       row.branch_id || null,
     academy_id:     row.academy_id || null,
+    heightCm:       row.height_cm ?? null,
+    crsNumber:      row.crs_number || null,
   }))
 }
 
@@ -136,6 +138,8 @@ export async function fetchStudentsPaginated(academyId, {
     fromTrial:      row.from_trial  || false,
     branchId:       row.branch_id || null,
     academy_id:     row.academy_id || null,
+    heightCm:       row.height_cm ?? null,
+    crsNumber:      row.crs_number || null,
   }))
   const total = count || 0
   return {
@@ -339,13 +343,74 @@ export async function uploadStudentPhoto(file, studentId) {
   return `${data.publicUrl}?v=${Date.now()}`
 }
 
+// ── STUDENT DOCUMENT VAULT ───────────────────────────────────
+// Files live in the 'student-documents' bucket at unguessable uuid paths;
+// real access control is on the student_documents metadata table (RLS:
+// student sees own, staff needs 'documents.view', owner sees academy).
+
+export async function fetchStudentDocuments(studentId) {
+  const { data, error } = await supabase
+    .from('student_documents')
+    .select('*')
+    .eq('student_id', studentId)
+    .order('created_at', { ascending: false })
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return (data || []).map(r => ({
+    id:        r.id,
+    studentId: r.student_id,
+    docType:   r.doc_type,
+    title:     r.title,
+    filePath:  r.file_path,
+    fileName:  r.file_name,
+    mimeType:  r.mime_type,
+    sizeBytes: r.size_bytes,
+    uploadedBy: r.uploaded_by,
+    createdAt: r.created_at,
+    url: supabase.storage.from('student-documents').getPublicUrl(r.file_path).data.publicUrl,
+  }))
+}
+
+export async function uploadStudentDocument(file, { studentId, docType, title }) {
+  const ext  = (file.name.split('.').pop() || 'bin').toLowerCase()
+  const path = `${studentId}/${crypto.randomUUID()}.${ext}`
+  const { error: upErr } = await supabase.storage.from('student-documents')
+    .upload(path, file, { contentType: file.type || 'application/octet-stream' })
+  if (upErr) throw upErr
+  const { data, error } = await supabase.rpc('secure_add_student_document', {
+    p_student_id: studentId,
+    p_doc_type:   docType,
+    p_title:      title || file.name,
+    p_file_path:  path,
+    p_file_name:  file.name,
+    p_mime_type:  file.type || null,
+    p_size_bytes: file.size || null,
+    p_token:      _sessionToken(),
+  })
+  if (error) {
+    // metadata insert failed → remove the orphaned file
+    await supabase.storage.from('student-documents').remove([path]).catch(() => {})
+    throw error
+  }
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+export async function deleteStudentDocument(docId) {
+  const { data: filePath, error } = await supabase.rpc('secure_delete_student_document', {
+    p_doc_id: docId,
+    p_token:  _sessionToken(),
+  })
+  if (error) throw error
+  if (filePath) await supabase.storage.from('student-documents').remove([filePath]).catch(() => {})
+}
+
 // Student-only — update own football profile (height/weight/foot/wing)
-export async function updateStudentSelfProfile(studentId, { heightCm, weightKg, preferredFoot, wing } = {}) {
+export async function updateStudentSelfProfile(studentId, { heightCm, weightKg, preferredFoot, wing, crsNumber } = {}) {
   const payload = {}
   if (heightCm      !== undefined) payload.heightCm      = heightCm
   if (weightKg      !== undefined) payload.weightKg      = weightKg
   if (preferredFoot !== undefined) payload.preferredFoot = preferredFoot
   if (wing          !== undefined) payload.wing          = wing
+  if (crsNumber     !== undefined) payload.crsNumber     = crsNumber
   const { data, error } = await supabase.rpc('secure_update_student_self_profile', {
     p_student_id: studentId,
     p_payload:    payload,

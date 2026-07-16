@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from './Payments'
 import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition } from '../lib/db'
 import StudentAvatar from '../components/StudentAvatar'
+import StudentDocumentsCard from '../components/StudentDocumentsCard'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment } from '../lib/studentRules'
 import { toLocalDateStr } from '../lib/dates'
@@ -1202,8 +1203,16 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
             {infoRow('Parent', s.parent)}
             {infoRow('Student Phone', s.phone)}
             {infoRow('Parent Phone', s.parentPhone)}
+            {infoRow('Height', s.heightCm ? `${s.heightCm} cm` : null)}
+            {infoRow('CRS Number', s.crsNumber, true)}
             {infoRow('Join Date', s.joinDate ? new Date(s.joinDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
             {infoRow('Paid Till', s.paidTill ? new Date(s.paidTill).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
+          </div>
+
+          {/* Document Vault */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Documents</p>
+            <StudentDocumentsCard studentId={s.id} canUpload={canManage} canDelete={canManage} />
           </div>
 
           {/* Account Info */}
