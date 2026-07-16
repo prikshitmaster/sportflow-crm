@@ -75,6 +75,7 @@ export default function Students() {
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
+  const [ageFilter,       setAgeFilter]       = useState('All')
   const [mbStudentIds,    setMbStudentIds]    = useState(new Set())
   const [allMbRows,       setAllMbRows]       = useState([])
   const [accFilter,       setAccFilter]       = useState('All')
@@ -137,23 +138,33 @@ export default function Students() {
   const activeStudents    = useMemo(() => students.filter(s => s.status !== 'Suspended'), [students])
   const suspendedStudents = useMemo(() => students.filter(s => s.status === 'Suspended'), [students])
 
+  const studentAge = (s) => s.dob ? calcAge(s.dob) : (s.age ?? null)
+
+  const ages = useMemo(() =>
+    [...new Set(activeStudents.map(studentAge).filter(a => a != null))].sort((a, b) => a - b),
+    [activeStudents])
+
   const filtered = useMemo(() => {
-    const q = search.toLowerCase()
+    const q = search.trim().toLowerCase()
     return activeStudents.filter(s => {
+      const age = studentAge(s)
       // Search now also matches parent phone — front-desk staff often have only
       // the parent's number when a student walks in, not the student's own.
+      // A pure-number query also matches age (e.g. "13" finds all 13-year-olds).
       const matchQ = !q ||
         s.name.toLowerCase().includes(q) ||
         (s.parent || '').toLowerCase().includes(q) ||
         (s.phone || '').includes(q) ||
         (s.parentPhone || '').includes(q) ||
-        (s.studentCode || '').toLowerCase().includes(q)
+        (s.studentCode || '').toLowerCase().includes(q) ||
+        (/^\d+$/.test(q) && String(age) === q)
       const matchSport = sportFilter === 'All' || s.sport  === sportFilter
       const matchBatch = batchFilter === 'All' || String(s.batchId) === batchFilter || mbStudentIds.has(s.id)
       const matchAcc   = accFilter   === 'All' || s.accountStatus === accFilter
-      return matchQ && matchSport && matchBatch && matchAcc
+      const matchAge   = ageFilter   === 'All' || String(age) === ageFilter
+      return matchQ && matchSport && matchBatch && matchAcc && matchAge
     })
-  }, [activeStudents, search, sportFilter, batchFilter, accFilter, mbStudentIds])
+  }, [activeStudents, search, sportFilter, batchFilter, accFilter, ageFilter, mbStudentIds])
 
   const suspBatchName  = (s) => s.lastBatchName || s.batch || ''
   const suspBatches    = useMemo(() => [...new Set(suspendedStudents.map(suspBatchName).filter(Boolean))].sort(), [suspendedStudents])
@@ -167,13 +178,13 @@ export default function Students() {
   }, [suspendedStudents, suspBatchFilter, suspSportFilter, suspSearch])
 
   // Reset pages when filters change
-  useEffect(() => setPage(1), [search, sportFilter, batchFilter, accFilter])
+  useEffect(() => setPage(1), [search, sportFilter, batchFilter, accFilter, ageFilter])
   useEffect(() => setSuspPage(1), [suspSearch, suspSportFilter, suspBatchFilter])
 
   // Reset all local filters when context scope changes so stale values don't hide students
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    setSportFilter('All'); setBatchFilter('All'); setAccFilter('All')
+    setSportFilter('All'); setBatchFilter('All'); setAccFilter('All'); setAgeFilter('All')
     setSuspSportFilter('All'); setSuspBatchFilter('All'); setSuspSearch('')
   }, [selectedSport, selectedBranch])
 
@@ -388,7 +399,7 @@ export default function Students() {
           <Search size={14} className="text-gray-400 flex-shrink-0" />
           <input
             className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full"
-            placeholder="Search name, parent, phone or ID…"
+            placeholder="Search name, parent, phone, ID or age…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -408,6 +419,10 @@ export default function Students() {
             <option value="All">All Accounts</option>
             <option value="pending">Pending ({pendingCount})</option>
             <option value="active">Activated ({activeCount})</option>
+          </select>
+          <select className="input flex-1 min-w-0" value={ageFilter} onChange={e => setAgeFilter(e.target.value)}>
+            <option value="All">All Ages</option>
+            {ages.map(a => <option key={a} value={String(a)}>{a} yrs</option>)}
           </select>
         </div>
         <span className="text-xs text-gray-400 font-medium hidden sm:inline">{filtered.length} results</span>
