@@ -684,8 +684,9 @@ export default function Drills() {
         await db.updateDrill(form.id, form)
         showToast('Drill updated')
       } else {
-        await db.createDrill({ ...form, academy_id: academyId, created_by: staffId, is_global: false, sport_name: sportName })
+        const newDrill = await db.createDrill({ ...form, academy_id: academyId, created_by: staffId, is_global: false, sport_name: sportName })
         showToast('Drill added to your library')
+        if (newDrill) setDrills(prev => [...prev, newDrill].sort((a, b) => a.name.localeCompare(b.name)))
       }
       setShowEditor(false)
       setEditing(null)
