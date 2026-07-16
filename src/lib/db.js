@@ -403,13 +403,13 @@ export async function deleteStudentDocument(docId) {
   if (filePath) await supabase.storage.from('student-documents').remove([filePath]).catch(() => {})
 }
 
-// Student-only — update own football profile (height/weight/foot/wing)
-export async function updateStudentSelfProfile(studentId, { heightCm, weightKg, preferredFoot, wing, crsNumber } = {}) {
+// Student-only — update own football profile (height/weight/foot/position)
+export async function updateStudentSelfProfile(studentId, { heightCm, weightKg, preferredFoot, position, crsNumber } = {}) {
   const payload = {}
   if (heightCm      !== undefined) payload.heightCm      = heightCm
   if (weightKg      !== undefined) payload.weightKg      = weightKg
   if (preferredFoot !== undefined) payload.preferredFoot = preferredFoot
-  if (wing          !== undefined) payload.wing          = wing
+  if (position      !== undefined) payload.position      = position
   if (crsNumber     !== undefined) payload.crsNumber     = crsNumber
   const { data, error } = await supabase.rpc('secure_update_student_self_profile', {
     p_student_id: studentId,

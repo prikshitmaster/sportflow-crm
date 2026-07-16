@@ -1377,7 +1377,6 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     heightCm:      s.heightCm      || s.height_cm     || '',
     weightKg:      s.weightKg      || s.weight_kg     || '',
     preferredFoot: s.preferredFoot || s.preferred_foot || '',
-    wing:          s.wing          || '',
   })
   const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
@@ -1536,11 +1535,11 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
                 </select>
               </div>
               <div>
-                <label className="label">Wing</label>
-                <select className="input" value={form.wing}
-                  onChange={e => set('wing', e.target.value)}>
+                <label className="label">Position</label>
+                <select className="input" value={form.position}
+                  onChange={e => set('position', e.target.value)}>
                   <option value="">—</option>
-                  <option>Left</option><option>Right</option><option>None</option>
+                  {FOOTBALL_POSITIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </div>
             </div>

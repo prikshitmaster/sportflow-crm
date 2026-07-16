@@ -215,7 +215,6 @@ export default function AssessmentReport({ asStudent = false }) {
                   <Field label="Height"         value={student.height_cm ? `${student.height_cm} cm` : '—'} />
                   <Field label="Weight"         value={student.weight_kg ? `${student.weight_kg} kg` : '—'} />
                   <Field label="Preferred Foot" value={student.preferred_foot || '—'} />
-                  <Field label="Wing"           value={student.wing || '—'} />
                 </div>
               </div>
             </div>
