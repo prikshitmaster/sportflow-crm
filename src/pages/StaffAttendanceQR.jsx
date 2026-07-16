@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import { QRCodeSVG } from 'qrcode.react'
 import { Clock, RefreshCw, Monitor } from 'lucide-react'
 import { toLocalDateStr } from '../lib/dates'
+import { saveOrShareFile } from '../lib/nativeSave'
 
 const CHECKIN_PREFIX = 'sportflow-staff:'
 
@@ -55,10 +56,7 @@ export default function StaffAttendanceQR() {
     img.onload = () => {
       ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 512, 512)
       ctx.drawImage(img, 0, 0, 512, 512)
-      const link = document.createElement('a')
-      link.download = 'staff-qr.png'
-      link.href = canvas.toDataURL('image/png')
-      link.click()
+      canvas.toBlob(blob => { if (blob) saveOrShareFile(blob, 'staff-qr.png') }, 'image/png')
     }
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)))
   }

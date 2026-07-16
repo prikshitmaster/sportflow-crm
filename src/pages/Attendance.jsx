@@ -7,6 +7,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import * as db from '../lib/db'
 import { fetchBatchEnrolments, fetchAllBatchEnrolments, fetchAttendanceForStudents } from '../lib/db'
+import { saveOrShareFile } from '../lib/nativeSave'
 
 // ── constants ──────────────────────────────────────────────────
 const STATUS_CYCLE = ['Present', 'Absent', 'Late', 'Leave']
@@ -218,10 +219,7 @@ async function exportToExcel({ students, batchName, fromDate, toDate, showToast 
     const filename = `Attendance_${batchName ? batchName.replace(/\s+/g,'_') + '_' : ''}${fromDate}_to_${toDate}.xlsx`
     const buffer = await wb.xlsx.writeBuffer()
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = filename; a.click()
-    URL.revokeObjectURL(url)
+    await saveOrShareFile(blob, filename)
     showToast('Excel exported successfully')
   } catch (err) { console.error(err); showToast('Export failed: ' + err.message, 'error') }
 }

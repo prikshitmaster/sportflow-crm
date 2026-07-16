@@ -277,8 +277,8 @@ export default function SportSelect() {
     setExportingFor(sport)
     try {
       const data = await exportSportData(sport)
-      downloadJSON(data)
-      downloadExcel(data)
+      await downloadJSON(data)
+      await downloadExcel(data)
       showToast(`Backup downloaded for ${sport}`, 'success')
     } catch (err) {
       showToast(`Export failed: ${err.message}`, 'error')

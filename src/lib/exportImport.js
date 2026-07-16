@@ -2,6 +2,7 @@ import XLSX from 'xlsx-js-style'
 import { todayStr, toLocalDateStr } from './dates'
 import { supabase } from './supabase'
 import * as db from './db'
+import { saveOrShareFile } from './nativeSave'
 
 // ── Export a single sport's data to JSON + Excel ──────────
 
@@ -92,23 +93,16 @@ export async function exportSportData(sportName) {
 
 // ── Download as JSON file ─────────────────────────────────
 
-export function downloadJSON(data) {
+export async function downloadJSON(data) {
   const date = toLocalDateStr()
   const filename = `${data.sport}_backup_${date}.json`
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  await saveOrShareFile(blob, filename)
 }
 
 // ── Download as Excel (multi-sheet) ──────────────────────
 
-export function downloadExcel(data) {
+export async function downloadExcel(data) {
   const wb = XLSX.utils.book_new()
 
   // Students sheet
@@ -181,7 +175,9 @@ export function downloadExcel(data) {
   }
 
   const date = toLocalDateStr()
-  XLSX.writeFile(wb, `${data.sport}_backup_${date}.xlsx`)
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  await saveOrShareFile(blob, `${data.sport}_backup_${date}.xlsx`)
 }
 
 // ── Shared helpers ────────────────────────────────────────────
@@ -739,11 +735,13 @@ export async function exportAcademyData(academyId, { download = true, dateFrom, 
   }
 
   const filename = `SportFlow-Export-${stamp}${sport ? '-' + sport : ''}.xlsx`
+  const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
   if (download) {
-    XLSX.writeFile(wb, filename)
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    await saveOrShareFile(blob, filename)
     return { filename }
   }
-  return { filename, buffer: XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) }
+  return { filename, buffer }
 }
 
 // ── Parse & validate an imported JSON file ────────────────

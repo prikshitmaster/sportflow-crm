@@ -11,6 +11,7 @@ import SendPayLinkModal from '../components/SendPayLinkModal'
 import WhatsAppBulkModal from '../components/WhatsAppBulkModal'
 import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/whatsapp'
 import { todayStr, toLocalDateStr } from '../lib/dates'
+import { saveOrShareFile } from '../lib/nativeSave'
 
 // ── Payment Receipt Printer ───────────────────────────────────
 
@@ -1080,12 +1081,7 @@ async function exportPaymentsToExcel({ records, studentMap, title, showToast }) 
 
     const buf = await wb.xlsx.writeBuffer()
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${(title||'payments').replace(/[^a-z0-9]/gi,'_')}_${todayStr()}.xlsx`
-    a.click()
-    URL.revokeObjectURL(url)
+    await saveOrShareFile(blob, `${(title||'payments').replace(/[^a-z0-9]/gi,'_')}_${todayStr()}.xlsx`)
     showToast('Excel exported successfully')
   } catch (err) {
     console.error(err)

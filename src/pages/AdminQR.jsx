@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
 import { QrCode, RefreshCw, Download, AlertTriangle, CheckCircle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import { saveOrShareFile } from '../lib/nativeSave'
 
 export default function AdminQR() {
   const { user, role, selectedBranch, sportBranches, showToast } = useApp()
@@ -82,10 +83,7 @@ export default function AdminQR() {
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, 512, 512)
       ctx.drawImage(img, 0, 0, 512, 512)
-      const link = document.createElement('a')
-      link.download = 'gate-qr.png'
-      link.href = canvas.toDataURL('image/png')
-      link.click()
+      canvas.toBlob(blob => { if (blob) saveOrShareFile(blob, 'gate-qr.png') }, 'image/png')
     }
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)))
   }
