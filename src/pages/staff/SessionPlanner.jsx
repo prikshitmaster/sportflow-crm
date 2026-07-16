@@ -6,7 +6,7 @@ import {
   deleteSessionPlan as dbDeleteSessionPlan, activateSessionPlan, completeSessionPlan,
   duplicateSessionPlan, createSessionPhase, updateSessionPhase, deleteSessionPhase,
   reorderSessionPhases, fetchDrills, fetchDrillFavorites, toggleDrillFavorite,
-  createDrill, updateDrill, deleteDrill,
+  createDrill, updateDrill, deleteDrill, uploadDrillDiagram,
 } from '../../lib/db'
 import { exportSessionPDF } from '../../lib/sessionPDF'
 import { toLocalDateStr } from '../../lib/dates'
@@ -15,7 +15,7 @@ import {
   Clock, Users, BookOpen, ChevronDown, ChevronUp, X, Save,
   CalendarDays, Trophy, ArrowUp, ArrowDown, FileDown, AlertCircle,
   Zap, Package, MapPin, TrendingUp, TrendingDown, Target, ListOrdered,
-  Heart, Search,
+  Heart, Search, Upload, ImagePlus,
 } from 'lucide-react'
 
 // ── Pitch SVG presets (mirrors Drills.jsx) ───────────────────────────────────
@@ -844,11 +844,26 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
   const [editing, setEditing] = useState(false)
   const [dur, setDur] = useState(phase.duration || 15)
   const [notes, setNotes] = useState(phase.coaching_points?.join('\n') || '')
+  const [diagramUrl, setDiagramUrl] = useState(phase.diagram_url || '')
+  const [uploading, setUploading] = useState(false)
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const url = await uploadDrillDiagram(file, `phase-${phase.id}`)
+      setDiagramUrl(url)
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const save = async () => {
     await onChange(phase.id, {
       duration: dur,
       coaching_points: notes ? notes.split('\n').filter(Boolean) : [],
+      diagram_url: diagramUrl || null,
     })
     setEditing(false)
   }
@@ -899,8 +914,26 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400 resize-none"
                 />
               </div>
+              {/* Ground map upload */}
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Ground map / diagram</label>
+                {diagramUrl ? (
+                  <div className="relative">
+                    <img src={diagramUrl} alt="Phase diagram" className="w-full rounded-xl object-contain bg-gray-100 max-h-40" />
+                    <button type="button" onClick={() => setDiagramUrl('')}
+                      className="absolute top-1.5 right-1.5 bg-white/80 rounded-full p-0.5 text-red-400 hover:text-red-600">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className={`flex items-center justify-center gap-2 w-full py-3 border border-dashed border-gray-300 rounded-xl text-xs text-gray-500 cursor-pointer hover:bg-gray-50 transition ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                    {uploading ? 'Uploading…' : <><ImagePlus size={14} /> Upload ground map</>}
+                  </label>
+                )}
+              </div>
               <div className="flex gap-2">
-                <button onClick={save} className="flex-1 py-2 bg-brand-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-1">
+                <button onClick={save} disabled={uploading} className="flex-1 py-2 bg-brand-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-1 disabled:opacity-50">
                   <Save size={13} /> Save
                 </button>
                 <button onClick={() => setEditing(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600">Cancel</button>
@@ -908,10 +941,10 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
             </div>
           ) : (
             <div className="space-y-0">
-              {/* ── Pitch diagram ── */}
-              {(drill?.diagram_url || drill?.diagram_preset) && (
+              {/* ── Pitch / ground map diagram ── */}
+              {(phase.diagram_url || drill?.diagram_url || drill?.diagram_preset) && (
                 <div className="w-full">
-                  <DrillDiagram url={drill.diagram_url} preset={drill.diagram_preset} />
+                  <DrillDiagram url={phase.diagram_url || drill?.diagram_url} preset={!phase.diagram_url ? drill?.diagram_preset : null} />
                 </div>
               )}
 
