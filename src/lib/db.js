@@ -2399,57 +2399,50 @@ export async function fetchSessionFeedback(date, batchId) {
 
 // Coach saves pulse for a batch — one upsert per student-rating tuple.
 // `records` shape: [{ studentId, effort, execution, focus }]
-export async function saveSessionPulse({ date, batchId, academyId, staffId, records }) {
+// Routed through secure_save_session_pulse (migration 0105) — writes to
+// session_feedback have no anon INSERT/UPDATE policy, RPC is the only path.
+export async function saveSessionPulse({ date, batchId, records }) {
   if (!records?.length) return
-  const rows = records.map(r => ({
-    date,
-    batch_id:   batchId ?? null,
-    student_id: r.studentId,
-    academy_id: academyId ?? null,
-    staff_id:   staffId   ?? null,
-    effort:     r.effort,
-    execution:  r.execution,
-    focus:      r.focus,
-  }))
-  const { error } = await supabase
-    .from('session_feedback')
-    .upsert(rows, { onConflict: 'date,student_id,batch_id' })
+  const { error } = await supabase.rpc('secure_save_session_pulse', {
+    p_date:     date,
+    p_batch_id: batchId ?? null,
+    p_records:  records.map(r => ({ studentId: r.studentId, effort: r.effort, execution: r.execution, focus: r.focus })),
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
 // Coach adds detailed 4-corner spotlight + note for one student — overlays
 // onto the same row as their pulse for that date/batch.
-export async function upsertSpotlight({ date, batchId, academyId, staffId, studentId, technical, tactical, physical, mental, note }) {
-  const { error } = await supabase
-    .from('session_feedback')
-    .upsert({
-      date,
-      batch_id:    batchId ?? null,
-      student_id:  studentId,
-      academy_id:  academyId ?? null,
-      staff_id:    staffId   ?? null,
-      technical, tactical, physical, mental,
-      note:        note || null,
-      spotlight_at: new Date().toISOString(),
-    }, { onConflict: 'date,student_id,batch_id' })
+// Routed through secure_upsert_spotlight (migration 0105).
+export async function upsertSpotlight({ date, batchId, studentId, technical, tactical, physical, mental, note }) {
+  const { error } = await supabase.rpc('secure_upsert_spotlight', {
+    p_date:       date,
+    p_batch_id:   batchId ?? null,
+    p_student_id: studentId,
+    p_technical:  technical,
+    p_tactical:   tactical,
+    p_physical:   physical,
+    p_mental:     mental,
+    p_note:       note || null,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
 // Student saves their own post-session reflection. Lives on the same row;
 // keyed by date + student + their current batch (or null when no batch).
-export async function saveSelfReflection({ date, batchId, academyId, studentId, energy, performance, focus }) {
-  const { error } = await supabase
-    .from('session_feedback')
-    .upsert({
-      date,
-      batch_id:         batchId ?? null,
-      student_id:       studentId,
-      academy_id:       academyId ?? null,
-      self_energy:      energy,
-      self_performance: performance,
-      self_focus:       focus,
-      self_at:          new Date().toISOString(),
-    }, { onConflict: 'date,student_id,batch_id' })
+// Routed through secure_save_self_reflection (migration 0105).
+export async function saveSelfReflection({ date, batchId, studentId, energy, performance, focus }) {
+  const { error } = await supabase.rpc('secure_save_self_reflection', {
+    p_date:        date,
+    p_batch_id:    batchId ?? null,
+    p_student_id:  studentId,
+    p_energy:      energy,
+    p_performance: performance,
+    p_focus:       focus,
+    p_token:       _sessionToken(),
+  })
   if (error) throw error
 }
 
