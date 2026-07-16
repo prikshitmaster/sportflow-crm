@@ -643,7 +643,7 @@ function StaffDrillLibrary({ academyId, coachId, sportName }) {
         await updateDrill(form.id, form)
         showToast('Drill updated')
       } else {
-        await createDrill({ ...form, academy_id: academyId, created_by: coachId, is_global: false, sport_name: sportName })
+        await createDrill({ ...form, academy_id: academyId, is_global: false, sport_name: sportName })
         showToast('Drill added to library')
       }
       setShowEditor(false)
