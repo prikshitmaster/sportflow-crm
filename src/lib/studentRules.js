@@ -15,6 +15,11 @@ import { toLocalDateStr } from './dates'
 //       isOverdue       — immediate (paidTill < today), Students badge usage
 //       isOutstanding   — month-aligned (paidTill < firstOfMonth), Reports/AR
 //     Keep them distinct; do not merge.
+//   - Suspended (paused) students: isOutstanding/daysOverdue freeze their
+//     comparison date at suspended_since instead of the live today/firstOfMonth,
+//     via effectiveAnchor(). This stops "owed" figures from growing while a
+//     student is paused — pre-existing back-dues from before the pause still
+//     show, but no new dues accrue for the paused months themselves.
 
 const MS_PER_DAY = 86_400_000
 
@@ -51,25 +56,47 @@ export function isNoPayment(s) {
 }
 
 /**
+ * Comparison date to use for outstanding/overdue math. For a Suspended
+ * student, freeze at suspended_since (first-of-that-month) so dues stop
+ * accruing while paused — pre-existing back-dues from before the pause
+ * still count, but the paused months themselves don't add new "owed" time.
+ * Non-suspended students (or a Suspended row missing suspendedSince) just
+ * use the live anchor unchanged.
+ */
+function effectiveAnchor(s, liveAnchor) {
+  if (s.status === 'Suspended' && s.suspendedSince) {
+    const susp = firstOfMonthIso(new Date(s.suspendedSince + 'T00:00:00'))
+    return susp < liveAnchor ? susp : liveAnchor
+  }
+  return liveAnchor
+}
+
+/**
  * Reports / Payments / Dashboard "outstanding" rule.
- * A student (Active OR Suspended) owes money for the current month when
- * paidTill is strictly before firstOfMonth. Suspended students are included
- * because they still owe back-dues — that's how the AR side of the product
- * works.
+ * A student (Active OR Suspended) owes money when paidTill is strictly
+ * before their effective anchor date. Suspended students are included
+ * because they still owe back-dues accrued before the pause — that's how
+ * the AR side of the product works — but effectiveAnchor() stops the clock
+ * at suspended_since so paused months themselves don't add new dues.
  */
 export function isOutstanding(s, firstOfMonth = firstOfMonthIso()) {
   if (s.status !== 'Active' && s.status !== 'Suspended') return false
-  return !!s.paidTill && s.paidTill < firstOfMonth
+  return !!s.paidTill && s.paidTill < effectiveAnchor(s, firstOfMonth)
 }
 
 /**
  * Days since paidTill (0 if not overdue, null if no paidTill).
  * Uses calendar-day floor; matches the existing Reports.jsx formula
- * Math.floor((today - paidTill) / 86400000).
+ * Math.floor((today - paidTill) / 86400000). For Suspended students, the
+ * comparison date is frozen at suspended_since so the ageing count stops
+ * climbing while the student is paused.
  */
 export function daysOverdue(s, today = new Date()) {
   if (!s.paidTill) return null
-  const ms = (today instanceof Date ? today : new Date(today)) - new Date(s.paidTill + 'T00:00:00')
+  const liveToday = today instanceof Date ? today : new Date(today)
+  const anchorStr = effectiveAnchor(s, toLocalDateStr(liveToday))
+  const anchor = anchorStr === toLocalDateStr(liveToday) ? liveToday : new Date(anchorStr + 'T00:00:00')
+  const ms = anchor - new Date(s.paidTill + 'T00:00:00')
   if (ms <= 0) return 0
   return Math.floor(ms / MS_PER_DAY)
 }
