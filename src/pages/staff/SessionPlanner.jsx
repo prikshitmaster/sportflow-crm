@@ -10,6 +10,7 @@ import {
   fetchWeeklySchedules, createWeeklySchedule, updateWeeklySchedule, deleteWeeklySchedule,
 } from '../../lib/db'
 import { exportSessionPDF } from '../../lib/sessionPDF'
+import { exportWeeklySchedulePDF } from '../../lib/weeklySchedulePDF'
 import { toLocalDateStr } from '../../lib/dates'
 import {
   Plus, ChevronLeft, Edit2, Trash2, Check, Copy,
@@ -1520,6 +1521,15 @@ function weekRangeLabel(weekStart) {
   return `${fmt(start)} to ${fmt(end)}`
 }
 
+// A schedule is "past" once its Saturday has fully gone by — it then moves
+// from the Weekly tab into History, mirroring how completed sessions do.
+function isPastWeek(schedule) {
+  if (!schedule?.week_start) return false
+  const end = new Date(schedule.week_start + 'T00:00:00')
+  end.setDate(end.getDate() + 5)
+  return toLocalDateStr(end) < toLocalDateStr()
+}
+
 function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving, onClose, onSave, onDelete }) {
   const isEdit = !!schedule?.id
   const [form, setForm] = useState(() => {
@@ -1565,9 +1575,17 @@ function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving
 
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Weekly Schedule' : 'New Weekly Schedule'}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
-            <X size={16} className="text-gray-500"/>
-          </button>
+          <div className="flex items-center gap-2">
+            {isEdit && (
+              <button type="button" onClick={() => exportWeeklySchedulePDF({ schedule: form })}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition">
+                <FileDown size={13} /> Export PDF
+              </button>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
+              <X size={16} className="text-gray-500"/>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
@@ -1706,6 +1724,9 @@ function StaffWeeklySchedules({ academyId, coachId, coachName, batches }) {
   }
 
   const batchName = id => batches.find(b => String(b.id) === String(id))?.name || '—'
+  // Past weeks move to the History tab (PastWeeklySchedules below), mirroring
+  // how completed sessions leave the Upcoming list.
+  const upcomingSchedules = schedules.filter(s => !isPastWeek(s))
 
   return (
     <div className="px-4 space-y-3">
@@ -1724,13 +1745,13 @@ function StaffWeeklySchedules({ academyId, coachId, coachName, batches }) {
 
       {loading ? (
         [1, 2].map(i => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)
-      ) : schedules.length === 0 ? (
+      ) : upcomingSchedules.length === 0 ? (
         <div className="text-center py-12">
           <CalendarDays size={32} className="mx-auto text-gray-300 mb-3" />
           <p className="text-sm font-semibold text-gray-500">No weekly schedules yet</p>
         </div>
       ) : (
-        schedules.map(s => (
+        upcomingSchedules.map(s => (
           <button key={s.id} onClick={() => setEditing(s)}
             className="w-full text-left bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition">
             <p className="font-bold text-gray-900 text-sm">{s.team_name || batchName(s.batch_id)}</p>
@@ -1753,6 +1774,99 @@ function StaffWeeklySchedules({ academyId, coachId, coachName, batches }) {
         />
       )}
     </div>
+  )
+}
+
+// Read/edit/export view of weekly schedules whose week has already ended —
+// rendered inside the History tab, alongside completed sessions.
+function PastWeeklySchedules({ academyId, coachId, coachName, batches }) {
+  const [schedules, setSchedules] = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [editing, setEditing]     = useState(null)
+  const [saving, setSaving]       = useState(false)
+  const [toast, setToast]         = useState(null)
+
+  const load = useCallback(() => {
+    if (!academyId) return
+    setLoading(true)
+    fetchWeeklySchedules({ academyId, coachId })
+      .then(setSchedules)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [academyId, coachId])
+
+  useEffect(() => { load() }, [load])
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 2500)
+  }
+
+  const handleSave = async (payload) => {
+    setSaving(true)
+    try {
+      await updateWeeklySchedule(editing.id, payload)
+      setEditing(null)
+      load()
+      showToast('Weekly schedule saved')
+    } catch (err) {
+      showToast(err.message || 'Save failed', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!editing?.id) return
+    if (!confirm('Delete this weekly schedule?')) return
+    try {
+      await deleteWeeklySchedule(editing.id)
+      setEditing(null)
+      load()
+      showToast('Weekly schedule deleted')
+    } catch (err) {
+      showToast(err.message || 'Delete failed', 'error')
+    }
+  }
+
+  const batchName = id => batches.find(b => String(b.id) === String(id))?.name || '—'
+  const pastSchedules = schedules.filter(isPastWeek)
+
+  if (loading) return [1, 2].map(i => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)
+  if (pastSchedules.length === 0) return null
+
+  return (
+    <>
+      {toast && (
+        <div className={`fixed top-5 right-5 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white ${
+          toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'
+        }`}>
+          {toast.msg}
+        </div>
+      )}
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-wide pt-2">Past Weekly Schedules</p>
+      {pastSchedules.map(s => (
+        <button key={s.id} onClick={() => setEditing(s)}
+          className="w-full text-left bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition">
+          <p className="font-bold text-gray-900 text-sm">{s.team_name || batchName(s.batch_id)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{weekRangeLabel(s.week_start)} · {batchName(s.batch_id)}</p>
+          {s.coach_name && <p className="text-xs text-gray-400 mt-0.5">Coach: {s.coach_name}</p>}
+        </button>
+      ))}
+
+      {editing && (
+        <WeeklyScheduleFormModal
+          schedule={editing}
+          batches={batches}
+          coachId={coachId}
+          coachName={coachName}
+          saving={saving}
+          onClose={() => setEditing(null)}
+          onSave={handleSave}
+          onDelete={handleDelete}
+        />
+      )}
+    </>
   )
 }
 
@@ -1933,6 +2047,14 @@ export default function SessionPlanner() {
                 </div>
               </div>
             ))
+          )}
+          {tab === 'completed' && (
+            <PastWeeklySchedules
+              academyId={academyId}
+              coachId={coachId}
+              coachName={user?.name}
+              batches={batches}
+            />
           )}
         </div>
       )}
