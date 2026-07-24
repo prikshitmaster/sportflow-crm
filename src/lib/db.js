@@ -2786,6 +2786,57 @@ export async function reorderSessionPhases(updates) {
   if (error) throw error
 }
 
+// ── WEEKLY SCHEDULES ───────────────────────────────────────────────────────
+// Coach tool, deliberately separate from session_plans/session_phases above —
+// a simple weekly overview grid (Team Name / week range / Coach Name, then a
+// Mon-Sat x Objective/Technical/Tactical/Match table of free-text cells).
+// See supabase/migrations/0106_weekly_schedules.sql.
+
+export async function fetchWeeklySchedules({ academyId, batchId, coachId } = {}) {
+  let q = supabase.from('weekly_schedules').select('*').order('week_start', { ascending: false })
+  if (academyId) q = q.eq('academy_id', academyId)
+  if (batchId)   q = q.eq('batch_id', batchId)
+  if (coachId)   q = q.eq('coach_id', coachId)
+  const { data, error } = await q
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function fetchWeeklySchedule(id) {
+  const { data, error } = await supabase.from('weekly_schedules')
+    .select('*').eq('id', id).single()
+  if (error) throw error
+  return data
+}
+
+export async function createWeeklySchedule(payload) {
+  // jsonb_populate_record bypasses the id column's DEFAULT gen_random_uuid()
+  const { data, error } = await supabase.rpc('secure_create_weekly_schedule', {
+    p_payload: { id: crypto.randomUUID(), ...payload },
+    p_token:   _sessionToken(),
+  })
+  if (error) throw error
+  return data
+}
+
+export async function updateWeeklySchedule(id, updates) {
+  const { data, error } = await supabase.rpc('secure_update_weekly_schedule', {
+    p_id:      id,
+    p_payload: updates,
+    p_token:   _sessionToken(),
+  })
+  if (error) throw error
+  return data
+}
+
+export async function deleteWeeklySchedule(id) {
+  const { error } = await supabase.rpc('secure_delete_weekly_schedule', {
+    p_id:    id,
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+}
+
 // ============================================================
 // Parents (added migration 0057)
 // ============================================================

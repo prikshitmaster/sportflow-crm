@@ -7,6 +7,7 @@ import {
   duplicateSessionPlan, createSessionPhase, updateSessionPhase, deleteSessionPhase,
   reorderSessionPhases, fetchDrills, fetchDrillFavorites, toggleDrillFavorite,
   createDrill, updateDrill, deleteDrill, uploadDrillDiagram,
+  fetchWeeklySchedules, createWeeklySchedule, updateWeeklySchedule, deleteWeeklySchedule,
 } from '../../lib/db'
 import { exportSessionPDF } from '../../lib/sessionPDF'
 import { toLocalDateStr } from '../../lib/dates'
@@ -1483,6 +1484,278 @@ function NewSessionModal({ batches, academyId, coachId, onCreated, onClose }) {
   )
 }
 
+// ── Weekly Training Schedule ───────────────────────────────────────────────────
+// A separate, simpler coach tool from the drill/phase session builder above —
+// a printable-style weekly overview grid (Team Name / week range / Coach Name,
+// then Mon-Sat x Session Objective/Technical/Tactical/Match, all free text).
+const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const SCHEDULE_ROWS = [
+  { key: 'objective', label: 'Session Objective' },
+  { key: 'technical', label: 'Technical' },
+  { key: 'tactical',  label: 'Tactical' },
+  { key: 'match',     label: 'Match' },
+]
+
+function emptyGrid() {
+  const grid = {}
+  for (const day of WEEK_DAYS) grid[day] = { objective: '', technical: '', tactical: '', match: '' }
+  return grid
+}
+
+// Snaps any date to that week's Monday (ISO weekday 1) so the grid is always
+// exactly 6 columns and the range label always reads e.g. "13 July to 18 July".
+function mondayOf(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00')
+  const day = d.getDay() // 0=Sun..6=Sat
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day))
+  return toLocalDateStr(d)
+}
+
+function weekRangeLabel(weekStart) {
+  if (!weekStart) return ''
+  const start = new Date(weekStart + 'T00:00:00')
+  const end = new Date(start)
+  end.setDate(end.getDate() + 5)
+  const fmt = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
+  return `${fmt(start)} to ${fmt(end)}`
+}
+
+function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving, onClose, onSave, onDelete }) {
+  const isEdit = !!schedule?.id
+  const [form, setForm] = useState(() => {
+    if (schedule) return { ...schedule, grid: { ...emptyGrid(), ...schedule.grid } }
+    const defaultBatch = batches[0]
+    return {
+      batch_id:   defaultBatch?.id || '',
+      team_name:  defaultBatch?.name || '',
+      coach_id:   coachId || null,
+      coach_name: coachName || '',
+      week_start: mondayOf(toLocalDateStr()),
+      grid:       emptyGrid(),
+    }
+  })
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const setCell = (day, rowKey, value) => {
+    setForm(f => ({ ...f, grid: { ...f.grid, [day]: { ...f.grid[day], [rowKey]: value } } }))
+  }
+
+  const handleBatchChange = (batchId) => {
+    const batch     = batches.find(b => String(b.id) === String(batchId))
+    const prevBatch = batches.find(b => String(b.id) === String(form.batch_id))
+    // Only auto-replace team_name if it still matches the previous batch's
+    // name — once the coach types a custom override, switching batches again
+    // won't clobber it.
+    const shouldUpdateName = !form.team_name || form.team_name === prevBatch?.name
+    setForm(f => ({
+      ...f,
+      batch_id:  batchId,
+      team_name: shouldUpdateName ? (batch?.name || f.team_name) : f.team_name,
+    }))
+  }
+
+  const canSave = !!(form.team_name.trim() && form.batch_id && form.week_start)
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative min-h-full flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="relative w-full sm:max-w-3xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[95vh]">
+
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Weekly Schedule' : 'New Weekly Schedule'}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
+            <X size={16} className="text-gray-500"/>
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Batch *</label>
+              <select value={form.batch_id} onChange={e => handleBatchChange(e.target.value)}
+                className="input w-full mt-1">
+                {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Team Name *</label>
+              <input value={form.team_name} onChange={e => set('team_name', e.target.value)}
+                className="input w-full mt-1" />
+            </div>
+            <div>
+              <label className="label">Week Starting</label>
+              <input type="date" value={form.week_start}
+                onChange={e => set('week_start', mondayOf(e.target.value))}
+                className="input w-full mt-1" />
+              <p className="text-xs text-gray-400 mt-1">{weekRangeLabel(form.week_start)}</p>
+            </div>
+            <div>
+              <label className="label">Coach Name</label>
+              <input value={form.coach_name} onChange={e => set('coach_name', e.target.value)}
+                className="input w-full mt-1" />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto -mx-5 px-5">
+            <table className="w-full border-collapse text-xs min-w-[640px]">
+              <thead>
+                <tr>
+                  <th className="bg-gray-900 text-white text-left px-3 py-2 rounded-tl-lg">Day</th>
+                  {WEEK_DAYS.map((day, i) => (
+                    <th key={day} className={`bg-gray-900 text-white px-3 py-2 font-semibold ${i === WEEK_DAYS.length - 1 ? 'rounded-tr-lg' : ''}`}>
+                      {day}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {SCHEDULE_ROWS.map((row, ri) => (
+                  <tr key={row.key} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="bg-gray-900 text-white font-semibold px-3 py-2 whitespace-nowrap">{row.label}</td>
+                    {WEEK_DAYS.map(day => (
+                      <td key={day} className="border border-gray-200 p-1">
+                        <input
+                          value={form.grid[day]?.[row.key] ?? ''}
+                          onChange={e => setCell(day, row.key, e.target.value)}
+                          className="w-full text-center text-xs px-1 py-1.5 outline-none bg-transparent"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100 flex items-center justify-between gap-3">
+          {isEdit ? (
+            <button type="button" onClick={onDelete} className="text-sm text-red-500 font-semibold hover:underline">
+              Delete
+            </button>
+          ) : <div />}
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+              Cancel
+            </button>
+            <button type="button" onClick={() => canSave && onSave(form)} disabled={saving || !canSave}
+              className="px-5 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-700 disabled:opacity-50 transition flex items-center gap-2">
+              {saving && <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"/>}
+              {isEdit ? 'Save Changes' : 'Create'}
+            </button>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+  )
+}
+
+function StaffWeeklySchedules({ academyId, coachId, coachName, batches }) {
+  const [schedules, setSchedules] = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [editing, setEditing]     = useState(null) // null = closed; {} = new; row = editing existing
+  const [saving, setSaving]       = useState(false)
+  const [toast, setToast]         = useState(null)
+
+  const load = useCallback(() => {
+    if (!academyId) return
+    setLoading(true)
+    fetchWeeklySchedules({ academyId, coachId })
+      .then(setSchedules)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [academyId, coachId])
+
+  useEffect(() => { load() }, [load])
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 2500)
+  }
+
+  const handleSave = async (payload) => {
+    setSaving(true)
+    try {
+      if (editing?.id) await updateWeeklySchedule(editing.id, payload)
+      else await createWeeklySchedule(payload)
+      setEditing(null)
+      load()
+      showToast('Weekly schedule saved')
+    } catch (err) {
+      showToast(err.message || 'Save failed', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!editing?.id) return
+    if (!confirm('Delete this weekly schedule?')) return
+    try {
+      await deleteWeeklySchedule(editing.id)
+      setEditing(null)
+      load()
+      showToast('Weekly schedule deleted')
+    } catch (err) {
+      showToast(err.message || 'Delete failed', 'error')
+    }
+  }
+
+  const batchName = id => batches.find(b => String(b.id) === String(id))?.name || '—'
+
+  return (
+    <div className="px-4 space-y-3">
+      {toast && (
+        <div className={`fixed top-5 right-5 z-50 px-4 py-2.5 rounded-xl shadow-lg text-sm font-semibold text-white ${
+          toast.type === 'error' ? 'bg-red-500' : 'bg-emerald-500'
+        }`}>
+          {toast.msg}
+        </div>
+      )}
+
+      <button onClick={() => setEditing({})}
+        className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-semibold shadow-sm">
+        <Plus size={15} /> New Weekly Schedule
+      </button>
+
+      {loading ? (
+        [1, 2].map(i => <div key={i} className="h-16 bg-gray-100 rounded-2xl animate-pulse" />)
+      ) : schedules.length === 0 ? (
+        <div className="text-center py-12">
+          <CalendarDays size={32} className="mx-auto text-gray-300 mb-3" />
+          <p className="text-sm font-semibold text-gray-500">No weekly schedules yet</p>
+        </div>
+      ) : (
+        schedules.map(s => (
+          <button key={s.id} onClick={() => setEditing(s)}
+            className="w-full text-left bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-sm transition">
+            <p className="font-bold text-gray-900 text-sm">{s.team_name || batchName(s.batch_id)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{weekRangeLabel(s.week_start)} · {batchName(s.batch_id)}</p>
+            {s.coach_name && <p className="text-xs text-gray-400 mt-0.5">Coach: {s.coach_name}</p>}
+          </button>
+        ))
+      )}
+
+      {editing && (
+        <WeeklyScheduleFormModal
+          schedule={editing.id ? editing : null}
+          batches={batches}
+          coachId={coachId}
+          coachName={coachName}
+          saving={saving}
+          onClose={() => setEditing(null)}
+          onSave={handleSave}
+          onDelete={handleDelete}
+        />
+      )}
+    </div>
+  )
+}
+
 // ── Main SessionPlanner ───────────────────────────────────────────────────────
 export default function SessionPlanner() {
   const { user, batches: ctxBatches, selectedSport, sportBranches } = useApp()
@@ -1552,7 +1825,7 @@ export default function SessionPlanner() {
           <h1 className="text-xl font-bold text-gray-900">My Sessions</h1>
           <p className="text-xs text-gray-400 mt-0.5">Build and manage training plans</p>
         </div>
-        {tab !== 'drills' && (
+        {tab !== 'drills' && tab !== 'weekly' && (
           <button onClick={() => setNewModal(true)}
             className="flex items-center gap-1.5 px-4 py-2 bg-brand-600 text-white rounded-xl text-sm font-semibold shadow-sm">
             <Plus size={15} /> New
@@ -1566,6 +1839,7 @@ export default function SessionPlanner() {
           {[
             { key: 'upcoming',  label: `Upcoming (${upcoming.length})` },
             { key: 'completed', label: `History (${completed.length})` },
+            { key: 'weekly',    label: 'Weekly' },
             { key: 'drills',    label: 'Drill Library' },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
@@ -1587,8 +1861,18 @@ export default function SessionPlanner() {
         />
       )}
 
+      {/* Weekly Schedule tab — separate tool from the drill/phase session builder */}
+      {tab === 'weekly' && (
+        <StaffWeeklySchedules
+          academyId={academyId}
+          coachId={coachId}
+          coachName={user?.name}
+          batches={batches}
+        />
+      )}
+
       {/* Session list tabs */}
-      {tab !== 'drills' && (
+      {tab !== 'drills' && tab !== 'weekly' && (
         <div className="px-4 space-y-3">
           {loading ? (
             [1,2,3].map(i => <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse" />)
