@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense } from 'react'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import BottomNav from './BottomNav'
+import AiAssistant from './AiAssistant'
 
 // Lightweight skeleton — only the page area pulses while a chunk loads.
 // Sidebar + Header stay visible, so the user never sees a blank screen.
@@ -81,6 +82,8 @@ export default function Layout() {
       <div className="lg:hidden">
         <BottomNav />
       </div>
+
+      <AiAssistant />
     </div>
   )
 }

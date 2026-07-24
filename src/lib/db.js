@@ -2876,6 +2876,35 @@ export async function createRazorpayOrder({ studentId, amount, monthsCovered = 1
   return json
 }
 
+// Frontend → ai-assistant edge function. Owner/staff only (enforced server-side
+// via current_actor). `history` is the recent conversation (excluding the new
+// question) as [{role: 'user'|'assistant', content}], so follow-ups like
+// "how much" can resolve against what was just discussed. `branchId` is the
+// branch currently being viewed (owners) — branch-locked staff are scoped
+// server-side regardless of what's sent here, so this is not a trust boundary.
+// Returns { answer } or throws with the server's error message.
+export async function askAiAssistant(question, history = [], branchId = null) {
+  const sessionToken = _sessionToken()
+  const { data: { session } } = await supabase.auth.getSession()
+  const authHeader = session?.access_token
+    ? `Bearer ${session.access_token}`
+    : `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+
+  const resp = await fetch(`${_functionsBase()}/ai-assistant`, {
+    method: 'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': authHeader,
+      'apikey':        import.meta.env.VITE_SUPABASE_ANON_KEY,
+      ...(sessionToken ? { 'x-session-token': sessionToken } : {}),
+    },
+    body: JSON.stringify({ question, history, branchId }),
+  })
+  const json = await resp.json().catch(() => ({}))
+  if (!resp.ok) throw new Error(json?.error || 'AI assistant failed')
+  return json.answer
+}
+
 // Owner — read/save Razorpay config for the academy
 export async function fetchPaymentConfig() {
   const { data, error } = await supabase.rpc('secure_get_payment_config', { p_token: _sessionToken() })

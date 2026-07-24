@@ -3,6 +3,7 @@ import { Suspense, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut, ClipboardList, UserPlus, CalendarDays } from 'lucide-react'
 import NotificationBell from './NotificationBell'
+import AiAssistant from './AiAssistant'
 
 function PageSkeleton() {
   return (
@@ -140,6 +141,8 @@ export default function StaffLayout() {
           </NavLink>
         ))}
       </nav>
+
+      {isOffice && <AiAssistant />}
     </div>
   )
 }
