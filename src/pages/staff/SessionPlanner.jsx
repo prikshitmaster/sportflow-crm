@@ -363,8 +363,25 @@ function StaffDrillEditorModal({ drill, onClose, onSave, saving }) {
   const [form, setForm] = useState(() => drill ? { ...EMPTY_DRILL_FORM, ...drill } : { ...EMPTY_DRILL_FORM })
   const [errors, setErrors] = useState({})
   const [eqInput, setEqInput] = useState('')
+  const [uploadingDiagram, setUploadingDiagram] = useState(false)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleDiagramUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingDiagram(true)
+    try {
+      const url = await uploadDrillDiagram(file, form.id || `draft-${Date.now()}`)
+      set('diagram_url', url)
+      set('diagram_preset', '')
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setUploadingDiagram(false)
+      e.target.value = ''
+    }
+  }
 
   const addEquipment = () => {
     const v = eqInput.trim()
@@ -537,11 +554,22 @@ function StaffDrillEditorModal({ drill, onClose, onSave, saving }) {
                 </button>
               ))}
             </div>
-            {(form.diagram_url || form.diagram_preset) && (
-              <button type="button" onClick={() => { set('diagram_url', ''); set('diagram_preset', '') }}
-                className="text-xs text-red-500 hover:underline">
-                Remove diagram
-              </button>
+            <div className="flex items-center gap-3">
+              <label className={`flex items-center gap-2 px-4 py-2 rounded-xl border border-dashed border-gray-300 text-xs font-semibold text-gray-500 cursor-pointer hover:bg-gray-50 transition ${uploadingDiagram ? 'opacity-50 pointer-events-none' : ''}`}>
+                {uploadingDiagram ? <><span className="w-3 h-3 border-2 border-gray-400 border-t-brand-600 rounded-full animate-spin"/>Uploading…</> : <><Upload size={13}/> Upload custom image</>}
+                <input type="file" accept="image/*" className="hidden" onChange={handleDiagramUpload} />
+              </label>
+              {(form.diagram_url || form.diagram_preset) && (
+                <button type="button" onClick={() => { set('diagram_url', ''); set('diagram_preset', '') }}
+                  className="text-xs text-red-500 hover:underline">
+                  Remove diagram
+                </button>
+              )}
+            </div>
+            {(form.diagram_preset || form.diagram_url) && (
+              <div className="mt-3 max-w-xs rounded-xl overflow-hidden border border-gray-200">
+                <DrillDiagram url={form.diagram_url} preset={form.diagram_url ? null : form.diagram_preset} />
+              </div>
             )}
           </div>
 
