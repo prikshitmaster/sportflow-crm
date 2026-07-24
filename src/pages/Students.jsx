@@ -12,10 +12,10 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from './Payments'
-import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition } from '../lib/db'
+import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition, fetchAttendanceForMonth } from '../lib/db'
 import StudentAvatar from '../components/StudentAvatar'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
-import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment } from '../lib/studentRules'
+import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment, isLowAttendanceUnpaid as ruleIsLowAttendanceUnpaid } from '../lib/studentRules'
 import { toLocalDateStr } from '../lib/dates'
 
 const accountBadge = {
@@ -118,6 +118,23 @@ export default function Students() {
       .catch(() => {})
   }, [user?.academyId])
 
+  // Current-month attendance session counts, for the "Low Attendance" hint badge.
+  // studentId → number of Present/Late days this month.
+  const [attendanceCounts, setAttendanceCounts] = useState({})
+  useEffect(() => {
+    if (!user?.academyId) return
+    const now = new Date()
+    fetchAttendanceForMonth(now.getFullYear(), now.getMonth())
+      .then(byStudent => {
+        const counts = {}
+        for (const [studentId, days] of Object.entries(byStudent)) {
+          counts[studentId] = Object.values(days).filter(st => st === 'Present' || st === 'Late').length
+        }
+        setAttendanceCounts(counts)
+      })
+      .catch(() => {})
+  }, [user?.academyId])
+
   // Build map: studentId → [batchName, ...]  (all batches from student_batches)
   const studentBatchMap = allMbRows.reduce((acc, r) => {
     if (!acc[r.student_id]) acc[r.student_id] = []
@@ -133,6 +150,7 @@ export default function Students() {
   // Logic moved to lib/studentRules; locals are thin wrappers so JSX call sites stay untouched.
   const isOverdue   = (s) => ruleIsOverdue(s, today)
   const isNoPayment = ruleIsNoPayment
+  const isLowAttendanceUnpaid = (s) => ruleIsLowAttendanceUnpaid(s, attendanceCounts[s.id], firstOfMonth)
 
   const activeStudents    = useMemo(() => students.filter(s => s.status !== 'Suspended'), [students])
   const suspendedStudents = useMemo(() => students.filter(s => s.status === 'Suspended'), [students])
@@ -498,6 +516,11 @@ export default function Students() {
                       <span className={`badge ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
                       {isOverdue(s)   && <span className="badge badge-yellow text-[10px]">Overdue</span>}
                       {isNoPayment(s) && <span className="badge badge-gray   text-[10px]">No Payment</span>}
+                      {isLowAttendanceUnpaid(s) && (
+                        <span className="badge badge-orange text-[10px]" title="Low attendance this month and fees unpaid — consider marking Suspended instead of charging">
+                          Low Attendance — Consider Skip
+                        </span>
+                      )}
                     </div>
                   </td>
                   {!isStaffRole && (
@@ -584,6 +607,11 @@ export default function Students() {
                   <span className={`badge text-[10px] ${s.status === 'Active' ? 'badge-green' : 'badge-gray'}`}>{s.status}</span>
                   {isOverdue(s) && <span className="badge badge-yellow text-[10px]">Overdue</span>}
                   {isNoPayment(s) && <span className="badge badge-gray text-[10px]">No Payment</span>}
+                  {isLowAttendanceUnpaid(s) && (
+                    <span className="badge badge-orange text-[10px]" title="Low attendance this month and fees unpaid — consider marking Suspended instead of charging">
+                      Low Attendance — Consider Skip
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">

@@ -86,6 +86,7 @@
   .badge-blue   { @apply badge bg-brand-50 text-brand-700; }
   .badge-gray   { @apply badge bg-gray-100 text-gray-600; }
   .badge-purple { @apply badge bg-purple-50 text-purple-700; }
+  .badge-orange { @apply badge bg-orange-50 text-orange-700; }
 }
 
 /* Desktop scrollbars only */

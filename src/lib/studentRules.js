@@ -102,6 +102,22 @@ export function daysOverdue(s, today = new Date()) {
 }
 
 /**
+ * "Low attendance, fee unpaid" hint — an Active student who is outstanding
+ * for the current month AND has fewer than `threshold` attended sessions
+ * this month. Surfaced as a suggestion for staff to consider marking them
+ * Suspended (skipped) instead of chasing a normal payment — low-attendance
+ * unpaid students are often on an informal pause the academy hasn't
+ * recorded yet. `sessionCount` is the number of Present/Late days this
+ * month; pass null/undefined when attendance hasn't loaded yet (returns
+ * false rather than guessing).
+ */
+export function isLowAttendanceUnpaid(s, sessionCount, firstOfMonth = firstOfMonthIso(), threshold = 4) {
+  if (s.status !== 'Active') return false
+  if (sessionCount == null) return false
+  return sessionCount < threshold && isOutstanding(s, firstOfMonth)
+}
+
+/**
  * Ageing bucket label for a number of days overdue.
  * Matches Reports.jsx exactly: 1–30, 31–60, 61–90, 90+.
  */
