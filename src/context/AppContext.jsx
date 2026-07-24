@@ -45,6 +45,9 @@ import { toLocalDateStr } from '../lib/dates'
 // Used to refuse rapid duplicate submissions before any network round-trip.
 const _paymentInFlight = new Set()
 
+// Coach trial recommendation → human label, used in the office notification
+const TRIAL_REC_LABEL = { accept: 'Accept', followup: 'Follow-up', decline: 'Decline' }
+
 // ── Ops activity session tracking (powers /ops/live) ─────────
 const _ops = { uuid: null, interval: null }
 
@@ -1386,6 +1389,21 @@ export function AppProvider({ children }) {
       // `silent: true` suppresses the toast — used by handleConvert so the user only
       // sees the final "Student created" toast, not a redundant "Trial updated" prefix.
       if (!opts.silent) showToast('Trial updated')
+
+      // Coach submitted an accept/follow-up/decline call on a trial — this only
+      // sets coachRec, the stage is untouched. The office still owns the actual
+      // accept/reject/convert workflow (Trials.jsx), so let them know one is waiting.
+      if (updates.coachRec && role === 'staff' && user?.academyId) {
+        supabase.from('academies').select('owner_id').eq('id', user.academyId).single()
+          .then(({ data }) => {
+            if (data?.owner_id) notify({
+              academyId: user.academyId, recipientType: 'owner', recipientId: data.owner_id,
+              title: 'Coach Trial Recommendation',
+              body: `${user.name || 'Coach'} marked ${oldTrial?.name || 'a trial'} — ${TRIAL_REC_LABEL[updates.coachRec] || updates.coachRec}. Review to convert or close it out.`,
+              type: 'trial', link: '/trials',
+            }).catch(() => {})
+          })
+      }
     } catch (err) {
       // Revert optimistic update on failure
       if (oldTrial) setTrials(prev => prev.map(t => t.id === id ? oldTrial : t))

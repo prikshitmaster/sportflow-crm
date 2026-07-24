@@ -246,9 +246,10 @@ function StaffDrillDetailModal({ drill, isFav, isOwn, onClose, onFavorite, onEdi
   if (!drill) return null
   const c = CATEGORIES[drill.category] || CATEGORIES.technical
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full bg-white rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="relative w-full bg-white rounded-t-2xl shadow-2xl flex flex-col max-h-[92dvh]">
         {/* Header */}
         <div className={`px-5 py-4 ${c.bg} border-b ${c.border} flex-shrink-0`}>
           <div className="flex items-start justify-between gap-3">
@@ -412,9 +413,10 @@ function StaffDrillEditorModal({ drill, onClose, onSave, saving }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full bg-white rounded-t-2xl shadow-2xl flex flex-col max-h-[95vh]">
+      <div className="relative w-full bg-white rounded-t-2xl shadow-2xl flex flex-col max-h-[95dvh]">
 
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Drill' : 'New Custom Drill'}</h2>
@@ -1570,8 +1572,9 @@ function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative min-h-full flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="relative w-full sm:max-w-3xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[95vh]">
+      <div className="relative min-h-full flex items-end sm:items-center justify-center p-0 sm:p-4"
+        style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
+      <div className="relative w-full sm:max-w-3xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[95dvh]">
 
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Weekly Schedule' : 'New Weekly Schedule'}</h2>

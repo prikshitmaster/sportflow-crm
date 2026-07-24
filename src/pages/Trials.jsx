@@ -13,7 +13,7 @@ import { toLocalDateStr } from '../lib/dates'
 // ── Stage config ─────────────────────────────────────────────
 
 const STAGES = [
-  { id: 'all',       label: 'All'       },
+  { id: 'all',       label: 'Active'    }, // everything except converted/rejected — those live under Done
   { id: 'new',       label: 'New'       },
   { id: 'scheduled', label: 'Scheduled' },
   { id: 'attended',  label: 'Attended'  },
@@ -1335,8 +1335,9 @@ export default function Trials() {
   // Filter
   const filtered = useMemo(() => {
     let list = trials
-    if (stage === 'done')  list = list.filter(t => t.stage === 'converted' || t.stage === 'rejected')
-    else if (stage !== 'all') list = list.filter(t => t.stage === stage)
+    if (stage === 'done')     list = list.filter(t => t.stage === 'converted' || t.stage === 'rejected')
+    else if (stage === 'all') list = list.filter(t => t.stage !== 'converted' && t.stage !== 'rejected')
+    else                      list = list.filter(t => t.stage === stage)
     if (search.trim())     list = list.filter(t =>
       t.name.toLowerCase().includes(search.toLowerCase()) ||
       (t.phone || '').includes(search) ||
@@ -1350,7 +1351,7 @@ export default function Trials() {
 
   // Stage counts
   const stageCount = id => {
-    if (id === 'all')  return trials.length
+    if (id === 'all')  return trials.filter(t => t.stage !== 'converted' && t.stage !== 'rejected').length
     if (id === 'done') return trials.filter(t => t.stage === 'converted' || t.stage === 'rejected').length
     return trials.filter(t => t.stage === id).length
   }
