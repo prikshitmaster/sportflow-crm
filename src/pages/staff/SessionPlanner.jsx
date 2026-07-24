@@ -1129,13 +1129,20 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
       coaching_points: drill?.coaching_points || [],
       position,
     })
-    setPhases(prev => [...prev, newPhase])
+    // createSessionPhase returns the bare phase row (no joined drill), unlike
+    // fetchSessionPlan's `drills(*)` join that diagBox()/PDF export reads the
+    // diagram from — attach it here so a freshly-added phase isn't missing
+    // its diagram until the next full reload.
+    setPhases(prev => [...prev, { ...newPhase, drills: drill || null }])
     setPicker(null)
   }
 
   const changePhase = async (id, updates) => {
     const updated = await updateSessionPhase(id, updates)
-    setPhases(prev => prev.map(p => p.id === id ? updated : p))
+    // Same gap as addPhase — merge onto the existing phase rather than
+    // replacing it, so the joined `drills` (and anything else not in the
+    // update response) survives editing a phase that already had it.
+    setPhases(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p))
   }
 
   const removePhase = async (id) => {
