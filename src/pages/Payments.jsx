@@ -1346,6 +1346,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const [amountOverride, setAmountOverride] = useState(null)
   const [paymentDate,    setPaymentDate]   = useState(toLocalDateStr())
   const [customMonths,   setCustomMonths]  = useState(2)
+  // Backdating Payment Date changes fee coverage for a Suspended student (it becomes
+  // the coverage start, not just the collection date) — collapsed by default so staff
+  // don't stumble into billing for skipped months by accident. Hidden entirely for
+  // non-suspended students since backdating there doesn't affect coverage anyway.
+  const [showBackdate,   setShowBackdate]  = useState(false)
   const [lateFee,        setLateFee]       = useState(0)
   const [showLateFee,    setShowLateFee]   = useState(false)
   const [chequeNo,       setChequeNo]      = useState('')
@@ -1398,6 +1403,8 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     const s = students.find(x => String(x.id) === String(id))
     if (!s) return
     setAmountOverride(null)
+    setShowBackdate(false)
+    setPaymentDate(toLocalDateStr())
     const batchId = String(s.batchId || s.lastBatchId || '')
     const paymentType = s.feePlan || 'monthly'
     const planData = getFeePlanRate(batchId, s.trainingType, paymentType)
@@ -1854,11 +1861,27 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         {/* Payment Date + Mode */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Payment Date</label>
-            <input className="input" type="date"
-              value={paymentDate}
-              max={toLocalDateStr()}
-              onChange={e => setPaymentDate(e.target.value)} />
+            {isSuspended && !showBackdate ? (
+              <>
+                <label className="label">Payment Date</label>
+                <button type="button"
+                  className="input text-left text-xs text-brand-600 font-semibold hover:bg-brand-50"
+                  onClick={() => setShowBackdate(true)}>
+                  Today — bill for skipped months?
+                </button>
+              </>
+            ) : (
+              <>
+                <label className="label">
+                  Payment Date
+                  {isSuspended && <span className="text-gray-400 font-normal"> — backdating bills the skipped months too</span>}
+                </label>
+                <input className="input" type="date"
+                  value={paymentDate}
+                  max={toLocalDateStr()}
+                  onChange={e => setPaymentDate(e.target.value)} />
+              </>
+            )}
           </div>
           <div>
             <label className="label">Payment Mode</label>
