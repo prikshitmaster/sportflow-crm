@@ -250,8 +250,9 @@ function DrillDetailModal({ drill, isFav, onClose, onFavorite, onEdit, onClone, 
   ) : null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative min-h-full flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="relative w-full sm:max-w-2xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92vh]">
 
         {/* Header */}
@@ -350,6 +351,7 @@ function DrillDetailModal({ drill, isFav, onClose, onFavorite, onEdit, onClone, 
           )}
         </div>
       </div>
+      </div>
     </div>
   )
 }
@@ -412,15 +414,21 @@ function DrillEditorModal({ drill, onClose, onSave, saving, academyId, staffId }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative min-h-full flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="relative w-full sm:max-w-2xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[95vh]">
 
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-shrink-0">
           <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Drill' : 'Add New Drill'}</h2>
-          <div className="flex items-center gap-2">
-            {!isEdit && <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillDrill() }))} />}
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {!isEdit && (
+              <>
+                <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillDrill() }))} />
+                <div className="w-px h-5 bg-gray-200" />
+              </>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition flex-shrink-0">
               <X size={16} className="text-gray-500"/>
             </button>
           </div>
@@ -598,6 +606,7 @@ function DrillEditorModal({ drill, onClose, onSave, saving, academyId, staffId }
             {isEdit ? 'Save Changes' : 'Add Drill'}
           </button>
         </div>
+      </div>
       </div>
     </div>
   )
