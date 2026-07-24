@@ -1,6 +1,16 @@
 // sessionPDF.js — AFC B License format session plan export
 // Generates an HTML string, opens in a new window, triggers browser print → Save as PDF
 // Zero external dependencies.
+//
+// Native Android (Capacitor): window.open()+print() doesn't work there — the
+// WebView has no print-to-PDF dialog (silent no-op), and the popup is a bare
+// document outside the SPA's router, so it has no back button either. Instead
+// we hand the rendered HTML to the native Share sheet (same nativeSave.js
+// pattern already used for Excel/CSV/QR exports) — the user can open it in
+// Chrome to view/print/save as PDF, or forward it directly via WhatsApp/Drive.
+
+import { Capacitor } from '@capacitor/core'
+import { saveOrShareFile } from './nativeSave'
 
 // ── Pitch SVG strings ─────────────────────────────────────────────────────────
 const BG = '#2D7A3A'
@@ -165,7 +175,7 @@ function renderPhase(phase, index) {
   </div>`
 }
 
-export function exportSessionPDF({ plan, phases, batchName, academyName, coachName }) {
+export async function exportSessionPDF({ plan, phases, batchName, academyName, coachName }) {
   const totalDur = phases.reduce((s, p) => s + (p.duration || 0), 0)
 
   const phaseHTML = phases
@@ -220,6 +230,14 @@ export function exportSessionPDF({ plan, phases, batchName, academyName, coachNa
   <script>window.onload = () => { window.print(); }<\/script>
 </body>
 </html>`
+
+  if (Capacitor.isNativePlatform()) {
+    const safeDate  = (plan.date || 'export').replace(/[^\w-]/g, '_')
+    const safeBatch = (batchName || 'session').replace(/[^\w-]/g, '_')
+    const blob = new Blob([html], { type: 'text/html' })
+    await saveOrShareFile(blob, `session-plan-${safeBatch}-${safeDate}.html`)
+    return
+  }
 
   const w = window.open('', '_blank', 'width=1000,height=700')
   if (!w) {
