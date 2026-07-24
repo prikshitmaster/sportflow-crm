@@ -71,6 +71,8 @@ export async function fetchStudents(academyId) {
     fromTrial:      row.from_trial  || false,
     branchId:       row.branch_id || null,
     academy_id:     row.academy_id || null,
+    heightCm:       row.height_cm ?? null,
+    crsNumber:      row.crs_number || null,
   }))
 }
 
@@ -136,6 +138,8 @@ export async function fetchStudentsPaginated(academyId, {
     fromTrial:      row.from_trial  || false,
     branchId:       row.branch_id || null,
     academy_id:     row.academy_id || null,
+    heightCm:       row.height_cm ?? null,
+    crsNumber:      row.crs_number || null,
   }))
   const total = count || 0
   return {
@@ -339,13 +343,74 @@ export async function uploadStudentPhoto(file, studentId) {
   return `${data.publicUrl}?v=${Date.now()}`
 }
 
-// Student-only — update own football profile (height/weight/foot/wing)
-export async function updateStudentSelfProfile(studentId, { heightCm, weightKg, preferredFoot, wing } = {}) {
+// ── STUDENT DOCUMENT VAULT ───────────────────────────────────
+// Files live in the 'student-documents' bucket at unguessable uuid paths;
+// real access control is on the student_documents metadata table (RLS:
+// student sees own, staff needs 'documents.view', owner sees academy).
+
+export async function fetchStudentDocuments(studentId) {
+  const { data, error } = await supabase
+    .from('student_documents')
+    .select('*')
+    .eq('student_id', studentId)
+    .order('created_at', { ascending: false })
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return (data || []).map(r => ({
+    id:        r.id,
+    studentId: r.student_id,
+    docType:   r.doc_type,
+    title:     r.title,
+    filePath:  r.file_path,
+    fileName:  r.file_name,
+    mimeType:  r.mime_type,
+    sizeBytes: r.size_bytes,
+    uploadedBy: r.uploaded_by,
+    createdAt: r.created_at,
+    url: supabase.storage.from('student-documents').getPublicUrl(r.file_path).data.publicUrl,
+  }))
+}
+
+export async function uploadStudentDocument(file, { studentId, docType, title }) {
+  const ext  = (file.name.split('.').pop() || 'bin').toLowerCase()
+  const path = `${studentId}/${crypto.randomUUID()}.${ext}`
+  const { error: upErr } = await supabase.storage.from('student-documents')
+    .upload(path, file, { contentType: file.type || 'application/octet-stream' })
+  if (upErr) throw upErr
+  const { data, error } = await supabase.rpc('secure_add_student_document', {
+    p_student_id: studentId,
+    p_doc_type:   docType,
+    p_title:      title || file.name,
+    p_file_path:  path,
+    p_file_name:  file.name,
+    p_mime_type:  file.type || null,
+    p_size_bytes: file.size || null,
+    p_token:      _sessionToken(),
+  })
+  if (error) {
+    // metadata insert failed → remove the orphaned file
+    await supabase.storage.from('student-documents').remove([path]).catch(() => {})
+    throw error
+  }
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+export async function deleteStudentDocument(docId) {
+  const { data: filePath, error } = await supabase.rpc('secure_delete_student_document', {
+    p_doc_id: docId,
+    p_token:  _sessionToken(),
+  })
+  if (error) throw error
+  if (filePath) await supabase.storage.from('student-documents').remove([filePath]).catch(() => {})
+}
+
+// Student-only — update own football profile (height/weight/foot/position)
+export async function updateStudentSelfProfile(studentId, { heightCm, weightKg, preferredFoot, position, crsNumber } = {}) {
   const payload = {}
   if (heightCm      !== undefined) payload.heightCm      = heightCm
   if (weightKg      !== undefined) payload.weightKg      = weightKg
   if (preferredFoot !== undefined) payload.preferredFoot = preferredFoot
-  if (wing          !== undefined) payload.wing          = wing
+  if (position      !== undefined) payload.position      = position
+  if (crsNumber     !== undefined) payload.crsNumber     = crsNumber
   const { data, error } = await supabase.rpc('secure_update_student_self_profile', {
     p_student_id: studentId,
     p_payload:    payload,
@@ -2334,57 +2399,50 @@ export async function fetchSessionFeedback(date, batchId) {
 
 // Coach saves pulse for a batch — one upsert per student-rating tuple.
 // `records` shape: [{ studentId, effort, execution, focus }]
-export async function saveSessionPulse({ date, batchId, academyId, staffId, records }) {
+// Routed through secure_save_session_pulse (migration 0105) — writes to
+// session_feedback have no anon INSERT/UPDATE policy, RPC is the only path.
+export async function saveSessionPulse({ date, batchId, records }) {
   if (!records?.length) return
-  const rows = records.map(r => ({
-    date,
-    batch_id:   batchId ?? null,
-    student_id: r.studentId,
-    academy_id: academyId ?? null,
-    staff_id:   staffId   ?? null,
-    effort:     r.effort,
-    execution:  r.execution,
-    focus:      r.focus,
-  }))
-  const { error } = await supabase
-    .from('session_feedback')
-    .upsert(rows, { onConflict: 'date,student_id,batch_id' })
+  const { error } = await supabase.rpc('secure_save_session_pulse', {
+    p_date:     date,
+    p_batch_id: batchId ?? null,
+    p_records:  records.map(r => ({ studentId: r.studentId, effort: r.effort, execution: r.execution, focus: r.focus })),
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
 // Coach adds detailed 4-corner spotlight + note for one student — overlays
 // onto the same row as their pulse for that date/batch.
-export async function upsertSpotlight({ date, batchId, academyId, staffId, studentId, technical, tactical, physical, mental, note }) {
-  const { error } = await supabase
-    .from('session_feedback')
-    .upsert({
-      date,
-      batch_id:    batchId ?? null,
-      student_id:  studentId,
-      academy_id:  academyId ?? null,
-      staff_id:    staffId   ?? null,
-      technical, tactical, physical, mental,
-      note:        note || null,
-      spotlight_at: new Date().toISOString(),
-    }, { onConflict: 'date,student_id,batch_id' })
+// Routed through secure_upsert_spotlight (migration 0105).
+export async function upsertSpotlight({ date, batchId, studentId, technical, tactical, physical, mental, note }) {
+  const { error } = await supabase.rpc('secure_upsert_spotlight', {
+    p_date:       date,
+    p_batch_id:   batchId ?? null,
+    p_student_id: studentId,
+    p_technical:  technical,
+    p_tactical:   tactical,
+    p_physical:   physical,
+    p_mental:     mental,
+    p_note:       note || null,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
 // Student saves their own post-session reflection. Lives on the same row;
 // keyed by date + student + their current batch (or null when no batch).
-export async function saveSelfReflection({ date, batchId, academyId, studentId, energy, performance, focus }) {
-  const { error } = await supabase
-    .from('session_feedback')
-    .upsert({
-      date,
-      batch_id:         batchId ?? null,
-      student_id:       studentId,
-      academy_id:       academyId ?? null,
-      self_energy:      energy,
-      self_performance: performance,
-      self_focus:       focus,
-      self_at:          new Date().toISOString(),
-    }, { onConflict: 'date,student_id,batch_id' })
+// Routed through secure_save_self_reflection (migration 0105).
+export async function saveSelfReflection({ date, batchId, studentId, energy, performance, focus }) {
+  const { error } = await supabase.rpc('secure_save_self_reflection', {
+    p_date:        date,
+    p_batch_id:    batchId ?? null,
+    p_student_id:  studentId,
+    p_energy:      energy,
+    p_performance: performance,
+    p_focus:       focus,
+    p_token:       _sessionToken(),
+  })
   if (error) throw error
 }
 

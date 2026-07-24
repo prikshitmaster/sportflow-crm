@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
 import { supabase } from '../../lib/supabase'
+import { saveOrShareFile } from '../../lib/nativeSave'
 import { ChevronLeft, ChevronRight, CalendarCheck, Download } from 'lucide-react'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -96,7 +97,7 @@ export default function StudentAttendance() {
     return !batchDays.includes(DAYS[new Date(year, month, day).getDay()])
   }
 
-  const exportCSV = () => {
+  const exportCSV = async () => {
     const rows = [['Date', 'Day', 'Status']]
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`
@@ -105,12 +106,7 @@ export default function StudentAttendance() {
     }
     const csv  = rows.map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url
-    a.download = `attendance_${MONTHS[month]}_${year}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    await saveOrShareFile(blob, `attendance_${MONTHS[month]}_${year}.csv`)
   }
 
   const present = Object.values(attMap).filter(v => v === 'Present').length

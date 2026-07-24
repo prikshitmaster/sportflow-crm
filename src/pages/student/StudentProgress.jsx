@@ -16,6 +16,7 @@ import {
 import {
   Target, Sparkles, MessageCircle, TrendingUp, CheckCircle2, BarChart3, ChevronRight, FileText, User, X,
 } from 'lucide-react'
+import { FOOTBALL_POSITIONS } from '../../lib/performance'
 
 const pad2     = (n) => String(n).padStart(2, '0')
 const monthKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`
@@ -157,7 +158,8 @@ export default function StudentProgress() {
                   studentUser?.height_cm && `${studentUser.height_cm} cm`,
                   studentUser?.weight_kg && `${studentUser.weight_kg} kg`,
                   studentUser?.preferred_foot && `${studentUser.preferred_foot} foot`,
-                ].filter(Boolean).join(' · ') || 'Tap to add height, weight, foot'}
+                  studentUser?.position && (FOOTBALL_POSITIONS.find(p => p.id === studentUser.position)?.label || studentUser.position),
+                ].filter(Boolean).join(' · ') || 'Tap to add height, weight, foot, position'}
               </p>
             </div>
           </div>
@@ -328,7 +330,7 @@ function ProfileEditor({ current, onClose, onSave }) {
     heightCm:      current?.height_cm      || '',
     weightKg:      current?.weight_kg      || '',
     preferredFoot: current?.preferred_foot || '',
-    wing:          current?.wing           || '',
+    position:      current?.position       || '',
   })
   const [saving, setSaving] = useState(false)
 
@@ -339,7 +341,7 @@ function ProfileEditor({ current, onClose, onSave }) {
       heightCm:      form.heightCm ? Number(form.heightCm) : null,
       weightKg:      form.weightKg ? Number(form.weightKg) : null,
       preferredFoot: form.preferredFoot || null,
-      wing:          form.wing || null,
+      position:      form.position || null,
     })
     setSaving(false)
   }
@@ -376,11 +378,11 @@ function ProfileEditor({ current, onClose, onSave }) {
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-bold text-gray-600 block mb-1">Wing</label>
-            <select className="input" value={form.wing}
-              onChange={e => set('wing', e.target.value)}>
+            <label className="text-[11px] font-bold text-gray-600 block mb-1">Position</label>
+            <select className="input" value={form.position}
+              onChange={e => set('position', e.target.value)}>
               <option value="">—</option>
-              <option>Left</option><option>Right</option><option>None</option>
+              {FOOTBALL_POSITIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </div>
         </div>

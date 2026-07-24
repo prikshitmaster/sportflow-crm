@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from './Payments'
 import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition, fetchAttendanceForMonth } from '../lib/db'
 import StudentAvatar from '../components/StudentAvatar'
+import StudentDocumentsCard from '../components/StudentDocumentsCard'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment, isLowAttendanceUnpaid as ruleIsLowAttendanceUnpaid } from '../lib/studentRules'
 import { toLocalDateStr } from '../lib/dates'
@@ -75,6 +76,7 @@ export default function Students() {
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
+  const [ageFilter,       setAgeFilter]       = useState('All')
   const [mbStudentIds,    setMbStudentIds]    = useState(new Set())
   const [allMbRows,       setAllMbRows]       = useState([])
   const [accFilter,       setAccFilter]       = useState('All')
@@ -155,23 +157,33 @@ export default function Students() {
   const activeStudents    = useMemo(() => students.filter(s => s.status !== 'Suspended'), [students])
   const suspendedStudents = useMemo(() => students.filter(s => s.status === 'Suspended'), [students])
 
+  const studentAge = (s) => s.dob ? calcAge(s.dob) : (s.age ?? null)
+
+  const ages = useMemo(() =>
+    [...new Set(activeStudents.map(studentAge).filter(a => a != null))].sort((a, b) => a - b),
+    [activeStudents])
+
   const filtered = useMemo(() => {
-    const q = search.toLowerCase()
+    const q = search.trim().toLowerCase()
     return activeStudents.filter(s => {
+      const age = studentAge(s)
       // Search now also matches parent phone — front-desk staff often have only
       // the parent's number when a student walks in, not the student's own.
+      // A pure-number query also matches age (e.g. "13" finds all 13-year-olds).
       const matchQ = !q ||
         s.name.toLowerCase().includes(q) ||
         (s.parent || '').toLowerCase().includes(q) ||
         (s.phone || '').includes(q) ||
         (s.parentPhone || '').includes(q) ||
-        (s.studentCode || '').toLowerCase().includes(q)
+        (s.studentCode || '').toLowerCase().includes(q) ||
+        (/^\d+$/.test(q) && String(age) === q)
       const matchSport = sportFilter === 'All' || s.sport  === sportFilter
       const matchBatch = batchFilter === 'All' || String(s.batchId) === batchFilter || mbStudentIds.has(s.id)
       const matchAcc   = accFilter   === 'All' || s.accountStatus === accFilter
-      return matchQ && matchSport && matchBatch && matchAcc
+      const matchAge   = ageFilter   === 'All' || String(age) === ageFilter
+      return matchQ && matchSport && matchBatch && matchAcc && matchAge
     })
-  }, [activeStudents, search, sportFilter, batchFilter, accFilter, mbStudentIds])
+  }, [activeStudents, search, sportFilter, batchFilter, accFilter, ageFilter, mbStudentIds])
 
   const suspBatchName  = (s) => s.lastBatchName || s.batch || ''
   const suspBatches    = useMemo(() => [...new Set(suspendedStudents.map(suspBatchName).filter(Boolean))].sort(), [suspendedStudents])
@@ -185,13 +197,13 @@ export default function Students() {
   }, [suspendedStudents, suspBatchFilter, suspSportFilter, suspSearch])
 
   // Reset pages when filters change
-  useEffect(() => setPage(1), [search, sportFilter, batchFilter, accFilter])
+  useEffect(() => setPage(1), [search, sportFilter, batchFilter, accFilter, ageFilter])
   useEffect(() => setSuspPage(1), [suspSearch, suspSportFilter, suspBatchFilter])
 
   // Reset all local filters when context scope changes so stale values don't hide students
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    setSportFilter('All'); setBatchFilter('All'); setAccFilter('All')
+    setSportFilter('All'); setBatchFilter('All'); setAccFilter('All'); setAgeFilter('All')
     setSuspSportFilter('All'); setSuspBatchFilter('All'); setSuspSearch('')
   }, [selectedSport, selectedBranch])
 
@@ -406,7 +418,7 @@ export default function Students() {
           <Search size={14} className="text-gray-400 flex-shrink-0" />
           <input
             className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full"
-            placeholder="Search name, parent, phone or ID…"
+            placeholder="Search name, parent, phone, ID or age…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -426,6 +438,10 @@ export default function Students() {
             <option value="All">All Accounts</option>
             <option value="pending">Pending ({pendingCount})</option>
             <option value="active">Activated ({activeCount})</option>
+          </select>
+          <select className="input flex-1 min-w-0" value={ageFilter} onChange={e => setAgeFilter(e.target.value)}>
+            <option value="All">All Ages</option>
+            {ages.map(a => <option key={a} value={String(a)}>{a} yrs</option>)}
           </select>
         </div>
         <span className="text-xs text-gray-400 font-medium hidden sm:inline">{filtered.length} results</span>
@@ -1215,8 +1231,16 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
             {infoRow('Parent', s.parent)}
             {infoRow('Student Phone', s.phone)}
             {infoRow('Parent Phone', s.parentPhone)}
+            {infoRow('Height', s.heightCm ? `${s.heightCm} cm` : null)}
+            {infoRow('CRS Number', s.crsNumber, true)}
             {infoRow('Join Date', s.joinDate ? new Date(s.joinDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
             {infoRow('Paid Till', s.paidTill ? new Date(s.paidTill).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
+          </div>
+
+          {/* Document Vault */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Documents</p>
+            <StudentDocumentsCard studentId={s.id} canUpload={canManage} canDelete={canManage} />
           </div>
 
           {/* Account Info */}
@@ -1381,7 +1405,6 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     heightCm:      s.heightCm      || s.height_cm     || '',
     weightKg:      s.weightKg      || s.weight_kg     || '',
     preferredFoot: s.preferredFoot || s.preferred_foot || '',
-    wing:          s.wing          || '',
   })
   const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
@@ -1540,11 +1563,11 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
                 </select>
               </div>
               <div>
-                <label className="label">Wing</label>
-                <select className="input" value={form.wing}
-                  onChange={e => set('wing', e.target.value)}>
+                <label className="label">Position</label>
+                <select className="input" value={form.position}
+                  onChange={e => set('position', e.target.value)}>
                   <option value="">—</option>
-                  <option>Left</option><option>Right</option><option>None</option>
+                  {FOOTBALL_POSITIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </div>
             </div>

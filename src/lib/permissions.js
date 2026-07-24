@@ -31,6 +31,7 @@ export const ALL_PERMISSIONS = [
   'settings.manage',
   'community.manage',
   'events.manage',
+  'documents.view',
 ]
 
 export const ROLE_PRESETS = {
@@ -55,6 +56,7 @@ export const PERMISSION_GROUPS = {
   Settings:   ['settings.manage'],
   Community:  ['community.manage'],
   Events:     ['events.manage'],
+  Documents:  ['documents.view'],
 }
 
 export const PERM_LABEL = {
@@ -73,6 +75,7 @@ export const PERM_LABEL = {
   'settings.manage':   'Manage Settings',
   'community.manage':  'Post Announcements',
   'events.manage':     'Manage Events',
+  'documents.view':    'View Student Documents',
 }
 
 export const ACCESS_ROLES = ['coach', 'receptionist', 'accountant', 'admin', 'staff', 'branch_manager']

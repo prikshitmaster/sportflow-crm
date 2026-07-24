@@ -44,6 +44,7 @@ export default function StudentLayout() {
     import('../pages/student/StudentStats')
     import('../pages/student/StudentProgress')
     import('../pages/student/StudentScan')
+    import('../pages/student/StudentProfile')
   }, [])
 
   const handleLogout = async () => {
@@ -71,9 +72,12 @@ export default function StudentLayout() {
               <p className="text-[10px] text-brand-600 font-mono leading-tight">{studentUser.student_code}</p>
             </div>
           )}
-          <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-sm font-bold text-brand-700">
-            {studentUser?.name?.[0] || 'S'}
-          </div>
+          <button onClick={() => navigate('/student/profile')}
+            className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center text-sm font-bold text-brand-700 overflow-hidden active:scale-90 transition">
+            {studentUser?.photo_url
+              ? <img src={studentUser.photo_url} alt="" className="w-full h-full object-cover" />
+              : (studentUser?.name?.[0] || 'S')}
+          </button>
           <NotificationBell
             recipientType="student"
             recipientId={studentUser?.id}

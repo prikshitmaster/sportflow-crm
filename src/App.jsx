@@ -91,6 +91,7 @@ const StudentAttendance    = lazy(() => import('./pages/student/StudentAttendanc
 const StudentPayments      = lazy(() => import('./pages/student/StudentPayments'))
 const StudentAnnouncements = lazy(() => import('./pages/student/StudentAnnouncements'))
 const StudentScan          = lazy(() => import('./pages/student/StudentScan'))
+const StudentProfile       = lazy(() => import('./pages/student/StudentProfile'))
 const StudentStats         = lazy(() => import('./pages/student/StudentStats'))
 const StudentProgress      = lazy(() => import('./pages/student/StudentProgress'))
 
@@ -390,6 +391,7 @@ function AppRoutes() {
         <Route path="payments"    element={<StudentPayments />} />
         <Route path="announcements" element={<StudentAnnouncements />} />
         <Route path="scan"        element={<StudentScan />} />
+        <Route path="profile"     element={<StudentProfile />} />
       </Route>
 
       {/* Invite — public, no auth required */}

@@ -794,7 +794,7 @@ export function AppProvider({ children }) {
     return photoUrl
   }
 
-  // Student self-edit of football profile fields (height/weight/foot/wing)
+  // Student self-edit of profile fields (height/weight/foot/position/CRS)
   const updateStudentProfile = async (fields) => {
     const updated = await db.updateStudentSelfProfile(studentUser.id, fields)
     setStudentUser(prev => ({
@@ -802,7 +802,8 @@ export function AppProvider({ children }) {
       height_cm:      updated?.height_cm      ?? prev.height_cm,
       weight_kg:      updated?.weight_kg      ?? prev.weight_kg,
       preferred_foot: updated?.preferred_foot ?? prev.preferred_foot,
-      wing:           updated?.wing           ?? prev.wing,
+      position:       updated?.position       ?? prev.position,
+      crs_number:     updated?.crs_number     ?? prev.crs_number,
     }))
     return updated
   }
@@ -1038,6 +1039,7 @@ export function AppProvider({ children }) {
         phone:        updated.phone,
         parentPhone:  updated.parent_phone,
         age:          updated.age,
+        dob:          updated.dob || null,
         sport:        updated.sport,
         batch:        updated.batch,
         batchId:      updated.batch_id,
@@ -1051,7 +1053,6 @@ export function AppProvider({ children }) {
         heightCm:      updated.height_cm      ?? null,
         weightKg:      updated.weight_kg      ?? null,
         preferredFoot: updated.preferred_foot ?? null,
-        wing:          updated.wing           ?? null,
       } : x))
 
       if (oldBatchId !== newBatchId) {

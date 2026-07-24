@@ -1074,6 +1074,8 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
   const [dupBatch, setDupBatch] = useState(plan.batch_id || '')
 
   const totalDur = phases.reduce((s, p) => s + (p.duration || 0), 0)
+  // A session can't be started or finished before its scheduled day arrives.
+  const isFutureSession = plan.date > toLocalDateStr()
 
   useEffect(() => {
     if (initPlan.id) {
@@ -1131,6 +1133,7 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
   }
 
   const handleActivate = async () => {
+    if (isFutureSession) return
     setActivating(true)
     try {
       await activateSessionPlan(plan.id)
@@ -1141,6 +1144,7 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
   }
 
   const handleComplete = async () => {
+    if (isFutureSession) return
     setCompleting(true)
     try {
       await completeSessionPlan(plan.id)
@@ -1184,16 +1188,28 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
           <FileDown size={17} />
         </button>
         {plan.status === 'draft' && (
-          <button onClick={handleActivate} disabled={activating}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50">
-            <Zap size={13} /> {activating ? 'Starting…' : 'Go Active'}
-          </button>
+          isFutureSession ? (
+            <span className="text-xs font-medium text-gray-400 px-3 py-1.5" title="Can't start a session before its scheduled day">
+              Starts {fmt(plan.date)}
+            </span>
+          ) : (
+            <button onClick={handleActivate} disabled={activating}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50">
+              <Zap size={13} /> {activating ? 'Starting…' : 'Go Active'}
+            </button>
+          )
         )}
         {plan.status === 'active' && (
-          <button onClick={handleComplete} disabled={completing}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50">
-            <Check size={13} /> {completing ? 'Saving…' : 'Complete'}
-          </button>
+          isFutureSession ? (
+            <span className="text-xs font-medium text-gray-400 px-3 py-1.5" title="Can't complete a session before its scheduled day">
+              Not yet due
+            </span>
+          ) : (
+            <button onClick={handleComplete} disabled={completing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50">
+              <Check size={13} /> {completing ? 'Saving…' : 'Complete'}
+            </button>
+          )
         )}
         {plan.status === 'completed' && (
           <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl">

@@ -5,13 +5,26 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { Search, Phone, Users } from 'lucide-react'
+import { Search, Phone, Users, FolderOpen, Lock, X } from 'lucide-react'
 import * as db from '../../lib/db'
+import StudentDocumentsCard from '../../components/StudentDocumentsCard'
 
 export default function StaffRoster() {
-  const { user, batches, students } = useApp()
+  const { user, batches, students, hasPermission } = useApp()
   const [search, setSearch] = useState('')
   const [batchFilter, setBatchFilter] = useState('all')
+  const [docsStudent, setDocsStudent] = useState(null)   // student whose docs sheet is open
+  const [lockMsg, setLockMsg] = useState(false)
+  const canViewDocs = hasPermission('documents.view')
+
+  const openDocs = (s) => {
+    if (!canViewDocs) {
+      setLockMsg(true)
+      setTimeout(() => setLockMsg(false), 3000)
+      return
+    }
+    setDocsStudent(s)
+  }
 
   const pad2  = n => String(n).padStart(2, '0')
   const now   = new Date()
@@ -134,6 +147,19 @@ export default function StaffRoster() {
               )}
             </div>
 
+            {/* Documents — needs documents.view granted by owner/manager */}
+            <button
+              onClick={() => openDocs(s)}
+              className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition ${
+                canViewDocs
+                  ? 'bg-brand-50 text-brand-600 active:bg-brand-100'
+                  : 'bg-gray-50 text-gray-300'
+              }`}
+              title={canViewDocs ? 'View documents' : 'Document access not granted'}
+            >
+              {canViewDocs ? <FolderOpen size={15} /> : <Lock size={14} />}
+            </button>
+
             {/* Phone / WhatsApp tap */}
             {(s.parentPhone || s.phone) && (
               <a
@@ -149,6 +175,39 @@ export default function StaffRoster() {
           </div>
         ))}
       </div>
+
+      {/* No-permission toast */}
+      {lockMsg && (
+        <div className="fixed bottom-24 left-4 right-4 z-50 bg-gray-900 text-white text-xs font-semibold rounded-xl px-4 py-3 flex items-center gap-2 shadow-lg">
+          <Lock size={14} className="flex-shrink-0" />
+          Document access hasn't been granted to you — ask your manager or owner to enable "View Student Documents" for your account.
+        </div>
+      )}
+
+      {/* Documents bottom sheet */}
+      {docsStudent && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center"
+          onClick={e => e.target === e.currentTarget && setDocsStudent(null)}>
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDocsStudent(null)} />
+          <div className="relative bg-white rounded-t-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto animate-slide-up">
+            <div className="sticky top-0 bg-white px-5 pt-4 pb-3 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <p className="font-bold text-gray-900 text-sm">{docsStudent.name}</p>
+                <p className="text-[11px] text-gray-400">
+                  Documents{docsStudent.crsNumber ? ` · CRS ${docsStudent.crsNumber}` : ''}{docsStudent.heightCm ? ` · ${docsStudent.heightCm} cm` : ''}
+                </p>
+              </div>
+              <button onClick={() => setDocsStudent(null)} className="p-1.5 text-gray-400 hover:text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              {/* Coaches can view/download only — upload/delete needs students.manage via owner app */}
+              <StudentDocumentsCard studentId={docsStudent.id} canUpload={false} canDelete={false} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

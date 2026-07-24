@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import * as db from '../lib/db'
 import { ACTION_LABELS, ACTION_CATEGORY, ENTITY_COLORS, ROLE_COLORS } from '../lib/audit'
+import { saveOrShareFile } from '../lib/nativeSave'
 import { isOutstanding, daysOverdue as ruleDaysOverdue, ageingBucket, ageingBucketOrder } from '../lib/studentRules'
 import { toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel, FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
@@ -37,17 +38,13 @@ function buildMonthOptions(count = 24) {
 }
 const MONTH_OPTS = buildMonthOptions()
 
-function downloadCSV(headers, rows, filename) {
+async function downloadCSV(headers, rows, filename) {
   const lines = [
     headers.join(','),
     ...rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')),
   ]
   const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href = url; a.download = filename
-  document.body.appendChild(a); a.click()
-  document.body.removeChild(a); URL.revokeObjectURL(url)
+  await saveOrShareFile(blob, filename)
 }
 
 function pct(a, b) { return b > 0 ? Math.round((a / b) * 100) : 0 }
@@ -1532,7 +1529,7 @@ const ENTITY_ICONS = {
   assessment:   '📊',
 }
 
-function exportAuditCSV(logs) {
+async function exportAuditCSV(logs) {
   const rows = [
     ['Date', 'Time', 'Actor', 'Role', 'Action', 'Entity Type', 'Entity Name', 'Changes', 'Note'],
     ...logs.map(l => {
@@ -1555,9 +1552,7 @@ function exportAuditCSV(logs) {
   ]
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob([csv], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a'); a.href = url; a.download = `audit-log-${todayStr}.csv`; a.click()
-  URL.revokeObjectURL(url)
+  await saveOrShareFile(blob, `audit-log-${todayStr}.csv`)
 }
 
 function relativeTime(iso) {
