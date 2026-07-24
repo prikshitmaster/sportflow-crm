@@ -1,28 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useApp } from '../../context/AppContext'
-import * as db from '../../lib/db'
 import { Bell, Calendar, Trophy, MapPin, Send } from 'lucide-react'
 import SendStaffNoticeModal from '../../components/SendStaffNoticeModal'
-import { todayStr } from '../../lib/dates'
 
 export default function StaffNotices() {
-  const { announcements, user, hasPermission, sendStaffNotice, staff } = useApp()
-  const [events,     setEvents]     = useState([])
-  const [loading,    setLoading]    = useState(true)
+  // `events` and `announcements` from context are already sport+branch scoped
+  // for the logged-in staff (staffScopedEvents / staffScopedAnnouncements) —
+  // never fetch raw academy-wide rows here or branch isolation breaks.
+  const { announcements, events, user, hasPermission, sendStaffNotice, staff, dataLoading } = useApp()
   const [showNotice, setShowNotice] = useState(false)
-  const canSend = hasPermission('community.manage')
+  const canSend  = hasPermission('community.manage')
+  const loading  = dataLoading
 
-  useEffect(() => {
-    db.fetchEvents(user?.academyId)
-      .then(rows => setEvents(rows || []))
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [user?.academyId])
-
-  const today = todayStr()
-
-  // Events visible to this staff member
-  const visibleEvents = events.filter(e => {
+  // Events visible to this staff member (audience filter on top of branch/sport scope)
+  const visibleEvents = (events || []).filter(e => {
     if (e.status === 'Cancelled') return false
     if (!e.audience_type || e.audience_type === 'all')   return true
     if (e.audience_type === 'staff') return true
@@ -30,7 +21,7 @@ export default function StaffNotices() {
     return false
   }).sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
-  const sorted = [...(announcements || [])].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+  const sorted = [...(announcements || [])].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
 
   const hasContent = visibleEvents.length > 0 || sorted.length > 0
 
@@ -104,9 +95,9 @@ export default function StaffNotices() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-gray-900">{a.title}</p>
-                    <p className="text-xs text-gray-600 mt-1 leading-relaxed">{a.message}</p>
+                    <p className="text-xs text-gray-600 mt-1 leading-relaxed">{a.body}</p>
                     <p className="text-[10px] text-gray-400 mt-2">
-                      {a.created_at ? new Date(a.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : ''}
+                      {a.date ? new Date(a.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : ''}
                     </p>
                   </div>
                 </div>

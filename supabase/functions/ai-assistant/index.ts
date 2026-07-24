@@ -110,7 +110,7 @@ async function findStudents(academyId: string, query: string, branchId: string |
 async function getStudentDetails(academyId: string, studentId: number, branchId: string | null) {
   let q = supabase
     .from('students')
-    .select('id, name, student_code, status, fees, paid_till, batch, training_type, fee_plan, join_date, suspended_since, phone, parent, parent_phone, dob, age, sport')
+    .select('id, name, student_code, status, fees, paid_till, batch, training_type, fee_plan, join_date, suspended_since, phone, parent, parent_phone')
     .eq('academy_id', academyId)
     .eq('id', studentId)
   if (branchId) q = q.eq('branch_id', branchId)
@@ -126,21 +126,8 @@ async function getStudentDetails(academyId: string, studentId: number, branchId:
     owedMonths = monthsOwed(data.paid_till, anchor)
     owedAmount = owedMonths * Number(data.fees || 0)
   }
-  // Prefer computing age from dob (the stored `age` column is a snapshot from
-  // whenever the record was last edited, so it goes stale).
-  let currentAge: number | null = data.age ?? null
-  if (data.dob) {
-    const dob = new Date(data.dob + 'T00:00:00')
-    const now = new Date()
-    let years = now.getFullYear() - dob.getFullYear()
-    const hadBirthday = now.getMonth() > dob.getMonth() ||
-      (now.getMonth() === dob.getMonth() && now.getDate() >= dob.getDate())
-    if (!hadBirthday) years--
-    currentAge = years
-  }
   return {
     ...data,
-    age: currentAge,
     isOutstanding: outstanding,
     owedMonths,
     owedAmount,
@@ -353,6 +340,205 @@ async function getStaffList(academyId: string, branchId: string | null) {
   return data
 }
 
+async function findStaff(academyId: string, query: string, branchId: string | null) {
+  const safeQuery = query.replace(/[,()%]/g, '')
+  let q = supabase
+    .from('staff')
+    .select('id, name, role, phone, sports, status, join_date')
+    .eq('academy_id', academyId)
+    .or(`name.ilike.%${safeQuery}%,role.ilike.%${safeQuery}%`)
+    .limit(10)
+  if (branchId) q = q.eq('branch_id', branchId)
+  const { data, error } = await q
+  if (error) throw error
+  return data
+}
+
+// Resolve one staff row scoped to this academy/branch — shared guard for the
+// per-coach tools below so a staffId from another academy always dead-ends.
+async function getStaffRow(academyId: string, staffId: number, branchId: string | null) {
+  let q = supabase
+    .from('staff')
+    .select('id, name, role, phone, sports, salary, join_date, status')
+    .eq('academy_id', academyId)
+    .eq('id', staffId)
+  if (branchId) q = q.eq('branch_id', branchId)
+  const { data, error } = await q.maybeSingle()
+  if (error) throw error
+  return data
+}
+
+async function getStaffDetails(academyId: string, staffId: number, branchId: string | null) {
+  const staffRow = await getStaffRow(academyId, staffId, branchId)
+  if (!staffRow) return { error: 'staff member not found in this academy' }
+
+  // Batches this coach runs — batches.coach is a denormalized name string.
+  let bq = supabase
+    .from('batches')
+    .select('id, name, sports, time, days, capacity, enrolled')
+    .eq('academy_id', academyId)
+    .ilike('coach', staffRow.name)
+  if (branchId) bq = bq.eq('branch_id', branchId)
+  const { data: batches } = await bq
+
+  // This month's check-in count from staff_checkins.
+  const now = new Date()
+  const monthStart = firstOfMonthIso(now)
+  const { data: checkins } = await supabase
+    .from('staff_checkins')
+    .select('date')
+    .eq('academy_id', academyId)
+    .eq('staff_id', staffId)
+    .gte('date', monthStart)
+  const daysPresent = new Set((checkins || []).map((c: any) => c.date)).size
+
+  // Leave requests — leave_requests.staff_id is the auth profile UUID, not
+  // staff.id, so match on the denormalized staff_name instead.
+  const { data: leaves } = await supabase
+    .from('leave_requests')
+    .select('start_date, end_date, reason, status')
+    .eq('academy_id', academyId)
+    .ilike('staff_name', staffRow.name)
+    .order('start_date', { ascending: false })
+    .limit(5)
+
+  return {
+    ...staffRow,
+    batchesCoached: batches || [],
+    checkInDaysThisMonth: daysPresent,
+    recentLeaveRequests: leaves || [],
+  }
+}
+
+async function getStaffAttendance(academyId: string, staffId: number, year: number, month: number, branchId: string | null) {
+  const staffRow = await getStaffRow(academyId, staffId, branchId)
+  if (!staffRow) return { error: 'staff member not found in this academy' }
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const lastDay = new Date(year, month, 0).getDate()
+  const start = `${year}-${pad(month)}-01`
+  const end = `${year}-${pad(month)}-${pad(lastDay)}`
+  const { data, error } = await supabase
+    .from('staff_checkins')
+    .select('date, clock_in, clock_out')
+    .eq('academy_id', academyId)
+    .eq('staff_id', staffId)
+    .gte('date', start)
+    .lte('date', end)
+    .order('date', { ascending: true })
+  if (error) throw error
+  const { data: leaves } = await supabase
+    .from('leave_requests')
+    .select('start_date, end_date, status, reason')
+    .eq('academy_id', academyId)
+    .ilike('staff_name', staffRow.name)
+    .lte('start_date', end)
+    .gte('end_date', start)
+  const uniqueDays = new Set((data || []).map((c: any) => c.date)).size
+  return {
+    staffName: staffRow.name,
+    year,
+    month,
+    daysCheckedIn: uniqueDays,
+    checkIns: (data || []).map((c: any) => ({ date: c.date, clockIn: c.clock_in, clockOut: c.clock_out })),
+    leavesInMonth: leaves || [],
+  }
+}
+
+async function getStaffActivity(academyId: string, staffId: number, limit: number, branchId: string | null) {
+  const staffRow = await getStaffRow(academyId, staffId, branchId)
+  if (!staffRow) return { error: 'staff member not found in this academy' }
+  // audit_logs.actor_id is the auth UID, not staff.id — match on actor_name.
+  const { data, error } = await supabase
+    .from('audit_logs')
+    .select('action, entity_type, entity_name, note, created_at')
+    .eq('academy_id', academyId)
+    .ilike('actor_name', staffRow.name)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) {
+    // Table may not exist on older installs (42P01) — report plainly.
+    if ((error as any).code === '42P01') return { staffName: staffRow.name, activities: [], note: 'no activity log table on this install' }
+    throw error
+  }
+  return { staffName: staffRow.name, activities: data || [] }
+}
+
+async function getBatchFeeStructure(academyId: string, batchQuery: string | null, branchId: string | null) {
+  let bq = supabase.from('batches').select('id, name, coach, sports, time, days, capacity, enrolled').eq('academy_id', academyId)
+  if (branchId) bq = bq.eq('branch_id', branchId)
+  const { data: allBatches, error: bErr } = await bq
+  if (bErr) throw bErr
+  // Token match, not substring — users say "u15 MWF advance" for a batch named
+  // "Under 15 advance MWF", so require every query word (with u15 → "under 15"
+  // style prefixes normalized) to appear somewhere in the name, in any order.
+  let batches = allBatches || []
+  if (batchQuery) {
+    const tokens = batchQuery.toLowerCase().split(/\s+/).filter(Boolean)
+      .flatMap((t) => {
+        const m = t.match(/^u(\d+)$/)
+        return m ? [m[1]] : [t]   // "u15" matches both "U15" and "Under 15" via the digits
+      })
+    batches = batches.filter((b: any) => {
+      const name = (b.name || '').toLowerCase()
+      return tokens.every((t) => name.includes(t))
+    })
+  }
+  if (!batches.length) return { error: batchQuery ? `no batch matching "${batchQuery}" in this academy — try get_batches_overview to list batch names` : 'no batches in this academy' }
+
+  // Official published rates: fee_plans rows keyed by batch_id, each with a
+  // Daily/Alternate training type and monthly/quarterly/yearly prices.
+  const batchIds = batches.map((b: any) => b.id)
+  const { data: plans, error: pErr } = await supabase
+    .from('fee_plans')
+    .select('batch_id, name, training_type, monthly_fee, quarterly_fee, yearly_fee')
+    .eq('academy_id', academyId)
+    .in('batch_id', batchIds)
+  // Older installs may not have the fee_plans table (42P01) — fall through with none.
+  if (pErr && (pErr as any).code !== '42P01') throw pErr
+  const plansByBatch: Record<number, any[]> = {}
+  for (const p of plans || []) {
+    ;(plansByBatch[p.batch_id] ||= []).push({
+      plan: p.name,
+      trainingType: p.training_type,
+      monthlyFee: p.monthly_fee || 0,
+      quarterlyFee: p.quarterly_fee || 0,
+      yearlyFee: p.yearly_fee || 0,
+    })
+  }
+
+  // What students actually pay today (students.fees), aggregated per batch name.
+  let sq = supabase.from('students').select('batch, fees, status').eq('academy_id', academyId)
+  if (branchId) sq = sq.eq('branch_id', branchId)
+  const { data: students, error: sErr } = await sq
+  if (sErr) throw sErr
+  const byBatch: Record<string, { count: number; fees: number[]; total: number }> = {}
+  for (const s of students || []) {
+    if (s.status !== 'Active' || !s.batch) continue
+    const rec = byBatch[s.batch] || { count: 0, fees: [], total: 0 }
+    rec.count++
+    rec.fees.push(Number(s.fees || 0))
+    rec.total += Number(s.fees || 0)
+    byBatch[s.batch] = rec
+  }
+  return batches.map((b: any) => {
+    const rec = byBatch[b.name]
+    return {
+      batchId: b.id,
+      batch: b.name,
+      coach: b.coach,
+      sports: b.sports,
+      schedule: { time: b.time, days: b.days },
+      capacity: b.capacity,
+      enrolled: b.enrolled,
+      feePlans: plansByBatch[b.id] || [],
+      activeStudents: rec?.count || 0,
+      actualFeeMin: rec ? Math.min(...rec.fees) : null,
+      actualFeeMax: rec ? Math.max(...rec.fees) : null,
+      expectedMonthlyTotal: rec?.total || 0,
+    }
+  })
+}
+
 async function getTrialsOverview(academyId: string, branchId: string | null) {
   let q = supabase.from('trials').select('stage, converted, sport').eq('academy_id', academyId)
   if (branchId) q = q.eq('branch_id', branchId)
@@ -385,7 +571,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_student_details',
-      description: 'Get full profile (name, age/date of birth, sport, batch, phone, parent contact), fee, and outstanding-balance status for one student by ID.',
+      description: 'Get full profile, fee, and outstanding-balance status for one student by ID.',
       parameters: {
         type: 'object',
         properties: { studentId: { type: 'number', description: 'Student ID from find_students' } },
@@ -505,6 +691,72 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'find_staff',
+      description: 'Search for staff/coaches by (partial) name or role within this academy. Use this first whenever the user names a coach or staff member, to resolve their staff ID.',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string', description: 'Full/partial staff name or role (e.g. "coach")' } },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_staff_details',
+      description: 'Get one staff member/coach\'s full profile by staff ID: role, phone, sports, salary, join date, status, the batches they coach, days checked in this month, and recent leave requests.',
+      parameters: {
+        type: 'object',
+        properties: { staffId: { type: 'number', description: 'Staff ID from find_staff' } },
+        required: ['staffId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_staff_attendance',
+      description: 'Get one staff member/coach\'s attendance for a given month: days checked in, each check-in with clock-in/clock-out time, and any leave requests overlapping that month.',
+      parameters: {
+        type: 'object',
+        properties: {
+          staffId: { type: 'number' },
+          year: { type: 'number' },
+          month: { type: 'number', description: '1-12' },
+        },
+        required: ['staffId', 'year', 'month'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_staff_activity',
+      description: 'Get one staff member/coach\'s recent activity in the CRM (from the audit log): actions like marking attendance, adding payments, editing students, with timestamps.',
+      parameters: {
+        type: 'object',
+        properties: {
+          staffId: { type: 'number' },
+          limit: { type: 'number', description: 'Max activities to return, default 20' },
+        },
+        required: ['staffId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_batch_fee_structure',
+      description: 'Get the fee structure for batches: each batch\'s official fee plans (Daily/Alternate training with monthly, quarterly, and yearly rates), plus coach, schedule, active student count, what enrolled students actually pay (min/max), and expected monthly fee total. Use for "fee structure of batch X", "fees by batch", "how much does each batch bring in". Pass batchQuery to look at one batch, omit it for all batches.',
+      parameters: {
+        type: 'object',
+        properties: { batchQuery: { type: 'string', description: 'Optional — full/partial batch name to filter to one batch (e.g. "U15 MWF advance")' } },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_trials_overview',
       description: 'Get trial pipeline stats: total trials, count by stage (new/scheduled/attended/converted/rejected), and conversion count.',
       parameters: { type: 'object', properties: {} },
@@ -523,6 +775,11 @@ async function runTool(academyId: string, branchId: string | null, name: string,
     case 'get_top_performers':         return await getTopPerformers(academyId, args.sport || null, args.limit || 5, branchId)
     case 'get_batches_overview':       return await getBatchesOverview(academyId, branchId)
     case 'get_staff_list':             return await getStaffList(academyId, branchId)
+    case 'find_staff':                 return await findStaff(academyId, args.query, branchId)
+    case 'get_staff_details':          return await getStaffDetails(academyId, args.staffId, branchId)
+    case 'get_staff_attendance':       return await getStaffAttendance(academyId, args.staffId, args.year, args.month, branchId)
+    case 'get_staff_activity':         return await getStaffActivity(academyId, args.staffId, args.limit || 20, branchId)
+    case 'get_batch_fee_structure':    return await getBatchFeeStructure(academyId, args.batchQuery || null, branchId)
     case 'get_trials_overview':        return await getTrialsOverview(academyId, branchId)
     case 'get_student_attendance': return await getStudentAttendance(academyId, args.studentId, args.year, args.month, branchId)
     case 'get_academy_overview':   return await getAcademyOverview(academyId, branchId)
@@ -530,7 +787,7 @@ async function runTool(academyId: string, branchId: string | null, name: string,
   }
 }
 
-const SYSTEM_INSTRUCTION = `You are a helpful assistant embedded in a sports academy CRM. You answer questions about students, payments, attendance, performance/skill assessments, batches, staff, and trials using only the provided tools — never guess or make up numbers. Always look up a student by name via find_students before answering about them. Money amounts are in INR (₹). Keep answers short and direct. Use the conversation so far to resolve follow-up questions ("how much", "and attendance?") against whatever student or topic was just discussed — don't ask the user to repeat the name. Fee totals from get_student_details are calendar-month approximations (unpaid months × monthly fee), not a penny-exact ledger — say "approximately ₹X" rather than stating it as exact. get_payment_reliability's "on time" flag is also approximate (paid within the covered month), not a contractual due-date check — say so if asked. get_top_performers / get_student_performance reflect coach-entered skill assessments only, if any exist for that student/academy — if a tool returns no assessment on record, say plainly that no assessment has been recorded rather than guessing. If a tool returns an error or no match, say so plainly instead of inventing an answer. If a question has no matching tool at all (something truly outside students/payments/attendance/performance/batches/staff/trials), say plainly that you don't have data for that rather than guessing.
+const SYSTEM_INSTRUCTION = `You are a helpful assistant embedded in a sports academy CRM. You answer questions about students, payments, attendance, performance/skill assessments, batches, staff, and trials using only the provided tools — never guess or make up numbers. Always look up a student by name via find_students before answering about them. Likewise, always look up a coach/staff member by name via find_staff first, then use get_staff_details (profile, salary, batches coached), get_staff_attendance (check-ins for a month), or get_staff_activity (their recent actions in the CRM) — the same disambiguation rule applies: if find_staff returns more than one match, list them and ask which one. Staff check-in attendance only exists if the academy uses QR clock-in — if a month has zero check-ins, say no check-ins were recorded rather than assuming the coach was absent. For batch fee questions use get_batch_fee_structure (pass batchQuery when the user names a batch): each batch may have official fee plans (Daily/Alternate training with monthly/quarterly/yearly rates) — present those as the fee structure when they exist; the actual min–max of what enrolled students pay is separate context, since individual students can be on older or discounted rates. If a batch has no fee plans, say so and fall back to the actual student-fee range. Money amounts are in INR (₹). Keep answers short and direct. Use the conversation so far to resolve follow-up questions ("how much", "and attendance?") against whatever student or topic was just discussed — don't ask the user to repeat the name. Fee totals from get_student_details are calendar-month approximations (unpaid months × monthly fee), not a penny-exact ledger — say "approximately ₹X" rather than stating it as exact. get_payment_reliability's "on time" flag is also approximate (paid within the covered month), not a contractual due-date check — say so if asked. get_top_performers / get_student_performance reflect coach-entered skill assessments only, if any exist for that student/academy — if a tool returns no assessment on record, say plainly that no assessment has been recorded rather than guessing. If a tool returns an error or no match, say so plainly instead of inventing an answer. If a question has no matching tool at all (something truly outside students/payments/attendance/performance/batches/staff/trials), say plainly that you don't have data for that rather than guessing.
 
 Confirming which student before answering: if find_students returns more than one match, do NOT guess which one the user meant and do NOT call any other tool yet. Instead list every match as a "- " bullet, each showing full name, student code, batch, and status (e.g. "- **Aaryan Patel** (SA045) — Under 15 Advance, Active"), then ask the user to confirm which one by name or code. Only proceed to get_student_details/payments/attendance/performance for a specific student once exactly one match is confirmed — either find_students returned exactly one result, or the user has just picked one from a list you showed them.
 
@@ -539,6 +796,75 @@ Formatting: write plain text with light markdown, not a wall of prose.
 - Format money with thousands separators and the ₹ symbol: ₹1,25,000, not 125000.
 - When answering about more than one item (multiple students, multiple months), use a "- " bullet list, one line per item, not a run-on sentence.
 - Keep each answer to what was asked — don't pad with unrequested extra context.`
+
+// ── Entity harvesting — every record a tool touched becomes a candidate
+// "chip" the frontend can render as a deep link (/detail/:type/:id). We
+// collect from structured tool results rather than asking the model to emit
+// links, which it would mangle. The final filter keeps only entities the
+// answer actually mentions, so listing tools don't flood the UI. ──
+type Entity = { type: 'student' | 'coach' | 'batch' | 'payment'; id: string | number; label: string }
+
+function harvestEntities(map: Map<string, Entity>, toolName: string, args: any, result: any) {
+  const add = (type: Entity['type'], id: string | number | null | undefined, label: string | null | undefined) => {
+    if (id == null || !label) return
+    const key = `${type}:${id}`
+    if (!map.has(key)) map.set(key, { type, id, label })
+  }
+  if (!result || typeof result !== 'object' || (result as any).error) return
+  const rows = Array.isArray(result) ? result : []
+  switch (toolName) {
+    case 'find_students':
+      for (const s of rows) add('student', s.id, s.name)
+      break
+    case 'get_student_details':
+      add('student', (result as any).id, (result as any).name)
+      break
+    case 'get_student_payments':
+      for (const p of rows) add('payment', p.id, String(p.id))
+      break
+    case 'get_attendance_leaderboard':
+    case 'get_top_performers':
+      for (const s of rows) add('student', s.studentId, s.name)
+      break
+    case 'get_payment_reliability':
+      for (const s of [...((result as any).mostReliable || []), ...((result as any).leastReliable || [])]) {
+        add('student', s.studentId, s.name)
+      }
+      break
+    case 'get_batches_overview':
+      for (const b of rows) add('batch', b.id, b.name)
+      break
+    case 'get_batch_fee_structure':
+      for (const b of rows) add('batch', b.batchId, b.batch)
+      break
+    case 'find_staff':
+    case 'get_staff_list':
+      for (const s of rows) add('coach', s.id, s.name)
+      break
+    case 'get_staff_details':
+      add('coach', (result as any).id, (result as any).name)
+      break
+    case 'get_staff_attendance':
+    case 'get_staff_activity':
+      add('coach', args?.staffId, (result as any).staffName)
+      break
+  }
+}
+
+// Keep only entities the answer text actually references — full label match,
+// or (for people) their first name — capped so the chip row stays scannable.
+function relevantEntities(map: Map<string, Entity>, answer: string): Entity[] {
+  const lc = answer.toLowerCase()
+  return [...map.values()]
+    .filter((e) => {
+      if (e.type === 'payment') return lc.includes(String(e.id).toLowerCase())
+      const label = e.label.toLowerCase()
+      if (lc.includes(label)) return true
+      const first = label.split(/\s+/)[0]
+      return first.length >= 3 && lc.includes(first)
+    })
+    .slice(0, 8)
+}
 
 // Only user/assistant turns with string content are trusted from the client —
 // never let client-supplied history inject a fake tool_calls/tool turn.
@@ -574,10 +900,13 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } }
   )
-  const { data: actor, error: actorErr } = await supabaseAsCaller
+  const { data: actorRow, error: actorErr } = await supabaseAsCaller
     .rpc('current_actor', { p_token: sessionToken })
     .maybeSingle()
-  if (actorErr || !actor || !actor.actor_kind) return json({ error: 'unauthorized' }, 401)
+  // The RPC has no generated types in this standalone function, so PostgREST
+  // infers {} — assert the shape current_actor actually returns.
+  const actor = actorRow as { actor_kind?: string; academy_id?: string; branch_id?: string | null } | null
+  if (actorErr || !actor || !actor.actor_kind || !actor.academy_id) return json({ error: 'unauthorized' }, 401)
   if (actor.actor_kind !== 'owner' && actor.actor_kind !== 'staff') return json({ error: 'forbidden' }, 403)
 
   const academyId = actor.academy_id
@@ -593,6 +922,7 @@ Deno.serve(async (req) => {
   ]
 
   const endpoint = 'https://api.groq.com/openai/v1/chat/completions'
+  const entityMap = new Map<string, Entity>()
 
   // Cap iterations so a confused model can't loop forever.
   for (let i = 0; i < 6; i++) {
@@ -615,7 +945,10 @@ Deno.serve(async (req) => {
 
     if (toolCalls.length === 0) {
       const answer = (message?.content || '').trim()
-      return json({ answer: answer || "I couldn't find an answer to that." })
+      return json({
+        answer: answer || "I couldn't find an answer to that.",
+        entities: relevantEntities(entityMap, answer),
+      })
     }
 
     // Echo the model's turn, then run every requested tool and reply in one turn.
@@ -627,6 +960,7 @@ Deno.serve(async (req) => {
       let result
       try {
         result = await runTool(academyId, effectiveBranchId, name, args)
+        harvestEntities(entityMap, name, args, result)
       } catch (e: any) {
         result = { error: e?.message || 'tool failed' }
       }

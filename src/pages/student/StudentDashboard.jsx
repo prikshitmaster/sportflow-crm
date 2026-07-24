@@ -47,10 +47,10 @@ export default function StudentDashboard() {
           // Same scope filter as Notices page — sport + branch
           const sp = (studentUser.sport || '').toLowerCase()
           const br = studentUser.branch_id || studentUser.branchId || null
-          const filtered = (data || []).filter(a =>
-            (!a.sport     || a.sport.toLowerCase() === sp) &&
-            (!a.branch_id || a.branch_id === br)
-          )
+          const filtered = (data || []).filter(a => {
+            const b = a.branchId ?? a.branch_id ?? null
+            return (!a.sport || a.sport.toLowerCase() === sp) && (!b || b === br)
+          })
           setNotices(filtered.slice(0, 3))
         })
         .catch(() => {})

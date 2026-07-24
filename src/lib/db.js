@@ -71,8 +71,6 @@ export async function fetchStudents(academyId) {
     fromTrial:      row.from_trial  || false,
     branchId:       row.branch_id || null,
     academy_id:     row.academy_id || null,
-    heightCm:       row.height_cm ?? null,
-    crsNumber:      row.crs_number || null,
   }))
 }
 
@@ -138,8 +136,6 @@ export async function fetchStudentsPaginated(academyId, {
     fromTrial:      row.from_trial  || false,
     branchId:       row.branch_id || null,
     academy_id:     row.academy_id || null,
-    heightCm:       row.height_cm ?? null,
-    crsNumber:      row.crs_number || null,
   }))
   const total = count || 0
   return {
@@ -343,10 +339,21 @@ export async function uploadStudentPhoto(file, studentId) {
   return `${data.publicUrl}?v=${Date.now()}`
 }
 
-// ── STUDENT DOCUMENT VAULT ───────────────────────────────────
-// Files live in the 'student-documents' bucket at unguessable uuid paths;
-// real access control is on the student_documents metadata table (RLS:
-// student sees own, staff needs 'documents.view', owner sees academy).
+// ── Student document vault (migration 0103) ───────────────
+// Reads go through RLS on student_documents (student sees own; staff need
+// 'documents.view'; owner sees academy). Writes via SECURITY DEFINER RPCs.
+const _mapStudentDoc = (row) => ({
+  id:        row.id,
+  studentId: row.student_id,
+  docType:   row.doc_type,
+  title:     row.title,
+  filePath:  row.file_path,
+  fileName:  row.file_name || null,
+  mimeType:  row.mime_type || null,
+  sizeBytes: row.size_bytes || null,
+  createdAt: row.created_at,
+  url:       supabase.storage.from('student-documents').getPublicUrl(row.file_path).data.publicUrl,
+})
 
 export async function fetchStudentDocuments(studentId) {
   const { data, error } = await supabase
@@ -354,44 +361,38 @@ export async function fetchStudentDocuments(studentId) {
     .select('*')
     .eq('student_id', studentId)
     .order('created_at', { ascending: false })
-  if (error) { if (error.code === '42P01') return []; throw error }
-  return (data || []).map(r => ({
-    id:        r.id,
-    studentId: r.student_id,
-    docType:   r.doc_type,
-    title:     r.title,
-    filePath:  r.file_path,
-    fileName:  r.file_name,
-    mimeType:  r.mime_type,
-    sizeBytes: r.size_bytes,
-    uploadedBy: r.uploaded_by,
-    createdAt: r.created_at,
-    url: supabase.storage.from('student-documents').getPublicUrl(r.file_path).data.publicUrl,
-  }))
+  if (error) {
+    if (error.code === '42P01') return []  // table not migrated yet
+    throw error
+  }
+  return (data || []).map(_mapStudentDoc)
 }
 
-export async function uploadStudentDocument(file, { studentId, docType, title }) {
-  const ext  = (file.name.split('.').pop() || 'bin').toLowerCase()
+export async function uploadStudentDocument(file, { studentId, docType = 'other', title = '' } = {}) {
+  // Unguessable uuid path — access control lives on the metadata table.
+  const ext  = (file.name?.split('.').pop() || 'bin').toLowerCase()
   const path = `${studentId}/${crypto.randomUUID()}.${ext}`
-  const { error: upErr } = await supabase.storage.from('student-documents')
-    .upload(path, file, { contentType: file.type || 'application/octet-stream' })
+  const { error: upErr } = await supabase.storage.from('student-documents').upload(path, file, {
+    contentType: file.type || 'application/octet-stream',
+  })
   if (upErr) throw upErr
   const { data, error } = await supabase.rpc('secure_add_student_document', {
     p_student_id: studentId,
     p_doc_type:   docType,
     p_title:      title || file.name,
     p_file_path:  path,
-    p_file_name:  file.name,
+    p_file_name:  file.name || null,
     p_mime_type:  file.type || null,
     p_size_bytes: file.size || null,
     p_token:      _sessionToken(),
   })
   if (error) {
-    // metadata insert failed → remove the orphaned file
+    // Metadata insert failed — remove the orphaned storage object.
     await supabase.storage.from('student-documents').remove([path]).catch(() => {})
     throw error
   }
-  return typeof data === 'string' ? JSON.parse(data) : data
+  const row = typeof data === 'string' ? JSON.parse(data) : data
+  return _mapStudentDoc(row)
 }
 
 export async function deleteStudentDocument(docId) {
@@ -403,14 +404,13 @@ export async function deleteStudentDocument(docId) {
   if (filePath) await supabase.storage.from('student-documents').remove([filePath]).catch(() => {})
 }
 
-// Student-only — update own football profile (height/weight/foot/position)
-export async function updateStudentSelfProfile(studentId, { heightCm, weightKg, preferredFoot, position, crsNumber } = {}) {
+// Student-only — update own football profile (height/weight/foot/wing)
+export async function updateStudentSelfProfile(studentId, { heightCm, weightKg, preferredFoot, wing } = {}) {
   const payload = {}
   if (heightCm      !== undefined) payload.heightCm      = heightCm
   if (weightKg      !== undefined) payload.weightKg      = weightKg
   if (preferredFoot !== undefined) payload.preferredFoot = preferredFoot
-  if (position      !== undefined) payload.position      = position
-  if (crsNumber     !== undefined) payload.crsNumber     = crsNumber
+  if (wing          !== undefined) payload.wing          = wing
   const { data, error } = await supabase.rpc('secure_update_student_self_profile', {
     p_student_id: studentId,
     p_payload:    payload,
@@ -2226,6 +2226,25 @@ export async function fetchStaffAttendanceForDate(academyId, date) {
   return data || []
 }
 
+// One staff member's check-ins for a month, with clock times — used by the
+// RecordDetail coach view.
+export async function fetchStaffCheckinsMonth(academyId, staffId, year, month) {
+  const pad = n => String(n).padStart(2, '0')
+  const lastDay = new Date(year, month, 0).getDate()
+  const start = `${year}-${pad(month)}-01`
+  const end   = `${year}-${pad(month)}-${pad(lastDay)}`
+  const { data, error } = await supabase
+    .from('staff_checkins')
+    .select('date, clock_in, clock_out')
+    .eq('academy_id', academyId)
+    .eq('staff_id', staffId)
+    .gte('date', start)
+    .lte('date', end)
+    .order('date', { ascending: false })
+  if (error) return []
+  return data || []
+}
+
 export async function fetchStaffAttendanceForMonth(academyId, year, month) {
   const pad = n => String(n).padStart(2, '0')
   const lastDay = new Date(year, month, 0).getDate()
@@ -2399,50 +2418,57 @@ export async function fetchSessionFeedback(date, batchId) {
 
 // Coach saves pulse for a batch — one upsert per student-rating tuple.
 // `records` shape: [{ studentId, effort, execution, focus }]
-// Routed through secure_save_session_pulse (migration 0105) — writes to
-// session_feedback have no anon INSERT/UPDATE policy, RPC is the only path.
-export async function saveSessionPulse({ date, batchId, records }) {
+export async function saveSessionPulse({ date, batchId, academyId, staffId, records }) {
   if (!records?.length) return
-  const { error } = await supabase.rpc('secure_save_session_pulse', {
-    p_date:     date,
-    p_batch_id: batchId ?? null,
-    p_records:  records.map(r => ({ studentId: r.studentId, effort: r.effort, execution: r.execution, focus: r.focus })),
-    p_token:    _sessionToken(),
-  })
+  const rows = records.map(r => ({
+    date,
+    batch_id:   batchId ?? null,
+    student_id: r.studentId,
+    academy_id: academyId ?? null,
+    staff_id:   staffId   ?? null,
+    effort:     r.effort,
+    execution:  r.execution,
+    focus:      r.focus,
+  }))
+  const { error } = await supabase
+    .from('session_feedback')
+    .upsert(rows, { onConflict: 'date,student_id,batch_id' })
   if (error) throw error
 }
 
 // Coach adds detailed 4-corner spotlight + note for one student — overlays
 // onto the same row as their pulse for that date/batch.
-// Routed through secure_upsert_spotlight (migration 0105).
-export async function upsertSpotlight({ date, batchId, studentId, technical, tactical, physical, mental, note }) {
-  const { error } = await supabase.rpc('secure_upsert_spotlight', {
-    p_date:       date,
-    p_batch_id:   batchId ?? null,
-    p_student_id: studentId,
-    p_technical:  technical,
-    p_tactical:   tactical,
-    p_physical:   physical,
-    p_mental:     mental,
-    p_note:       note || null,
-    p_token:      _sessionToken(),
-  })
+export async function upsertSpotlight({ date, batchId, academyId, staffId, studentId, technical, tactical, physical, mental, note }) {
+  const { error } = await supabase
+    .from('session_feedback')
+    .upsert({
+      date,
+      batch_id:    batchId ?? null,
+      student_id:  studentId,
+      academy_id:  academyId ?? null,
+      staff_id:    staffId   ?? null,
+      technical, tactical, physical, mental,
+      note:        note || null,
+      spotlight_at: new Date().toISOString(),
+    }, { onConflict: 'date,student_id,batch_id' })
   if (error) throw error
 }
 
 // Student saves their own post-session reflection. Lives on the same row;
 // keyed by date + student + their current batch (or null when no batch).
-// Routed through secure_save_self_reflection (migration 0105).
-export async function saveSelfReflection({ date, batchId, studentId, energy, performance, focus }) {
-  const { error } = await supabase.rpc('secure_save_self_reflection', {
-    p_date:        date,
-    p_batch_id:    batchId ?? null,
-    p_student_id:  studentId,
-    p_energy:      energy,
-    p_performance: performance,
-    p_focus:       focus,
-    p_token:       _sessionToken(),
-  })
+export async function saveSelfReflection({ date, batchId, academyId, studentId, energy, performance, focus }) {
+  const { error } = await supabase
+    .from('session_feedback')
+    .upsert({
+      date,
+      batch_id:         batchId ?? null,
+      student_id:       studentId,
+      academy_id:       academyId ?? null,
+      self_energy:      energy,
+      self_performance: performance,
+      self_focus:       focus,
+      self_at:          new Date().toISOString(),
+    }, { onConflict: 'date,student_id,batch_id' })
   if (error) throw error
 }
 
@@ -2786,57 +2812,6 @@ export async function reorderSessionPhases(updates) {
   if (error) throw error
 }
 
-// ── WEEKLY SCHEDULES ───────────────────────────────────────────────────────
-// Coach tool, deliberately separate from session_plans/session_phases above —
-// a simple weekly overview grid (Team Name / week range / Coach Name, then a
-// Mon-Sat x Objective/Technical/Tactical/Match table of free-text cells).
-// See supabase/migrations/0106_weekly_schedules.sql.
-
-export async function fetchWeeklySchedules({ academyId, batchId, coachId } = {}) {
-  let q = supabase.from('weekly_schedules').select('*').order('week_start', { ascending: false })
-  if (academyId) q = q.eq('academy_id', academyId)
-  if (batchId)   q = q.eq('batch_id', batchId)
-  if (coachId)   q = q.eq('coach_id', coachId)
-  const { data, error } = await q
-  if (error) { if (error.code === '42P01') return []; throw error }
-  return data || []
-}
-
-export async function fetchWeeklySchedule(id) {
-  const { data, error } = await supabase.from('weekly_schedules')
-    .select('*').eq('id', id).single()
-  if (error) throw error
-  return data
-}
-
-export async function createWeeklySchedule(payload) {
-  // jsonb_populate_record bypasses the id column's DEFAULT gen_random_uuid()
-  const { data, error } = await supabase.rpc('secure_create_weekly_schedule', {
-    p_payload: { id: crypto.randomUUID(), ...payload },
-    p_token:   _sessionToken(),
-  })
-  if (error) throw error
-  return data
-}
-
-export async function updateWeeklySchedule(id, updates) {
-  const { data, error } = await supabase.rpc('secure_update_weekly_schedule', {
-    p_id:      id,
-    p_payload: updates,
-    p_token:   _sessionToken(),
-  })
-  if (error) throw error
-  return data
-}
-
-export async function deleteWeeklySchedule(id) {
-  const { error } = await supabase.rpc('secure_delete_weekly_schedule', {
-    p_id:    id,
-    p_token: _sessionToken(),
-  })
-  if (error) throw error
-}
-
 // ============================================================
 // Parents (added migration 0057)
 // ============================================================
@@ -3011,7 +2986,8 @@ export async function askAiAssistant(question, history = [], branchId = null) {
   })
   const json = await resp.json().catch(() => ({}))
   if (!resp.ok) throw new Error(json?.error || 'AI assistant failed')
-  return json.answer
+  // entities = records the answer references, for clickable /detail/... chips.
+  return { answer: json.answer, entities: Array.isArray(json.entities) ? json.entities : [] }
 }
 
 // Owner — read/save Razorpay config for the academy

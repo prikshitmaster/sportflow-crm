@@ -1,7 +1,12 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
-import { Bot, X, Send, Loader2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Bot, X, Send, Loader2, User, UserCog, Layers, CreditCard, ChevronRight } from 'lucide-react'
 import { askAiAssistant } from '../lib/db'
 import { useApp } from '../context/AppContext'
+
+const ENTITY_ICON = { student: User, coach: UserCog, batch: Layers, payment: CreditCard }
+// Staff portal users only get chips for record types they may open.
+const ENTITY_PERM = { student: 'students.view', coach: 'staff.manage', batch: 'batches.view', payment: 'payments.view' }
 
 // Renders **bold**, "- "/"* " bullet lists, and "1. " numbered lists from the
 // model's markdown-flavored text. Not a full markdown parser — just the
@@ -55,7 +60,8 @@ function renderMarkdownLite(text) {
 // which enforces the same academy scoping server-side regardless of what
 // this component sends.
 export default function AiAssistant() {
-  const { role, user, selectedBranch } = useApp()
+  const { role, user, selectedBranch, hasPermission } = useApp()
+  const navigate = useNavigate()
   // Same "effective viewer branch" pattern used elsewhere in the app
   // (AppContext.jsx): owners follow the branch switcher, staff are locked
   // to their own assigned branch.
@@ -86,8 +92,8 @@ export default function AiAssistant() {
     setMessages(m => [...m, { role: 'user', text: question }])
     setLoading(true)
     try {
-      const answer = await askAiAssistant(question, history, branchId)
-      setMessages(m => [...m, { role: 'assistant', text: answer }])
+      const { answer, entities } = await askAiAssistant(question, history, branchId)
+      setMessages(m => [...m, { role: 'assistant', text: answer, entities }])
     } catch (err) {
       setMessages(m => [...m, { role: 'assistant', text: `⚠️ ${err.message || 'Something went wrong'}` }])
     } finally {
@@ -113,15 +119,37 @@ export default function AiAssistant() {
           </div>
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm space-y-1 ${
-                  m.role === 'user' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {m.role === 'assistant' ? renderMarkdownLite(m.text) : m.text}
+            {messages.map((m, i) => {
+              const chips = (m.entities || []).filter(e =>
+                ENTITY_ICON[e.type] && (role !== 'staff' || hasPermission(ENTITY_PERM[e.type]))
+              )
+              return (
+                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-xl px-3 py-2 text-sm space-y-1 ${
+                    m.role === 'user' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {m.role === 'assistant' ? renderMarkdownLite(m.text) : m.text}
+                    {chips.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1.5 border-t border-gray-200/70 mt-1.5">
+                        {chips.map(e => {
+                          const Icon = ENTITY_ICON[e.type]
+                          return (
+                            <button
+                              key={`${e.type}-${e.id}`}
+                              onClick={() => navigate(`${role === 'staff' ? '/staff' : ''}/detail/${e.type}/${e.id}`)}
+                              className="flex items-center gap-1 text-xs font-semibold text-brand-700 bg-white border border-brand-200 rounded-full pl-2 pr-1.5 py-1 hover:bg-brand-50 hover:border-brand-300 transition"
+                              title={`Open ${e.type} details`}
+                            >
+                              <Icon size={11} /> {e.label} <ChevronRight size={11} className="text-brand-300" />
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
             {loading && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 text-gray-500 rounded-xl px-3 py-2 text-sm flex items-center gap-1.5">

@@ -1867,7 +1867,9 @@ export function AppProvider({ children }) {
   // ── Announcements ─────────────────────────────────────
 
   const sendStaffNotice = async ({ title, body, actionLabel, recipientIds }) => {
-    const ids = recipientIds?.length ? recipientIds : staff.map(s => s.id)
+    // Fallback audience = the branch/sport-scoped staff list (what the sender
+    // sees in the modal), never the raw academy-wide roster.
+    const ids = recipientIds?.length ? recipientIds : staffScopedStaff.map(s => s.id)
     await Promise.allSettled(ids.map(id => notify({
       academyId: user.academyId,
       recipientType: 'staff',
@@ -1896,13 +1898,22 @@ export function AppProvider({ children }) {
       setAnnouncements(prev => [created, ...prev])
       logAuditSport({ actor: user, action: ACTIONS.ANNOUNCEMENT_ADD, entityType: 'announcement', entityId: created.id, entityName: a.title, changes: { type: a.type || '—' }, academyId: user?.academyId, sport: ann.sport ?? null, branchId: ann.branchId ?? null })
       showToast('Announcement posted')
-      // Notify all staff and active students — fire and forget
-      const preview = (a.content || a.body || '').slice(0, 80)
-      staff.forEach(s => notify({
+      // Notify only the audience that can actually SEE this announcement
+      // (mirrors staffScopedAnnouncements / StudentAnnouncements filters) —
+      // a branch/sport-tagged post must never ping other branches. Fire and forget.
+      const preview   = (a.content || a.body || '').slice(0, 80)
+      const annSport  = (ann.sport || '').toLowerCase()
+      const staffCanSee = s =>
+        (!ann.branchId || !s.branchId || s.branchId === ann.branchId) &&
+        (!annSport || !(s.sports?.length) || s.sports.some(sp => sp.toLowerCase() === annSport))
+      const studentCanSee = s =>
+        (!ann.branchId || s.branchId === ann.branchId) &&
+        (!annSport || (s.sport || '').toLowerCase() === annSport)
+      staff.filter(staffCanSee).forEach(s => notify({
         academyId: user.academyId, recipientType: 'staff', recipientId: s.id,
         title: a.title, body: preview || 'New announcement from academy', type: 'announcement', link: '/staff/notices',
       }).catch(() => {}))
-      students.filter(s => s.status === 'Active').forEach(s => notify({
+      students.filter(s => s.status === 'Active' && studentCanSee(s)).forEach(s => notify({
         academyId: user.academyId, recipientType: 'student', recipientId: s.id,
         title: a.title, body: preview || 'New announcement from academy', type: 'announcement', link: '/student/announcements',
       }).catch(() => {}))

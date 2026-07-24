@@ -33,12 +33,17 @@ export default function StudentAnnouncements() {
   const studentBatchId  = studentUser?.batchId
   const studentBranchId = studentUser?.branch_id || studentUser?.branchId || null
 
-  const sportMatch  = (item) => !item.sport     || item.sport.toLowerCase() === studentSport
-  const branchMatch = (item) => !item.branch_id || item.branch_id === studentBranchId
+  const sportMatch  = (item) => !item.sport || item.sport.toLowerCase() === studentSport
+  // Announcements are mapped to camelCase (branchId); events come as raw rows (branch_id).
+  const branchMatch = (item) => {
+    const b = item.branchId ?? item.branch_id ?? null
+    return !b || b === studentBranchId
+  }
 
   const visibleEvents = events.filter(e => {
     if (e.status === 'Cancelled') return false
     if (!sportMatch(e))           return false
+    if (!branchMatch(e))          return false
     if (!e.audience_type || e.audience_type === 'all')      return true
     if (e.audience_type === 'students') return true
     if (e.audience_type === 'batches')  return studentBatchId && (e.audience_ids || []).includes(studentBatchId)
