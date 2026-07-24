@@ -14,8 +14,10 @@
 // Everything is wrapped in <AppProvider> (global state, see context/AppContext)
 // and an <ErrorBoundary> (catches render crashes → friendly screen + Sentry).
 // ─────────────────────────────────────────────────────────────────────────────
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Component, lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { Component, lazy, Suspense, useEffect, useRef } from 'react'
+import { Capacitor } from '@capacitor/core'
+import { App as CapacitorApp } from '@capacitor/app'
 import { AppProvider, useApp } from './context/AppContext'
 import { logger } from './lib/logger'
 import Layout from './components/Layout'
@@ -279,7 +281,39 @@ function PublicRoute({ children, skipOwnerRedirect = false }) {
   return children
 }
 
+// Android hardware/gesture back button — native only (no-ops on web/Electron).
+// Capacitor's built-in fallback (WebView canGoBack/goBack) is inconsistent
+// across Android WebView versions, and with no listener registered at all it
+// was exiting the whole app on every back press instead of stepping back
+// through in-app pages. We take it over explicitly: step back within the SPA
+// everywhere except each role's true home screen or a login form, where back
+// should exit like any other Android app does from its main screen.
+const BACK_EXIT_PATHS = new Set([
+  '/login', '/staff-login', '/student-login', '/parent-login',
+  '/dashboard', '/staff/home', '/student/dashboard', '/parent/home',
+])
+
+function useAndroidBackButton() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const locationRef = useRef(location)
+  locationRef.current = location
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      if (BACK_EXIT_PATHS.has(locationRef.current.pathname)) {
+        CapacitorApp.exitApp()
+      } else {
+        navigate(-1)
+      }
+    })
+    return () => { listenerPromise.then(l => l.remove()) }
+  }, [navigate])
+}
+
 function AppRoutes() {
+  useAndroidBackButton()
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/login" replace />} />
