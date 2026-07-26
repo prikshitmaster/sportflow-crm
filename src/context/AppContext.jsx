@@ -39,6 +39,7 @@ import { logAudit, ACTIONS, diffObjects } from '../lib/audit'
 import { logger } from '../lib/logger'
 import { setSentryUser } from '../lib/sentry'
 import { notify } from '../lib/notifications'
+import { staffMatchesAudience, studentMatchesAudience } from '../lib/announcementAudience'
 import { toLocalDateStr } from '../lib/dates'
 
 // Module-level in-flight payment lock — survives across renders, isolated per tab.
@@ -1627,6 +1628,18 @@ export function AppProvider({ children }) {
         ...(fields.bracketType  !== undefined && { bracket_type:  fields.bracketType }),
         ...(fields.participants !== undefined && { participants:  fields.participants }),
       } : e))
+      // Newly-added participants get pinged — otherwise selection is invisible
+      // to them until they happen to open the Notices tab. Fire and forget.
+      if (fields.participants !== undefined && user?.academyId) {
+        const oldIds  = new Set((ev?.participants || []).map(p => p.id))
+        const newOnes = fields.participants.filter(p => !oldIds.has(p.id))
+        newOnes.forEach(p => notify({
+          academyId: user.academyId, recipientType: 'student', recipientId: p.id,
+          title: 'You’ve been selected!',
+          body: `${ev?.title || fields.title || 'An event'} — you're on the squad.`,
+          type: 'announcement', link: '/student/announcements',
+        }).catch(() => {}))
+      }
       showToast('Event updated')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
@@ -1921,12 +1934,16 @@ export function AppProvider({ children }) {
       // a branch/sport-tagged post must never ping other branches. Fire and forget.
       const preview   = (a.content || a.body || '').slice(0, 80)
       const annSport  = (ann.sport || '').toLowerCase()
+      // Scope (branch/sport) first, then the explicit audience picked in the
+      // modal — audience narrows within scope, never across branches.
       const staffCanSee = s =>
         (!ann.branchId || !s.branchId || s.branchId === ann.branchId) &&
-        (!annSport || !(s.sports?.length) || s.sports.some(sp => sp.toLowerCase() === annSport))
+        (!annSport || !(s.sports?.length) || s.sports.some(sp => sp.toLowerCase() === annSport)) &&
+        staffMatchesAudience(s, created)
       const studentCanSee = s =>
         (!ann.branchId || s.branchId === ann.branchId) &&
-        (!annSport || (s.sport || '').toLowerCase() === annSport)
+        (!annSport || (s.sport || '').toLowerCase() === annSport) &&
+        studentMatchesAudience(s, created)
       staff.filter(staffCanSee).forEach(s => notify({
         academyId: user.academyId, recipientType: 'staff', recipientId: s.id,
         title: a.title, body: preview || 'New announcement from academy', type: 'announcement', link: '/staff/notices',
@@ -2103,6 +2120,9 @@ export function AppProvider({ children }) {
     const effSport  = isStaff ? null : (selectedSport && selectedSport !== 'All' ? selectedSport.toLowerCase() : null)
     const staffSports = isStaff ? new Set((user?.sports || []).map(s => s.toLowerCase())) : null
     return announcements.filter(a => {
+      // Staff only see announcements they're actually an audience for. The owner
+      // is the sender, so they keep seeing everything they posted.
+      if (isStaff && !staffMatchesAudience({ id: user?.id }, a)) return false
       // Academy-wide announcements (no sport, no branch) are always visible.
       if (!a.sport && !a.branchId) return true
       // Branch: academy-wide (null) shows everywhere; else must match the active branch.
@@ -2115,7 +2135,7 @@ export function AppProvider({ children }) {
       }
       return true
     })
-  }, [announcements, role, user?.sports, user?.branchId, selectedSport, selectedBranch])
+  }, [announcements, role, user?.sports, user?.branchId, user?.id, selectedSport, selectedBranch])
 
   // Fee plans inherit scope through their batch_id. If we can see the batch,
   // we can see its fee plans. Outside any sport scope → show everything.

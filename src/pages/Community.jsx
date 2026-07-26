@@ -17,7 +17,9 @@ const TYPE_CONFIG = {
 const TYPES = Object.keys(TYPE_CONFIG)
 
 export default function Community() {
-  const { announcements, addAnnouncement, sendStaffNotice, staff } = useApp()
+  // students/batches/staff from context are already branch+sport scoped, so the
+  // audience picker can only ever target people in the sender's current scope.
+  const { announcements, addAnnouncement, sendStaffNotice, staff, students, batches } = useApp()
   const [filter,     setFilter]     = useState('All')
   const [search,     setSearch]     = useState('')
   const [showModal,  setShowModal]  = useState(false)
@@ -101,20 +103,46 @@ export default function Community() {
         )}
       </div>
 
-      {showModal  && <AddAnnouncementModal onClose={() => setShowModal(false)} onSave={addAnnouncement} />}
+      {showModal  && <AddAnnouncementModal staff={staff} students={students} batches={batches}
+                       onClose={() => setShowModal(false)} onSave={addAnnouncement} />}
       {showNotice && <SendStaffNoticeModal staff={staff} onClose={() => setShowNotice(false)} onSend={sendStaffNotice} />}
     </div>
   )
 }
 
-function AddAnnouncementModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ title: '', body: '', type: TYPES[4] })
+const AUDIENCES = [
+  { value: 'all',           label: 'Everyone' },
+  { value: 'students',      label: 'All Students' },
+  { value: 'staff',         label: 'All Staff' },
+  { value: 'batches',       label: 'Batches' },
+  { value: 'students_list', label: 'Students' },
+  { value: 'staff_members', label: 'Staff' },
+]
+
+// Which list the checkboxes come from, per audience type
+const PICKER = { batches: 'batches', students_list: 'students', staff_members: 'staff' }
+
+function AddAnnouncementModal({ onClose, onSave, staff = [], students = [], batches = [] }) {
+  const [form, setForm] = useState({ title: '', body: '', type: TYPES[4], audienceType: 'all', audienceIds: [] })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const pickerKind = PICKER[form.audienceType]
+  const pickerList = pickerKind === 'batches' ? batches : pickerKind === 'students' ? students : pickerKind === 'staff' ? staff : []
+  const toggleId = (id) => setForm(f => ({
+    ...f,
+    audienceIds: f.audienceIds.some(x => String(x) === String(id))
+      ? f.audienceIds.filter(x => String(x) !== String(id))
+      : [...f.audienceIds, id],
+  }))
+
+  // A "pick specific people" audience with nothing ticked would notify nobody.
+  const needsPick = !!pickerKind && form.audienceIds.length === 0
+  const canSave   = form.title.trim() && !needsPick
 
   return (
     <Modal title="New Announcement" onClose={onClose}>
       <div className="flex justify-end -mt-1 mb-1">
-        <DevFillButton onFill={() => setForm(fillAnnouncement())} />
+        <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillAnnouncement() }))} />
       </div>
       <div className="space-y-4">
         <div>
@@ -146,10 +174,58 @@ function AddAnnouncementModal({ onClose, onSave }) {
             onChange={e => set('body', e.target.value)}
           />
         </div>
+
+        {/* Audience */}
+        <div>
+          <label className="label">Send to</label>
+          <div className="flex flex-wrap gap-2">
+            {AUDIENCES.map(a => (
+              <button
+                key={a.value}
+                type="button"
+                onClick={() => { set('audienceType', a.value); set('audienceIds', []) }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${form.audienceType===a.value ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+
+          {pickerKind && (
+            <div className="mt-3 border border-gray-200 rounded-xl max-h-44 overflow-y-auto divide-y divide-gray-50">
+              {pickerList.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">
+                  No {pickerKind} in the current sport/branch view
+                </p>
+              )}
+              {pickerList.map(item => {
+                const checked = form.audienceIds.some(x => String(x) === String(item.id))
+                return (
+                  <label key={item.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                    <input type="checkbox" checked={checked} onChange={() => toggleId(item.id)} className="accent-brand-600" />
+                    <span className="text-sm text-gray-700 flex-1 truncate">{item.name}</span>
+                    {pickerKind === 'students' && item.batch && (
+                      <span className="text-[10px] text-gray-400">{item.batch}</span>
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+          )}
+
+          <p className="text-[11px] text-gray-500 mt-2">
+            {needsPick
+              ? `Pick at least one ${pickerKind === 'batches' ? 'batch' : pickerKind === 'students' ? 'student' : 'staff member'}.`
+              : 'Only people in your current sport/branch view are notified.'}
+          </p>
+        </div>
       </div>
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={() => { onSave(form); onClose() }}>Post Announcement</button>
+        <button className="btn-primary disabled:opacity-50" disabled={!canSave}
+          onClick={() => { if (canSave) { onSave(form); onClose() } }}>
+          Post Announcement
+        </button>
       </div>
     </Modal>
   )

@@ -1538,6 +1538,8 @@ export async function fetchAnnouncements(academyId) {
     date:     row.date,
     sport:    row.sport    || null,
     branchId: row.branch_id || null,
+    audienceType: row.audience_type || 'all',
+    audienceIds:  row.audience_ids  || [],
   }))
 }
 
@@ -1550,10 +1552,17 @@ export async function insertAnnouncement(a) {
     p_token:     _sessionToken(),
     p_sport:     a.sport     || null,
     p_branch_id: a.branchId  || null,
+    p_audience_type: a.audienceType || 'all',
+    p_audience_ids:  a.audienceIds  || [],
   })
   if (error) throw error
   const row = typeof data === 'string' ? JSON.parse(data) : data
-  return { ...a, id: row.id, date: row.date, sport: row.sport || null, branchId: row.branch_id || null }
+  return {
+    ...a,
+    id: row.id, date: row.date, sport: row.sport || null, branchId: row.branch_id || null,
+    audienceType: row.audience_type || 'all',
+    audienceIds:  row.audience_ids  || [],
+  }
 }
 
 // ── Fee Plans ─────────────────────────────────────────────

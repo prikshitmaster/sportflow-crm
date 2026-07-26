@@ -77,7 +77,21 @@ const STATUS_COLOR = { Upcoming: 'badge-blue', Ongoing: 'badge-green', Completed
 
 // ── EventForm Modal ──────────────────────────────────────────
 function EventFormModal({ initial, onClose, onSave, batches, allStaff }) {
-  const [form, setForm] = useState(initial || BLANK)
+  const { selectedSport, selectedBranch, sportBranches, role, user } = useApp()
+  const isEdit = !!initial?.id
+  // Mirror the Batches pattern: when the owner has drilled into one sport (or
+  // staff only cover one), lock the event to that sport instead of letting it
+  // be tagged with a sport outside the branch/sport currently in view.
+  const staffSport  = role !== 'owner' && user?.sports?.length === 1 ? user.sports[0] : null
+  const scopedSport = (selectedSport && selectedSport !== 'All') ? selectedSport : staffSport
+  const sportLocked = !isEdit && Boolean(scopedSport)
+  const pickerSports = role === 'staff' && user?.sports?.length > 0 ? user.sports : SPORTS
+  // addEvent() auto-tags branch_id from selectedBranch — surface that here too
+  // (same as AddBatchModal) so it's clear which branch this event lands in.
+  const branchName = selectedBranch
+    ? (sportBranches || []).find(b => b.id === selectedBranch)?.branchName
+    : null
+  const [form, setForm] = useState(initial || (scopedSport ? { ...BLANK, sport: scopedSport } : BLANK))
   const [saving, setSaving] = useState(false)
   const [err,    setErr]    = useState('')
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -100,7 +114,11 @@ function EventFormModal({ initial, onClose, onSave, batches, allStaff }) {
         <div className="sticky top-0 bg-white px-5 pt-5 pb-3 border-b border-gray-100 flex items-center justify-between">
           <p className="font-black text-gray-900">{initial?.id ? 'Edit Event' : 'New Event'}</p>
           <div className="flex items-center gap-2">
-            <DevFillButton onFill={() => setForm(fillEvent({ sportOptions: SPORTS }))} />
+            <DevFillButton onFill={() => {
+              const data = fillEvent({ sportOptions: pickerSports })
+              if (sportLocked) data.sport = scopedSport
+              setForm(f => ({ ...f, ...data }))
+            }} />
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={15} /></button>
           </div>
         </div>
@@ -119,10 +137,17 @@ function EventFormModal({ initial, onClose, onSave, batches, allStaff }) {
           </div>
           <div>
             <label className="label">Sport</label>
-            <select className="input" value={form.sport} onChange={e => set('sport', e.target.value)}>
-              <option value="">All Sports</option>
-              {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            {sportLocked ? (
+              <div className="input flex items-center gap-2 bg-gray-50 cursor-default">
+                <span className="text-sm font-semibold text-gray-800">{scopedSport}</span>
+                {branchName && <span className="text-xs text-gray-400 font-medium">· {branchName}</span>}
+              </div>
+            ) : (
+              <select className="input" value={form.sport} onChange={e => set('sport', e.target.value)}>
+                <option value="">All Sports</option>
+                {pickerSports.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
