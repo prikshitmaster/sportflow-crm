@@ -34,7 +34,11 @@ export default function StudentAnnouncements() {
   // Scope filters — student only sees content tagged for their sport+branch
   // OR content with no sport/branch tag (= academy-wide).
   const studentSport    = (studentUser?.sport || '').toLowerCase()
-  const studentBatchId  = studentUser?.batchId
+  // studentUser comes from secure_validate_student_session, which returns
+  // row_to_json(students) — i.e. snake_case. Reading only .batchId left this
+  // undefined, silently hiding every batch-targeted event and announcement.
+  // Same defensive read the other student pages already use.
+  const studentBatchId  = studentUser?.batch_id || studentUser?.batchId || null
   const studentBranchId = studentUser?.branch_id || studentUser?.branchId || null
 
   const sportMatch  = (item) => !item.sport || item.sport.toLowerCase() === studentSport
