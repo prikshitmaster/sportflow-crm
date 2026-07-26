@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
                 // Must match FCM_CHANNEL_ID in src/lib/fcm.js. Without it FCM
                 // uses its "Miscellaneous" fallback channel, which is
                 // IMPORTANCE_DEFAULT — shade only, no heads-up banner.
-                channel_id: 'sportflow_default',
+                channel_id: 'sportflow_alerts_v2',
                 sound: 'default',
                 default_vibrate_timings: true,
               },

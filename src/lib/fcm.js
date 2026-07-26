@@ -15,7 +15,13 @@ export function fcmSupported() {
 // them into the shade: no heads-up banner, no vibration. Users read that as
 // "push isn't working". MAX importance is what produces the pop-up.
 // send-fcm names this id in android.notification.channel_id.
-export const FCM_CHANNEL_ID = 'sportflow_default'
+// Versioned: Android freezes a channel's importance/sound once created, so
+// changing them means publishing a new id. v1 ('sportflow_default') set
+// sound:'default', which Capacitor resolves to res/raw/default — a resource
+// this app doesn't ship, leaving the channel silent. Omitting sound entirely
+// gets the system default notification tone.
+export const FCM_CHANNEL_ID = 'sportflow_alerts_v2'
+const LEGACY_CHANNEL_IDS = ['sportflow_default']
 
 let registrationPromise = null
 
@@ -37,10 +43,16 @@ export function initFcm({ onNotificationTap, onForegroundMessage } = {}) {
         description: 'Announcements, notices and reminders',
         importance:  5,     // MAX → heads-up banner
         visibility:  1,     // public on lockscreen
-        sound:       'default',
         vibration:   true,
         lights:      true,
+        // No `sound` on purpose — Capacitor maps it to res/raw/<name>, and a
+        // missing file yields a silent channel. Omitting it = system default.
       })
+      // Tidy up superseded versions so users don't see stale duplicates in
+      // Android's notification settings.
+      for (const id of LEGACY_CHANNEL_IDS) {
+        await PushNotifications.deleteChannel({ id }).catch(() => {})
+      }
     } catch { /* older Android / already exists */ }
 
     let perm = await PushNotifications.checkPermissions()
