@@ -10,6 +10,13 @@ export function fcmSupported() {
   return Capacitor.getPlatform() === 'android'
 }
 
+// Without our own channel, FCM drops notifications onto its generic
+// "Miscellaneous" fallback channel at IMPORTANCE_DEFAULT — which only files
+// them into the shade: no heads-up banner, no vibration. Users read that as
+// "push isn't working". MAX importance is what produces the pop-up.
+// send-fcm names this id in android.notification.channel_id.
+export const FCM_CHANNEL_ID = 'sportflow_default'
+
 let registrationPromise = null
 
 export function initFcm({ onNotificationTap, onForegroundMessage } = {}) {
@@ -18,6 +25,23 @@ export function initFcm({ onNotificationTap, onForegroundMessage } = {}) {
 
   registrationPromise = (async () => {
     const { PushNotifications } = await import('@capacitor/push-notifications')
+
+    // Idempotent — re-creating with the same id is a no-op. Must exist before
+    // the first message arrives, or Android falls back to the silent channel.
+    // Note: importance/sound of an EXISTING channel can't be raised by the app;
+    // Android locks user-visible settings once created.
+    try {
+      await PushNotifications.createChannel({
+        id:          FCM_CHANNEL_ID,
+        name:        'Academy updates',
+        description: 'Announcements, notices and reminders',
+        importance:  5,     // MAX → heads-up banner
+        visibility:  1,     // public on lockscreen
+        sound:       'default',
+        vibration:   true,
+        lights:      true,
+      })
+    } catch { /* older Android / already exists */ }
 
     let perm = await PushNotifications.checkPermissions()
     if (perm.receive !== 'granted') {

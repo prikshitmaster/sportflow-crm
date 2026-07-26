@@ -79,7 +79,17 @@ Deno.serve(async (req) => {
             token,
             notification: { title, body },
             data: { link: link ?? '/' },
-            android: { priority: 'high' },
+            android: {
+              priority: 'high',
+              notification: {
+                // Must match FCM_CHANNEL_ID in src/lib/fcm.js. Without it FCM
+                // uses its "Miscellaneous" fallback channel, which is
+                // IMPORTANCE_DEFAULT — shade only, no heads-up banner.
+                channel_id: 'sportflow_default',
+                sound: 'default',
+                default_vibrate_timings: true,
+              },
+            },
           },
         }),
       }
