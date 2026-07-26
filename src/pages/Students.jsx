@@ -1581,11 +1581,15 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
   )
 }
 
-export function Modal({ title, onClose, children }) {
+// `footer` is optional and backwards-compatible: callers that leave it out keep
+// rendering their buttons inside `children` exactly as before. Pass it when the
+// body can get tall — on a phone, action buttons placed in the scrolling body
+// end up below the fold and the form looks like it has no submit button.
+export function Modal({ title, onClose, children, footer }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh] max-h-[90dvh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
           <h3 className="font-bold text-gray-900">{title}</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
@@ -1593,6 +1597,12 @@ export function Modal({ title, onClose, children }) {
           </button>
         </div>
         <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
+        {footer && (
+          <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 bg-white rounded-b-2xl"
+            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )

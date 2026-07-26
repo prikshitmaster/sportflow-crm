@@ -147,7 +147,18 @@ export default function Community() {
         <SendStaffNoticeModal staff={staff} onClose={() => setShowNotice(false)} onSend={sendStaffNotice} />}
 
       {detail && (
-        <Modal title={detail.title} onClose={() => setDetail(null)}>
+        <Modal title={detail.title} onClose={() => setDetail(null)}
+          footer={
+            <div className="flex justify-end gap-3">
+              {canManage && (
+                <button className="btn-secondary text-red-600"
+                  onClick={() => { setConfirmDel(detail); setDetail(null) }}>
+                  <Trash2 size={14} /> Delete
+                </button>
+              )}
+              <button className="btn-primary" onClick={() => setDetail(null)}>Close</button>
+            </div>
+          }>
           <div className="flex items-center gap-2 flex-wrap mb-3">
             <span className={`badge ${(TYPE_CONFIG[detail.type] || TYPE_CONFIG.Announcement).cls}`}>{detail.type}</span>
             <span className="text-xs text-gray-400">
@@ -160,31 +171,24 @@ export default function Community() {
             {detail.body || <span className="text-gray-400 italic">No message body</span>}
           </p>
           <p className="text-xs text-gray-400 mt-4">— {detail.author}</p>
-          <div className="flex justify-end gap-3 mt-6">
-            {canManage && (
-              <button className="btn-secondary text-red-600"
-                onClick={() => { setConfirmDel(detail); setDetail(null) }}>
-                <Trash2 size={14} /> Delete
-              </button>
-            )}
-            <button className="btn-primary" onClick={() => setDetail(null)}>Close</button>
-          </div>
         </Modal>
       )}
 
       {confirmDel && (
-        <Modal title="Delete announcement?" onClose={() => setConfirmDel(null)}>
+        <Modal title="Delete announcement?" onClose={() => setConfirmDel(null)}
+          footer={
+            <div className="flex justify-end gap-3">
+              <button className="btn-secondary" onClick={() => setConfirmDel(null)}>Cancel</button>
+              <button className="btn-primary bg-red-600 hover:bg-red-700 border-red-600"
+                onClick={() => { removeAnnouncement(confirmDel.id); setConfirmDel(null) }}>
+                Delete
+              </button>
+            </div>
+          }>
           <p className="text-sm text-gray-600">
             <span className="font-semibold text-gray-900">“{confirmDel.title}”</span> will be removed for
             everyone. Notifications already sent stay in people's inboxes. This can't be undone.
           </p>
-          <div className="flex justify-end gap-3 mt-6">
-            <button className="btn-secondary" onClick={() => setConfirmDel(null)}>Cancel</button>
-            <button className="btn-primary bg-red-600 hover:bg-red-700 border-red-600"
-              onClick={() => { removeAnnouncement(confirmDel.id); setConfirmDel(null) }}>
-              Delete
-            </button>
-          </div>
         </Modal>
       )}
     </div>
@@ -220,8 +224,21 @@ function AddAnnouncementModal({ onClose, onSave, staff = [], students = [], batc
   const needsPick = !!pickerKind && form.audienceIds.length === 0
   const canSave   = form.title.trim() && !needsPick
 
+  // Buttons go in the Modal's pinned footer, not the scrolling body — the
+  // audience picker makes this form tall enough that on a phone they'd sit
+  // below the fold and the form would look like it had no submit button.
+  const footer = (
+    <div className="flex justify-end gap-3">
+      <button className="btn-secondary" onClick={onClose}>Cancel</button>
+      <button className="btn-primary disabled:opacity-50" disabled={!canSave}
+        onClick={() => { if (canSave) { onSave(form); onClose() } }}>
+        Post Announcement
+      </button>
+    </div>
+  )
+
   return (
-    <Modal title="New Announcement" onClose={onClose}>
+    <Modal title="New Announcement" onClose={onClose} footer={footer}>
       <div className="flex justify-end -mt-1 mb-1">
         <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillAnnouncement() }))} />
       </div>
@@ -300,13 +317,6 @@ function AddAnnouncementModal({ onClose, onSave, staff = [], students = [], batc
               : 'Only people in your current sport/branch view are notified.'}
           </p>
         </div>
-      </div>
-      <div className="flex justify-end gap-3 mt-6">
-        <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary disabled:opacity-50" disabled={!canSave}
-          onClick={() => { if (canSave) { onSave(form); onClose() } }}>
-          Post Announcement
-        </button>
       </div>
     </Modal>
   )
