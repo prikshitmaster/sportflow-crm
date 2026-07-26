@@ -125,18 +125,35 @@ export async function saveFcmToken({ userType, userId, academyId, token }) {
   }, { onConflict: 'token' })
 }
 
+// NOTE ON DIAGNOSABILITY: this used to discard the query error and ignore any
+// invoke failure that wasn't a 404, so a broken send looked identical to
+// "recipient has no device" — silent either way. Every failure path now warns.
+// notify() wraps this in Promise.allSettled, so a throw here is still harmless
+// to the caller; the log is the point.
 export async function sendFcmToUser({ recipientType, recipientId, academyId, title, body, link }) {
-  const { data: tokens } = await supabase
+  if (!academyId) {
+    console.warn('[fcm] no academyId — cannot look up devices for', recipientType, recipientId)
+    return
+  }
+
+  const { data: tokens, error } = await supabase
     .from('fcm_tokens')
     .select('token')
     .eq('user_type', recipientType)
     .eq('user_id', String(recipientId))
     .eq('academy_id', academyId)
 
+  if (error) {
+    console.warn('[fcm] device lookup failed for', recipientType, recipientId, error.message)
+    return
+  }
   if (!tokens?.length) return
 
   await Promise.allSettled(tokens.map(async ({ token }) => {
     const res = await supabase.functions.invoke('send-fcm', { body: { token, title, body, link } })
+    if (res.error) {
+      console.warn('[fcm] send-fcm failed for', recipientType, recipientId, res.error.message || res.error)
+    }
     // unregistered/invalid token — clean it up
     if (res.error?.context?.status === 404 || res.data?.invalidToken) {
       await supabase.from('fcm_tokens').delete().eq('token', token)
