@@ -40,6 +40,7 @@ import { logger } from '../lib/logger'
 import { setSentryUser } from '../lib/sentry'
 import { notify } from '../lib/notifications'
 import { staffMatchesAudience, studentMatchesAudience } from '../lib/announcementAudience'
+import { unregisterFcm } from '../lib/fcm'
 import { toLocalDateStr } from '../lib/dates'
 
 // Module-level in-flight payment lock — survives across renders, isolated per tab.
@@ -642,6 +643,8 @@ export function AppProvider({ children }) {
 
   const logoutOwner = async () => {
     await _endOps()
+    // Before signOut — the delete runs as the authenticated role.
+    await unregisterFcm({ userType: 'owner', userId: user?.id })
     await supabase.auth.signOut().catch(() => {})
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
@@ -714,6 +717,9 @@ export function AppProvider({ children }) {
         sport: user.sports?.[0] || null, branchId: user.branchId || null,
       })
     }
+    // Before the session dies — the FCM delete policy authenticates via the
+    // still-valid staff token header.
+    await unregisterFcm({ userType: 'staff', userId: user?.id })
     if (sess?.token) await db.deleteStaffSession(sess.token).catch(() => {})
     clearStaffSession()
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
@@ -772,6 +778,8 @@ export function AppProvider({ children }) {
         sport: studentUser.sport || null, branchId: studentUser.branch_id || null,
       })
     }
+    // Before the session dies — see logoutStaff.
+    await unregisterFcm({ userType: 'student', userId: studentUser?.id })
     if (sess?.token) await db.deleteStudentSession(sess.token).catch(() => {})
     clearStudentSession()
     setRole(null)

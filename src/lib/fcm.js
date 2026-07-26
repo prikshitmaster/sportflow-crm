@@ -43,6 +43,29 @@ export function initFcm({ onNotificationTap } = {}) {
   return registrationPromise
 }
 
+// Drop this device's registration on logout. Without this the row keeps
+// pointing at the user who just signed out, so a shared/handed-over phone goes
+// on receiving their notifications until someone else happens to log in on it.
+//
+// MUST run while the session is still valid — the anon delete policy resolves
+// the academy from the x-staff/x-student token header, so calling this after
+// the session is torn down silently does nothing.
+export async function unregisterFcm({ userType, userId } = {}) {
+  if (!fcmSupported()) return
+  try {
+    const token = registrationPromise ? await registrationPromise : null
+    if (token) {
+      await supabase.from('fcm_tokens').delete().eq('token', token)
+    } else if (userType && userId) {
+      // We never held the token this session (e.g. reloaded before logging out).
+      // Clear this user's rows so the handover case still stops their pushes.
+      await supabase.from('fcm_tokens').delete()
+        .eq('user_type', userType).eq('user_id', String(userId))
+    }
+  } catch { /* best effort — never block logout */ }
+  registrationPromise = null
+}
+
 export async function saveFcmToken({ userType, userId, academyId, token }) {
   if (!token) return
   await supabase.from('fcm_tokens').upsert({
