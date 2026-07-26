@@ -1965,6 +1965,25 @@ export function AppProvider({ children }) {
     }
   }
 
+  const removeAnnouncement = async (id) => {
+    const prev = announcements
+    // Optimistic: the list is the only feedback that the delete happened.
+    setAnnouncements(list => list.filter(a => a.id !== id))
+    try {
+      await db.deleteAnnouncement(id)
+      const gone = prev.find(a => a.id === id)
+      logAuditSport({
+        actor: user, action: ACTIONS.ANNOUNCEMENT_DELETE ?? 'announcement.delete',
+        entityType: 'announcement', entityId: id, entityName: gone?.title,
+        academyId: user?.academyId, sport: gone?.sport ?? null, branchId: gone?.branchId ?? null,
+      })
+      showToast('Announcement deleted')
+    } catch (err) {
+      setAnnouncements(prev) // roll back so the UI never lies about what's stored
+      showToast(err.message || 'Delete failed', 'error')
+    }
+  }
+
   const isAuthenticated = role !== null
 
   // ── Sport + Branch scoped filtered views ──────────────
@@ -2127,10 +2146,11 @@ export function AppProvider({ children }) {
     const effBranch = isStaff ? (user?.branchId || null) : (selectedBranch || null)
     const effSport  = isStaff ? null : (selectedSport && selectedSport !== 'All' ? selectedSport.toLowerCase() : null)
     const staffSports = isStaff ? new Set((user?.sports || []).map(s => s.toLowerCase())) : null
+    // NOTE: audience filtering deliberately does NOT happen here — this list
+    // also backs the Community management page, where an author must still see
+    // a post they aimed at students. StaffNotices applies the audience filter
+    // for the staff-facing inbox.
     return announcements.filter(a => {
-      // Staff only see announcements they're actually an audience for. The owner
-      // is the sender, so they keep seeing everything they posted.
-      if (isStaff && !staffMatchesAudience({ id: user?.id }, a)) return false
       // Academy-wide announcements (no sport, no branch) are always visible.
       if (!a.sport && !a.branchId) return true
       // Branch: academy-wide (null) shows everywhere; else must match the active branch.
@@ -2192,7 +2212,7 @@ export function AppProvider({ children }) {
       // raw fee plans (unfiltered) for places that need everything
       allFeePlans: feePlans,
       attendanceData, loadAttendanceForDate, saveAttendance,
-      announcements: staffScopedAnnouncements, addAnnouncement, sendStaffNotice,
+      announcements: staffScopedAnnouncements, addAnnouncement, removeAnnouncement, sendStaffNotice,
       leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // staff portal management
       inviteStaff, updateStaffAccess, revokeStaffAccess,

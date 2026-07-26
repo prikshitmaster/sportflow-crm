@@ -1522,7 +1522,12 @@ export async function insertBatchV2(b) {
 
 // ── Announcements ─────────────────────────────────────────
 export async function fetchAnnouncements(academyId) {
-  let query = supabase.from('announcements').select('*').order('date', { ascending: false })
+  // `date` is a DATE (day precision), so everything posted today ties and the
+  // order within a day fell back to insertion order — newest appeared LAST.
+  // id desc breaks the tie so the newest post is always on top.
+  let query = supabase.from('announcements').select('*')
+    .order('date', { ascending: false })
+    .order('id',   { ascending: false })
   if (academyId) query = query.eq('academy_id', academyId)
   const { data, error } = await query
   if (error) {
@@ -1563,6 +1568,14 @@ export async function insertAnnouncement(a) {
     audienceType: row.audience_type || 'all',
     audienceIds:  row.audience_ids  || [],
   }
+}
+
+export async function deleteAnnouncement(id) {
+  const { error } = await supabase.rpc('secure_delete_announcement', {
+    p_id:    id,
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
 }
 
 // ── Fee Plans ─────────────────────────────────────────────

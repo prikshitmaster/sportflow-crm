@@ -34,7 +34,8 @@ export const ACTIONS = {
   STAFF_REMOVE:       'staff.remove',
   STAFF_INVITE:       'staff.invite',
   // Announcements
-  ANNOUNCEMENT_ADD:   'announcement.add',
+  ANNOUNCEMENT_ADD:    'announcement.add',
+  ANNOUNCEMENT_DELETE: 'announcement.delete',
   // Assessments
   ASSESSMENT_ADD:     'assessment.add',
   ASSESSMENT_UPDATE:  'assessment.update',

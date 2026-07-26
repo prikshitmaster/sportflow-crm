@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApp } from '../../context/AppContext'
 import { Bell, Calendar, Trophy, MapPin, Send } from 'lucide-react'
 import SendStaffNoticeModal from '../../components/SendStaffNoticeModal'
+import { staffMatchesAudience } from '../../lib/announcementAudience'
 
 export default function StaffNotices() {
   // `events` and `announcements` from context are already sport+branch scoped
@@ -9,7 +10,7 @@ export default function StaffNotices() {
   // never fetch raw academy-wide rows here or branch isolation breaks.
   const { announcements, events, user, hasPermission, sendStaffNotice, staff, dataLoading } = useApp()
   const [showNotice, setShowNotice] = useState(false)
-  const canSend  = hasPermission('community.manage')
+  const canSend  = hasPermission('staff.manage')  // messaging all staff — see Community.jsx
   const loading  = dataLoading
 
   // Events visible to this staff member (audience filter on top of branch/sport scope)
@@ -21,7 +22,16 @@ export default function StaffNotices() {
     return false
   }).sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
-  const sorted = [...(announcements || [])].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+  // Audience filter belongs here, not in the context memo — the Community
+  // management page shares that list and an author must still see their own
+  // student-targeted posts. This is the staff inbox, so it shows only what is
+  // actually addressed to this staff member.
+  // Sort: `date` is day-precision, so same-day posts tie — id desc breaks it
+  // and keeps the newest on top instead of bottom.
+  const sorted = (announcements || [])
+    .filter(a => staffMatchesAudience({ id: user?.id }, a))
+    .sort((a, b) =>
+      String(b.date || '').localeCompare(String(a.date || '')) || (b.id - a.id))
 
   const hasContent = visibleEvents.length > 0 || sorted.length > 0
 
