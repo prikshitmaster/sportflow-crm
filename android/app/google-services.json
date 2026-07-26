@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "696979493379",
+    "project_id": "clubcrm-db388",
+    "storage_bucket": "clubcrm-db388.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:696979493379:android:ec2dc2beb7f53d63463436",
+        "android_client_info": {
+          "package_name": "com.sportflow.crm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtI-Jnu1adOtA1w-7UaQtm7hjBMpXLtkA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

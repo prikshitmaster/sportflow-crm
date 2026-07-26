@@ -5,6 +5,7 @@ import {
   subscribeToNotifications, pushSupported, subscribeToPush, savePushSubscription,
   actionNotification,
 } from '../lib/notifications'
+import { fcmSupported, initFcm, saveFcmToken } from '../lib/fcm'
 
 const TYPE_ICON = {
   payment:      '💳',
@@ -147,6 +148,14 @@ export default function NotificationBell({ recipientType, recipientId, academyId
       .then(r => r.pushManager.getSubscription().then(s => setPushEnabled(!!s)))
       .catch(() => {})
   }, [])
+
+  // Native Android: register for FCM silently, no manual "Enable" button needed
+  useEffect(() => {
+    if (!fcmSupported() || !recipientId || !academyId) return
+    initFcm({ onNotificationTap: link => link && markAllRead(recipientType, recipientId) })
+      .then(token => token && saveFcmToken({ userType: recipientType, userId: recipientId, academyId, token }))
+      .catch(() => {})
+  }, [recipientType, recipientId, academyId])
 
   // Close on outside click — desktop only
   useEffect(() => {
