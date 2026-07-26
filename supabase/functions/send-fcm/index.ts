@@ -4,7 +4,12 @@ try { serviceAccount = JSON.parse(serviceAccountJson) } catch { /* checked below
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  // x-staff-token / x-student-token are attached to EVERY supabase request by
+  // the global fetch wrapper in src/lib/supabase.js. Omitting them here makes
+  // the browser's CORS preflight fail for staff and student callers — the
+  // request is blocked before it is sent, so pushes silently never go out.
+  // (Owners have no such header, which is why it worked only for them.)
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-staff-token, x-student-token, x-session-token',
 }
 
 // google-auth-library's JWT signer needs Node's crypto.Sign, which the Deno
