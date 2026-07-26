@@ -6,6 +6,7 @@ import {
   actionNotification,
 } from '../lib/notifications'
 import { fcmSupported, initFcm, saveFcmToken } from '../lib/fcm'
+import { useApp } from '../context/AppContext'
 
 const TYPE_ICON = {
   payment:      '💳',
@@ -121,6 +122,7 @@ function NotifPanel({ notifs, unread, recipientType, recipientId, pushEnabled, p
 }
 
 export default function NotificationBell({ recipientType, recipientId, academyId }) {
+  const { showToast } = useApp()
   const [open,        setOpen]        = useState(false)
   const [notifs,      setNotifs]      = useState([])
   const [pushEnabled, setPushEnabled] = useState(false)
@@ -152,10 +154,14 @@ export default function NotificationBell({ recipientType, recipientId, academyId
   // Native Android: register for FCM silently, no manual "Enable" button needed
   useEffect(() => {
     if (!fcmSupported() || !recipientId || !academyId) return
-    initFcm({ onNotificationTap: link => link && markAllRead(recipientType, recipientId) })
+    initFcm({
+      onNotificationTap: link => link && markAllRead(recipientType, recipientId),
+      // App open = Android suppresses the tray notification, so surface it here.
+      onForegroundMessage: ({ title, body }) => showToast?.(body ? `${title} — ${body}` : title),
+    })
       .then(token => token && saveFcmToken({ userType: recipientType, userId: recipientId, academyId, token }))
       .catch(() => {})
-  }, [recipientType, recipientId, academyId])
+  }, [recipientType, recipientId, academyId, showToast])
 
   // Close on outside click — desktop only
   useEffect(() => {

@@ -12,7 +12,7 @@ export function fcmSupported() {
 
 let registrationPromise = null
 
-export function initFcm({ onNotificationTap } = {}) {
+export function initFcm({ onNotificationTap, onForegroundMessage } = {}) {
   if (!fcmSupported()) return Promise.resolve(null)
   if (registrationPromise) return registrationPromise
 
@@ -35,6 +35,18 @@ export function initFcm({ onNotificationTap } = {}) {
       const link = action.notification?.data?.link
       onNotificationTap?.(link)
       if (link) window.location.assign(link)
+    })
+
+    // Android does NOT draw a tray notification while the app is in the
+    // foreground — it hands the message to us instead. Without this the arrival
+    // is invisible and it reads as "push isn't working". The bell list is still
+    // driven by the Realtime subscription; this is purely the visible cue.
+    PushNotifications.addListener('pushNotificationReceived', n => {
+      onForegroundMessage?.({
+        title: n?.title || 'New notification',
+        body:  n?.body  || '',
+        link:  n?.data?.link || null,
+      })
     })
 
     return token
