@@ -1570,19 +1570,25 @@ function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving
   const canSave = !!(form.team_name.trim() && form.batch_id && form.week_start)
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    // No scroll on the overlay itself: it used to let the whole sheet scroll,
+    // carrying the header (and its Export PDF button) off the top of the screen
+    // and pushing the action row under the bottom nav. Only the body scrolls
+    // now, so header and footer stay put.
+    <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative min-h-full flex items-end sm:items-center justify-center p-0 sm:p-4"
+      <div className="relative h-full flex items-end sm:items-center justify-center p-0 sm:p-4"
         style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
-      <div className="relative w-full sm:max-w-3xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[95dvh]">
+      <div className="relative w-full sm:max-w-3xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-full">
 
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-          <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Weekly Schedule' : 'New Weekly Schedule'}</h2>
-          <div className="flex items-center gap-2">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-2 flex-shrink-0">
+          {/* min-w-0 + truncate so a long title can never squeeze Export PDF
+              off a narrow screen */}
+          <h2 className="text-base font-black text-gray-900 truncate min-w-0">{isEdit ? 'Edit Weekly Schedule' : 'New Weekly Schedule'}</h2>
+          <div className="flex items-center gap-2 flex-shrink-0">
             {isEdit && (
               <button type="button" onClick={() => exportWeeklySchedulePDF({ schedule: form })}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition">
-                <FileDown size={13} /> Export PDF
+                <FileDown size={13} /> <span className="hidden xs:inline">Export </span>PDF
               </button>
             )}
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
