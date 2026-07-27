@@ -19,6 +19,23 @@ initSentry()
 // Auto-reload when a Vite lazy chunk fails to load after a new deploy
 window.addEventListener('vite:preloadError', () => window.location.reload())
 
+// Apply a new deploy on the FIRST launch instead of the second.
+// The service worker (registerType: 'autoUpdate' + skipWaiting/clients.claim)
+// installs and takes control in the background, but the page already running
+// keeps executing the OLD bundle — so a fresh deploy only appeared after
+// quitting and reopening a second time, which reliably read as "the change
+// didn't ship". Reloading once when control changes collapses that to one.
+// The `reloading` latch matters: controllerchange can fire again during the
+// reload and would otherwise loop.
+if ('serviceWorker' in navigator) {
+  let reloading = false
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return
+    reloading = true
+    window.location.reload()
+  })
+}
+
 // Block long-press context menu on Android Chrome (links, images, etc.)
 document.addEventListener('contextmenu', e => e.preventDefault())
 
