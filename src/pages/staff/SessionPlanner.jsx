@@ -1576,9 +1576,14 @@ function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving
     // now, so header and footer stay put.
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative h-full flex items-end sm:items-center justify-center p-0 sm:p-4"
-        style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
-      <div className="relative w-full sm:max-w-3xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-full">
+      {/* 100dvh, not h-full: `inset-0` resolves against the LAYOUT viewport,
+          which on mobile browsers extends behind the URL/toolbar — so the
+          modal could be taller than the visible area and its footer ended up
+          off-screen. dvh tracks the actually-visible height. The padding then
+          reserves room for the app's own fixed bottom nav. */}
+      <div className="relative h-[100dvh] flex items-end sm:items-center justify-center p-0 sm:p-4"
+        style={{ paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}>
+      <div className="relative w-full sm:max-w-3xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-full min-h-0">
 
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-2 flex-shrink-0">
           {/* min-w-0 + truncate so a long title can never squeeze Export PDF

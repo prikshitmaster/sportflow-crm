@@ -281,11 +281,14 @@ export default function NotificationBell({ recipientType, recipientId, academyId
           // bottom nav (also z-30, but later in the DOM). The panel rendered
           // trapped behind the tab bar. At body level the z-index is absolute
           // again and the sheet covers the nav as intended.
-          <div className="sm:hidden fixed inset-0 z-[60] flex flex-col justify-end">
+          <div className="sm:hidden fixed inset-0 z-[60] flex flex-col justify-end h-[100dvh]">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative bg-white rounded-t-3xl flex flex-col shadow-2xl
-                            min-h-[45dvh] max-h-[85dvh]"
-              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            {/* Rounded bottom + bottom margin so the sheet visibly floats CLEAR
+                of the fixed tab bar rather than tucking behind it, and 100dvh
+                above so it measures the visible viewport, not the layout one. */}
+            <div className="relative bg-white rounded-3xl mx-2 flex flex-col shadow-2xl overflow-hidden
+                            min-h-[45dvh] max-h-[75dvh]"
+              style={{ marginBottom: 'calc(4.5rem + env(safe-area-inset-bottom))' }}>
               {/* drag handle */}
               <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
                 <div className="w-10 h-1 bg-gray-200 rounded-full" />
