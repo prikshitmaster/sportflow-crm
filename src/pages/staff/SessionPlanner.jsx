@@ -1663,7 +1663,15 @@ function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving
               Delete
             </button>
           ) : <div />}
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3 items-center">
+            {/* Lives beside the other actions, not in the header — that's where
+                people look for it, and the header gets tight on a phone. */}
+            {isEdit && (
+              <button type="button" onClick={() => exportWeeklySchedulePDF({ schedule: form })}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+                <FileDown size={14} /> PDF
+              </button>
+            )}
             <button type="button" onClick={onClose}
               className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
               Cancel

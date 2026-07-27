@@ -48,7 +48,7 @@ function groupByDay(list) {
 }
 
 function NotifPanel({ notifs, unread, recipientType, recipientId, pushEnabled, pushLoading,
-  enablePush, onMarkAll, onMarkOne, onDelete, onAction, onClose }) {
+  enablePush, onMarkAll, onMarkOne, onClearRead, onAction, onClose }) {
   return (
     <>
       {/* Header */}
@@ -60,7 +60,13 @@ function NotifPanel({ notifs, unread, recipientType, recipientId, pushEnabled, p
           {unread > 0 && (
             <button onClick={onMarkAll}
               className="flex items-center gap-1 text-[11px] text-brand-600 font-semibold hover:text-brand-800 px-2 py-1 rounded-lg hover:bg-brand-50">
-              <CheckCheck size={12} /> All read
+              <CheckCheck size={12} /> Mark read
+            </button>
+          )}
+          {notifs.some(n => n.read) && (
+            <button onClick={onClearRead}
+              className="flex items-center gap-1 text-[11px] text-gray-500 font-semibold hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100">
+              <Trash2 size={12} /> Clear read
             </button>
           )}
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -149,13 +155,9 @@ function NotifPanel({ notifs, unread, recipientType, recipientId, pushEnabled, p
                       )}
                     </div>
 
-                    {/* Muted until intent is shown — a row of red bins made the
-                        list read as a list of errors. */}
-                    <button onClick={e => onDelete(e, n.id)} aria-label="Delete notification"
-                      className="self-start p-1.5 -mr-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50
-                                 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition">
-                      <Trash2 size={14} />
-                    </button>
+                    {/* No per-row bin: a delete control on every line is visual
+                        noise for something that clears itself. Bulk "Clear read"
+                        lives in the header, and read rows expire on their own. */}
                   </div>
                 )
               })}
@@ -181,7 +183,7 @@ export default function NotificationBell({ recipientType, recipientId, academyId
     if (!recipientId) return
     // Sweep read-and-stale rows first so the fetch below returns the trimmed
     // list. Best-effort: a failed purge must never stop notifications loading.
-    try { await purgeOldRead(recipientType, recipientId, 30) } catch {}
+    try { await purgeOldRead(recipientType, recipientId, 7) } catch {}
     try { setNotifs(await fetchNotifications(recipientType, recipientId)) } catch {}
   }, [recipientType, recipientId])
 
@@ -242,11 +244,18 @@ export default function NotificationBell({ recipientType, recipientId, academyId
 
   const onMarkAll  = () => { markAllRead(recipientType, recipientId); setNotifs(p => p.map(n => ({ ...n, read: true }))) }
   const onMarkOne  = async (e, notif) => { e.stopPropagation(); if (notif.read) return; await markRead(notif.id); setNotifs(p => p.map(n => n.id === notif.id ? { ...n, read: true } : n)) }
-  const onDelete   = async (e, id)   => { e.stopPropagation(); await deleteNotification(id); setNotifs(p => p.filter(n => n.id !== id)) }
+  // Bulk clear of everything already read — replaces the per-row bin. Unread is
+  // deliberately untouched: you should never lose something you have not seen.
+  const onClearRead = async () => {
+    const readIds = notifs.filter(n => n.read).map(n => n.id)
+    if (!readIds.length) return
+    setNotifs(p => p.filter(n => !n.read))
+    await Promise.allSettled(readIds.map(id => deleteNotification(id)))
+  }
   const onAction   = async (e, id)   => { e.stopPropagation(); await actionNotification(id); setNotifs(p => p.map(n => n.id === id ? { ...n, actioned_at: new Date().toISOString(), read: true } : n)) }
   const onClose    = () => setOpen(false)
 
-  const panelProps = { notifs, unread, recipientType, recipientId, pushEnabled, pushLoading, enablePush, onMarkAll, onMarkOne, onDelete, onAction, onClose }
+  const panelProps = { notifs, unread, recipientType, recipientId, pushEnabled, pushLoading, enablePush, onMarkAll, onMarkOne, onClearRead, onAction, onClose }
 
   return (
     <div className="relative" ref={ref}>
