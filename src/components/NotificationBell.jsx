@@ -1,19 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Bell, X, Check, CheckCheck, Trash2, BellOff, BellRing } from 'lucide-react'
+import { Bell, X, Check, CheckCheck, Trash2, BellOff, BellRing,
+         CreditCard, CalendarDays, Zap, Megaphone, Info } from 'lucide-react'
 import {
   fetchNotifications, markAllRead, markRead, deleteNotification,
-  subscribeToNotifications, pushSupported, subscribeToPush, savePushSubscription,
+  subscribeToNotifications, pushSupported, subscribeToPush, savePushSubscription, purgeOldRead,
   actionNotification,
 } from '../lib/notifications'
 import { fcmSupported, initFcm, saveFcmToken } from '../lib/fcm'
 import { useApp } from '../context/AppContext'
 
-const TYPE_ICON = {
-  payment:      '💳',
-  session:      '📅',
-  trial:        '🏃',
-  announcement: '📢',
-  info:         'ℹ️',
+// Emoji rendered inconsistently across devices and read as clutter at list
+// density. Tinted icon chips scan faster and let type be identified by colour.
+const TYPE_STYLE = {
+  payment:      { Icon: CreditCard,  fg: 'text-emerald-600', bg: 'bg-emerald-50' },
+  session:      { Icon: CalendarDays, fg: 'text-blue-600',   bg: 'bg-blue-50'    },
+  trial:        { Icon: Zap,          fg: 'text-amber-600',  bg: 'bg-amber-50'   },
+  announcement: { Icon: Megaphone,    fg: 'text-violet-600', bg: 'bg-violet-50'  },
+  info:         { Icon: Info,         fg: 'text-gray-500',   bg: 'bg-gray-100'   },
 }
 
 function timeAgo(ts) {
@@ -23,7 +26,25 @@ function timeAgo(ts) {
   if (m < 60) return `${m}m ago`
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
+  const d = Math.floor(h / 24)
+  if (d < 7)  return `${d}d ago`
+  return new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+// Day headers give the list rhythm instead of one undifferentiated wall.
+const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+
+function groupByDay(list) {
+  const today     = startOfDay(new Date())
+  const yesterday = today - 86400000
+  const buckets   = { Today: [], Yesterday: [], Earlier: [] }
+  for (const n of list) {
+    const t = startOfDay(new Date(n.created_at))
+    if      (t === today)     buckets.Today.push(n)
+    else if (t === yesterday) buckets.Yesterday.push(n)
+    else                      buckets.Earlier.push(n)
+  }
+  return Object.entries(buckets).filter(([, v]) => v.length > 0)
 }
 
 function NotifPanel({ notifs, unread, recipientType, recipientId, pushEnabled, pushLoading,
@@ -73,46 +94,71 @@ function NotifPanel({ notifs, unread, recipientType, recipientId, pushEnabled, p
       )}
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+      <div className="flex-1 overflow-y-auto">
         {notifs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-            <Bell size={32} className="mb-2 opacity-25" />
-            <p className="text-sm font-medium">No notifications yet</p>
-            <p className="text-xs mt-1 text-gray-300">You'll see messages from your academy here</p>
+          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mb-3">
+              <Bell size={20} className="text-gray-300" />
+            </div>
+            <p className="text-sm font-semibold text-gray-500">You're all caught up</p>
+            <p className="text-xs mt-1 text-gray-400">Messages from your academy appear here</p>
           </div>
         ) : (
-          notifs.map(n => (
-            <div key={n.id}
-              className={`flex gap-3 px-4 py-3.5 active:bg-gray-50 transition group ${!n.read ? 'bg-brand-50/50' : ''}`}>
-              <span className="text-lg mt-0.5 flex-shrink-0">{TYPE_ICON[n.type] || TYPE_ICON.info}</span>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm leading-snug ${!n.read ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                  {n.title}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{n.body}</p>
-                <p className="text-[11px] text-gray-400 mt-1">{timeAgo(n.created_at)}</p>
-                {n.action_label && (
-                  n.actioned_at
-                    ? <span className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-emerald-600">
-                        <Check size={11} /> {n.action_label}
-                      </span>
-                    : <button onClick={e => onAction(e, n.id)}
-                        className="mt-2 text-xs font-semibold bg-brand-600 text-white px-4 py-1.5 rounded-lg active:bg-brand-700 transition">
-                        {n.action_label}
-                      </button>
-                )}
+          groupByDay(notifs).map(([label, rows]) => (
+            <div key={label}>
+              <div className="sticky top-0 z-10 px-4 py-1.5 bg-gray-50/95 backdrop-blur-sm border-y border-gray-100">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</span>
               </div>
-              <div className="flex flex-col gap-1 flex-shrink-0">
-                {!n.read && (
-                  <button onClick={e => onMarkOne(e, n)} className="p-1.5 rounded-lg hover:bg-gray-100 text-brand-400">
-                    <Check size={13} />
-                  </button>
-                )}
-                <button onClick={e => onDelete(e, n.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-300 active:text-red-500">
-                  <Trash2 size={13} />
-                </button>
-              </div>
-              {!n.read && <span className="w-2 h-2 rounded-full bg-brand-600 mt-1.5 flex-shrink-0 self-start" />}
+              {rows.map(n => {
+                const { Icon, fg, bg } = TYPE_STYLE[n.type] || TYPE_STYLE.info
+                return (
+                  <div key={n.id}
+                    onClick={e => !n.read && onMarkOne(e, n)}
+                    className={`relative flex gap-3 px-4 py-3.5 border-b border-gray-50 transition group
+                      ${n.read ? 'bg-white hover:bg-gray-50/70'
+                               : 'bg-brand-50/40 hover:bg-brand-50/70 cursor-pointer'}`}>
+                    {/* Accent rail: unread is legible at a glance, not just by weight */}
+                    {!n.read && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-brand-600" />}
+
+                    <div className={`w-9 h-9 rounded-full ${bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                      <Icon size={16} className={fg} />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-2">
+                        <p className={`text-sm leading-snug flex-1 min-w-0
+                          ${n.read ? 'text-gray-700' : 'font-bold text-gray-900'}`}>
+                          {n.title}
+                        </p>
+                        {!n.read && <span className="w-2 h-2 rounded-full bg-brand-600 flex-shrink-0 mt-1.5" />}
+                      </div>
+                      {n.body && (
+                        <p className={`text-xs mt-0.5 leading-relaxed line-clamp-2
+                          ${n.read ? 'text-gray-400' : 'text-gray-600'}`}>{n.body}</p>
+                      )}
+                      <p className="text-[11px] text-gray-400 mt-1.5">{timeAgo(n.created_at)}</p>
+                      {n.action_label && (
+                        n.actioned_at
+                          ? <span className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-emerald-600">
+                              <Check size={11} /> {n.action_label}
+                            </span>
+                          : <button onClick={e => onAction(e, n.id)}
+                              className="mt-2 text-xs font-semibold bg-brand-600 text-white px-4 py-1.5 rounded-lg active:bg-brand-700 transition">
+                              {n.action_label}
+                            </button>
+                      )}
+                    </div>
+
+                    {/* Muted until intent is shown — a row of red bins made the
+                        list read as a list of errors. */}
+                    <button onClick={e => onDelete(e, n.id)} aria-label="Delete notification"
+                      className="self-start p-1.5 -mr-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50
+                                 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           ))
         )}
@@ -133,6 +179,9 @@ export default function NotificationBell({ recipientType, recipientId, academyId
 
   const load = useCallback(async () => {
     if (!recipientId) return
+    // Sweep read-and-stale rows first so the fetch below returns the trimmed
+    // list. Best-effort: a failed purge must never stop notifications loading.
+    try { await purgeOldRead(recipientType, recipientId, 30) } catch {}
     try { setNotifs(await fetchNotifications(recipientType, recipientId)) } catch {}
   }, [recipientType, recipientId])
 
@@ -171,13 +220,12 @@ export default function NotificationBell({ recipientType, recipientId, academyId
     return () => document.removeEventListener('mousedown', h)
   }, [open])
 
-  const handleOpen = () => {
-    setOpen(o => !o)
-    if (!open && unread > 0) {
-      markAllRead(recipientType, recipientId)
-      setNotifs(p => p.map(n => ({ ...n, read: true })))
-    }
-  }
+  // Opening the panel used to mark everything read at once, so unread styling
+  // was never actually visible — the list was always fully read by the time you
+  // could look at it, and anything you hadn't got to was silently cleared.
+  // Now rows stay unread until you tap one (or use "All read"), which is what
+  // every mail/chat client does.
+  const handleOpen = () => setOpen(o => !o)
 
   const enablePush = async () => {
     if (!pushSupported() || pushLoading) return

@@ -33,6 +33,21 @@ export async function deleteNotification(id) {
   await supabase.from('notifications').delete().eq('id', id)
 }
 
+// Housekeeping: drop notifications this user has already read and that are
+// older than `days`. Without it the bell grows without bound and every user
+// has to clear it by hand. Unread rows are never touched, no matter how old —
+// something you haven't seen shouldn't disappear on you.
+export async function purgeOldRead(recipientType, recipientId, days = 30) {
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString()
+  await supabase
+    .from('notifications')
+    .delete()
+    .eq('recipient_type', recipientType)
+    .eq('recipient_id', String(recipientId))
+    .eq('read', true)
+    .lt('created_at', cutoff)
+}
+
 export async function insertNotification({ academyId, recipientType, recipientId, title, body, type = 'info', link = null, actionLabel = null }) {
   const { data, error } = await supabase
     .from('notifications')
