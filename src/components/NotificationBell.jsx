@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Bell, X, Check, CheckCheck, Trash2, BellOff, BellRing,
          CreditCard, CalendarDays, Zap, Megaphone, Info } from 'lucide-react'
 import {
@@ -273,17 +274,27 @@ export default function NotificationBell({ recipientType, recipientId, academyId
 
       {/* Mobile: full-screen bottom sheet */}
       {open && (
-        <div className="sm:hidden fixed inset-0 z-50 flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-          <div className="relative bg-white rounded-t-3xl flex flex-col max-h-[85vh] shadow-2xl"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-            {/* drag handle */}
-            <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-              <div className="w-10 h-1 bg-gray-200 rounded-full" />
+        createPortal(
+          // Portalled to <body> on purpose. This bell sits inside a
+          // `sticky z-30` header, which forms a stacking context — so the
+          // sheet's z-50 was being resolved *inside* z-30 and lost to the
+          // bottom nav (also z-30, but later in the DOM). The panel rendered
+          // trapped behind the tab bar. At body level the z-index is absolute
+          // again and the sheet covers the nav as intended.
+          <div className="sm:hidden fixed inset-0 z-[60] flex flex-col justify-end">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative bg-white rounded-t-3xl flex flex-col shadow-2xl
+                            min-h-[45dvh] max-h-[85dvh]"
+              style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+              {/* drag handle */}
+              <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+                <div className="w-10 h-1 bg-gray-200 rounded-full" />
+              </div>
+              <NotifPanel {...panelProps} />
             </div>
-            <NotifPanel {...panelProps} />
-          </div>
-        </div>
+          </div>,
+          document.body
+        )
       )}
 
       {/* Desktop: dropdown */}
