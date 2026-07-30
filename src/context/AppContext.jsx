@@ -2061,7 +2061,7 @@ export function AppProvider({ children }) {
 
   // ── Announcements ─────────────────────────────────────
 
-  const sendStaffNotice = async ({ title, body, actionLabel, recipientIds }) => {
+  const sendStaffNotice = async ({ title, body, actionLabel, recipientIds, allStaff }) => {
     // Fallback audience = the branch/sport-scoped staff list (what the sender
     // sees in the modal), never the raw academy-wide roster.
     const ids = recipientIds?.length ? recipientIds : staffScopedStaff.map(s => s.id)
@@ -2075,6 +2075,24 @@ export function AppProvider({ children }) {
       link: '/staff/notices',
       actionLabel: actionLabel || null,
     })))
+    // Also persist as an announcement so it shows up in the Notices page's
+    // own "Announcements" history — without this, the notice only ever
+    // existed as a bell notification and vanished once read or expired (7d).
+    try {
+      const ann = {
+        title, body, type: 'Announcement',
+        author:       user?.name    || 'Staff',
+        academyId:    user?.academyId,
+        sport:        role === 'owner' ? (selectedSport || null) : (user?.sports?.[0] || null),
+        branchId:     role === 'owner' ? (selectedBranch || null) : (user?.branchId   || null),
+        audienceType: allStaff ? 'staff' : 'staff_members',
+        audienceIds:  allStaff ? [] : ids,
+      }
+      const created = await db.insertAnnouncement(ann)
+      setAnnouncements(prev => [created, ...prev])
+    } catch (err) {
+      console.warn('staff notice: failed to persist announcement history:', err.message)
+    }
   }
 
   const addAnnouncement = async (a) => {

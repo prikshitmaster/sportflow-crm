@@ -26,7 +26,7 @@ export default function SendStaffNoticeModal({ staff = [], onSend, onClose }) {
     if (!canSend || sending) return
     setSending(true)
     try {
-      await onSend({ title: title.trim(), body: body.trim(), actionLabel: actionLabel.trim() || null, recipientIds })
+      await onSend({ title: title.trim(), body: body.trim(), actionLabel: actionLabel.trim() || null, recipientIds, allStaff })
       onClose()
     } finally {
       setSending(false)
