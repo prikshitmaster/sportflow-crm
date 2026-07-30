@@ -217,7 +217,11 @@ GRANT EXECUTE ON FUNCTION secure_insert_staff(text, text, text, text, jsonb, num
 
 -- ════════════════════════════════════════════════════════════════
 -- secure_update_staff_permissions — branch_manager must have a branch
--- (verbatim from 0080 + one guard before the UPDATE)
+-- (verbatim from 0081, which already carries the owner+branch_manager
+-- carve-out for editing an EXISTING staff's access — NOT 0080, which
+-- predates branch managers and blocks all non-owners. An earlier version
+-- of this file copied from 0080 by mistake and silently reverted 0081's
+-- fix when re-applied. Do not "simplify" this back to 0080's shape.)
 -- ════════════════════════════════════════════════════════════════
 CREATE OR REPLACE FUNCTION secure_update_staff_permissions(
   p_staff_id bigint, p_access_role text, p_permissions jsonb, p_token text DEFAULT NULL::text
@@ -229,6 +233,7 @@ DECLARE
   v_staff_academy UUID;
   v_staff_branch  UUID;
   v_existing      JSONB;
+  v_caller_role   TEXT;
   v_exceeds       BOOLEAN;
 BEGIN
   SELECT * INTO a FROM current_actor(p_token) LIMIT 1;
@@ -248,7 +253,7 @@ BEGIN
       USING ERRCODE = '23502';
   END IF;
 
-  -- Non-owners: capped, initial-set-only delegation.
+  -- Non-owners: capped + branch-scoped. Only branch managers may edit existing access.
   IF a.actor_kind IS DISTINCT FROM 'owner' THEN
     PERFORM _require_perm(a.actor_kind, a.perms, 'staff.manage');
 
@@ -268,10 +273,15 @@ BEGIN
       RAISE EXCEPTION 'forbidden: cannot grant permissions beyond your own' USING ERRCODE = '42501';
     END IF;
 
-    -- Initial-set only: cannot change an existing staff's access.
-    SELECT permissions INTO v_existing FROM staff_auth WHERE staff_id = p_staff_id;
-    IF v_existing IS NOT NULL AND jsonb_array_length(v_existing) > 0 THEN
-      RAISE EXCEPTION 'forbidden: only academy owners can change an existing staff''s access' USING ERRCODE = '42501';
+    -- Branch scope: cannot touch staff outside the caller's branch.
+    PERFORM _require_branch_scope(a.actor_kind, a.branch_id, v_staff_branch);
+
+    -- Editing an EXISTING staff's access is reserved for owners + branch managers.
+    SELECT access_role INTO v_caller_role FROM staff_auth WHERE staff_id = a.actor_id;
+    SELECT permissions INTO v_existing     FROM staff_auth WHERE staff_id = p_staff_id;
+    IF (v_existing IS NOT NULL AND jsonb_array_length(v_existing) > 0)
+       AND COALESCE(v_caller_role, '') <> 'branch_manager' THEN
+      RAISE EXCEPTION 'forbidden: only owners and branch managers can change an existing staff''s access' USING ERRCODE = '42501';
     END IF;
   END IF;
 
