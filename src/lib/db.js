@@ -691,6 +691,34 @@ export async function deleteTrialSource(id) {
   if (error) throw error
 }
 
+// ── Age groups (replaces hardcoded AGE_GROUPS list) ─────────
+
+export async function fetchAgeGroups(academyId) {
+  const { data, error } = await supabase
+    .from('age_groups')
+    .select('*')
+    .eq('academy_id', academyId)
+    .order('sort_order')
+    .order('id')
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function insertAgeGroup(_academyId, label) {
+  const { data, error } = await supabase.rpc('secure_insert_age_group', {
+    p_label: label.trim(), p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+export async function deleteAgeGroup(id) {
+  const { error } = await supabase.rpc('secure_delete_age_group', {
+    p_id: id, p_token: _sessionToken(),
+  })
+  if (error) throw error
+}
+
 // ── Batches ───────────────────────────────────────────────
 export async function fetchBatches(academyId) {
   let query = supabase.from('batches').select('*').order('id')

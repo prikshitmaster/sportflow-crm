@@ -231,6 +231,7 @@ export function AppProvider({ children }) {
   const [branches,       setBranches]       = useState([])
   const [leaveRequests,  setLeaveRequests]  = useState([])
   const [trialSources,   setTrialSources]   = useState([])
+  const [ageGroups,      setAgeGroups]      = useState([])
   const [toast,          setToast]          = useState(null)
   const [dataLoading,    setDataLoading]    = useState(false)
 
@@ -305,6 +306,7 @@ export function AppProvider({ children }) {
       db.fetchFeePlans(academyId).then(setFeePlans).catch(err =>
         logger.warn?.('fetchFeePlans background failed', err) ?? console.warn('fetchFeePlans background failed', err))
       db.fetchTrialSources(academyId).then(setTrialSources).catch(() => {})
+      db.fetchAgeGroups(academyId).then(setAgeGroups).catch(() => {})
 
       // Auto-suspend overdue students after configurable grace period.
       // Throttled to once per hour per browser so re-mounting AppProvider (sport switch,
@@ -1481,6 +1483,20 @@ export function AppProvider({ children }) {
     } catch (err) { showToast(err.message || 'Failed to remove source', 'error') }
   }
 
+  const addAgeGroup = async (label) => {
+    try {
+      const grp = await db.insertAgeGroup(user?.academyId, label)
+      setAgeGroups(prev => [...prev, grp])
+    } catch (err) { showToast(err.message || 'Failed to add age group', 'error') }
+  }
+
+  const removeAgeGroup = async (id) => {
+    try {
+      await db.deleteAgeGroup(id)
+      setAgeGroups(prev => prev.filter(g => g.id !== id))
+    } catch (err) { showToast(err.message || 'Failed to remove age group', 'error') }
+  }
+
   // ── Batches ───────────────────────────────────────────
 
   const addBatch = async (b) => {
@@ -2270,6 +2286,7 @@ export function AppProvider({ children }) {
       payments: staffScopedPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
       trials: staffScopedTrials, addTrial, updateTrialStatus, deleteTrial,
       trialSources, addTrialSource, removeTrialSource,
+      ageGroups, addAgeGroup, removeAgeGroup,
       refreshData: loadAll,
       batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, reassignPrimaryBatch, updateBatch, updateBatchFee, deleteBatch,
       feePlans: filteredFeePlans, addFeePlan, editFeePlan, removeFeePlan,
