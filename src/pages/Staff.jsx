@@ -2037,6 +2037,9 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
     if (type === 'field') {
       setAccessRole('coach')
       setPerms(FIELD_PERMS)
+    } else if (type === 'branch_manager') {
+      setAccessRole('branch_manager')
+      setPerms(ALL_PERMISSIONS.filter(allowedPerm))
     } else {
       setAccessRole('admin')
       setPerms([])
@@ -2353,6 +2356,29 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
                 </button>
               </div>
 
+              <button
+                type="button"
+                onClick={() => selectPortalType('branch_manager')}
+                className={`relative w-full flex items-center gap-3 p-4 rounded-2xl border-2 text-left transition ${
+                  portalType === 'branch_manager'
+                    ? 'border-indigo-500 bg-indigo-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                {portalType === 'branch_manager' && (
+                  <span className="absolute top-2 right-2 w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center">
+                    <Check size={11} className="text-white" />
+                  </span>
+                )}
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${portalType === 'branch_manager' ? 'bg-indigo-600' : 'bg-gray-100'}`}>
+                  <ShieldCheck size={18} className={portalType === 'branch_manager' ? 'text-white' : 'text-gray-500'} />
+                </div>
+                <div>
+                  <p className={`text-sm font-bold ${portalType === 'branch_manager' ? 'text-indigo-700' : 'text-gray-800'}`}>Branch Manager</p>
+                  <p className="text-[11px] text-gray-500 leading-tight mt-0.5">Full access — acts like the owner, scoped to {linkedBranchName || 'this branch'}</p>
+                </div>
+              </button>
+
               {/* Field Staff: read-only permission badges */}
               {portalType === 'field' && (
                 <div className="bg-brand-50 border border-brand-100 rounded-xl p-3">
@@ -2365,6 +2391,23 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
                     ))}
                   </div>
                   <p className="text-[11px] text-brand-500 mt-2">Only coaches & field staff can mark attendance.</p>
+                </div>
+              )}
+
+              {/* Branch Manager: read-only, same shape as Field Staff's badge list */}
+              {portalType === 'branch_manager' && (
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+                  <p className="text-[11px] font-bold text-indigo-700 uppercase tracking-wide mb-2">Included Permissions</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {perms.map(p => (
+                      <span key={p} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-100 text-indigo-700">
+                        <Check size={10} /> {PERM_LABEL[p]}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-indigo-500 mt-2">
+                    Can also delete staff and edit other staff's access — but only within {linkedBranchName || 'their own branch'}.
+                  </p>
                 </div>
               )}
 
