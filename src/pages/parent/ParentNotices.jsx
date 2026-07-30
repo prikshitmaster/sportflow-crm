@@ -15,7 +15,17 @@ export default function ParentNotices() {
         const academyId = dash?.parent?.academy_id
         if (!academyId) { setItems([]); return }
         const list = await db.fetchAnnouncements(academyId).catch(() => [])
-        setItems(list || [])
+        // Scope to this parent's children: an announcement tagged with a
+        // sport/branch is only shown if one of the kids matches the tag.
+        // Untagged (academy-wide) announcements always show.
+        const kids       = dash?.children || []
+        const kidSports  = new Set(kids.map(k => (k.sport || '').toLowerCase()).filter(Boolean))
+        const kidBranches = new Set(kids.map(k => k.branch_id).filter(Boolean))
+        setItems((list || []).filter(a => {
+          if (a.sport && kidSports.size > 0 && !kidSports.has(a.sport.toLowerCase())) return false
+          if (a.branchId && !kidBranches.has(a.branchId)) return false
+          return true
+        }))
       } finally {
         if (!cancelled) setLoading(false)
       }

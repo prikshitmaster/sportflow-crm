@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext'
 import { Search, CheckCircle, Clock, X, Save, ClipboardList, ChevronDown, ChevronUp, Target, Sparkles, FileText } from 'lucide-react'
 import * as db from '../../lib/db'
 import { logAudit, ACTIONS } from '../../lib/audit'
+import { notify } from '../../lib/notifications'
 import DevFillButton from '../../components/DevFillButton'
 import StudentAvatar from '../../components/StudentAvatar'
 import { fillAssessment } from '../../lib/devFill'
@@ -342,6 +343,21 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
         branchId:   student.branchId ?? user?.branchId ?? null,
       })
       onSaved(result || { student_id: student.id, scores, notes, assessed_month: month, batch_id: batchId, position })
+
+      // Tell the student their rating is in — without this an assessment lands
+      // in their portal with nothing to prompt them to look.
+      const overallNow = getOverallScore(scores, categories)
+      notify({
+        academyId:     user?.academyId,
+        recipientType: 'student',
+        recipientId:   String(student.id),
+        title:         existing ? 'Assessment updated' : 'New assessment',
+        body:          `Your ${monthLabel(month)} rating is ready — overall ${overallNow}/100${
+          overallNow > 0 ? ` (${getTier(overallNow).label})` : ''
+        }.`,
+        type:          'performance',
+        link:          '/student/stats',
+      }).catch(() => {})
     } catch (e) {
       alert(e.message)
     } finally {
@@ -494,19 +510,29 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 resize-none focus:outline-none focus:border-brand-500 bg-white"
               />
             </div>
+            <button
+              onClick={() => window.open(`/report/student/${student.id}`, '_blank')}
+              className="w-full flex items-center justify-center gap-2 text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-2xl py-3 font-bold text-sm mb-1"
+            >
+              <FileText size={14} /> View Assessment PDF
+            </button>
+          </div>
+        )}
 
+        {/* Save — pinned outside the scroll area. Previously this button lived
+            at the bottom of the scrollable form, after 4 category accordions;
+            closing the sheet before scrolling all the way down meant an
+            assessment could be fully filled in and never actually saved, with
+            no error and nothing to show for it. Mirrors GoalEditor's footer. */}
+        {mode === 'form' && (
+          <div className="flex-shrink-0 px-5 py-3 border-t border-gray-100"
+            style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
             <button
               onClick={handleSave} disabled={saving}
-              className="w-full bg-brand-600 text-white rounded-2xl py-4 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+              className="w-full bg-brand-600 text-white rounded-2xl py-3.5 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <Save size={16} />
               {saving ? 'Saving...' : 'Save Assessment'}
-            </button>
-            <button
-              onClick={() => window.open(`/report/student/${student.id}`, '_blank')}
-              className="w-full flex items-center justify-center gap-2 text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-2xl py-3 font-bold text-sm mb-4"
-            >
-              <FileText size={14} /> View Assessment PDF
             </button>
           </div>
         )}
@@ -653,9 +679,12 @@ const GOAL_PRESETS = [
 function GoalsTab({ user, batches, students }) {
   const [month, setMonth]     = useState(MONTH_OPTS[0].value)
   const [batchId, setBatchId] = useState('')
-  const [goals, setGoals]     = useState({})       // { studentId: goal_text }
+  // Full row per student now, not just the text — the owner's Performance page
+  // writes focus_skills onto the same (student_id, month) row and the coach
+  // needs to see and edit them too.
+  const [goals, setGoals]     = useState({})       // { studentId: row }
   const [loading, setLoading] = useState(false)
-  const [editing, setEditing] = useState(null)     // { student, currentText }
+  const [editing, setEditing] = useState(null)     // { student, row }
 
   const myBatches = batches.filter(b =>
     b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase()
@@ -672,29 +701,60 @@ function GoalsTab({ user, batches, students }) {
     db.fetchBatchGoals(batchStudents.map(s => s.id), month)
       .then(rows => {
         const map = {}
-        rows.forEach(g => { map[g.student_id] = g.goal_text })
+        rows.forEach(g => { map[g.student_id] = g })
         setGoals(map)
       })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [batchId, month])
 
-  async function saveGoal(student, text) {
+  async function saveGoal(student, text, focusSkills) {
     try {
-      await db.upsertPlayerGoal({
+      const trimmed = (text || '').trim()
+
+      // Clearing the goal: empty the focus list FIRST, so the server's
+      // "keep the row if it still has focus skills" guard (0118) lets the
+      // blank-goal delete through and the whole plan goes cleanly. That guard
+      // exists to stop *accidental* loss; here the coach confirmed it.
+      if (!trimmed) {
+        await db.setPlayerFocus({ studentId: student.id, month, focusSkills: [] }).catch(() => {})
+      }
+
+      const row = await db.upsertPlayerGoal({
         studentId: student.id,
         month,
         goalText:  text,
         academyId: user?.academyId,
         staffId:   user?.id,
       })
+      // Focus skills need the goal row to exist, so this always runs second.
+      let saved = row
+      if (trimmed) {
+        saved = (await db.setPlayerFocus({
+          studentId: student.id, month, focusSkills: focusSkills || [],
+        })) || { ...(row || {}), goal_text: trimmed, focus_skills: focusSkills || [] }
+      }
+
       setGoals(prev => {
         const next = { ...prev }
-        if ((text || '').trim()) next[student.id] = text.trim()
+        if (trimmed) next[student.id] = saved
         else delete next[student.id]
         return next
       })
       setEditing(null)
+
+      // Tell the student — otherwise a new plan lands silently in their portal.
+      if (trimmed) {
+        notify({
+          academyId:     user?.academyId,
+          recipientType: 'student',
+          recipientId:   String(student.id),
+          title:         'New development plan',
+          body:          `Your coach set this month's focus: ${trimmed}`,
+          type:          'performance',
+          link:          '/student/progress',
+        }).catch(() => {})
+      }
     } catch (e) {
       alert(`Save failed: ${e.message}`)
     }
@@ -748,11 +808,13 @@ function GoalsTab({ user, batches, students }) {
 
           <div className="space-y-2.5">
             {batchStudents.map(s => {
-              const g = goals[s.id]
+              const row   = goals[s.id]
+              const g     = row?.goal_text
+              const focus = Array.isArray(row?.focus_skills) ? row.focus_skills : []
               return (
                 <button
                   key={s.id}
-                  onClick={() => setEditing({ student: s, currentText: g || '' })}
+                  onClick={() => setEditing({ student: s, row: row || null })}
                   className="w-full bg-white rounded-2xl border border-gray-100 px-4 py-3.5 flex items-start justify-between active:bg-gray-50 shadow-sm text-left"
                 >
                   <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -770,6 +832,19 @@ function GoalsTab({ user, batches, students }) {
                       ) : (
                         <p className="text-xs text-gray-400 mt-1 italic">No goal set</p>
                       )}
+                      {focus.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {focus.map(sk => (
+                            <span key={sk} className="text-[10px] font-bold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">{sk}</span>
+                          ))}
+                        </div>
+                      )}
+                      {row && (
+                        <p className="text-[10px] text-gray-400 mt-1.5">
+                          Set by {row.updated_by_role === 'owner' ? 'academy owner' : 'a coach'}
+                          {row.updated_at ? ` · ${new Date(row.updated_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <ChevronDown size={14} className="text-gray-300 mt-1" />
@@ -786,23 +861,58 @@ function GoalsTab({ user, batches, students }) {
       {editing && (
         <GoalEditor
           student={editing.student}
-          currentText={editing.currentText}
+          row={editing.row}
           month={month}
           onClose={() => setEditing(null)}
-          onSave={(text) => saveGoal(editing.student, text)}
+          onSave={(text, focusSkills) => saveGoal(editing.student, text, focusSkills)}
         />
       )}
     </div>
   )
 }
 
-function GoalEditor({ student, currentText, month, onClose, onSave }) {
-  const [text, setText]   = useState(currentText)
+const MAX_FOCUS = 5
+
+function GoalEditor({ student, row, month, onClose, onSave }) {
+  const [text, setText]   = useState(row?.goal_text || '')
+  const [focus, setFocus] = useState(
+    Array.isArray(row?.focus_skills) ? row.focus_skills : []
+  )
+  const [showSkills, setShowSkills] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  const categories = SPORT_CATEGORIES[student.sport] || FOOTBALL_CATEGORIES
+
+  const toggleFocus = (skill) => setFocus(prev =>
+    prev.includes(skill) ? prev.filter(s => s !== skill)
+      : prev.length >= MAX_FOCUS ? prev : [...prev, skill]
+  )
+
   async function handleSave() {
+    // Clearing the goal deletes the row — and the focus list with it unless the
+    // server keeps it (0118). Make that consequence explicit rather than silent.
+    if (!text.trim() && focus.length > 0) {
+      const ok = window.confirm(
+        `This clears the goal for ${student.name}. The ${focus.length} focus skill${focus.length !== 1 ? 's' : ''} will be removed too. Continue?`
+      )
+      if (!ok) return
+    }
     setSaving(true)
-    await onSave(text)
+    await onSave(text, focus)
+    setSaving(false)
+  }
+
+  // Footer "Clear" button — same confirm as typing the box empty and saving,
+  // just without needing the coach to select all and delete first.
+  async function handleClear() {
+    if (focus.length > 0) {
+      const ok = window.confirm(
+        `This clears the goal for ${student.name}. The ${focus.length} focus skill${focus.length !== 1 ? 's' : ''} will be removed too. Continue?`
+      )
+      if (!ok) return
+    }
+    setSaving(true)
+    await onSave('', focus)
     setSaving(false)
   }
 
@@ -853,19 +963,83 @@ function GoalEditor({ student, currentText, month, onClose, onSave }) {
             <p className="text-[10px] text-gray-400 mt-1 text-right">{text.length}/140</p>
           </div>
 
+          {/* Focus skills — the same list the owner's Performance page edits */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowSkills(v => !v)}
+              className="w-full flex items-center justify-between"
+            >
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                Focus skills {focus.length > 0 && `· ${focus.length}/${MAX_FOCUS}`}
+              </span>
+              {showSkills ? <ChevronUp size={14} className="text-gray-400" />
+                          : <ChevronDown size={14} className="text-gray-400" />}
+            </button>
+
+            {focus.length > 0 && !showSkills && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {focus.map(sk => (
+                  <span key={sk} className="px-2 py-1 rounded-lg bg-gray-900 text-white text-[11px] font-bold">{sk}</span>
+                ))}
+              </div>
+            )}
+
+            {showSkills && (
+              <div className="mt-2 space-y-3">
+                <p className="text-[11px] text-gray-500">Pick up to {MAX_FOCUS} skills to work on.</p>
+                {categories.map(cat => (
+                  <div key={cat.id}>
+                    <p className="text-[10px] font-black uppercase tracking-widest mb-1.5" style={{ color: cat.color }}>
+                      {cat.label}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {cat.skills.map(skill => {
+                        const on   = focus.includes(skill)
+                        const full = !on && focus.length >= MAX_FOCUS
+                        return (
+                          <button
+                            key={skill} type="button" disabled={full}
+                            onClick={() => toggleFocus(skill)}
+                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition ${
+                              on ? 'bg-gray-900 text-white border-gray-900'
+                                 : full ? 'bg-white text-gray-300 border-gray-100'
+                                        : 'bg-white text-gray-600 border-gray-200 active:bg-gray-50'
+                            }`}
+                          >
+                            {skill}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {row && (
+            <p className="text-[11px] text-gray-400">
+              Last set by {row.updated_by_role === 'owner' ? 'the academy owner' : 'a coach'}
+              {row.updated_at ? ` on ${new Date(row.updated_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}.
+              Saving replaces it.
+            </p>
+          )}
+
           <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex items-start gap-2">
             <Sparkles size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-amber-700 leading-snug">
-              Student sees this on their portal all month. Keep it actionable — one specific thing to work on.
+              Student sees this on their portal all month and gets a notification when you save.
+              Keep it actionable — one specific thing to work on.
             </p>
           </div>
         </div>
 
         <div className="flex-shrink-0 px-5 py-3 border-t border-gray-100 flex gap-2"
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
-          {currentText && (
+          {row?.goal_text && (
             <button
-              onClick={() => onSave('')}
+              onClick={handleClear}
               disabled={saving}
               className="px-4 py-3 rounded-xl bg-red-50 text-red-600 font-bold text-sm"
             >

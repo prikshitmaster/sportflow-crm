@@ -10,6 +10,7 @@ import {
   Layers, UserCog, BarChart3, Megaphone, Settings, LogOut,
   Zap, ChevronLeft, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
   ChevronDown, ChevronRight, UserCircle, ShieldCheck, Package, MapPin, Sparkles,
+  TrendingUp,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -29,6 +30,7 @@ const nav = [
   { to: '/events',     label: 'Events',     icon: Trophy,          feature: 'events',     permission: 'events.manage' },
   { to: '/sessions',   label: 'Sessions',   icon: CalendarDays,    feature: 'training',   permission: 'training.manage', footballOnly: true, group: 'training' },
   { to: '/drills',     label: 'Drills',     icon: BookOpen,        feature: 'training',   permission: 'training.manage', footballOnly: true, group: 'training' },
+  { to: '/performance',label: 'Performance',icon: TrendingUp,      feature: 'training',   permission: 'training.manage', footballOnly: true, group: 'training' },
   { to: '/coaches',    label: 'Staff',      icon: UserCog,         feature: 'staff',      permission: 'staff.manage' },
   { to: '/reports',    label: 'Reports',    icon: BarChart3,       feature: 'reports',    permission: 'reports.view' },
   { to: '/inventory',  label: 'Inventory',  icon: Package,         feature: null,         permission: null, premium: true, group: 'addons' },

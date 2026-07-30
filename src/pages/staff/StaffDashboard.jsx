@@ -239,10 +239,14 @@ export default function StaffDashboard() {
           .slice(0, 5)
         if (!upcoming.length) return null
         return (
-          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <button onClick={() => navigate('/staff/trials')}
+            className="w-full bg-white rounded-2xl border border-gray-100 overflow-hidden text-left active:bg-gray-50 transition">
             <div className="px-4 pt-3.5 pb-2 flex items-center justify-between">
               <p className="text-xs font-black text-gray-500 uppercase tracking-wide">Trial Schedule</p>
-              <span className="text-[10px] text-brand-600 font-bold">{upcoming.length} upcoming</span>
+              <span className="text-[10px] text-brand-600 font-bold flex items-center gap-0.5">
+                {upcoming.length} upcoming
+                <ChevronRight size={12} />
+              </span>
             </div>
             <div className="divide-y divide-gray-50">
               {upcoming.map(t => (
@@ -258,7 +262,7 @@ export default function StaffDashboard() {
                 </div>
               ))}
             </div>
-          </div>
+          </button>
         )
       })()}
 

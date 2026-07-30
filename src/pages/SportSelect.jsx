@@ -11,6 +11,8 @@ import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImpor
 import { SPORT_CATALOG } from '../lib/sportCatalog'
 import SportIcon from '../components/SportIcon'
 import { toLocalDateStr, toLocalMonthStr } from '../lib/dates'
+import DevFillButton from '../components/DevFillButton'
+import { fillBranch } from '../lib/devFill'
 
 // Per-sport color theme — each card gets a distinct accent so the page
 // has visual identity instead of a sea of identical blue cards.
@@ -740,8 +742,15 @@ function BranchView({
       {/* + Add Branch */}
       {adding ? (
         <div className="bg-white border-2 border-brand-300 rounded-2xl p-5 flex flex-col">
-          <div className="w-11 h-11 bg-brand-50 rounded-xl flex items-center justify-center mb-4">
-            <Plus size={20} className="text-brand-600" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-11 h-11 bg-brand-50 rounded-xl flex items-center justify-center">
+              <Plus size={20} className="text-brand-600" />
+            </div>
+            <DevFillButton onFill={() => {
+              const d = fillBranch()
+              setNewBranch(d.name)
+              setNewBranchAddress(d.address)
+            }} />
           </div>
           <input
             autoFocus

@@ -35,7 +35,7 @@ export const ALL_PERMISSIONS = [
 ]
 
 export const ROLE_PRESETS = {
-  coach:          ['attendance.manage', 'students.view', 'batches.view', 'training.manage'],
+  coach:          ['attendance.manage', 'students.view', 'batches.view', 'training.manage', 'trials.manage'],
   receptionist:   ['students.view', 'students.manage', 'trials.manage'],
   accountant:     ['payments.view', 'payments.manage', 'reports.view'],
   admin:          [...ALL_PERMISSIONS],

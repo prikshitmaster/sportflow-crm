@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 import {
   UserPlus, Search, Plus, X, ChevronDown, CheckCircle2,
   Clock, RotateCcw, XCircle, ArrowRight, Calendar, Settings2,
-  Trash2, Phone, User, Pencil,
+  Trash2, Phone, User, Pencil, Users,
 } from 'lucide-react'
 import DevFillButton from '../components/DevFillButton'
 import { fillTrial } from '../lib/devFill'
@@ -13,7 +13,7 @@ import { toLocalDateStr } from '../lib/dates'
 // ── Stage config ─────────────────────────────────────────────
 
 const STAGES = [
-  { id: 'all',       label: 'All'       },
+  { id: 'all',       label: 'Active'    }, // everything except converted/rejected — those live under Done
   { id: 'new',       label: 'New'       },
   { id: 'scheduled', label: 'Scheduled' },
   { id: 'attended',  label: 'Attended'  },
@@ -425,6 +425,8 @@ const fieldCls = 'w-full px-3.5 py-2.5 text-sm text-gray-900 bg-gray-50 border b
 const selectCls = fieldCls + ' appearance-none cursor-pointer'
 
 function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, selectedSport = null }) {
+  const { ageGroups } = useApp()
+  const ageGroupOptions = ageGroups.length ? ageGroups.map(g => g.label) : AGE_GROUPS
   const [form, setForm] = useState({
     name: '', parent: '', age: '', dob: '',
     ageGroup: '', programType: 'academy',
@@ -571,7 +573,10 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
                   <select value={form.ageGroup || ''} onChange={e => set('ageGroup', e.target.value)}
                     className={selectCls}>
                     <option value="">Select…</option>
-                    {AGE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                    {ageGroupOptions.map(g => <option key={g} value={g}>{g}</option>)}
+                    {form.ageGroup && !ageGroupOptions.includes(form.ageGroup) && (
+                      <option key={form.ageGroup} value={form.ageGroup}>{form.ageGroup}</option>
+                    )}
                   </select>
                   <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
@@ -1192,6 +1197,56 @@ function SourceManager({ trialSources, addTrialSource, removeTrialSource, onClos
   )
 }
 
+// ── Age Group Manager Modal ───────────────────────────────────
+
+function AgeGroupManager({ ageGroups, addAgeGroup, removeAgeGroup, onClose }) {
+  const [label, setLabel] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleAdd() {
+    if (!label.trim()) return
+    setSaving(true)
+    await addAgeGroup(label.trim())
+    setLabel('')
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100">
+          <h2 className="text-base font-black text-gray-900">Age Groups</h2>
+          <button onClick={onClose} className="p-1.5 rounded-xl bg-gray-100"><X size={15} /></button>
+        </div>
+        <div className="px-5 py-4 space-y-3 max-h-72 overflow-y-auto">
+          {ageGroups.length === 0 && (
+            <p className="text-xs text-gray-400 text-center py-4">No age groups yet. Using defaults.</p>
+          )}
+          {ageGroups.map(g => (
+            <div key={g.id} className="flex items-center justify-between">
+              <span className="text-sm text-gray-800">{g.label}</span>
+              <button onClick={() => removeAgeGroup(g.id)}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="px-5 pb-5 border-t border-gray-100 pt-3 flex gap-2">
+          <input value={label} onChange={e => setLabel(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="New age group name…"
+            className="flex-1 input-field" />
+          <button onClick={handleAdd} disabled={!label.trim() || saving}
+            className="px-4 py-2 bg-brand-600 text-white rounded-xl text-sm font-bold disabled:opacity-40">
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Trial Card ────────────────────────────────────────────────
 
 function TrialCard({ trial, batches, onAction, onDelete }) {
@@ -1352,13 +1407,14 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
 
 export default function Trials() {
   const { trials, addTrial, updateTrialStatus, deleteTrial, batches, feePlans, addStudent,
-          trialSources, addTrialSource, removeTrialSource, selectedSport, isAllSports,
+          trialSources, addTrialSource, removeTrialSource,
+          ageGroups, addAgeGroup, removeAgeGroup, selectedSport, isAllSports,
           user } = useApp()
 
   const [stage,    setStage]    = useState('all')
   const [search,   setSearch]   = useState('')
   const [page,     setPage]     = useState(1)
-  const [modal,    setModal]    = useState(null) // null | 'add' | 'edit' | 'schedule' | 'session' | 'convert' | 'sources' | 'slip'
+  const [modal,    setModal]    = useState(null) // null | 'add' | 'edit' | 'schedule' | 'session' | 'convert' | 'sources' | 'ageGroups' | 'slip'
   const [active,   setActive]   = useState(null) // the trial being actioned
   const [slipTrial,setSlipTrial]= useState(null) // trial to show receipt for
 
@@ -1372,8 +1428,9 @@ export default function Trials() {
   // Filter
   const filtered = useMemo(() => {
     let list = trials
-    if (stage === 'done')  list = list.filter(t => t.stage === 'converted' || t.stage === 'rejected')
-    else if (stage !== 'all') list = list.filter(t => t.stage === stage)
+    if (stage === 'done')     list = list.filter(t => t.stage === 'converted' || t.stage === 'rejected')
+    else if (stage === 'all') list = list.filter(t => t.stage !== 'converted' && t.stage !== 'rejected')
+    else                      list = list.filter(t => t.stage === stage)
     if (search.trim())     list = list.filter(t =>
       t.name.toLowerCase().includes(search.toLowerCase()) ||
       (t.phone || '').includes(search) ||
@@ -1387,7 +1444,7 @@ export default function Trials() {
 
   // Stage counts
   const stageCount = id => {
-    if (id === 'all')  return trials.length
+    if (id === 'all')  return trials.filter(t => t.stage !== 'converted' && t.stage !== 'rejected').length
     if (id === 'done') return trials.filter(t => t.stage === 'converted' || t.stage === 'rejected').length
     return trials.filter(t => t.stage === id).length
   }
@@ -1465,6 +1522,10 @@ export default function Trials() {
           <button onClick={() => setModal('sources')}
             className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition" title="Manage sources">
             <Settings2 size={16} />
+          </button>
+          <button onClick={() => setModal('ageGroups')}
+            className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition" title="Manage age groups">
+            <Users size={16} />
           </button>
           <button onClick={() => setModal('add')} className="btn-primary">
             <Plus size={16} /> Add Lead
@@ -1587,6 +1648,14 @@ export default function Trials() {
           trialSources={trialSources}
           addTrialSource={addTrialSource}
           removeTrialSource={removeTrialSource}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === 'ageGroups' && (
+        <AgeGroupManager
+          ageGroups={ageGroups}
+          addAgeGroup={addAgeGroup}
+          removeAgeGroup={removeAgeGroup}
           onClose={() => setModal(null)}
         />
       )}

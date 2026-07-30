@@ -8,6 +8,9 @@ const pad = n => String(n).padStart(2, '0')
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}` }
 const fmtDate  = iso => iso ? new Date(iso+'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'
 
+const REC_LABEL = { accept: 'Accept ✓', followup: 'Follow-up ↺', decline: 'Decline ✗' }
+const REC_TEXT  = { accept: 'text-emerald-600', followup: 'text-orange-600', decline: 'text-red-500' }
+
 // ── Mark Attend Sheet ─────────────────────────────────────────
 
 function AttendSheet({ trial, onClose, onSave }) {
@@ -74,15 +77,16 @@ function AttendSheet({ trial, onClose, onSave }) {
 
 // ── Trial Card (coach view) ───────────────────────────────────
 
-function TrialCard({ trial, batches, onMark }) {
+function TrialCard({ trial, batches, onMark, onRecommend }) {
   const batch     = batches.find(b => b.id === trial.batchId)
   const today     = todayStr()
   const isToday   = trial.trialDate === today
   const isPast    = trial.trialDate && trial.trialDate < today
   const canMark   = (isToday || isPast) && trial.stage === 'scheduled' && (trial.sessionsDone || 0) < (trial.trialSessions || 1)
+  const needsCall = trial.stage === 'attended' && !trial.coachRec
 
   const converted = trial.stage === 'converted'
-  const attended  = trial.stage === 'attended' || trial.stage === 'accepted'
+  const accepted  = trial.stage === 'accepted'
   const followup  = trial.stage === 'followup'
 
   const sessionsDone  = trial.sessionsDone || 0
@@ -113,9 +117,19 @@ function TrialCard({ trial, batches, onMark }) {
               ★ Joined
             </span>
           )}
-          {attended && (
+          {needsCall && (
             <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-              Attended
+              Needs Your Call
+            </span>
+          )}
+          {trial.stage === 'attended' && trial.coachRec && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+              Sent to Office
+            </span>
+          )}
+          {accepted && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+              ✓ Accepted
             </span>
           )}
           {followup && (
@@ -155,6 +169,13 @@ function TrialCard({ trial, batches, onMark }) {
         <p className="text-[11px] text-gray-500 italic mt-2 bg-gray-50 px-2.5 py-1.5 rounded-lg">"{trial.coachNote}"</p>
       )}
 
+      {/* Your recommendation, once given — office still finalizes accept/reject/convert */}
+      {trial.coachRec && (
+        <p className={`text-[11px] font-black mt-2 ${REC_TEXT[trial.coachRec] || 'text-gray-500'}`}>
+          Your call: {REC_LABEL[trial.coachRec] || trial.coachRec} · sent to office
+        </p>
+      )}
+
       {/* Mark attend button */}
       {canMark && (
         <button onClick={() => onMark(trial)}
@@ -162,6 +183,24 @@ function TrialCard({ trial, batches, onMark }) {
           <CheckCircle2 size={14} />
           Mark Present{totalSessions > 1 ? ` · Session ${sessionsDone + 1}` : ''}
         </button>
+      )}
+
+      {/* Accept / Follow-up / Decline — appears once all sessions are marked present */}
+      {needsCall && (
+        <div className="mt-3 flex gap-1.5">
+          <button onClick={() => onRecommend(trial, 'accept')}
+            className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black">
+            Accept ✓
+          </button>
+          <button onClick={() => onRecommend(trial, 'followup')}
+            className="flex-1 py-2.5 bg-orange-500 text-white rounded-xl text-xs font-black">
+            Follow-up ↺
+          </button>
+          <button onClick={() => onRecommend(trial, 'decline')}
+            className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-xs font-black">
+            Decline ✗
+          </button>
+        </div>
       )}
     </div>
   )
@@ -182,7 +221,9 @@ export default function StaffTrials() {
   }, [batches, user, isOffice])
 
   const myTrials = useMemo(() => {
-    let list = trials.filter(t => !['rejected'].includes(t.stage))
+    // Converted trials are now real students (visible in batch rosters/attendance
+    // instead) and rejected ones are dead leads — neither belongs in this list.
+    let list = trials.filter(t => !['rejected', 'converted'].includes(t.stage))
     if (!isOffice && myBatchIds) {
       list = list.filter(t => t.batchId && myBatchIds.has(t.batchId))
     }
@@ -196,13 +237,20 @@ export default function StaffTrials() {
 
   const [markTrial, setMarkTrial] = useState(null)
 
+  // Coach's accept/follow-up/decline call — a recommendation only. It does NOT
+  // move the trial's stage; the office still makes the final call (and runs
+  // Convert → Student) from Trials.jsx, now informed by what the coach flagged.
+  async function handleRecommend(trial, rec) {
+    await updateTrialStatus(trial.id, { coachRec: rec })
+  }
+
   function Section({ title, items, emptyText }) {
     if (items.length === 0) return null
     return (
       <div className="space-y-2.5">
         <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest px-1">{title}</p>
         {items.map(t => (
-          <TrialCard key={t.id} trial={t} batches={batches} onMark={setMarkTrial} />
+          <TrialCard key={t.id} trial={t} batches={batches} onMark={setMarkTrial} onRecommend={handleRecommend} />
         ))}
       </div>
     )

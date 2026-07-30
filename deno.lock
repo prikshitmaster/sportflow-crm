@@ -1,0 +1,49 @@
+{
+  "version": "5",
+  "redirects": {
+    "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.110.8"
+  },
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.110.8": "3fe5b529aba9ea7d19e980feb977d4da1f9300cb5378942b32f1522c21649623"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@capacitor/android@^8.3.4",
+        "npm:@capacitor/cli@^8.3.4",
+        "npm:@capacitor/core@^8.3.4",
+        "npm:@capacitor/filesystem@^8.1.2",
+        "npm:@capacitor/share@^8.0.1",
+        "npm:@capacitor/splash-screen@^8.0.1",
+        "npm:@capacitor/status-bar@^8.0.2",
+        "npm:@playwright/test@^1.60.0",
+        "npm:@sentry/react@^10.53.1",
+        "npm:@supabase/supabase-js@^2.105.1",
+        "npm:@types/node@^25.8.0",
+        "npm:@vitejs/plugin-react@^4.3.1",
+        "npm:autoprefixer@^10.4.20",
+        "npm:concurrently@^9.2.1",
+        "npm:date-fns@^3.6.0",
+        "npm:electron-builder@^25.1.8",
+        "npm:electron@^33.4.11",
+        "npm:exceljs@^4.4.0",
+        "npm:jsqr@^1.4.0",
+        "npm:lucide-react@0.436",
+        "npm:pg@^8.21.0",
+        "npm:postcss@^8.4.41",
+        "npm:qrcode.react@^4.2.0",
+        "npm:react-dom@^18.3.1",
+        "npm:react-router-dom@^6.26.0",
+        "npm:react@^18.3.1",
+        "npm:recharts@^2.12.7",
+        "npm:tailwindcss@^3.4.10",
+        "npm:typescript@^6.0.3",
+        "npm:vite-plugin-pwa@^1.2.0",
+        "npm:vite@^5.4.1",
+        "npm:wait-on@^8.0.5",
+        "npm:xlsx-js-style@^1.2.0",
+        "npm:zod@^4.4.3"
+      ]
+    }
+  }
+}

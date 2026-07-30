@@ -39,11 +39,16 @@ import { logAudit, ACTIONS, diffObjects } from '../lib/audit'
 import { logger } from '../lib/logger'
 import { setSentryUser } from '../lib/sentry'
 import { notify } from '../lib/notifications'
+import { staffMatchesAudience, studentMatchesAudience } from '../lib/announcementAudience'
+import { unregisterFcm } from '../lib/fcm'
 import { toLocalDateStr } from '../lib/dates'
 
 // Module-level in-flight payment lock — survives across renders, isolated per tab.
 // Used to refuse rapid duplicate submissions before any network round-trip.
 const _paymentInFlight = new Set()
+
+// Coach trial recommendation → human label, used in the office notification
+const TRIAL_REC_LABEL = { accept: 'Accept', followup: 'Follow-up', decline: 'Decline' }
 
 // ── Ops activity session tracking (powers /ops/live) ─────────
 const _ops = { uuid: null, interval: null }
@@ -236,6 +241,7 @@ export function AppProvider({ children }) {
   const [branches,       setBranches]       = useState([])
   const [leaveRequests,  setLeaveRequests]  = useState([])
   const [trialSources,   setTrialSources]   = useState([])
+  const [ageGroups,      setAgeGroups]      = useState([])
   const [toast,          setToast]          = useState(null)
   const [dataLoading,    setDataLoading]    = useState(false)
 
@@ -310,6 +316,7 @@ export function AppProvider({ children }) {
       db.fetchFeePlans(academyId).then(setFeePlans).catch(err =>
         logger.warn?.('fetchFeePlans background failed', err) ?? console.warn('fetchFeePlans background failed', err))
       db.fetchTrialSources(academyId).then(setTrialSources).catch(() => {})
+      db.fetchAgeGroups(academyId).then(setAgeGroups).catch(() => {})
 
       // Auto-suspend overdue students after configurable grace period.
       // Throttled to once per hour per browser so re-mounting AppProvider (sport switch,
@@ -648,6 +655,8 @@ export function AppProvider({ children }) {
 
   const logoutOwner = async () => {
     await _endOps()
+    // Before signOut — the delete runs as the authenticated role.
+    await unregisterFcm({ userType: 'owner', userId: user?.id })
     await supabase.auth.signOut().catch(() => {})
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
@@ -720,6 +729,9 @@ export function AppProvider({ children }) {
         sport: user.sports?.[0] || null, branchId: user.branchId || null,
       })
     }
+    // Before the session dies — the FCM delete policy authenticates via the
+    // still-valid staff token header.
+    await unregisterFcm({ userType: 'staff', userId: user?.id })
     if (sess?.token) await db.deleteStaffSession(sess.token).catch(() => {})
     clearStaffSession()
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
@@ -778,6 +790,8 @@ export function AppProvider({ children }) {
         sport: studentUser.sport || null, branchId: studentUser.branch_id || null,
       })
     }
+    // Before the session dies — see logoutStaff.
+    await unregisterFcm({ userType: 'student', userId: studentUser?.id })
     if (sess?.token) await db.deleteStudentSession(sess.token).catch(() => {})
     clearStudentSession()
     setRole(null)
@@ -1250,10 +1264,14 @@ export function AppProvider({ children }) {
       // For advance payments, coverage starts from the month after the student's current paidTill
       const baseDate  = p.advanceStart ? new Date(p.advanceStart + 'T00:00:00') : collectionDate
       const months    = p.monthsCovered || (p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1)
-      const paidTill  = toLocalDateStr(new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0))
+      // Inactive months are covered but not charged, so coverage can run longer
+      // than the months billed. Defaults to months → unchanged for every
+      // caller that doesn't mark anything inactive.
+      const covered   = p.coverageMonths || months
+      const paidTill  = toLocalDateStr(new Date(baseDate.getFullYear(), baseDate.getMonth() + covered, 0))
       const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      const endDate    = new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0)
-      const monthLabel = months === 1
+      const endDate    = new Date(baseDate.getFullYear(), baseDate.getMonth() + covered, 0)
+      const monthLabel = covered === 1
         ? `${MONTHS[baseDate.getMonth()]} ${baseDate.getFullYear()}`
         : `${MONTHS[baseDate.getMonth()]}–${MONTHS[endDate.getMonth()]} ${
             baseDate.getFullYear() === endDate.getFullYear()
@@ -1262,6 +1280,35 @@ export function AppProvider({ children }) {
           }`
       const payDate      = toLocalDateStr(collectionDate)
       const coverageStart = toLocalDateStr(baseDate)
+
+      // ── Inactive months only — no money collected, so no invoice ──────────
+      // The student was not training these months. We move their coverage
+      // forward so the months stop showing as due, and change NOTHING else.
+      //
+      // Deliberately does not touch `status`, `batch` or `fees`. Reports and the
+      // dashboard derive expected revenue / forecast from the fees of students
+      // whose status is 'Active' (Reports.jsx `expected`, Dashboard `expectedAmt`).
+      // Flipping a suspended student to Active here would add their fee to those
+      // targets even though nothing was collected — inflating revenue for a
+      // student who is on a break. Status changes stay an explicit action.
+      if (p.noChargeOnly) {
+        const st = students.find(s => String(s.id) === String(p.studentId))
+        if (!st) { showToast('Student not found', 'error'); return }
+
+        await db.updateStudentPaidTill(st.id, paidTill, null)
+        setStudents(prev => prev.map(s => s.id === st.id ? { ...s, paidTill } : s))
+
+        logAuditSport({
+          actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student',
+          entityId: st.id, entityName: st.name,
+          changes: { inactiveMonths: String(p.inactiveCount || covered), paidTill, charged: '0' },
+          academyId: user?.academyId, sport: st.sport ?? null, branchId: st.branchId ?? null,
+        })
+
+        showToast(`${st.name} marked inactive for ${monthLabel} — no fee due, nothing collected`)
+        return
+      }
+
       const invoiceId    = await db.fetchNextInvoiceId()
       const isChequeEarly = p.mode === 'Cheque'
       const paymentRow   = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, academyId: user?.academyId, status: isChequeEarly ? 'Pending' : 'Paid' }
@@ -1302,7 +1349,11 @@ export function AppProvider({ children }) {
           } : s))
         }
       }
-      showToast(isCheque ? 'Cheque recorded as Pending — mark Paid once cleared' : 'Payment recorded')
+      showToast(
+        isCheque ? 'Cheque recorded as Pending — mark Paid once cleared'
+        : p.inactiveCount ? `Payment recorded · ${p.inactiveCount} month${p.inactiveCount !== 1 ? 's' : ''} marked inactive`
+        : 'Payment recorded'
+      )
       // Notify student — fire and forget
       if (p.studentId) {
         notify({
@@ -1478,6 +1529,21 @@ export function AppProvider({ children }) {
       // `silent: true` suppresses the toast — used by handleConvert so the user only
       // sees the final "Student created" toast, not a redundant "Trial updated" prefix.
       if (!opts.silent) showToast('Trial updated')
+
+      // Coach submitted an accept/follow-up/decline call on a trial — this only
+      // sets coachRec, the stage is untouched. The office still owns the actual
+      // accept/reject/convert workflow (Trials.jsx), so let them know one is waiting.
+      if (updates.coachRec && role === 'staff' && user?.academyId) {
+        supabase.from('academies').select('owner_id').eq('id', user.academyId).single()
+          .then(({ data }) => {
+            if (data?.owner_id) notify({
+              academyId: user.academyId, recipientType: 'owner', recipientId: data.owner_id,
+              title: 'Coach Trial Recommendation',
+              body: `${user.name || 'Coach'} marked ${oldTrial?.name || 'a trial'} — ${TRIAL_REC_LABEL[updates.coachRec] || updates.coachRec}. Review to convert or close it out.`,
+              type: 'trial', link: '/trials',
+            }).catch(() => {})
+          })
+      }
     } catch (err) {
       // Revert optimistic update on failure
       if (oldTrial) setTrials(prev => prev.map(t => t.id === id ? oldTrial : t))
@@ -1510,6 +1576,20 @@ export function AppProvider({ children }) {
       await db.deleteTrialSource(id)
       setTrialSources(prev => prev.filter(s => s.id !== id))
     } catch (err) { showToast(err.message || 'Failed to remove source', 'error') }
+  }
+
+  const addAgeGroup = async (label) => {
+    try {
+      const grp = await db.insertAgeGroup(user?.academyId, label)
+      setAgeGroups(prev => [...prev, grp])
+    } catch (err) { showToast(err.message || 'Failed to add age group', 'error') }
+  }
+
+  const removeAgeGroup = async (id) => {
+    try {
+      await db.deleteAgeGroup(id)
+      setAgeGroups(prev => prev.filter(g => g.id !== id))
+    } catch (err) { showToast(err.message || 'Failed to remove age group', 'error') }
   }
 
   // ── Batches ───────────────────────────────────────────
@@ -1704,6 +1784,18 @@ export function AppProvider({ children }) {
         ...(fields.bracketType  !== undefined && { bracket_type:  fields.bracketType }),
         ...(fields.participants !== undefined && { participants:  fields.participants }),
       } : e))
+      // Newly-added participants get pinged — otherwise selection is invisible
+      // to them until they happen to open the Notices tab. Fire and forget.
+      if (fields.participants !== undefined && user?.academyId) {
+        const oldIds  = new Set((ev?.participants || []).map(p => p.id))
+        const newOnes = fields.participants.filter(p => !oldIds.has(p.id))
+        newOnes.forEach(p => notify({
+          academyId: user.academyId, recipientType: 'student', recipientId: p.id,
+          title: 'You’ve been selected!',
+          body: `${ev?.title || fields.title || 'An event'} — you're on the squad.`,
+          type: 'announcement', link: '/student/announcements',
+        }).catch(() => {}))
+      }
       showToast('Event updated')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')
@@ -1746,21 +1838,29 @@ export function AppProvider({ children }) {
         await db.updateStaffProfile(created.id, { name: s.name, phone: s.phone, photoUrl })
       } catch (_) {}
     }
-    // Persist portal-access permissions if the modal supplied them.
-    // Without this the accessConfig was silently dropped, leaving every
-    // new staff with an empty permissions[] in staff_auth — the activation
-    // login then fell back to ROLE_PRESETS[access_role] which gave wider
-    // access than the owner intended.
-    if (accessConfig?.accessRole) {
-      try {
-        await db.updateStaffPermissions(created.id, {
-          accessRole:  accessConfig.accessRole,
-          permissions: accessConfig.permissions || [],
-        })
-      } catch (err) {
-        console.error('Failed to save staff permissions:', err)
-        showToast('Staff created but permissions did not save — edit Access to retry', 'error')
-      }
+    // Always persist explicit permissions — never leave staff_auth.permissions
+    // at its table default ('[]'). Login (staffCode + joinCode) is granted
+    // regardless of whether the owner filled in the "give portal access" step,
+    // and every screen's hasPermission() falls back to ROLE_PRESETS[accessRole]
+    // whenever permissions is empty — so a staff member with '[]' in the DB
+    // still SEES the full toolset (Assess, Session Pulse, Sessions...) but every
+    // secure_* RPC's server-side _require_perm() check (the one that actually
+    // matters) rejects them, since it reads the real, empty permissions column.
+    // That mismatch is what let a coach fill out a whole assessment/pulse and
+    // only find out it was rejected on submit. Writing the same preset the UI
+    // already assumes keeps client and server in agreement from creation.
+    const finalAccessRole  = accessConfig?.accessRole || 'coach'
+    const finalPermissions = accessConfig?.permissions?.length
+      ? accessConfig.permissions
+      : (ROLE_PRESETS[finalAccessRole] || ROLE_PRESETS.coach)
+    try {
+      await db.updateStaffPermissions(created.id, {
+        accessRole:  finalAccessRole,
+        permissions: finalPermissions,
+      })
+    } catch (err) {
+      console.error('Failed to save staff permissions:', err)
+      showToast('Staff created but permissions did not save — edit Access to retry', 'error')
     }
     setStaff(prev => [...prev, {
       ...created,
@@ -1962,7 +2062,9 @@ export function AppProvider({ children }) {
   // ── Announcements ─────────────────────────────────────
 
   const sendStaffNotice = async ({ title, body, actionLabel, recipientIds }) => {
-    const ids = recipientIds?.length ? recipientIds : staff.map(s => s.id)
+    // Fallback audience = the branch/sport-scoped staff list (what the sender
+    // sees in the modal), never the raw academy-wide roster.
+    const ids = recipientIds?.length ? recipientIds : staffScopedStaff.map(s => s.id)
     await Promise.allSettled(ids.map(id => notify({
       academyId: user.academyId,
       recipientType: 'staff',
@@ -1991,18 +2093,50 @@ export function AppProvider({ children }) {
       setAnnouncements(prev => [created, ...prev])
       logAuditSport({ actor: user, action: ACTIONS.ANNOUNCEMENT_ADD, entityType: 'announcement', entityId: created.id, entityName: a.title, changes: { type: a.type || '—' }, academyId: user?.academyId, sport: ann.sport ?? null, branchId: ann.branchId ?? null })
       showToast('Announcement posted')
-      // Notify all staff and active students — fire and forget
-      const preview = (a.content || a.body || '').slice(0, 80)
-      staff.forEach(s => notify({
+      // Notify only the audience that can actually SEE this announcement
+      // (mirrors staffScopedAnnouncements / StudentAnnouncements filters) —
+      // a branch/sport-tagged post must never ping other branches. Fire and forget.
+      const preview   = (a.content || a.body || '').slice(0, 80)
+      const annSport  = (ann.sport || '').toLowerCase()
+      // Scope (branch/sport) first, then the explicit audience picked in the
+      // modal — audience narrows within scope, never across branches.
+      const staffCanSee = s =>
+        (!ann.branchId || !s.branchId || s.branchId === ann.branchId) &&
+        (!annSport || !(s.sports?.length) || s.sports.some(sp => sp.toLowerCase() === annSport)) &&
+        staffMatchesAudience(s, created)
+      const studentCanSee = s =>
+        (!ann.branchId || s.branchId === ann.branchId) &&
+        (!annSport || (s.sport || '').toLowerCase() === annSport) &&
+        studentMatchesAudience(s, created)
+      staff.filter(staffCanSee).forEach(s => notify({
         academyId: user.academyId, recipientType: 'staff', recipientId: s.id,
         title: a.title, body: preview || 'New announcement from academy', type: 'announcement', link: '/staff/notices',
       }).catch(() => {}))
-      students.filter(s => s.status === 'Active').forEach(s => notify({
+      students.filter(s => s.status === 'Active' && studentCanSee(s)).forEach(s => notify({
         academyId: user.academyId, recipientType: 'student', recipientId: s.id,
         title: a.title, body: preview || 'New announcement from academy', type: 'announcement', link: '/student/announcements',
       }).catch(() => {}))
     } catch (err) {
       showToast(err.message || 'Failed', 'error')
+    }
+  }
+
+  const removeAnnouncement = async (id) => {
+    const prev = announcements
+    // Optimistic: the list is the only feedback that the delete happened.
+    setAnnouncements(list => list.filter(a => a.id !== id))
+    try {
+      await db.deleteAnnouncement(id)
+      const gone = prev.find(a => a.id === id)
+      logAuditSport({
+        actor: user, action: ACTIONS.ANNOUNCEMENT_DELETE ?? 'announcement.delete',
+        entityType: 'announcement', entityId: id, entityName: gone?.title,
+        academyId: user?.academyId, sport: gone?.sport ?? null, branchId: gone?.branchId ?? null,
+      })
+      showToast('Announcement deleted')
+    } catch (err) {
+      setAnnouncements(prev) // roll back so the UI never lies about what's stored
+      showToast(err.message || 'Delete failed', 'error')
     }
   }
 
@@ -2093,6 +2227,29 @@ export function AppProvider({ children }) {
   const filteredTrials = useMemo(() =>
     hasBranchScope ? sportTrials.filter(t => t.branchId === effectiveBranch) : sportTrials
   , [sportTrials, effectiveBranch, hasBranchScope])
+
+  // A leave_requests row carries no sport/branch of its own — only staff_id.
+  // It inherits the scope of the staff member who raised it, so resolve that
+  // member against the RAW staff list (not filteredStaff — we need to find
+  // members who are outside the current scope precisely so we can drop them).
+  // Without this the owner sees every branch's leaves in one list.
+  const filteredLeaveRequests = useMemo(() => {
+    // Staff portal already gets a server-side "only my own" filter.
+    if (role === 'staff') return leaveRequests
+    if (!leaveRequests.length) return leaveRequests
+    const byId = new Map(staff.map(s => [String(s.id), s]))
+    return leaveRequests.filter(r => {
+      const st = byId.get(String(r.staff_id))
+      // Orphaned row (staff deleted, or staff not loaded yet) — surface it only
+      // in the unscoped view rather than leaking it into a specific branch.
+      if (!st) return isAllSports && !hasBranchScope
+      const sportOk = isAllSports || !st.sports?.length ||
+        st.sports.some(sp => sp?.toLowerCase() === selectedSport?.toLowerCase())
+      // Mirrors filteredStaff: staff with no branch stay visible everywhere.
+      const branchOk = !hasBranchScope || !st.branchId || st.branchId === effectiveBranch
+      return sportOk && branchOk
+    })
+  }, [leaveRequests, staff, role, isAllSports, selectedSport, hasBranchScope, effectiveBranch])
 
   // Coach-scope: when logged in as a staff member, limit batches/students to
   // only their sport(s). This prevents cross-sport data leakage while still
@@ -2186,6 +2343,10 @@ export function AppProvider({ children }) {
     const effBranch = isStaff ? (user?.branchId || null) : (selectedBranch || null)
     const effSport  = isStaff ? null : (selectedSport && selectedSport !== 'All' ? selectedSport.toLowerCase() : null)
     const staffSports = isStaff ? new Set((user?.sports || []).map(s => s.toLowerCase())) : null
+    // NOTE: audience filtering deliberately does NOT happen here — this list
+    // also backs the Community management page, where an author must still see
+    // a post they aimed at students. StaffNotices applies the audience filter
+    // for the staff-facing inbox.
     return announcements.filter(a => {
       // Academy-wide announcements (no sport, no branch) are always visible.
       if (!a.sport && !a.branchId) return true
@@ -2199,7 +2360,7 @@ export function AppProvider({ children }) {
       }
       return true
     })
-  }, [announcements, role, user?.sports, user?.branchId, selectedSport, selectedBranch])
+  }, [announcements, role, user?.sports, user?.branchId, user?.id, selectedSport, selectedBranch])
 
   // Fee plans inherit scope through their batch_id. If we can see the batch,
   // we can see its fee plans. Outside any sport scope → show everything.
@@ -2238,6 +2399,7 @@ export function AppProvider({ children }) {
       payments: staffScopedPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
       trials: staffScopedTrials, addTrial, updateTrialStatus, deleteTrial,
       trialSources, addTrialSource, removeTrialSource,
+      ageGroups, addAgeGroup, removeAgeGroup,
       refreshData: loadAll,
       batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, reassignPrimaryBatch, updateBatch, updateBatchFee, deleteBatch,
       feePlans: filteredFeePlans, addFeePlan, editFeePlan, removeFeePlan,
@@ -2248,8 +2410,8 @@ export function AppProvider({ children }) {
       // raw fee plans (unfiltered) for places that need everything
       allFeePlans: feePlans,
       attendanceData, loadAttendanceForDate, saveAttendance,
-      announcements: staffScopedAnnouncements, addAnnouncement, sendStaffNotice,
-      leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
+      announcements: staffScopedAnnouncements, addAnnouncement, removeAnnouncement, sendStaffNotice,
+      leaveRequests: filteredLeaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // staff portal management
       inviteStaff, updateStaffAccess, revokeStaffAccess,
       toast, showToast,

@@ -9,7 +9,9 @@ import {
   ClipboardList, BarChart3, Search, Users, TrendingUp,
 } from 'lucide-react'
 
-const OPS_PIN = '1111'
+// PIN comes from the env so it isn't hardcoded in the shipped bundle.
+// No env value = gate stays locked (fail closed, page unusable until set).
+const OPS_PIN = import.meta.env.VITE_OPS_PIN || null
 
 // ── Helpers ───────────────────────────────────────────────────
 

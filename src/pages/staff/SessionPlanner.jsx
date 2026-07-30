@@ -19,6 +19,8 @@ import {
   Zap, Package, MapPin, TrendingUp, TrendingDown, Target, ListOrdered,
   Heart, Search, Upload, ImagePlus,
 } from 'lucide-react'
+import DevFillButton from '../../components/DevFillButton'
+import { fillDrill, fillWeeklySchedule } from '../../lib/devFill'
 
 // ── Pitch SVG presets (mirrors Drills.jsx) ───────────────────────────────────
 const PITCH_BG = '#2D7A3A'
@@ -246,9 +248,10 @@ function StaffDrillDetailModal({ drill, isFav, isOwn, onClose, onFavorite, onEdi
   if (!drill) return null
   const c = CATEGORIES[drill.category] || CATEGORIES.technical
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full bg-white rounded-t-2xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="relative w-full bg-white rounded-t-2xl shadow-2xl flex flex-col max-h-[92dvh]">
         {/* Header */}
         <div className={`px-5 py-4 ${c.bg} border-b ${c.border} flex-shrink-0`}>
           <div className="flex items-start justify-between gap-3">
@@ -412,15 +415,24 @@ function StaffDrillEditorModal({ drill, onClose, onSave, saving }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full bg-white rounded-t-2xl shadow-2xl flex flex-col max-h-[95vh]">
+      <div className="relative w-full bg-white rounded-t-2xl shadow-2xl flex flex-col max-h-[95dvh]">
 
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Drill' : 'New Custom Drill'}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
-            <X size={16} className="text-gray-500"/>
-          </button>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {!isEdit && (
+              <>
+                <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillDrill() }))} />
+                <div className="w-px h-5 bg-gray-200" />
+              </>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
+              <X size={16} className="text-gray-500"/>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
@@ -1568,18 +1580,33 @@ function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving
   const canSave = !!(form.team_name.trim() && form.batch_id && form.week_start)
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    // No scroll on the overlay itself: it used to let the whole sheet scroll,
+    // carrying the header (and its Export PDF button) off the top of the screen
+    // and pushing the action row under the bottom nav. Only the body scrolls
+    // now, so header and footer stay put.
+    <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative min-h-full flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="relative w-full sm:max-w-3xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[95vh]">
+      {/* 100dvh, not h-full: `inset-0` resolves against the LAYOUT viewport,
+          which on mobile browsers extends behind the URL/toolbar — so the
+          modal could be taller than the visible area and its footer ended up
+          off-screen. dvh tracks the actually-visible height. The padding then
+          reserves room for the app's own fixed bottom nav. */}
+      <div className="relative h-[100dvh] flex items-end sm:items-center justify-center p-0 sm:p-4"
+        style={{ paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}>
+      <div className="relative w-full sm:max-w-3xl bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-full min-h-0">
 
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-          <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Weekly Schedule' : 'New Weekly Schedule'}</h2>
-          <div className="flex items-center gap-2">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-2 flex-shrink-0">
+          {/* min-w-0 + truncate so a long title can never squeeze Export PDF
+              off a narrow screen */}
+          <h2 className="text-base font-black text-gray-900 truncate min-w-0">{isEdit ? 'Edit Weekly Schedule' : 'New Weekly Schedule'}</h2>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {!isEdit && (
+              <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillWeeklySchedule({ batches, form: f }) }))} />
+            )}
             {isEdit && (
               <button type="button" onClick={() => exportWeeklySchedulePDF({ schedule: form })}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition">
-                <FileDown size={13} /> Export PDF
+                <FileDown size={13} /> <span className="hidden xs:inline">Export </span>PDF
               </button>
             )}
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
@@ -1654,7 +1681,15 @@ function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving
               Delete
             </button>
           ) : <div />}
-          <div className="flex gap-3">
+          <div className="flex gap-2 sm:gap-3 items-center">
+            {/* Lives beside the other actions, not in the header — that's where
+                people look for it, and the header gets tight on a phone. */}
+            {isEdit && (
+              <button type="button" onClick={() => exportWeeklySchedulePDF({ schedule: form })}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
+                <FileDown size={14} /> PDF
+              </button>
+            )}
             <button type="button" onClick={onClose}
               className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">
               Cancel

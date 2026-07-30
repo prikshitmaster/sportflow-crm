@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect } from 'react'
 import {
   Users, CreditCard, TrendingUp, UserPlus, ChevronRight,
   AlertCircle, CalendarDays, CheckCircle, XCircle, UserCog,
-  BarChart3, Layers, Zap, ArrowRight, Clock,
+  BarChart3, Layers, ArrowRight, Clock, FileText,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { isOutstanding } from '../lib/studentRules'
@@ -143,11 +143,11 @@ export default function Dashboard() {
   if (dataLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-28 w-full rounded-2xl" />
+        <Skeleton className="h-24 w-full rounded-xl" />
         <SkeletonCards count={4} />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Skeleton className="lg:col-span-2 h-64 w-full rounded-2xl" />
-          <Skeleton className="h-64 w-full rounded-2xl" />
+          <Skeleton className="lg:col-span-2 h-64 w-full rounded-xl" />
+          <Skeleton className="h-64 w-full rounded-xl" />
         </div>
       </div>
     )
@@ -157,10 +157,10 @@ export default function Dashboard() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center max-w-sm">
-          <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <BarChart3 size={24} className="text-gray-400" />
+          <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <BarChart3 size={20} className="text-gray-400" />
           </div>
-          <h3 className="font-bold text-gray-900 mb-1">Dashboard not accessible</h3>
+          <h3 className="font-semibold text-gray-900 mb-1">Dashboard not accessible</h3>
           <p className="text-sm text-gray-500">You don't have permission to view the dashboard.</p>
         </div>
       </div>
@@ -185,7 +185,7 @@ export default function Dashboard() {
       cta: 'Review', to: '/trials',
     },
     pendingLeaves.length > 0 && {
-      icon: CalendarDays, color: 'purple',
+      icon: CalendarDays, color: 'slate',
       label: `${pendingLeaves.length} leave request${pendingLeaves.length > 1 ? 's' : ''} pending`,
       amount: null,
       cta: 'Approve', to: '/coaches',
@@ -195,51 +195,41 @@ export default function Dashboard() {
   return (
     <div className="space-y-5 max-w-[1400px]">
 
-      {/* ── Hero header ──────────────────────────────────────── */}
-      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-brand-900 px-6 py-5">
-        {/* Dot grid texture */}
-        <div className="absolute inset-0 opacity-[0.07]"
-          style={{ backgroundImage: 'radial-gradient(circle at 1.5px 1.5px, white 1.5px, transparent 0)', backgroundSize: '28px 28px' }} />
-        {/* Glow accents */}
-        <div className="absolute -top-10 -right-10 w-48 h-48 bg-brand-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-8 left-20 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
-
-        <div className="relative flex items-center justify-between gap-4 flex-wrap">
+      {/* ── Page header ──────────────────────────────────────── */}
+      <div className="bg-white border border-gray-200 rounded-xl px-5 py-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-1">{dateLabel}</p>
-            <h2 className="text-xl font-black text-white">{greeting}, {firstName}</h2>
-            <p className="text-sm text-white/50 mt-0.5">
+            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">{dateLabel}</p>
+            <h2 className="text-lg font-semibold text-gray-900 tracking-tight mt-1">{greeting}, {firstName}</h2>
+            <p className="text-[13px] text-gray-500 mt-1">
               {user?.academy}
               {selectedSport && selectedSport !== 'All' && <span> · {selectedSport}</span>}
               {collectPct > 0 && (
-                <span className="ml-2 text-emerald-400 font-semibold">{collectPct}% collected this month</span>
+                <span className="text-gray-400"> · <span className="text-gray-600 font-medium tabular-nums">{collectPct}%</span> collected this month</span>
               )}
             </p>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
-            <Link to="/students"
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-brand-500 hover:bg-brand-400 text-white transition shadow-lg shadow-brand-900/40">
-              + Add Student
+            <Link to="/students" className="btn-ghost">
+              <UserPlus size={14} className="text-gray-400" /> Add Student
             </Link>
-            <Link to="/coaches"
-              className="hidden sm:flex px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/10 transition">
-              + Add Staff
+            <Link to="/coaches" className="btn-ghost hidden sm:inline-flex">
+              <UserCog size={14} className="text-gray-400" /> Add Staff
             </Link>
-            <Link to="/reports"
-              className="hidden sm:flex px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/10 transition">
-              Reports
+            <Link to="/reports" className="btn-ghost hidden sm:inline-flex">
+              <FileText size={14} className="text-gray-400" /> Reports
             </Link>
             <Link to="/payments"
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-white transition shadow-lg shadow-emerald-900/30">
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[13px] font-medium bg-brand-600 hover:bg-brand-700 text-white transition-colors">
               Collect Fee
             </Link>
 
             {/* Clock-in — staff only */}
             {role === 'admin' && (
               todayCheckin ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 flex items-center gap-1.5">
-                    <Clock size={11} />
+                <div className="flex items-center gap-2 sm:pl-2 sm:ml-1 sm:border-l sm:border-gray-200">
+                  <span className="inline-flex items-center gap-1.5 text-[13px] text-gray-600 tabular-nums">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     {fmtClockTime(todayCheckin.clock_in)}
                     {todayCheckin.clock_out && ` → ${fmtClockTime(todayCheckin.clock_out)}`}
                   </span>
@@ -247,7 +237,7 @@ export default function Dashboard() {
                     <button
                       onClick={handleClockOut}
                       disabled={clockLoading}
-                      className="px-3 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-red-500/30 text-white border border-white/10 transition disabled:opacity-50"
+                      className="btn-ghost disabled:opacity-50"
                     >
                       Clock Out
                     </button>
@@ -257,9 +247,9 @@ export default function Dashboard() {
                 <button
                   onClick={handleClockIn}
                   disabled={clockLoading}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-white transition flex items-center gap-1.5 disabled:opacity-50"
+                  className="btn-ghost disabled:opacity-50 sm:ml-1"
                 >
-                  <Clock size={12} />
+                  <Clock size={14} className="text-gray-400" />
                   {clockLoading ? 'Clocking in…' : 'Clock In'}
                 </button>
               )
@@ -274,11 +264,7 @@ export default function Dashboard() {
           label="Active Students"
           value={activeStudents.length}
           sub={students.length - activeStudents.length > 0 ? `${students.length - activeStudents.length} inactive` : 'All active'}
-          accentColor="border-brand-500"
-          valueColor="text-gray-900"
           icon={Users}
-          iconColor="text-brand-500"
-          iconBg="bg-brand-50"
         />
         <KpiCard
           label="Collected This Month"
@@ -286,31 +272,20 @@ export default function Dashboard() {
           sub={advanceCollected > 0
             ? `₹${fmtAmt(thisMonthCollected)} for ${now.toLocaleDateString('en-IN',{month:'short'})} · ₹${fmtAmt(advanceCollected)} advance`
             : `${thisMoPct}% of ₹${fmtAmt(expectedAmt)} target`}
-          accentColor="border-emerald-500"
-          valueColor="text-emerald-700"
           icon={TrendingUp}
-          iconColor="text-emerald-600"
-          iconBg="bg-emerald-50"
         />
         <KpiCard
           label="Overdue"
           value={`₹${fmtAmt(overdueAmt)}`}
           sub={overdueList.length > 0 ? `${overdueList.length} students · ${pendingList.length} pending` : 'All clear'}
-          accentColor={overdueList.length > 0 ? 'border-red-500' : 'border-gray-200'}
-          valueColor={overdueList.length > 0 ? 'text-red-600' : 'text-gray-400'}
           icon={CreditCard}
-          iconColor={overdueList.length > 0 ? 'text-red-500' : 'text-gray-400'}
-          iconBg={overdueList.length > 0 ? 'bg-red-50' : 'bg-gray-50'}
+          tone={overdueList.length > 0 ? 'negative' : 'muted'}
         />
         <KpiCard
           label={selectedSport === 'All' ? 'Active Staff' : `${selectedSport} Staff`}
           value={activeStaff.length}
           sub={`of ${staff.length} total`}
-          accentColor="border-purple-500"
-          valueColor="text-gray-900"
           icon={UserCog}
-          iconColor="text-purple-600"
-          iconBg="bg-purple-50"
         />
       </div>
 
@@ -320,66 +295,57 @@ export default function Dashboard() {
         {/* Left 2/3 */}
         <div className="lg:col-span-2 space-y-5">
 
-          {/* Fee collection — 3 clear boxes */}
-          <div className="card p-6">
-            <div className="flex items-center justify-between mb-5">
+          {/* Fee collection — 3 clear columns */}
+          <div className="bg-white border border-gray-200 rounded-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
               <div>
-                <h3 className="font-bold text-gray-900">Fee Collection</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Fee Collection</h3>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {selectedSport === 'All' ? 'All sports' : selectedSport} · {now.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
                 </p>
               </div>
-              <Link to="/reports" className="text-xs text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1 transition">
-                Full report <ChevronRight size={12} />
+              <Link to="/reports" className="text-xs text-gray-500 font-medium hover:text-gray-900 flex items-center gap-0.5 transition-colors">
+                Full report <ChevronRight size={13} />
               </Link>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 sm:divide-x divide-y sm:divide-y-0 divide-gray-200">
               {/* This month */}
-              <div className="bg-emerald-50 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide">This Month</span>
-                </div>
-                <p className="text-2xl font-black text-gray-900">₹{fmtAmt(thisMonthCollected)}</p>
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">This Month</p>
+                <p className="text-2xl font-semibold text-gray-900 tracking-tight tabular-nums mt-2">₹{fmtAmt(thisMonthCollected)}</p>
                 {expectedAmt > 0 ? (
                   <>
-                    <p className="text-xs text-gray-500 mt-1">{thisMoPct}% of ₹{fmtAmt(expectedAmt)} target</p>
-                    <div className="mt-2.5 h-1.5 bg-emerald-100 rounded-full overflow-hidden">
+                    <p className="text-xs text-gray-500 mt-1.5 tabular-nums">{thisMoPct}% of ₹{fmtAmt(expectedAmt)} target</p>
+                    <div className="mt-3 h-1 bg-gray-100 rounded-full overflow-hidden">
                       <div className="h-full rounded-full transition-all duration-700"
-                        style={{ width: `${Math.min(thisMoPct, 100)}%`, background: thisMoPct >= 80 ? '#10b981' : thisMoPct >= 50 ? '#f59e0b' : '#ef4444' }} />
+                        style={{ width: `${Math.min(thisMoPct, 100)}%`, background: thisMoPct >= 80 ? '#059669' : thisMoPct >= 50 ? '#d97706' : '#dc2626' }} />
                     </div>
                   </>
                 ) : (
-                  <p className="text-xs text-gray-400 mt-1">no target set</p>
+                  <p className="text-xs text-gray-400 mt-1.5">No target set</p>
                 )}
               </div>
 
               {/* Advance paid */}
-              <div className="bg-blue-50 rounded-2xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-2 h-2 rounded-full bg-blue-400" />
-                  <span className="text-xs font-bold text-blue-700 uppercase tracking-wide">Advance Paid</span>
-                </div>
-                <p className="text-2xl font-black text-gray-900">₹{fmtAmt(advanceCollected)}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {advanceCollected > 0 ? 'collected for future months' : 'none this month'}
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Advance Paid</p>
+                <p className="text-2xl font-semibold text-gray-900 tracking-tight tabular-nums mt-2">₹{fmtAmt(advanceCollected)}</p>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  {advanceCollected > 0 ? 'Collected for future months' : 'None this month'}
                 </p>
               </div>
 
               {/* Outstanding */}
-              <div className={`${overdueAmt + pendingAmt > 0 ? 'bg-red-50' : 'bg-gray-50'} rounded-2xl p-4`}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className={`w-2 h-2 rounded-full ${overdueAmt + pendingAmt > 0 ? 'bg-red-400' : 'bg-gray-300'}`} />
-                  <span className={`text-xs font-bold uppercase tracking-wide ${overdueAmt + pendingAmt > 0 ? 'text-red-700' : 'text-gray-500'}`}>Outstanding</span>
-                </div>
-                <p className={`text-2xl font-black ${overdueAmt + pendingAmt > 0 ? 'text-gray-900' : 'text-gray-400'}`}>
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">Outstanding</p>
+                <p className={`text-2xl font-semibold tracking-tight tabular-nums mt-2 ${overdueAmt + pendingAmt > 0 ? 'text-red-600' : 'text-gray-300'}`}>
                   ₹{fmtAmt(overdueAmt + pendingAmt)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 mt-1.5">
                   {overdueAmt + pendingAmt > 0
                     ? `${overdueList.length + pendingList.length} student${(overdueList.length + pendingList.length) !== 1 ? 's' : ''} unpaid`
-                    : 'all clear ✓'}
+                    : 'All clear'}
                 </p>
               </div>
             </div>
@@ -393,62 +359,62 @@ export default function Dashboard() {
             return (
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                    <Layers size={15} className="text-brand-500" />
+                  <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <Layers size={14} className="text-gray-400" />
                     Today's Batches
                     {selectedSport !== 'All' && <span className="text-xs text-gray-400 font-normal">· {selectedSport}</span>}
-                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Attendance</span>
                     {todayBatches.length > 0 && (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">{todayBatches.length} active today</span>
+                      <span className="text-[11px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded tabular-nums">{todayBatches.length} scheduled</span>
                     )}
                   </h3>
-                  <Link to="/attendance" className="text-xs text-brand-600 font-semibold hover:text-brand-700 flex items-center gap-1 transition">
-                    Mark <ChevronRight size={12} />
+                  <Link to="/attendance" className="text-xs text-gray-500 font-medium hover:text-gray-900 flex items-center gap-0.5 transition-colors">
+                    Mark attendance <ChevronRight size={13} />
                   </Link>
                 </div>
 
                 {/* Active today */}
                 {todayBatches.length === 0 ? (
-                  <div className="card p-5 text-center">
+                  <div className="bg-white border border-gray-200 rounded-xl px-5 py-8 text-center">
                     <p className="text-sm text-gray-400">No batches scheduled for today ({todayDayShort})</p>
                   </div>
                 ) : (
                   <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
                     {todayBatches.map(({ b, stats: { count, activeCount, present, pct, marked } }) => (
-                      <div key={b.id} className={`card p-4 transition hover:shadow-md ${!marked ? 'ring-1 ring-amber-200' : 'ring-1 ring-emerald-200'}`}>
+                      <div key={b.id} className="bg-white border border-gray-200 rounded-xl p-4 transition-colors hover:border-gray-300">
                         <div className="flex items-start justify-between mb-3">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-bold truncate text-gray-900">{b.name}</p>
-                            <p className="text-[11px] text-gray-400 truncate mt-0.5">{b.coach || 'No coach assigned'}</p>
+                            <p className="text-sm font-medium truncate text-gray-900">{b.name}</p>
+                            <p className="text-xs text-gray-400 truncate mt-0.5">{b.coach || 'No coach assigned'}</p>
                           </div>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ml-2 ${
-                            marked ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-600 border border-amber-200'
+                          <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium flex-shrink-0 ml-2 ${
+                            marked ? 'text-gray-500' : 'text-amber-700'
                           }`}>
-                            {marked ? '✓ Marked' : 'Pending'}
+                            <span className={`w-1.5 h-1.5 rounded-full ${marked ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                            {marked ? 'Marked' : 'Pending'}
                           </span>
                         </div>
                         <div className="flex items-end gap-3">
                           <div>
-                            <p className="text-2xl font-black leading-none text-gray-900">{count}</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">{activeCount < count ? `${activeCount} active` : 'students'}</p>
+                            <p className="text-xl font-semibold leading-none text-gray-900 tabular-nums">{count}</p>
+                            <p className="text-[11px] text-gray-400 mt-1">{activeCount < count ? `${activeCount} active` : 'students'}</p>
                           </div>
                           {activeCount > 0 && (
                             <div className="flex-1 pb-0.5">
-                              <div className="flex justify-between text-[10px] mb-1">
-                                <span className="text-gray-400">{marked ? `${present} present` : 'not marked yet'}</span>
-                                <span className={`font-bold ${!marked ? 'text-amber-500' : pct >= 80 ? 'text-emerald-600' : pct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{marked ? `${pct}%` : '—'}</span>
+                              <div className="flex justify-between text-[11px] mb-1.5">
+                                <span className="text-gray-400">{marked ? `${present} present` : 'Not marked yet'}</span>
+                                <span className={`font-medium tabular-nums ${!marked ? 'text-gray-300' : pct >= 80 ? 'text-emerald-700' : pct >= 60 ? 'text-amber-700' : 'text-red-600'}`}>{marked ? `${pct}%` : '—'}</span>
                               </div>
-                              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all ${!marked ? 'bg-amber-200' : pct >= 80 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-400' : 'bg-red-400'}`}
+                              <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all ${!marked ? 'bg-gray-200' : pct >= 80 ? 'bg-emerald-600' : pct >= 60 ? 'bg-amber-500' : 'bg-red-500'}`}
                                   style={{ width: marked ? `${pct}%` : '30%' }} />
                               </div>
                             </div>
                           )}
                         </div>
                         {b.sports?.length > 0 && (
-                          <div className="flex gap-1 flex-wrap mt-2.5">
+                          <div className="flex gap-1.5 flex-wrap mt-3">
                             {b.sports.map(sp => (
-                              <span key={sp} className="text-[10px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded font-medium">{sp}</span>
+                              <span key={sp} className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded">{sp}</span>
                             ))}
                           </div>
                         )}
@@ -457,24 +423,24 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Other batches — not today, clearly dimmed */}
+                {/* Other batches — not today */}
                 {otherBatches.length > 0 && (
-                  <div className="mt-3">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Not scheduled today</p>
+                  <div className="mt-4">
+                    <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-2">Not scheduled today</p>
                     <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
                       {otherBatches.map(({ b, stats: { count } }) => (
-                        <div key={b.id} className="card p-4 opacity-40 bg-gray-50 pointer-events-none">
+                        <div key={b.id} className="bg-gray-50/60 border border-gray-200 rounded-xl p-4 pointer-events-none">
                           <div className="flex items-start justify-between mb-2">
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-bold truncate text-gray-500">{b.name}</p>
-                              <p className="text-[11px] text-gray-400 truncate mt-0.5">{b.coach || '—'}</p>
+                              <p className="text-sm font-medium truncate text-gray-500">{b.name}</p>
+                              <p className="text-xs text-gray-400 truncate mt-0.5">{b.coach || '—'}</p>
                             </div>
-                            <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0 ml-2 font-medium">
+                            <span className="text-[11px] text-gray-400 flex-shrink-0 ml-2">
                               {b.days?.join('/') || 'Daily'}
                             </span>
                           </div>
-                          <p className="text-xl font-black text-gray-400 leading-none">{count}</p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">students</p>
+                          <p className="text-lg font-semibold text-gray-400 leading-none tabular-nums">{count}</p>
+                          <p className="text-[11px] text-gray-400 mt-1">students</p>
                         </div>
                       ))}
                     </div>
@@ -490,31 +456,32 @@ export default function Dashboard() {
 
           {/* Needs Attention — counts only, actionable */}
           {attentionItems.length > 0 && (
-            <div className="card overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
-                <Zap size={13} className="text-amber-500" />
-                <h3 className="font-bold text-gray-900 text-sm">Needs Attention</h3>
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-2">
+                <AlertCircle size={13} className="text-gray-400" />
+                <h3 className="text-sm font-semibold text-gray-900">Needs Attention</h3>
               </div>
-              <div className="divide-y divide-gray-50">
+              <div className="divide-y divide-gray-200">
                 {attentionItems.map((item, i) => {
-                  const colors = {
-                    red:    { bg: 'bg-red-50',    icon: 'text-red-500',    btn: 'bg-red-600 hover:bg-red-700' },
-                    amber:  { bg: 'bg-amber-50',  icon: 'text-amber-500',  btn: 'bg-amber-500 hover:bg-amber-600' },
-                    purple: { bg: 'bg-purple-50', icon: 'text-purple-500', btn: 'bg-purple-600 hover:bg-purple-700' },
+                  const dot = {
+                    red:   'bg-red-500',
+                    amber: 'bg-amber-500',
+                    slate: 'bg-gray-400',
                   }[item.color]
                   const Icon = item.icon
                   return (
                     <div key={i} className="flex items-center gap-3 px-4 py-3">
-                      <div className={`w-8 h-8 ${colors.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                        <Icon size={14} className={colors.icon} />
+                      <div className="w-7 h-7 bg-gray-50 border border-gray-200 rounded-lg flex items-center justify-center flex-shrink-0 relative">
+                        <Icon size={13} className="text-gray-500" />
+                        <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-white ${dot}`} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 leading-tight">{item.label}</p>
-                        {item.amount && <p className="text-[11px] text-gray-400 mt-0.5 font-medium">{item.amount}</p>}
+                        <p className="text-[13px] font-medium text-gray-800 leading-tight">{item.label}</p>
+                        {item.amount && <p className="text-xs text-gray-400 mt-0.5 tabular-nums">{item.amount}</p>}
                       </div>
                       <Link to={item.to}
-                        className={`text-[11px] font-bold text-white px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition flex-shrink-0 ${colors.btn}`}>
-                        {item.cta} <ArrowRight size={10} />
+                        className="text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-gray-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors flex-shrink-0">
+                        {item.cta} <ArrowRight size={11} />
                       </Link>
                     </div>
                   )
@@ -525,20 +492,20 @@ export default function Dashboard() {
 
           {/* Leave requests — inline approve/reject */}
           {pendingLeaves.length > 0 && (
-            <div className="card p-4">
-              <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2 text-sm">
-                <CalendarDays size={14} className="text-purple-500" />
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <CalendarDays size={14} className="text-gray-400" />
                 Leave Requests
-                <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-auto">{pendingLeaves.length}</span>
+                <span className="bg-gray-100 text-gray-600 text-[11px] font-medium px-1.5 py-0.5 rounded ml-auto tabular-nums">{pendingLeaves.length}</span>
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {pendingLeaves.slice(0, 3).map(r => (
                   <LeaveCard key={r.id} request={r} onUpdate={updateLeave} />
                 ))}
               </div>
               {pendingLeaves.length > 3 && (
-                <Link to="/coaches" className="mt-3 flex items-center justify-center gap-1 text-xs text-purple-600 font-semibold hover:text-purple-700 transition">
-                  +{pendingLeaves.length - 3} more <ChevronRight size={11} />
+                <Link to="/coaches" className="mt-3 flex items-center justify-center gap-1 text-xs text-gray-500 font-medium hover:text-gray-900 transition-colors">
+                  +{pendingLeaves.length - 3} more <ChevronRight size={12} />
                 </Link>
               )}
             </div>
@@ -546,34 +513,32 @@ export default function Dashboard() {
 
           {/* Staff on duty */}
           {activeStaff.length > 0 && (
-            <div className="card p-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-gray-900 text-sm">
+                <h3 className="text-sm font-semibold text-gray-900">
                   {selectedSport === 'All' ? 'Staff' : `${selectedSport} Staff`}
                 </h3>
-                <Link to="/coaches" className="text-xs text-brand-600 font-semibold hover:text-brand-700 transition">Manage</Link>
+                <Link to="/coaches" className="text-xs text-gray-500 font-medium hover:text-gray-900 transition-colors">Manage</Link>
               </div>
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {activeStaff.slice(0, 5).map(s => (
                   <div key={s.id} className="flex items-center gap-3">
                     {s.photoUrl ? (
-                      <img src={s.photoUrl} alt={s.name} className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
+                      <img src={s.photoUrl} alt={s.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
                     ) : (
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black flex-shrink-0 ${
-                        s.staffType === 'office' ? 'bg-purple-100 text-purple-700' : 'bg-brand-100 text-brand-700'
-                      }`}>
+                      <div className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 flex items-center justify-center text-xs font-semibold flex-shrink-0">
                         {s.name[0]}
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{s.name}</p>
+                      <p className="text-[13px] font-medium text-gray-900 truncate">{s.name}</p>
                       <p className="text-xs text-gray-400 truncate">{s.role}</p>
                     </div>
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.status === 'Active' ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.status === 'Active' ? 'bg-emerald-500' : 'bg-gray-300'}`} />
                   </div>
                 ))}
                 {activeStaff.length > 5 && (
-                  <p className="text-xs text-gray-400 text-center pt-1">+{activeStaff.length - 5} more staff</p>
+                  <p className="text-xs text-gray-400 pt-1">+{activeStaff.length - 5} more staff</p>
                 )}
               </div>
             </div>
@@ -581,21 +546,21 @@ export default function Dashboard() {
 
           {/* Trials pipeline */}
           {trials.length > 0 && (
-            <div className="card p-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-gray-900 text-sm">Trial Pipeline</h3>
-                <Link to="/trials" className="text-xs text-brand-600 font-semibold hover:text-brand-700 transition">View all</Link>
+                <h3 className="text-sm font-semibold text-gray-900">Trial Pipeline</h3>
+                <Link to="/trials" className="text-xs text-gray-500 font-medium hover:text-gray-900 transition-colors">View all</Link>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {[
-                  { label: 'Active', count: trials.filter(t => !t.converted).length, color: 'bg-brand-500' },
-                  { label: 'Follow-ups due', count: trialFollowUps.length, color: 'bg-amber-400' },
+                  { label: 'Active', count: trials.filter(t => !t.converted).length, color: 'bg-gray-400' },
+                  { label: 'Follow-ups due', count: trialFollowUps.length, color: 'bg-amber-500' },
                   { label: 'Converted', count: trials.filter(t => t.converted).length, color: 'bg-emerald-500' },
                 ].map(({ label, count, color }) => (
-                  <div key={label} className="flex items-center gap-3">
+                  <div key={label} className="flex items-center gap-2.5">
                     <div className={`w-1.5 h-1.5 rounded-full ${color} flex-shrink-0`} />
-                    <p className="text-xs text-gray-600 flex-1">{label}</p>
-                    <p className="text-xs font-bold text-gray-900">{count}</p>
+                    <p className="text-[13px] text-gray-600 flex-1">{label}</p>
+                    <p className="text-[13px] font-medium text-gray-900 tabular-nums">{count}</p>
                   </div>
                 ))}
               </div>
@@ -616,20 +581,20 @@ function LeaveCard({ request: r, onUpdate }) {
     try { await onUpdate(r.id, status) } finally { setLoading(null) }
   }
   return (
-    <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-      <div className="mb-2">
-        <p className="text-sm font-bold text-gray-900">{r.staff_name}</p>
-        <p className="text-xs text-gray-500">{fmtDate(r.start_date)} → {fmtDate(r.end_date)}</p>
-        {r.reason && <p className="text-xs text-gray-400 mt-0.5 italic truncate">"{r.reason}"</p>}
+    <div className="border border-gray-200 rounded-lg p-3">
+      <div className="mb-2.5">
+        <p className="text-[13px] font-medium text-gray-900">{r.staff_name}</p>
+        <p className="text-xs text-gray-500 mt-0.5">{fmtDate(r.start_date)} → {fmtDate(r.end_date)}</p>
+        {r.reason && <p className="text-xs text-gray-400 mt-0.5 truncate">{r.reason}</p>}
       </div>
       <div className="flex gap-2">
         <button onClick={() => handle('Approved')} disabled={!!loading}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition disabled:opacity-50">
-          <CheckCircle size={11} /> {loading === 'Approved' ? '…' : 'Approve'}
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 text-white text-xs font-medium transition-colors disabled:opacity-50">
+          <CheckCircle size={12} /> {loading === 'Approved' ? '…' : 'Approve'}
         </button>
         <button onClick={() => handle('Rejected')} disabled={!!loading}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-bold transition disabled:opacity-50">
-          <XCircle size={11} /> Reject
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg bg-white hover:bg-gray-50 text-gray-600 border border-gray-200 text-xs font-medium transition-colors disabled:opacity-50">
+          <XCircle size={12} /> {loading === 'Rejected' ? '…' : 'Reject'}
         </button>
       </div>
     </div>
@@ -638,31 +603,20 @@ function LeaveCard({ request: r, onUpdate }) {
 
 // ── Sub-components ────────────────────────────────────────────
 
-function KpiCard({ label, value, sub, accentColor, valueColor, icon: Icon, iconColor, iconBg }) {
+function KpiCard({ label, value, sub, icon: Icon, tone = 'default' }) {
+  const valueColor = {
+    default:  'text-gray-900',
+    negative: 'text-red-600',
+    muted:    'text-gray-300',
+  }[tone]
   return (
-    <div className={`card p-5 border-l-4 ${accentColor}`}>
-      <div className="flex items-start justify-between mb-3">
-        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider leading-tight">{label}</p>
-        <div className={`w-8 h-8 ${iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-          <Icon size={15} className={iconColor} />
-        </div>
+    <div className="bg-white border border-gray-200 rounded-xl p-4 transition-colors hover:border-gray-300">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider leading-tight">{label}</p>
+        <Icon size={15} className="text-gray-300 flex-shrink-0" />
       </div>
-      <p className={`text-2xl font-black ${valueColor}`}>{value}</p>
-      <p className="text-[11px] text-gray-400 mt-1 leading-tight">{sub}</p>
-    </div>
-  )
-}
-
-function MetricBox({ label, value, accent }) {
-  const c = {
-    emerald: { bg: 'bg-emerald-50', value: 'text-emerald-700', label: 'text-emerald-600' },
-    amber:   { bg: 'bg-amber-50',   value: 'text-amber-700',   label: 'text-amber-600'   },
-    red:     { bg: 'bg-red-50',     value: 'text-red-700',     label: 'text-red-600'     },
-  }[accent]
-  return (
-    <div className={`text-center p-3 ${c.bg} rounded-xl`}>
-      <p className={`text-base font-black ${c.value}`}>{value}</p>
-      <p className={`text-[10px] font-semibold mt-0.5 ${c.label}`}>{label}</p>
+      <p className={`text-2xl font-semibold tracking-tight tabular-nums ${valueColor}`}>{value}</p>
+      <p className="text-xs text-gray-400 mt-1.5 leading-tight">{sub}</p>
     </div>
   )
 }

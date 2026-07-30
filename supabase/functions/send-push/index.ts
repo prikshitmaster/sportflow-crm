@@ -10,7 +10,10 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  // See send-fcm: the client attaches x-staff-token / x-student-token to every
+  // request, so these must be allowed or the browser preflight fails for
+  // non-owner callers and web push silently never sends.
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-staff-token, x-student-token, x-session-token',
 }
 
 Deno.serve(async (req) => {

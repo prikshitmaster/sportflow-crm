@@ -65,6 +65,10 @@
   .btn-secondary {
     @apply inline-flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 text-sm font-semibold rounded-lg border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all duration-150 shadow-sm;
   }
+  /* Compact neutral action button — toolbars, page headers */
+  .btn-ghost {
+    @apply inline-flex items-center gap-1.5 px-3 py-2 bg-white text-gray-700 text-[13px] font-medium rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors;
+  }
   .btn-danger {
     @apply inline-flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 active:scale-95 transition-all duration-150 shadow-sm;
   }
@@ -114,6 +118,12 @@
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+/* NOTE: no `forwards`. An animation whose effect stays applied keeps a
+   stacking context on this wrapper, which traps `position: fixed` children
+   (drawers, modals) inside it — they then paint *below* the sticky header
+   (z-30) and sidebar (z-40) instead of over them. The keyframes already end
+   at opacity 1, which is the default, so dropping the fill mode is visually
+   identical. Overlays are also portalled to <body>, so this is belt-and-braces. */
 .page-enter { animation: fadeIn 0.2s ease; }
 
 /* Responsive grid helpers */

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X, Send, Search } from 'lucide-react'
+import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X, Send, Search, Trash2 } from 'lucide-react'
 import { Modal } from './Students'
 import SendStaffNoticeModal from '../components/SendStaffNoticeModal'
 import DevFillButton from '../components/DevFillButton'
@@ -16,12 +16,38 @@ const TYPE_CONFIG = {
 
 const TYPES = Object.keys(TYPE_CONFIG)
 
+// Who a post went to, for the feed + detail view. Rows created before the
+// audience feature have no audience_type and were broadcast to everyone.
+function audienceLabel(a) {
+  const type = a?.audienceType || a?.audience_type || 'all'
+  const n    = (a?.audienceIds || a?.audience_ids || []).length
+  if (type === 'students')      return 'All students'
+  if (type === 'staff')         return 'All staff'
+  if (type === 'batches')       return `${n} batch${n === 1 ? '' : 'es'}`
+  if (type === 'students_list') return `${n} student${n === 1 ? '' : 's'}`
+  if (type === 'staff_members') return `${n} staff`
+  return 'Everyone'
+}
+
 export default function Community() {
-  const { announcements, addAnnouncement, sendStaffNotice, staff } = useApp()
+  // students/batches/staff from context are already branch+sport scoped, so the
+  // audience picker can only ever target people in the sender's current scope.
+  const { announcements, addAnnouncement, removeAnnouncement, sendStaffNotice,
+          staff, students, batches, hasPermission } = useApp()
   const [filter,     setFilter]     = useState('All')
   const [search,     setSearch]     = useState('')
   const [showModal,  setShowModal]  = useState(false)
   const [showNotice, setShowNotice] = useState(false)
+  const [detail,     setDetail]     = useState(null)   // announcement being viewed
+  const [confirmDel, setConfirmDel] = useState(null)   // announcement pending delete
+
+  // Deleting community content goes with managing it.
+  const canManage = hasPermission('community.manage')
+  // Messaging the whole staff body is a staff-management action, deliberately a
+  // higher bar than posting announcements: owners bypass, branch_manager/admin
+  // hold every permission, and ordinary coaches never get staff.manage even
+  // when they've been granted community.manage.
+  const canNotifyStaff = hasPermission('staff.manage')
 
   const q = search.toLowerCase().trim()
   const filtered = announcements.filter(a => {
@@ -39,9 +65,11 @@ export default function Community() {
           <p className="text-sm text-gray-500">Announce to parents, coaches and students</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-secondary" onClick={() => setShowNotice(true)}>
-            <Send size={15} /> Staff Notice
-          </button>
+          {canNotifyStaff && (
+            <button className="btn-secondary" onClick={() => setShowNotice(true)}>
+              <Send size={15} /> Staff Notice
+            </button>
+          )}
           <button className="btn-primary" onClick={() => setShowModal(true)}>
             <Plus size={16} /> New Announcement
           </button>
@@ -75,20 +103,32 @@ export default function Community() {
           const tc = TYPE_CONFIG[a.type] || TYPE_CONFIG.Announcement
           const Icon = tc.icon
           return (
-            <div key={a.id} className={`card p-5 border-l-4 ${tc.border}`}>
+            <div key={a.id}
+              onClick={() => setDetail(a)}
+              className={`card p-5 border-l-4 ${tc.border} cursor-pointer hover:shadow-md transition group`}>
               <div className="flex items-start gap-4">
                 <div className={`w-10 h-10 ${tc.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
                   <Icon size={18} className={tc.cls.includes('blue') ? 'text-brand-600' : tc.cls.includes('green') ? 'text-emerald-600' : tc.cls.includes('yellow') ? 'text-amber-600' : tc.cls.includes('purple') ? 'text-purple-600' : 'text-gray-500'} />
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     <span className={`badge ${tc.cls}`}>{a.type}</span>
                     <span className="text-xs text-gray-400">{new Date(a.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    <span className="text-[10px] text-gray-400 font-medium">{audienceLabel(a)}</span>
                   </div>
                   <h3 className="font-bold text-gray-900 mb-1.5">{a.title}</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed">{a.body}</p>
+                  {/* Truncated here — full text lives in the detail popup */}
+                  <p className="text-sm text-gray-600 leading-relaxed line-clamp-2">{a.body}</p>
                   <p className="text-xs text-gray-400 mt-3">— {a.author}</p>
                 </div>
+                {canManage && (
+                  <button
+                    onClick={e => { e.stopPropagation(); setConfirmDel(a) }}
+                    title="Delete announcement"
+                    className="p-2 rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50 transition flex-shrink-0">
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             </div>
           )
@@ -101,20 +141,106 @@ export default function Community() {
         )}
       </div>
 
-      {showModal  && <AddAnnouncementModal onClose={() => setShowModal(false)} onSave={addAnnouncement} />}
-      {showNotice && <SendStaffNoticeModal staff={staff} onClose={() => setShowNotice(false)} onSend={sendStaffNotice} />}
+      {showModal  && <AddAnnouncementModal staff={staff} students={students} batches={batches}
+                       onClose={() => setShowModal(false)} onSave={addAnnouncement} />}
+      {showNotice && canNotifyStaff &&
+        <SendStaffNoticeModal staff={staff} onClose={() => setShowNotice(false)} onSend={sendStaffNotice} />}
+
+      {detail && (
+        <Modal title={detail.title} onClose={() => setDetail(null)}
+          footer={
+            <div className="flex justify-end gap-3">
+              {canManage && (
+                <button className="btn-secondary text-red-600"
+                  onClick={() => { setConfirmDel(detail); setDetail(null) }}>
+                  <Trash2 size={14} /> Delete
+                </button>
+              )}
+              <button className="btn-primary" onClick={() => setDetail(null)}>Close</button>
+            </div>
+          }>
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <span className={`badge ${(TYPE_CONFIG[detail.type] || TYPE_CONFIG.Announcement).cls}`}>{detail.type}</span>
+            <span className="text-xs text-gray-400">
+              {new Date(detail.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </span>
+            <span className="text-xs text-gray-500 font-medium">{audienceLabel(detail)}</span>
+          </div>
+          {/* whitespace-pre-wrap so line breaks the author typed survive */}
+          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            {detail.body || <span className="text-gray-400 italic">No message body</span>}
+          </p>
+          <p className="text-xs text-gray-400 mt-4">— {detail.author}</p>
+        </Modal>
+      )}
+
+      {confirmDel && (
+        <Modal title="Delete announcement?" onClose={() => setConfirmDel(null)}
+          footer={
+            <div className="flex justify-end gap-3">
+              <button className="btn-secondary" onClick={() => setConfirmDel(null)}>Cancel</button>
+              <button className="btn-primary bg-red-600 hover:bg-red-700 border-red-600"
+                onClick={() => { removeAnnouncement(confirmDel.id); setConfirmDel(null) }}>
+                Delete
+              </button>
+            </div>
+          }>
+          <p className="text-sm text-gray-600">
+            <span className="font-semibold text-gray-900">“{confirmDel.title}”</span> will be removed for
+            everyone. Notifications already sent stay in people's inboxes. This can't be undone.
+          </p>
+        </Modal>
+      )}
     </div>
   )
 }
 
-function AddAnnouncementModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ title: '', body: '', type: TYPES[4] })
+const AUDIENCES = [
+  { value: 'all',           label: 'Everyone' },
+  { value: 'students',      label: 'All Students' },
+  { value: 'staff',         label: 'All Staff' },
+  { value: 'batches',       label: 'Batches' },
+  { value: 'students_list', label: 'Students' },
+  { value: 'staff_members', label: 'Staff' },
+]
+
+// Which list the checkboxes come from, per audience type
+const PICKER = { batches: 'batches', students_list: 'students', staff_members: 'staff' }
+
+function AddAnnouncementModal({ onClose, onSave, staff = [], students = [], batches = [] }) {
+  const [form, setForm] = useState({ title: '', body: '', type: TYPES[4], audienceType: 'all', audienceIds: [] })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  const pickerKind = PICKER[form.audienceType]
+  const pickerList = pickerKind === 'batches' ? batches : pickerKind === 'students' ? students : pickerKind === 'staff' ? staff : []
+  const toggleId = (id) => setForm(f => ({
+    ...f,
+    audienceIds: f.audienceIds.some(x => String(x) === String(id))
+      ? f.audienceIds.filter(x => String(x) !== String(id))
+      : [...f.audienceIds, id],
+  }))
+
+  // A "pick specific people" audience with nothing ticked would notify nobody.
+  const needsPick = !!pickerKind && form.audienceIds.length === 0
+  const canSave   = form.title.trim() && !needsPick
+
+  // Buttons go in the Modal's pinned footer, not the scrolling body — the
+  // audience picker makes this form tall enough that on a phone they'd sit
+  // below the fold and the form would look like it had no submit button.
+  const footer = (
+    <div className="flex justify-end gap-3">
+      <button className="btn-secondary" onClick={onClose}>Cancel</button>
+      <button className="btn-primary disabled:opacity-50" disabled={!canSave}
+        onClick={() => { if (canSave) { onSave(form); onClose() } }}>
+        Post Announcement
+      </button>
+    </div>
+  )
+
   return (
-    <Modal title="New Announcement" onClose={onClose}>
+    <Modal title="New Announcement" onClose={onClose} footer={footer}>
       <div className="flex justify-end -mt-1 mb-1">
-        <DevFillButton onFill={() => setForm(fillAnnouncement())} />
+        <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillAnnouncement() }))} />
       </div>
       <div className="space-y-4">
         <div>
@@ -146,10 +272,51 @@ function AddAnnouncementModal({ onClose, onSave }) {
             onChange={e => set('body', e.target.value)}
           />
         </div>
-      </div>
-      <div className="flex justify-end gap-3 mt-6">
-        <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={() => { onSave(form); onClose() }}>Post Announcement</button>
+
+        {/* Audience */}
+        <div>
+          <label className="label">Send to</label>
+          <div className="flex flex-wrap gap-2">
+            {AUDIENCES.map(a => (
+              <button
+                key={a.value}
+                type="button"
+                onClick={() => { set('audienceType', a.value); set('audienceIds', []) }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${form.audienceType===a.value ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+
+          {pickerKind && (
+            <div className="mt-3 border border-gray-200 rounded-xl max-h-44 overflow-y-auto divide-y divide-gray-50">
+              {pickerList.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">
+                  No {pickerKind} in the current sport/branch view
+                </p>
+              )}
+              {pickerList.map(item => {
+                const checked = form.audienceIds.some(x => String(x) === String(item.id))
+                return (
+                  <label key={item.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                    <input type="checkbox" checked={checked} onChange={() => toggleId(item.id)} className="accent-brand-600" />
+                    <span className="text-sm text-gray-700 flex-1 truncate">{item.name}</span>
+                    {pickerKind === 'students' && item.batch && (
+                      <span className="text-[10px] text-gray-400">{item.batch}</span>
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+          )}
+
+          <p className="text-[11px] text-gray-500 mt-2">
+            {needsPick
+              ? `Pick at least one ${pickerKind === 'batches' ? 'batch' : pickerKind === 'students' ? 'student' : 'staff member'}.`
+              : 'Only people in your current sport/branch view are notified.'}
+          </p>
+        </div>
       </div>
     </Modal>
   )

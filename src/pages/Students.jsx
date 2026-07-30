@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
 import { SPORTS, BATCH_NAMES } from '../data/mockData'
@@ -14,7 +16,6 @@ import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from './Payments'
 import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition, fetchAttendanceForMonth } from '../lib/db'
 import StudentAvatar from '../components/StudentAvatar'
-import StudentDocumentsCard from '../components/StudentDocumentsCard'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment, isLowAttendanceUnpaid as ruleIsLowAttendanceUnpaid } from '../lib/studentRules'
 import { toLocalDateStr } from '../lib/dates'
@@ -76,7 +77,6 @@ export default function Students() {
   const [search,          setSearch]          = useState('')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
-  const [ageFilter,       setAgeFilter]       = useState('All')
   const [mbStudentIds,    setMbStudentIds]    = useState(new Set())
   const [allMbRows,       setAllMbRows]       = useState([])
   const [accFilter,       setAccFilter]       = useState('All')
@@ -157,33 +157,23 @@ export default function Students() {
   const activeStudents    = useMemo(() => students.filter(s => s.status !== 'Suspended'), [students])
   const suspendedStudents = useMemo(() => students.filter(s => s.status === 'Suspended'), [students])
 
-  const studentAge = (s) => s.dob ? calcAge(s.dob) : (s.age ?? null)
-
-  const ages = useMemo(() =>
-    [...new Set(activeStudents.map(studentAge).filter(a => a != null))].sort((a, b) => a - b),
-    [activeStudents])
-
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = search.toLowerCase()
     return activeStudents.filter(s => {
-      const age = studentAge(s)
       // Search now also matches parent phone — front-desk staff often have only
       // the parent's number when a student walks in, not the student's own.
-      // A pure-number query also matches age (e.g. "13" finds all 13-year-olds).
       const matchQ = !q ||
         s.name.toLowerCase().includes(q) ||
         (s.parent || '').toLowerCase().includes(q) ||
         (s.phone || '').includes(q) ||
         (s.parentPhone || '').includes(q) ||
-        (s.studentCode || '').toLowerCase().includes(q) ||
-        (/^\d+$/.test(q) && String(age) === q)
+        (s.studentCode || '').toLowerCase().includes(q)
       const matchSport = sportFilter === 'All' || s.sport  === sportFilter
       const matchBatch = batchFilter === 'All' || String(s.batchId) === batchFilter || mbStudentIds.has(s.id)
       const matchAcc   = accFilter   === 'All' || s.accountStatus === accFilter
-      const matchAge   = ageFilter   === 'All' || String(age) === ageFilter
-      return matchQ && matchSport && matchBatch && matchAcc && matchAge
+      return matchQ && matchSport && matchBatch && matchAcc
     })
-  }, [activeStudents, search, sportFilter, batchFilter, accFilter, ageFilter, mbStudentIds])
+  }, [activeStudents, search, sportFilter, batchFilter, accFilter, mbStudentIds])
 
   const suspBatchName  = (s) => s.lastBatchName || s.batch || ''
   const suspBatches    = useMemo(() => [...new Set(suspendedStudents.map(suspBatchName).filter(Boolean))].sort(), [suspendedStudents])
@@ -197,15 +187,31 @@ export default function Students() {
   }, [suspendedStudents, suspBatchFilter, suspSportFilter, suspSearch])
 
   // Reset pages when filters change
-  useEffect(() => setPage(1), [search, sportFilter, batchFilter, accFilter, ageFilter])
+  useEffect(() => setPage(1), [search, sportFilter, batchFilter, accFilter])
   useEffect(() => setSuspPage(1), [suspSearch, suspSportFilter, suspBatchFilter])
 
   // Reset all local filters when context scope changes so stale values don't hide students
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    setSportFilter('All'); setBatchFilter('All'); setAccFilter('All'); setAgeFilter('All')
+    setSportFilter('All'); setBatchFilter('All'); setAccFilter('All')
     setSuspSportFilter('All'); setSuspBatchFilter('All'); setSuspSearch('')
   }, [selectedSport, selectedBranch])
+
+  // Deep link from the header's global search: /students?open=<id> opens that
+  // student's profile. The param is consumed immediately so a refresh or a
+  // back-navigation doesn't re-open the drawer.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const openId = searchParams.get('open')
+    if (!openId) return
+    // Wait for the student list before deciding — otherwise a cold load would
+    // consume the param before there was anything to match against.
+    if (!students.length) return
+    const target = students.find(s => String(s.id) === String(openId))
+    if (target) setProfile(target)
+    searchParams.delete('open')
+    setSearchParams(searchParams, { replace: true })
+  }, [searchParams, students, setSearchParams])
 
   const paged     = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const suspPaged = suspFiltered.slice((suspPage - 1) * PAGE_SIZE, suspPage * PAGE_SIZE)
@@ -418,7 +424,7 @@ export default function Students() {
           <Search size={14} className="text-gray-400 flex-shrink-0" />
           <input
             className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none w-full"
-            placeholder="Search name, parent, phone, ID or age…"
+            placeholder="Search name, parent, phone or ID…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -438,10 +444,6 @@ export default function Students() {
             <option value="All">All Accounts</option>
             <option value="pending">Pending ({pendingCount})</option>
             <option value="active">Activated ({activeCount})</option>
-          </select>
-          <select className="input flex-1 min-w-0" value={ageFilter} onChange={e => setAgeFilter(e.target.value)}>
-            <option value="All">All Ages</option>
-            {ages.map(a => <option key={a} value={String(a)}>{a} yrs</option>)}
           </select>
         </div>
         <span className="text-xs text-gray-400 font-medium hidden sm:inline">{filtered.length} results</span>
@@ -1144,7 +1146,8 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
     </div>
   )
 
-  return (
+  // Portalled to <body> — see the Modal note at the bottom of this file.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-end">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white h-full w-full max-w-md shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
@@ -1234,16 +1237,8 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
             {infoRow('Parent', s.parent)}
             {infoRow('Student Phone', s.phone)}
             {infoRow('Parent Phone', s.parentPhone)}
-            {infoRow('Height', s.heightCm ? `${s.heightCm} cm` : null)}
-            {infoRow('CRS Number', s.crsNumber, true)}
             {infoRow('Join Date', s.joinDate ? new Date(s.joinDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
             {infoRow('Paid Till', s.paidTill ? new Date(s.paidTill).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
-          </div>
-
-          {/* Document Vault */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Documents</p>
-            <StudentDocumentsCard studentId={s.id} canUpload={canManage} canDelete={canManage} />
           </div>
 
           {/* Account Info */}
@@ -1313,7 +1308,8 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -1408,6 +1404,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
     heightCm:      s.heightCm      || s.height_cm     || '',
     weightKg:      s.weightKg      || s.weight_kg     || '',
     preferredFoot: s.preferredFoot || s.preferred_foot || '',
+    wing:          s.wing          || '',
   })
   const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
@@ -1566,11 +1563,11 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
                 </select>
               </div>
               <div>
-                <label className="label">Position</label>
-                <select className="input" value={form.position}
-                  onChange={e => set('position', e.target.value)}>
+                <label className="label">Wing</label>
+                <select className="input" value={form.wing}
+                  onChange={e => set('wing', e.target.value)}>
                   <option value="">—</option>
-                  {FOOTBALL_POSITIONS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  <option>Left</option><option>Right</option><option>None</option>
                 </select>
               </div>
             </div>
@@ -1607,11 +1604,17 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
   )
 }
 
-export function Modal({ title, onClose, children }) {
-  return (
+// `footer` is optional and backwards-compatible: callers that leave it out keep
+// rendering their buttons inside `children` exactly as before. Pass it when the
+// body can get tall — on a phone, action buttons placed in the scrolling body
+// end up below the fold and the form looks like it has no submit button.
+export function Modal({ title, onClose, children, footer }) {
+  // Portalled to <body> so no ancestor stacking context (page transitions,
+  // transforms, opacity) can trap this fixed overlay under the header/sidebar.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh] max-h-[90dvh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
           <h3 className="font-bold text-gray-900">{title}</h3>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
@@ -1619,7 +1622,14 @@ export function Modal({ title, onClose, children }) {
           </button>
         </div>
         <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
+        {footer && (
+          <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 bg-white rounded-b-2xl"
+            style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+            {footer}
+          </div>
+        )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

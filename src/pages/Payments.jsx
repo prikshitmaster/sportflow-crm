@@ -11,7 +11,6 @@ import SendPayLinkModal from '../components/SendPayLinkModal'
 import WhatsAppBulkModal from '../components/WhatsAppBulkModal'
 import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/whatsapp'
 import { todayStr, toLocalDateStr } from '../lib/dates'
-import { saveOrShareFile } from '../lib/nativeSave'
 
 // ── Payment Receipt Printer ───────────────────────────────────
 
@@ -1110,7 +1109,12 @@ async function exportPaymentsToExcel({ records, studentMap, title, showToast }) 
 
     const buf = await wb.xlsx.writeBuffer()
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    await saveOrShareFile(blob, `${(title||'payments').replace(/[^a-z0-9]/gi,'_')}_${todayStr()}.xlsx`)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${(title||'payments').replace(/[^a-z0-9]/gi,'_')}_${todayStr()}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
     showToast('Excel exported successfully')
   } catch (err) {
     console.error(err)
@@ -1382,11 +1386,74 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const [bankName,       setBankName]      = useState('')
   // Required when amount is >30% off the expected total — staff must type CONFIRM
   const [confirmText,    setConfirmText]   = useState('')
+  // Month keys (YYYY-MM) the student was inactive for — no fee charged, and no
+  // invoice is created for them since no money changes hands.
+  const [inactiveMonths, setInactiveMonths] = useState([])
 
-  const months = form.paymentType === 'quarterly' ? 3
+  const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+  const selectedStudent = students.find(s => String(s.id) === String(form.studentId))
+  const isSuspended = selectedStudent?.status === 'Suspended'
+
+  // ── Pending months ────────────────────────────────────────────────────
+  // Every month the student still owes: the month after their paidTill through
+  // the current month. Empty when they are already paid up — that is the
+  // advance-payment path, which has its own coverage handling below.
+  const dueMonths = (() => {
+    if (!selectedStudent) return []
+    const now = new Date()
+    const curY = now.getFullYear(), curM = now.getMonth()
+    let y, m
+    if (selectedStudent.paidTill) {
+      const [py, pm] = selectedStudent.paidTill.split('-').map(Number)
+      // pm is 1-based, so using it directly as a 0-based index already means
+      // "the month after paidTill" (paid till June → pm 6 → index 6 = July).
+      y = py; m = pm
+      if (m > 11) { m = 0; y += 1 }
+    } else {
+      const j = selectedStudent.joinDate ? new Date(selectedStudent.joinDate + 'T00:00:00') : now
+      y = j.getFullYear(); m = j.getMonth()
+    }
+    const out = []
+    while ((y < curY || (y === curY && m <= curM)) && out.length < 24) {
+      out.push({ key: `${y}-${String(m + 1).padStart(2, '0')}`, label: `${MO[m]} ${y}` })
+      m += 1
+      if (m > 11) { m = 0; y += 1 }
+    }
+    return out
+  })()
+
+  // The picker drives coverage itself, so it stands down when staff explicitly
+  // backdate the collection date (that path already sets coverage by hand).
+  const monthPickerOn = form.paymentType === 'monthly'
+    && dueMonths.length > 0
+    && paymentDate === toLocalDateStr()
+
+  // Default: charge the current month only, and show older back months as
+  // inactive. That is exactly what this modal did before the picker existed —
+  // coverage jumped to the end of the current month and the back months were
+  // dropped — except now it is visible and staff can tick those months back on
+  // to actually bill them.
+  const dueKey = dueMonths.map(d => d.key).join(',')
+  useEffect(() => {
+    setInactiveMonths(dueMonths.slice(0, -1).map(d => d.key))
+  }, [dueKey])
+
+  const billedMonths   = dueMonths.filter(d => !inactiveMonths.includes(d.key))
+  const inactiveList   = dueMonths.filter(d =>  inactiveMonths.includes(d.key))
+  // Nothing is being charged — mark the months inactive and write no invoice.
+  const isAllInactive  = monthPickerOn && billedMonths.length === 0
+
+  // Months actually charged for. Inactive months cost nothing but are still
+  // covered, so the student stops showing as pending for them.
+  const months = monthPickerOn ? billedMonths.length
+               : form.paymentType === 'quarterly' ? 3
                : form.paymentType === 'yearly'    ? 12
                : form.paymentType === 'custom'    ? customMonths
                : 1
+  // How far paidTill moves — charged + inactive.
+  const coverageMonths = monthPickerOn ? dueMonths.length : months
+
   // monthly & custom: fee × months; quarterly/yearly: entered amount is the flat total
   const subtotal    = (form.paymentType === 'monthly' || form.paymentType === 'custom')
     ? form.baseAmount * months
@@ -1450,20 +1517,33 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   }
 
   const handleSave = async () => {
-    if (!form.studentId || finalAmount <= 0) return
+    // Marking months inactive is a valid ₹0 action — nothing is collected, so
+    // no invoice is written — hence zero is only blocked when money was expected.
+    if (!form.studentId) return
+    if (finalAmount <= 0 && !isAllInactive) return
     setLoading(true)
     try {
       const isCheque = form.mode === 'Cheque'
       const chequePrefix = isCheque && chequeNo ? `Cheque #${chequeNo} · ${bankName || 'Unknown Bank'}\n` : ''
-      const notes = chequePrefix + (form.notes || '')
-      await onSave({ ...form, notes, amount: finalAmount, monthsCovered: months, lateFee: lateFeeAmt, paymentDate, advanceStart })
+      const inactivePrefix = inactiveList.length
+        ? `Inactive (no fee) for ${inactiveList.map(m => m.label).join(', ')}\n`
+        : ''
+      const notes = chequePrefix + inactivePrefix + (form.notes || '')
+      await onSave({
+        ...form, notes,
+        amount: finalAmount,
+        monthsCovered: months,       // months actually charged for
+        coverageMonths,              // months paidTill advances by (charged + inactive)
+        inactiveCount: inactiveList.length,
+        // Nothing collected → AppContext skips the invoice insert entirely.
+        noChargeOnly: isAllInactive,
+        lateFee: lateFeeAmt, paymentDate,
+        advanceStart: coverageStart,
+      })
     } finally {
       setLoading(false)
     }
   }
-
-  const selectedStudent = students.find(s => String(s.id) === String(form.studentId))
-  const isSuspended = selectedStudent?.status === 'Suspended'
 
   // Advance payment: student is up-to-date, coverage should start after their current paidTill
   const _now = new Date()
@@ -1560,8 +1640,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   )
   const sanityRatio = sanityMismatch ? (finalAmount / expectedTotal) : 1
 
-  const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  const coverageBase = advanceStart ? new Date(advanceStart + 'T00:00:00') : new Date(paymentDate + 'T00:00:00')
+  // With the month picker on, coverage starts at the first pending month so the
+  // payment clears arrears instead of pushing the student forward from today.
+  const coverageStart = monthPickerOn ? `${dueMonths[0].key}-01` : advanceStart
+  const coverageBase = coverageStart ? new Date(coverageStart + 'T00:00:00') : new Date(paymentDate + 'T00:00:00')
 
   // Duplicate guard: paidTill already covers the start of the new coverage period
   const coverageStartStr = `${coverageBase.getFullYear()}-${String(coverageBase.getMonth() + 1).padStart(2, '0')}-01`
@@ -1570,8 +1652,8 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // Without this, the duplicate warning was visual-only — server-side 60s dedupe only catches rapid double-clicks.
   const confirmTyped = confirmText.trim().toUpperCase() === 'CONFIRM'
   const confirmOk = (!sanityMismatch && !isDuplicate) || confirmTyped
-  const coverageEnd  = new Date(coverageBase.getFullYear(), coverageBase.getMonth() + months, 0)
-  const coverageLabel = months === 1
+  const coverageEnd  = new Date(coverageBase.getFullYear(), coverageBase.getMonth() + coverageMonths, 0)
+  const coverageLabel = coverageMonths === 1
     ? `${MO[coverageBase.getMonth()]} ${coverageBase.getFullYear()}`
     : `${MO[coverageBase.getMonth()]}–${MO[coverageEnd.getMonth()]} ${
         coverageBase.getFullYear() === coverageEnd.getFullYear()
@@ -1809,6 +1891,97 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
           </div>
         )}
 
+        {/* Pending months — tick to charge, untick if the student was inactive */}
+        {monthPickerOn && (
+          <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-3.5 py-2.5 bg-gray-50 border-b border-gray-200">
+              <div>
+                <p className="text-xs font-semibold text-gray-800">
+                  {dueMonths.length} month{dueMonths.length !== 1 ? 's' : ''} pending
+                </p>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Untick a month the student was inactive — no fee, no invoice, and it stops showing as due
+                </p>
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setInactiveMonths([])}
+                  className="text-[11px] font-medium text-gray-600 hover:text-gray-900 border border-gray-200 bg-white px-2 py-1 rounded-lg transition-colors"
+                >Charge all</button>
+                <button
+                  type="button"
+                  onClick={() => setInactiveMonths(dueMonths.map(d => d.key))}
+                  className="text-[11px] font-medium text-gray-600 hover:text-gray-900 border border-gray-200 bg-white px-2 py-1 rounded-lg transition-colors"
+                >All inactive</button>
+              </div>
+            </div>
+
+            <div className="divide-y divide-gray-100 max-h-52 overflow-y-auto">
+              {dueMonths.map(d => {
+                const inactive = inactiveMonths.includes(d.key)
+                return (
+                  <label
+                    key={d.key}
+                    className="flex items-center gap-3 px-3.5 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!inactive}
+                      onChange={() => setInactiveMonths(prev =>
+                        prev.includes(d.key) ? prev.filter(k => k !== d.key) : [...prev, d.key]
+                      )}
+                      className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 shrink-0"
+                    />
+                    <span className={`text-sm flex-1 ${inactive ? 'text-gray-400' : 'text-gray-800'}`}>
+                      {d.label}
+                    </span>
+                    {inactive ? (
+                      <span className="text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded">
+                        Inactive
+                      </span>
+                    ) : (
+                      <span className="text-sm text-gray-600 tabular-nums">
+                        ₹{form.baseAmount.toLocaleString('en-IN')}
+                      </span>
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+
+            <div className="flex items-center justify-between px-3.5 py-2 bg-gray-50 border-t border-gray-200 text-xs">
+              <span className="text-gray-500">
+                Charging <strong className="text-gray-800 tabular-nums">{billedMonths.length}</strong> of{' '}
+                <span className="tabular-nums">{dueMonths.length}</span>
+                {inactiveList.length > 0 && (
+                  <span> · {inactiveList.length} inactive</span>
+                )}
+              </span>
+              <span className="text-gray-500">
+                Covered through <strong className="text-gray-800">{dueMonths[dueMonths.length - 1].label}</strong>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {isAllInactive && (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-700 space-y-1">
+            <p>
+              <strong className="text-gray-900">
+                All {dueMonths.length} month{dueMonths.length !== 1 ? 's' : ''} marked inactive.
+              </strong>{' '}
+              Nothing is collected, so <strong>no invoice is created</strong> and revenue
+              is untouched. {form.student || 'The student'} stops being due through{' '}
+              {dueMonths[dueMonths.length - 1].label}.
+            </p>
+            <p className="text-gray-500">
+              Status stays <strong>{selectedStudent?.status || '—'}</strong>
+              {isSuspended && ' — reactivate from the Students page when they return'}.
+            </p>
+          </div>
+        )}
+
         {/* Amount breakdown */}
         <div className="bg-gray-50 rounded-xl p-3.5 space-y-1.5">
           {form.studentId && (
@@ -1825,7 +1998,9 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             </div>
           )}
           <div className="flex justify-between text-xs text-gray-500">
-            {form.paymentType === 'monthly'
+            {monthPickerOn
+              ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × {months} month{months !== 1 ? 's' : ''} charged</span>
+              : form.paymentType === 'monthly'
               ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × 1 month</span>
               : form.paymentType === 'custom'
               ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × {customMonths} months</span>
@@ -1978,9 +2153,12 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         <button
           className={isDuplicate || sanityMismatch ? 'px-5 py-2.5 rounded-xl font-bold text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed' : 'btn-primary'}
           onClick={handleSave}
-          disabled={loading || finalAmount <= 0 || !confirmOk}
+          disabled={loading || (finalAmount <= 0 && !isAllInactive) || !confirmOk}
         >
-          {loading ? '…' : isDuplicate ? `Record Anyway · ₹${finalAmount.toLocaleString('en-IN')}` : `Confirm · ₹${finalAmount.toLocaleString('en-IN')}`}
+          {loading ? '…'
+            : isAllInactive ? `Mark ${dueMonths.length} month${dueMonths.length !== 1 ? 's' : ''} inactive`
+            : isDuplicate ? `Record Anyway · ₹${finalAmount.toLocaleString('en-IN')}`
+            : `Confirm · ₹${finalAmount.toLocaleString('en-IN')}`}
         </button>
       </div>
     </Modal>

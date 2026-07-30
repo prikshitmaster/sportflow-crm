@@ -2,9 +2,11 @@ import { useState, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   Building, Bell, MessageCircle, Shield, CreditCard, Check, ToggleLeft, Key,
-  Database, Upload, FileJson, AlertTriangle, Loader2, CheckCircle2, X,
+  Database, Upload, FileJson, AlertTriangle, Loader2, CheckCircle2, X, Wand2,
 } from 'lucide-react'
 import { parseImportFile, importSportData } from '../lib/exportImport'
+import DevFillButton, { setDemoMode, isDemoModeEnabled } from '../components/DevFillButton'
+import { fillFeePlan } from '../lib/devFill'
 
 const tabs = [
   { id: 'academy',       label: 'Academy Profile', icon: Building },
@@ -305,7 +307,10 @@ function FeePlansTab({ onSave, saved }) {
                 {/* Add plan form */}
                 {addForm && (
                   <div className="px-4 py-3 bg-brand-50/40 border-t border-brand-100 space-y-2">
-                    <p className="text-xs font-bold text-brand-700">New Plan</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-brand-700">New Plan</p>
+                      <DevFillButton onFill={() => setAdding(prev => ({ ...prev, [b.id]: { ...prev[b.id], ...fillFeePlan() } }))} />
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="label text-[11px]">Plan Name *</label>
@@ -598,8 +603,16 @@ function DataTab({ user, allStudents, showToast }) {
     if (!preview) return
     setImporting(true)
     try {
-      const existingCodes = new Set(allStudents.map(s => s.student_code).filter(Boolean))
-      const res = await importSportData(preview, user?.academy_id || null, existingCodes)
+      // Context students are camelCase (db.js maps student_code → studentCode);
+      // reading s.student_code here produced a Set of undefined, so the
+      // "already exists" pre-check never skipped anything.
+      const existingCodes = new Set(
+        allStudents.map(s => s.studentCode ?? s.student_code).filter(Boolean)
+      )
+      // Likewise the user object exposes academyId, not academy_id — with the
+      // wrong key this passed null and every imported student was written with
+      // a NULL academy_id, leaving the rows invisible to the app.
+      const res = await importSportData(preview, user?.academyId || null, existingCodes)
       setResults(res)
       setPreview(null)
       if (res.errors.length === 0) {
@@ -748,6 +761,44 @@ function DataTab({ user, allStudents, showToast }) {
           </div>
         </div>
       )}
+
+      <div className="mt-8 pt-6 border-t border-gray-100">
+        <DemoFillSection />
+      </div>
+    </div>
+  )
+}
+
+function DemoFillSection() {
+  const [enabled, setEnabled] = useState(() => isDemoModeEnabled())
+
+  const toggle = () => {
+    const next = !enabled
+    setDemoMode(next)
+    setEnabled(next)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <Wand2 size={15} className="text-amber-500" />
+        <h3 className="font-bold text-gray-900 text-sm">Demo Fill Mode</h3>
+      </div>
+      <p className="text-xs text-gray-500 mb-4 max-w-md">
+        Shows a "Fill Demo" button on every Add form (students, batches, staff, payments, events...)
+        that fills it with random test data in one click. Turn off once you're done testing.
+      </p>
+      <button
+        onClick={toggle}
+        className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm font-semibold transition ${
+          enabled ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-gray-50 border-gray-200 text-gray-500'
+        }`}
+      >
+        <span className={`relative w-9 h-5 rounded-full transition ${enabled ? 'bg-amber-500' : 'bg-gray-300'}`}>
+          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+        </span>
+        {enabled ? 'Enabled — Fill Demo buttons visible' : 'Disabled — click to enable'}
+      </button>
     </div>
   )
 }

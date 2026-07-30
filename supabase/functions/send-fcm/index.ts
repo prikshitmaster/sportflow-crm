@@ -1,12 +1,63 @@
-import { JWT } from 'https://esm.sh/google-auth-library@9.15.1?target=deno'
-
 const serviceAccountJson = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON') ?? ''
 let serviceAccount: any = null
 try { serviceAccount = JSON.parse(serviceAccountJson) } catch { /* checked below */ }
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  // x-staff-token / x-student-token are attached to EVERY supabase request by
+  // the global fetch wrapper in src/lib/supabase.js. Omitting them here makes
+  // the browser's CORS preflight fail for staff and student callers — the
+  // request is blocked before it is sent, so pushes silently never go out.
+  // (Owners have no such header, which is why it worked only for them.)
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-staff-token, x-student-token, x-session-token',
+}
+
+// google-auth-library's JWT signer needs Node's crypto.Sign, which the Deno
+// edge runtime doesn't implement — sign the service-account JWT ourselves
+// with Web Crypto (natively supported) instead of pulling in that library.
+function base64url(input: ArrayBuffer | string): string {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input)
+  let str = ''
+  for (const b of bytes) str += String.fromCharCode(b)
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function pemToArrayBuffer(pem: string): ArrayBuffer {
+  const b64 = pem.replace('-----BEGIN PRIVATE KEY-----', '').replace('-----END PRIVATE KEY-----', '').replace(/\s+/g, '')
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes.buffer
+}
+
+async function getAccessToken(sa: any): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToArrayBuffer(sa.private_key),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+
+  const now = Math.floor(Date.now() / 1000)
+  const unsigned = `${base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${base64url(JSON.stringify({
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  }))}`
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsigned))
+  const jwt = `${unsigned}.${base64url(signature)}`
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error_description || json.error || 'token exchange failed')
+  return json.access_token
 }
 
 Deno.serve(async (req) => {
@@ -21,24 +72,29 @@ Deno.serve(async (req) => {
   try {
     const { token, title, body, link } = await req.json()
 
-    const jwtClient = new JWT({
-      email:  serviceAccount.client_email,
-      key:    serviceAccount.private_key,
-      scopes: ['https://www.googleapis.com/auth/firebase.messaging'],
-    })
-    const { access_token } = await jwtClient.authorize()
+    const accessToken = await getAccessToken(serviceAccount)
 
     const fcmRes = await fetch(
       `https://fcm.googleapis.com/v1/projects/${serviceAccount.project_id}/messages:send`,
       {
         method: 'POST',
-        headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: {
             token,
             notification: { title, body },
             data: { link: link ?? '/' },
-            android: { priority: 'high' },
+            android: {
+              priority: 'high',
+              notification: {
+                // Must match FCM_CHANNEL_ID in src/lib/fcm.js. Without it FCM
+                // uses its "Miscellaneous" fallback channel, which is
+                // IMPORTANCE_DEFAULT — shade only, no heads-up banner.
+                channel_id: 'sportflow_alerts_v2',
+                sound: 'default',
+                default_vibrate_timings: true,
+              },
+            },
           },
         }),
       }
