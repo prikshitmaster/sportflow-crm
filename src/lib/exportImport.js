@@ -238,6 +238,12 @@ function makeCoverSheet({ academyName, exportedAt, filters, students, payments, 
   const totalRev   = paid.reduce((s, p) => s + (p.amount || 0), 0)
   const pendingRev = unpaid.reduce((s, p) => s + (p.amount || 0), 0)
   const paidShare  = payments.length ? Math.round(paid.length / payments.length * 100) : 0
+  // Trial fees are inside totalRev but have no student until conversion, so
+  // the per-student sheet below cannot account for them. Called out on the
+  // cover so the two sheets visibly reconcile.
+  const trialRev   = paid
+    .filter(p => (p.payment_type || p.paymentType) === 'trial')
+    .reduce((s, p) => s + (p.amount || 0), 0)
 
   const attTotal   = attendance.length || 1
   const presentCt  = attendance.filter(a => a.status === 'Present' || a.present).length
@@ -313,7 +319,7 @@ function makeCoverSheet({ academyName, exportedAt, filters, students, payments, 
   // ─── Rows 4-6: KPI cards (5 × 2 columns) ─────────────────
   const kpis = [
     { label:'STUDENTS',          val: String(totalStu),         sub:`${active} active  ·  ${suspended} susp.`, accent:'1D4ED8', dark:'1E3A5F' },
-    { label:'TOTAL REVENUE',     val: revFmt(totalRev),         sub:`${revFmt(pendingRev)} pending`,            accent:'047857', dark:'064E3B' },
+    { label:'TOTAL REVENUE',     val: revFmt(totalRev),         sub: trialRev > 0 ? `${revFmt(pendingRev)} pending · incl. ${revFmt(trialRev)} trial fees` : `${revFmt(pendingRev)} pending`, accent:'047857', dark:'064E3B' },
     { label:'ATTENDANCE RATE',   val: `${attRate}%`,            sub:`${presentCt} / ${attTotal} sessions`,      accent:'1D4ED8', dark:'1E3A5F' },
     { label:'TRIAL CONVERSION',  val: `${convRate}%`,           sub:`${converted} of ${trials.length} leads`,   accent:'B45309', dark:'78350F' },
     { label:'ACTIVE BATCHES',    val: String(batches.length),   sub:`${totalStu} total enrolled`,               accent:'6D28D9', dark:'4C1D95' },

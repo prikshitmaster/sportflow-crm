@@ -40,6 +40,7 @@ import Invite from './pages/Invite'
 
 // Owner pages — lazy loaded
 const Dashboard        = lazy(() => import('./pages/Dashboard'))
+const RecordDetail     = lazy(() => import('./pages/RecordDetail'))
 const Students         = lazy(() => import('./pages/Students'))
 const Attendance       = lazy(() => import('./pages/Attendance'))
 const Payments         = lazy(() => import('./pages/Payments'))
@@ -326,6 +327,7 @@ function AppRoutes() {
       <Route path="/" element={<OwnerRoute><Layout /></OwnerRoute>}>
         <Route path="dashboard"  element={<Dashboard />} />
         <Route path="students"   element={<Students />} />
+        <Route path="detail/:type/:id" element={<RecordDetail />} />
         <Route path="parents"    element={<Parents />} />
         <Route path="attendance" element={<FeatureRoute feature="attendance"><Attendance /></FeatureRoute>} />
         <Route path="payments"   element={<FeatureRoute feature="payments"><Payments /></FeatureRoute>} />
@@ -350,6 +352,7 @@ function AppRoutes() {
       <Route path="/staff-activate"  element={<StaffActivate />} />
       <Route path="/staff" element={<StaffRoute><StaffLayout /></StaffRoute>}>
         <Route path="home"       element={<StaffDashboard />} />
+        <Route path="detail/:type/:id" element={<RecordDetail />} />
         <Route path="profile"    element={<StaffProfile />} />
         <Route path="me"         element={<StaffMe />} />
         <Route path="roster"     element={<PermRequired perm="students.view">     <StaffRoster />    </PermRequired>} />

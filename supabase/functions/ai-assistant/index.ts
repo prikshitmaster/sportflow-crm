@@ -201,8 +201,15 @@ async function getAcademyOverview(academyId: string, branchId: string | null) {
   }
   const monthStart = firstOfMonth
   let pq = supabase.from('payments').select('amount').eq('academy_id', academyId).eq('status', 'Paid').gte('date', monthStart)
-  // payments has no branch_id — scope to this branch's student IDs instead.
-  if (branchId) pq = pq.in('student_id', data.map((s: any) => s.id))
+  // Scope by branch. Student-linked rows resolve through their student;
+  // trial-fee rows have no student until conversion and carry their own
+  // branch_id (migration 0108), so match either.
+  if (branchId) {
+    const ids = data.map((s: any) => s.id)
+    pq = ids.length
+      ? pq.or(`student_id.in.(${ids.join(',')}),branch_id.eq.${branchId}`)
+      : pq.eq('branch_id', branchId)
+  }
   const { data: paymentsThisMonth, error: payErr } = await pq
   if (payErr) throw payErr
   const collectedThisMonth = (paymentsThisMonth || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0)

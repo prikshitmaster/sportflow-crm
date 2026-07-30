@@ -837,6 +837,15 @@ function BatchTab({ batches, students, payments, attendanceData, batchToStudents
   const totPend = rows.reduce((s, r) => s + r.pending, 0)
   const totCount = rows.reduce((s, r) => s + r.count, 0)
 
+  // Trial fees belong to no batch (a lead has no batch, and a converted
+  // one's fee predates enrolment), so they are absent from every row above.
+  // Surface them separately or this tab silently disagrees with Overview.
+  const trialCollected = useMemo(() =>
+    payments
+      .filter(p => p.paymentType === 'trial' && p.status === 'Paid' && monthKey(p.date) === period)
+      .reduce((s, p) => s + (p.amount || 0), 0)
+  , [payments, period])
+
   const handleExport = () => {
     const headers = ['Batch','Students','Expected (Monthly)','Collected','Outstanding','Collection Rate%','Attendance% Today']
     downloadCSV(headers, rows.map(r => [
@@ -869,7 +878,7 @@ function BatchTab({ batches, students, payments, attendanceData, batchToStudents
         {[
           { label: 'Total Batches',  value: rows.length,        color: 'text-gray-900'    },
           { label: 'Total Students', value: totCount,           color: 'text-brand-700'   },
-          { label: 'Collected',      value: INR(totCol),        color: 'text-emerald-700' },
+          { label: 'Collected',      value: INR(totCol + trialCollected), color: 'text-emerald-700' },
           { label: 'Collection Rate',value: `${pct(totCol, totExp || 1)}%`, color: pct(totCol,totExp||1) >= 80 ? 'text-emerald-700' : 'text-amber-600' },
         ].map(k => (
           <div key={k.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
@@ -905,12 +914,24 @@ function BatchTab({ batches, students, payments, attendanceData, batchToStudents
             ))}
           </div>
         )}
+        {trialCollected > 0 && (
+          <div className="grid gap-3 px-4 py-2.5 bg-amber-50/60 border-t border-amber-100"
+            style={{ gridTemplateColumns: cols.map(c => c.w || '1fr').join(' ') }}>
+            <span className="text-xs font-semibold text-amber-700">Trial fees (no batch)</span>
+            <span className="text-xs text-right text-gray-400">—</span>
+            <span className="text-xs text-right text-gray-400">—</span>
+            <span className="text-sm font-bold text-right tabular-nums text-emerald-700">{INR(trialCollected)}</span>
+            <span className="text-xs text-right text-gray-400">—</span>
+            <span />
+            <span />
+          </div>
+        )}
         <div className="grid gap-3 px-4 py-3 bg-gray-800 text-white"
           style={{ gridTemplateColumns: cols.map(c => c.w || '1fr').join(' ') }}>
           <span className="text-xs font-black uppercase tracking-wide">Total</span>
           <span className="text-sm font-black text-right tabular-nums">{totCount}</span>
           <span className="text-sm font-black text-right tabular-nums text-gray-300">{INR(totExp)}</span>
-          <span className="text-sm font-black text-right tabular-nums text-emerald-400">{INR(totCol)}</span>
+          <span className="text-sm font-black text-right tabular-nums text-emerald-400">{INR(totCol + trialCollected)}</span>
           <span className="text-sm font-black text-right tabular-nums text-red-300">{INR(totPend)}</span>
           <span />
           <span />
@@ -952,6 +973,14 @@ function StudentLedgerTab({ students, payments }) {
 
   const totalPaid    = ledger.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
   const totalPending = ledger.filter(p => p.status !== 'Paid').reduce((s, p) => s + p.amount, 0)
+
+  // Index of the oldest NON-trial row. The linked trial receipt is dated the
+  // trial date, so it sorts oldest once a lead converts — "last row" would
+  // otherwise put the ★ New Student badge on the ₹590 instead of month one.
+  const lastMonthlyIdx = useMemo(
+    () => ledgerWithBalance.reduce((acc, r, idx) => r.paymentType !== 'trial' ? idx : acc, -1),
+    [ledgerWithBalance],
+  )
 
   const handleExport = () => {
     if (!student) return
@@ -1035,7 +1064,7 @@ function StudentLedgerTab({ students, payments }) {
             ) : (
               <div className="divide-y divide-gray-50">
                 {ledgerWithBalance.map((p, i) => {
-                  const isFirstPayment = student?.fromTrial && i === ledgerWithBalance.length - 1
+                  const isFirstPayment = student?.fromTrial && i === lastMonthlyIdx
                   const hasNote = p.notes && p.notes.includes('Trial fee')
                   return (
                     <div key={p.id || i}

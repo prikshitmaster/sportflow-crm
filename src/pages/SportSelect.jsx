@@ -85,10 +85,17 @@ export default function SportSelect() {
 
       // Monthly revenue: payments for this sport in current month
       const monthKey = toLocalMonthStr(today)
+      // Two long-standing bugs fixed here: `p.student_id` is snake_case but
+      // fetchPayments maps to `studentId`, so the join always returned
+      // undefined; and `p.month` is a label like 'Jul 2026', which never
+      // startsWith a 'YYYY-MM' key. Between them this was always ₹0.
+      // Trial-fee rows have no student and carry their own sport.
       const monthlyRevenue = allPayments
         .filter(p => {
-          const student = allStudents.find(s => s.id === p.student_id)
-          return student?.sport === sport && p.month?.startsWith(monthKey)
+          if (p.status !== 'Paid') return false
+          if (!p.date?.startsWith(monthKey)) return false
+          if (p.studentId == null) return p.sport === sport
+          return allStudents.find(s => s.id === p.studentId)?.sport === sport
         })
         .reduce((sum, p) => sum + (p.amount || 0), 0)
 

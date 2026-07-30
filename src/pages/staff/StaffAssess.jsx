@@ -4,6 +4,7 @@ import { Search, CheckCircle, Clock, X, Save, ClipboardList, ChevronDown, Chevro
 import * as db from '../../lib/db'
 import { logAudit, ACTIONS } from '../../lib/audit'
 import DevFillButton from '../../components/DevFillButton'
+import StudentAvatar from '../../components/StudentAvatar'
 import { fillAssessment } from '../../lib/devFill'
 import {
   SPORT_CATEGORIES, FOOTBALL_CATEGORIES,
@@ -176,11 +177,7 @@ function AssessTab({ user, batches, students }) {
                   className="w-full bg-white rounded-2xl border border-gray-100 px-4 py-3.5 flex items-center justify-between active:bg-gray-50 shadow-sm"
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black ${
-                      a ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                    }`}>
-                      {s.name[0]}
-                    </div>
+                    <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={40} />
                     <div className="text-left">
                       <p className="text-sm font-bold text-gray-900">{s.name}</p>
                       <p className="text-xs text-gray-400">{s.batch || sport}</p>
@@ -575,9 +572,7 @@ function ViewTab({ students, user }) {
             <div key={s.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <button onClick={() => loadPlayer(s)} className="w-full px-4 py-3.5 flex items-center justify-between active:bg-gray-50">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center text-sm font-black text-brand-700">
-                    {s.name[0]}
-                  </div>
+                  <StudentAvatar photoUrl={s.photoUrl} name={s.name} size={40} />
                   <div className="text-left">
                     <p className="text-sm font-bold text-gray-900">{s.name}</p>
                     <p className="text-xs text-gray-400">{s.batch || sport}</p>

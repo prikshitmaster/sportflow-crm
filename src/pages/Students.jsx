@@ -1129,8 +1129,11 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
   const paid    = payments.filter(p => p.status === 'Paid')
   const pending = payments.filter(p => p.status !== 'Paid')
   const totalPaid = paid.reduce((sum, p) => sum + p.amount, 0)
-  // Oldest payment ID (payments are newest-first from DB) — used for "1st Month" badge
-  const firstPayId = s.fromTrial && payments.length > 0 ? payments[payments.length - 1]?.id : null
+  // Oldest payment ID (payments are newest-first from DB) — used for "1st Month" badge.
+  // The trial fee receipt predates the join date, so it sorts oldest once linked;
+  // excluding it keeps the badge on the actual first month's fee.
+  const monthlyPayments = payments.filter(p => p.paymentType !== 'trial')
+  const firstPayId = s.fromTrial && monthlyPayments.length > 0 ? monthlyPayments[monthlyPayments.length - 1]?.id : null
 
   const isProfileOverdue = ruleIsOverdue(s)
 

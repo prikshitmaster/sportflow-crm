@@ -106,6 +106,16 @@ function calcHistoricalPayment(joinDate, paidTill, fees, feePlan = 'monthly') {
   return { monthsCovered: months, label, amount, startDate }
 }
 
+// 'Jul 2026' — must match to_char(date, 'Mon YYYY') in migration 0125 and
+// the single-month branch of calcHistoricalPayment above. Dashboard.jsx
+// parses payments.month and falls through to `return true` on anything it
+// cannot read, which would misfile the row into the current month.
+function monthLabelFor(isoDate) {
+  const d = new Date(isoDate + 'T00:00:00')
+  if (Number.isNaN(d.getTime())) return ''
+  return `${MO[d.getMonth()]} ${d.getFullYear()}`
+}
+
 function resolveContextRole(profileRole) {
   if (profileRole === 'owner') return 'owner'
   return 'staff'
@@ -910,6 +920,12 @@ export function AppProvider({ children }) {
       if (paidTill && fees > 0) {
         const joinDateStr = s.joinDate || toLocalDateStr()
         const { monthsCovered, label, amount, startDate } = calcHistoricalPayment(joinDateStr, paidTill, fees, s.feePlan || 'monthly')
+        // INVARIANT — do not "fix" this subtraction.
+        // Since migrations 0124/0125 the trial fee is booked as its own
+        // payments row at trial time (payment_type 'trial'), which is
+        // linked to this student a few lines below. Netting it off the
+        // first month is therefore CORRECT: ₹590 + ₹20,410 = ₹21,000.
+        // Removing the subtraction would double-book the trial fee.
         const payAmount = Math.max(0, amount - trialDeduct + joiningFee)
         const invoiceId = await db.fetchNextInvoiceId()
         payment = { invoiceId, amount: payAmount, label, startDate, monthsCovered }
@@ -931,6 +947,26 @@ export function AppProvider({ children }) {
         ;(async () => {
           try { await supabase.from('students').update({ from_trial: true }).eq('id', newId) } catch {}
         })()
+      }
+
+      // Attach the trial's already-booked fee row to this student. Failure
+      // is deliberately non-fatal: the row keeps student_id NULL and is
+      // STILL counted in revenue, just not attributed to the student.
+      // Warn only when the booked amount disagrees with what we deducted,
+      // because that combination genuinely mis-states the total.
+      let linkedTrialAmount = null
+      if (s.trialId) {
+        try {
+          linkedTrialAmount = await db.linkTrialPayment(s.trialId, newId)
+          if (linkedTrialAmount != null && trialDeduct > 0 && Number(linkedTrialAmount) !== trialDeduct) {
+            showToast(
+              `Trial fee mismatch — ₹${linkedTrialAmount} was collected at the trial but ₹${trialDeduct} was deducted. Check the payment records.`,
+              'error',
+            )
+          }
+        } catch (err) {
+          console.warn('trial payment link failed:', err.message)
+        }
       }
       // Persist trial deduction / joining fee notes to payment record
       if (payment && (trialDeduct > 0 || joiningFee > 0)) {
@@ -996,8 +1032,17 @@ export function AppProvider({ children }) {
           discountPct:    0,
           monthsCovered:  payment.monthsCovered,
           academyId:      user?.academyId,
-          notes:          [trialDeduct > 0 ? `Trial fee deducted: −₹${trialDeduct}` : '', joiningFee > 0 ? `Joining fee included: +₹${joiningFee}` : ''].filter(Boolean).join(' · '),
+          notes:          [trialDeduct > 0 ? `Trial fee deducted: −₹${trialDeduct} (see separate trial receipt)` : '', joiningFee > 0 ? `Joining fee included: +₹${joiningFee}` : ''].filter(Boolean).join(' · '),
         }, ...prev])
+      }
+
+      // Optimistically attach the already-booked trial row to this student
+      // so the student's ledger shows both halves without a refetch. Its
+      // amount is unchanged — only the ownership moves.
+      if (s.trialId && linkedTrialAmount != null) {
+        setPayments(prev => prev.map(p => p.trialId === s.trialId && p.studentId == null
+          ? { ...p, studentId: newId }
+          : p))
       }
 
       // Parent auto-link disabled for v1 — parent portal hidden. Re-enable
@@ -1355,9 +1400,37 @@ export function AppProvider({ children }) {
 
   const addTrial = async (t) => {
     try {
-      const created = await db.insertTrial({ ...t, academyId: user?.academyId, branchId: selectedBranch || null })
+      // effectiveBranch, not selectedBranch: for staff the latter is null,
+      // which used to stamp branch_id NULL and make their own trials
+      // invisible in filteredTrials. The RPC also forces the staff branch
+      // server-side, so this only matters for the optimistic local row.
+      const created = await db.insertTrial({ ...t, academyId: user?.academyId, branchId: effectiveBranch || null })
       setTrials(prev => [created, ...prev])
-      logAuditSport({ actor: user, action: ACTIONS.TRIAL_ADD, entityType: 'trial', entityId: created.id, entityName: t.name, changes: { sport: t.sport || '—', source: t.source || '—', date: t.trialDate || '—' }, academyId: user?.academyId, sport: t.sport ?? null, branchId: created.branch_id ?? (selectedBranch || null) })
+      // The trial fee is booked as a payments row inside secure_insert_trial.
+      // Mirror it locally so revenue tiles update without a refetch.
+      if (created.receiptNo) {
+        const feeDate = t.trialDate || toLocalDateStr()
+        setPayments(prev => [{
+          id:            created.receiptNo,
+          studentId:     null,
+          student:       t.name,
+          amount:        Number(t.trialFeePaid) || 0,
+          month:         monthLabelFor(feeDate),
+          date:          feeDate,
+          coverageStart: null,
+          status:        'Paid',
+          mode:          t.trialFeeMode || 'Cash',
+          paymentType:   'trial',
+          discountPct:   0,
+          monthsCovered: 1,
+          academyId:     user?.academyId,
+          trialId:       created.id,
+          branchId:      created.branchId ?? (effectiveBranch || null),
+          sport:         t.sport || null,
+          notes:         `Trial fee — trial on ${feeDate}`,
+        }, ...prev])
+      }
+      logAuditSport({ actor: user, action: ACTIONS.TRIAL_ADD, entityType: 'trial', entityId: created.id, entityName: t.name, changes: { sport: t.sport || '—', source: t.source || '—', date: t.trialDate || '—' }, academyId: user?.academyId, sport: t.sport ?? null, branchId: created.branchId ?? (effectiveBranch || null) })
       showToast('Trial lead added')
       // If staff added the trial, notify the owner
       if (role === 'staff' && user?.academyId) {
@@ -1380,6 +1453,25 @@ export function AppProvider({ children }) {
     setTrials(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
     try {
       await db.updateTrial(id, updates)
+
+      // secure_update_trial keeps the booked fee receipt in sync server-side
+      // (amount / date / mode, plus lazy create and delete). Mirror that
+      // locally so revenue tiles do not show a stale number until refetch.
+      if (updates.trialFeePaid !== undefined || updates.trialFeeMode !== undefined || updates.trialDate !== undefined) {
+        const merged  = { ...oldTrial, ...updates }
+        const feeAmt  = Number(merged.trialFeePaid) || 0
+        const booked  = feeAmt > 0 && merged.trialFeeMode !== 'Not collected'
+        const feeDate = merged.trialDate || toLocalDateStr()
+        setPayments(prev => {
+          const existing = prev.find(p => p.trialId === id)
+          if (!booked) return existing && existing.studentId == null ? prev.filter(p => p.trialId !== id) : prev
+          if (!existing) return prev  // lazily created server-side; picked up on next refetch
+          return prev.map(p => p.trialId === id
+            ? { ...p, amount: feeAmt, date: feeDate, month: monthLabelFor(feeDate), mode: merged.trialFeeMode || 'Cash', sport: merged.sport || p.sport, student: merged.name || p.student }
+            : p)
+        })
+      }
+
       const isConvert = updates.converted === true
       const action = isConvert ? ACTIONS.TRIAL_CONVERT : ACTIONS.TRIAL_UPDATE
       logAuditSport({ actor: user, action, entityType: 'trial', entityId: id, entityName: oldTrial?.name, changes: updates.stage ? { stage: { old: oldTrial?.stage, new: updates.stage } } : {}, academyId: user?.academyId })
@@ -1398,6 +1490,9 @@ export function AppProvider({ children }) {
       const t = trials.find(x => x.id === id)
       await db.deleteTrial(id)
       setTrials(prev => prev.filter(x => x.id !== id))
+      // secure_delete_trial removes the fee receipt only while it is still
+      // unlinked; a converted trial's receipt stays on the student's ledger.
+      setPayments(prev => prev.filter(p => !(p.trialId === id && p.studentId == null)))
       showToast('Trial lead deleted')
       logAuditSport({ actor: user, action: ACTIONS.TRIAL_DELETE, entityType: 'trial', entityId: id, entityName: t?.name, changes: { sport: t?.sport || '—', stage: t?.stage || '—' }, academyId: user?.academyId })
     } catch (err) { showToast(err.message || 'Delete failed', 'error') }
@@ -1948,10 +2043,19 @@ export function AppProvider({ children }) {
     isAllSports ? staff : staff.filter(s => !s.sports?.length || s.sports.some(sp => sp.toLowerCase() === selectedSport?.toLowerCase()))
   , [staff, selectedSport, isAllSports])
 
+  // Payments normally derive their sport by joining through the student.
+  // Trial-fee rows (migration 0124) have no student until conversion, so
+  // they carry their own sport and self-scope. Rows WITH a studentId keep
+  // the original path byte-for-byte, which also keeps legacy orphan rows
+  // (student deleted → student_id NULL, schema.sql:63) invisible as today,
+  // since their sport stays null.
   const sportPayments = useMemo(() => {
     if (isAllSports) return payments
-    const ids = new Set(students.filter(s => s.sport === selectedSport).map(s => s.id))
-    return payments.filter(p => ids.has(p.studentId))
+    const ids  = new Set(students.filter(s => s.sport === selectedSport).map(s => s.id))
+    const want = (selectedSport || '').toLowerCase()
+    return payments.filter(p => p.studentId != null
+      ? ids.has(p.studentId)
+      : Boolean(p.sport) && p.sport.toLowerCase() === want)
   }, [payments, students, selectedSport, isAllSports])
 
   const sportTrials = useMemo(() =>
@@ -1978,7 +2082,12 @@ export function AppProvider({ children }) {
     const branchStudentIds = new Set(
       students.filter(s => s.branchId === effectiveBranch).map(s => s.id)
     )
-    return sportPayments.filter(p => branchStudentIds.has(p.studentId))
+    // Strict equality on the self-scoped branch: a trial row with no
+    // branchId is HIDDEN rather than shown everywhere. Failing closed is
+    // the only acceptable direction for branch isolation.
+    return sportPayments.filter(p => p.studentId != null
+      ? branchStudentIds.has(p.studentId)
+      : p.branchId === effectiveBranch)
   }, [sportPayments, students, effectiveBranch, hasBranchScope])
 
   const filteredTrials = useMemo(() =>
@@ -2015,7 +2124,11 @@ export function AppProvider({ children }) {
     const staffSports = new Set((user?.sports || []).map(s => s.toLowerCase()))
     if (staffSports.size === 0) return filteredPayments
     const studentIds = new Set(staffScopedStudents.map(s => s.id))
-    return filteredPayments.filter(p => studentIds.has(p.studentId))
+    // Trial rows fall back to their own sport, mirroring staffScopedTrials
+    // below — a coach sees the fee for exactly the trials they can see.
+    return filteredPayments.filter(p => p.studentId != null
+      ? studentIds.has(p.studentId)
+      : Boolean(p.sport) && staffSports.has(p.sport.toLowerCase()))
   }, [filteredPayments, role, staffScopedStudents, user?.sports])
 
   const staffScopedTrials = useMemo(() => {

@@ -31,9 +31,15 @@ function buildReceiptHTML(p, student, academyName, logoUrl) {
   const planLabel  = { monthly:'Monthly', quarterly:'Quarterly', yearly:'Yearly', custom:'Custom' }[student?.feePlan] || 'Monthly'
 
   const lineItems = []
-  lineItems.push({ desc: `${planLabel} Training Fee${months > 1 ? ` × ${months} months` : ''}`, sub: `${student?.sport || ''} · ${student?.batch || ''}`, qty: months, unit: Math.round(baseFee / months), total: baseFee })
-  if (trialAmt > 0)   lineItems.push({ desc: 'Trial Fee Adjustment', sub: 'Deducted from first month', qty: '', unit: '', total: -trialAmt, cls: 'red' })
-  if (joiningAmt > 0) lineItems.push({ desc: 'Joining Fee', sub: 'One-time registration', qty: '', unit: '', total: joiningAmt, cls: 'purple' })
+  if (p.paymentType === 'trial') {
+    // Trial receipts have no student, batch or fee plan — the generic
+    // branch would print "Monthly Training Fee" with an empty ' · ' subtitle.
+    lineItems.push({ desc: 'Trial Registration Fee', sub: p.sport || student?.sport || '', qty: '', unit: '', total: p.amount ?? 0 })
+  } else {
+    lineItems.push({ desc: `${planLabel} Training Fee${months > 1 ? ` × ${months} months` : ''}`, sub: `${student?.sport || ''} · ${student?.batch || ''}`, qty: months, unit: Math.round(baseFee / months), total: baseFee })
+    if (trialAmt > 0)   lineItems.push({ desc: 'Trial Fee Adjustment', sub: 'Paid separately at trial — see trial receipt', qty: '', unit: '', total: -trialAmt, cls: 'red' })
+    if (joiningAmt > 0) lineItems.push({ desc: 'Joining Fee', sub: 'One-time registration', qty: '', unit: '', total: joiningAmt, cls: 'purple' })
+  }
 
   const subtotal = lineItems.reduce((s, l) => s + l.total, 0)
 
@@ -334,7 +340,11 @@ export default function Payments() {
     const matchQ  = !q || (p.student || '').toLowerCase().includes(q) || (p.id || '').toLowerCase().includes(q)
     const matchS  = statusFilter === 'All' || p.status === statusFilter
     const stu     = studentMap[p.studentId]
-    const matchSport = sportFilter === 'All' || stu?.sport === sportFilter
+    // Trial-fee rows have no student until conversion and carry their own
+    // sport, so fall back to it or they vanish whenever a sport is picked.
+    const matchSport = sportFilter === 'All' || (stu?.sport || p.sport) === sportFilter
+    // Batch is intentionally not falling back: a trial has no batch, so a
+    // batch filter correctly excludes these rows.
     const matchBatch = batchFilter === 'All' || stu?.batch === batchFilter || String(stu?.batchId) === batchFilter
     // Match by date (Paid/Overdue with a paid date) OR by billing month (Pending where date is NULL)
     const matchMonth = !monthFilter || p.isVirtual ||
@@ -535,7 +545,7 @@ export default function Payments() {
                   <button className="text-xs text-gray-400 flex items-center gap-1" onClick={() => printReceipt(p, studentMap[p.studentId], user?.academy, user?.academyLogo)}>
                     <Printer size={11} /> Receipt
                   </button>
-                  {canManage && <button className="text-xs text-gray-300 hover:text-red-500" onClick={() => { setDeleteTarget(p); setDeleteNote('') }}><Trash2 size={13} /></button>}
+                  {canManage && p.paymentType !== 'trial' && <button className="text-xs text-gray-300 hover:text-red-500" onClick={() => { setDeleteTarget(p); setDeleteNote('') }}><Trash2 size={13} /></button>}
                 </>)}
               </div>
             </div>
@@ -654,7 +664,10 @@ export default function Payments() {
                             className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
                             <Printer size={12} /> Receipt
                           </button>
-                          {canManage && (
+                          {/* Trial receipts are owned by the Trial record —
+                              deleting one here would leave trials.trial_fee_paid
+                              claiming money that is no longer booked. */}
+                          {canManage && p.paymentType !== 'trial' && (
                           <button
                             onClick={() => { setDeleteTarget(p); setDeleteNote('') }}
                             className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition"
@@ -662,6 +675,9 @@ export default function Payments() {
                           >
                             <Trash2 size={13} />
                           </button>
+                          )}
+                          {canManage && p.paymentType === 'trial' && (
+                            <span className="text-[10px] text-gray-300" title="Remove the fee from the Trial record instead">Trial fee</span>
                           )}
                         </div>
                       )}
@@ -877,7 +893,7 @@ function PaymentDetailModal({ payment: p, student, onClose, onPrint }) {
                 </div>
                 {trialAmt > 0 && (
                   <div className="flex justify-between text-red-600">
-                    <span>Trial Fee Deduction</span>
+                    <span>Trial Fee <span className="text-[11px] text-red-400">(paid at trial — separate receipt)</span></span>
                     <span className="font-bold">− ₹{trialAmt.toLocaleString('en-IN')}</span>
                   </div>
                 )}
@@ -893,14 +909,26 @@ function PaymentDetailModal({ payment: p, student, onClose, onPrint }) {
                 </div>
               </>) : (
                 <div className="flex justify-between font-black text-gray-900 text-base">
-                  <span>{planLabel[student?.feePlan] || 'Monthly'} Fee
-                    {(p.monthsCovered > 1) && <span className="text-xs font-normal text-gray-400 ml-1">× {p.monthsCovered} months</span>}
+                  <span>{p.paymentType === 'trial'
+                    ? 'Trial Fee'
+                    : `${planLabel[student?.feePlan] || 'Monthly'} Fee`}
+                    {(p.paymentType !== 'trial' && p.monthsCovered > 1) && <span className="text-xs font-normal text-gray-400 ml-1">× {p.monthsCovered} months</span>}
                   </span>
                   <span className="text-emerald-700">₹{(p.amount ?? 0).toLocaleString('en-IN')}</span>
                 </div>
               )}
             </div>
           </div>
+
+          {/* A trial receipt has no student until the lead converts. */}
+          {p.paymentType === 'trial' && !student && (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+              <p className="text-xs text-amber-700">
+                <span className="font-semibold">Trial lead</span> — not yet enrolled as a student
+                {p.sport ? ` · ${p.sport}` : ''}
+              </p>
+            </div>
+          )}
 
           {/* Payment details */}
           <div>
@@ -1001,7 +1029,8 @@ async function exportPaymentsToExcel({ records, studentMap, title, showToast }) 
       const isEven = idx % 2 === 1
       const fill = STATUS_FILLS[p.status] || { type: 'pattern', pattern: 'solid', fgColor: { argb: isEven ? 'FFf9fafb' : 'FFffffff' } }
 
-      const vals = [idx+1, p.isVirtual ? '—' : (p.id||'—'), p.student||'—', stu?.sport||'—', stu?.batch||'—', p.month||'—', p.amount||0, p.mode||'—', p.date||'—', p.status||'—']
+      // Trial-fee rows have no student row to read sport from; they carry it.
+      const vals = [idx+1, p.isVirtual ? '—' : (p.id||'—'), p.student||'—', stu?.sport||p.sport||'—', stu?.batch||(p.paymentType==='trial'?'Trial':'—'), p.month||'—', p.amount||0, p.mode||'—', p.date||'—', p.status||'—']
       vals.forEach((v, i) => {
         const cell = row.getCell(i + 1)
         cell.value = v

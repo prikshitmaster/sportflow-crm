@@ -98,6 +98,9 @@ function calcAge(dob) {
   return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000))
 }
 
+// Fallback only, for trials created before migration 0124. Note it is NOT
+// unique — two same-initial trials on the same day collide. Trials created
+// since then carry receiptNo, which is the real payments row id.
 function genReceiptNo(name) {
   const d = new Date()
   const initials = (name || 'XX').replace(/\s+/g,'').slice(0,3).toUpperCase()
@@ -109,7 +112,9 @@ function buildPrintHTML(trial, academyName, logoUrl, customLogo) {
   const isAcademy = trial.programType !== 'development'
   const isDev     = trial.programType === 'development'
   const age       = trial.age || calcAge(trial.dob) || ''
-  const receiptNo = genReceiptNo(trial.name)
+  // Prefer the real payments row id so the printed slip and the revenue
+  // record carry the same number.
+  const receiptNo = trial.receiptNo || genReceiptNo(trial.name)
   const fmtD      = iso => iso ? new Date(iso).toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' }) : '—'
   const today     = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'long', year:'numeric' })
 
@@ -272,7 +277,9 @@ function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
     reader.readAsDataURL(file)
   }
 
-  const receiptNo = genReceiptNo(trial.name)
+  // Prefer the real payments row id so the printed slip and the revenue
+  // record carry the same number.
+  const receiptNo = trial.receiptNo || genReceiptNo(trial.name)
   const age       = trial.age || calcAge(trial.dob) || '—'
   const isAcademy = trial.programType !== 'development'
   const isDev     = trial.programType === 'development'
@@ -427,6 +434,7 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
     ...initial,
     trialSessions: initial.trialSessions || 1,
     trialFeePaid:  initial.trialFeePaid  ?? 590,
+    trialFeeMode:  initial.trialFeeMode  || 'Cash',
     batchId:       initial.batchId ? String(initial.batchId) : '',
     phone:         initial.phone   ? initial.phone.replace(/^\+91\s?/, '') : '',
   })
@@ -452,7 +460,13 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
         age,
         batchId:       form.batchId   ? Number(form.batchId)   : null,
         trialSessions: Number(form.trialSessions) || 1,
-        trialFeePaid:  Number(form.trialFeePaid)  || 590,
+        // `|| 590` would silently turn a deliberate 0 back into 590, which
+        // now books ₹590 of revenue that was never collected. Only an
+        // empty field falls back to the default.
+        trialFeePaid:  form.trialFeePaid === '' || form.trialFeePaid == null
+                         ? 590
+                         : (Number(form.trialFeePaid) || 0),
+        trialFeeMode:  form.trialFeeMode || 'Cash',
         quotedFee:     form.quotedFee ? Number(form.quotedFee) : null,
         notes:         form.notes?.trim() || null,
         sessionStart:  form.sessionStart || null,
@@ -613,6 +627,29 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
                 </div>
               </Field>
             </div>
+
+            {/* Whether the fee was actually taken. This drives revenue —
+                a collected fee is booked as a real payment receipt, so an
+                enquiry-only lead must be marked 'Not collected'. */}
+            <Field label="Fee Collected">
+              <div className="flex gap-2">
+                {['Cash', 'UPI', 'Not collected'].map(m => (
+                  <button key={m} type="button" onClick={() => set('trialFeeMode', m)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                      form.trialFeeMode === m
+                        ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                    }`}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] text-gray-400">
+                {form.trialFeeMode === 'Not collected'
+                  ? 'No receipt is issued and nothing is added to revenue.'
+                  : `₹${form.trialFeePaid || 0} will be recorded as revenue with a trial receipt.`}
+              </p>
+            </Field>
 
             {/* Program type */}
             <Field label="Program">
@@ -1405,6 +1442,9 @@ export default function Trials() {
         paidTill:     form.paidTill    || null,
         fromTrial:    true,
         trialFeePaid: trial.trialFeePaid || 0,
+        // Lets addStudent attach the fee receipt already booked at trial
+        // time to this student, instead of creating a second payment row.
+        trialId:      trial.id,
         joiningFee:   Number(form.joiningFee) || 0,
       })
     } catch {
@@ -1482,7 +1522,16 @@ export default function Trials() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {paged.map(t => (
               <TrialCard key={t.id} trial={t} batches={batches} onAction={handleAction}
-                onDelete={t => { if (window.confirm(`Delete "${t.name}"? This cannot be undone.`)) deleteTrial(t.id) }} />
+                onDelete={t => {
+                  // An unconverted trial's fee receipt is deleted with it,
+                  // so revenue drops. Say so rather than surprising them.
+                  const fee = Number(t.trialFeePaid) || 0
+                  const losesRevenue = !t.converted && fee > 0 && t.trialFeeMode !== 'Not collected'
+                  const msg = losesRevenue
+                    ? `Delete "${t.name}"?\n\nThe ₹${fee.toLocaleString('en-IN')} trial fee receipt will also be removed and revenue will drop by that amount.\n\nThis cannot be undone.`
+                    : `Delete "${t.name}"? This cannot be undone.`
+                  if (window.confirm(msg)) deleteTrial(t.id)
+                }} />
             ))}
           </div>
           <Paginator page={page} total={filtered.length} onChange={setPage} />

@@ -271,6 +271,12 @@ export async function fetchPayments(academyId) {
     discountPct:   row.discount_pct   || 0,
     monthsCovered: row.months_covered || 1,
     notes:         row.notes          || '',
+    // Trial-fee rows carry their own scope because they have no student
+    // to join through until conversion (migration 0124). Student-linked
+    // rows leave these null and scope via students as before.
+    trialId:       row.trial_id       || null,
+    branchId:      row.branch_id      || null,
+    sport:         row.sport          || null,
   }))
 }
 
@@ -603,6 +609,8 @@ export async function fetchTrials(academyId) {
     ageGroup:       row.age_group      || null,
     programType:    row.program_type   || 'academy',
     trialFeePaid:   row.trial_fee_paid ?? 590,
+    trialFeeMode:   row.trial_fee_mode || 'Cash',
+    receiptNo:      row.receipt_no     || null,
     converted:      row.converted,
     followUp:       row.follow_up,
     createdAt:      row.created_at,
@@ -631,13 +639,25 @@ export async function insertTrial(t) {
       ageGroup:      t.ageGroup      || null,
       programType:   t.programType   || 'academy',
       trialFeePaid:  String(t.trialFeePaid ?? 590),
+      trialFeeMode:  t.trialFeeMode   || 'Cash',
       branchId:      t.branchId      || null,
     },
     p_token: _sessionToken(),
   })
   if (error) throw error
   const row = typeof data === 'string' ? JSON.parse(data) : data
-  return { ...t, id: row.id, stage: 'scheduled', converted: false, sessionsDone: 0 }
+  // receipt_no / branch_id come back from the RPC — the trial fee is booked
+  // as a payments row server-side (migration 0125) and branch is forced for
+  // staff, so neither can be trusted from the local form object.
+  return {
+    ...t,
+    id: row.id,
+    stage: 'scheduled',
+    converted: false,
+    sessionsDone: 0,
+    receiptNo: row.receipt_no || null,
+    branchId:  row.branch_id  || null,
+  }
 }
 
 export async function updateTrial(id, updates) {
@@ -646,7 +666,7 @@ export async function updateTrial(id, updates) {
   const fields = ['name','phone','parent','age','sport','status','stage','converted',
     'followUp','batchId','trialDate','trialSessions','sessionsDone','coachNote',
     'coachRec','notes','quotedFee','sessionStart','sessionEnd','dob','ageGroup',
-    'programType','trialFeePaid']
+    'programType','trialFeePaid','trialFeeMode']
   fields.forEach(k => { if (updates[k] !== undefined) payload[k] = updates[k] })
   const { error } = await supabase.rpc('secure_update_trial', {
     p_trial_id: id,
@@ -654,6 +674,21 @@ export async function updateTrial(id, updates) {
     p_token:    _sessionToken(),
   })
   if (error) throw error
+}
+
+// Attaches the trial's already-booked fee payment to the newly created
+// student on conversion. Only ever UPDATEs — it cannot double-book.
+// Returns the booked amount so the caller can warn on a mismatch, or
+// null when the trial had no fee row. Failure is non-fatal: the row
+// simply stays unattributed and is STILL counted in revenue.
+export async function linkTrialPayment(trialId, studentId) {
+  const { data, error } = await supabase.rpc('secure_link_trial_payment', {
+    p_trial_id:   trialId,
+    p_student_id: studentId,
+    p_token:      _sessionToken(),
+  })
+  if (error) throw error
+  return data == null ? null : Number(data)
 }
 
 // ── Trial sources (replaces hardcoded SOURCES list) ─────────
@@ -2226,6 +2261,25 @@ export async function fetchStaffAttendanceForDate(academyId, date) {
   return data || []
 }
 
+// One staff member's check-ins for a month, with clock times — used by the
+// RecordDetail coach view.
+export async function fetchStaffCheckinsMonth(academyId, staffId, year, month) {
+  const pad = n => String(n).padStart(2, '0')
+  const lastDay = new Date(year, month, 0).getDate()
+  const start = `${year}-${pad(month)}-01`
+  const end   = `${year}-${pad(month)}-${pad(lastDay)}`
+  const { data, error } = await supabase
+    .from('staff_checkins')
+    .select('date, clock_in, clock_out')
+    .eq('academy_id', academyId)
+    .eq('staff_id', staffId)
+    .gte('date', start)
+    .lte('date', end)
+    .order('date', { ascending: false })
+  if (error) return []
+  return data || []
+}
+
 export async function fetchStaffAttendanceForMonth(academyId, year, month) {
   const pad = n => String(n).padStart(2, '0')
   const lastDay = new Date(year, month, 0).getDate()
@@ -3011,7 +3065,8 @@ export async function askAiAssistant(question, history = [], branchId = null) {
   })
   const json = await resp.json().catch(() => ({}))
   if (!resp.ok) throw new Error(json?.error || 'AI assistant failed')
-  return json.answer
+  // entities = records the answer references, for clickable /detail/... chips.
+  return { answer: json.answer, entities: Array.isArray(json.entities) ? json.entities : [] }
 }
 
 // Owner — read/save Razorpay config for the academy

@@ -16,6 +16,18 @@ const statusBadge = {
   Overdue: 'badge-red',
 }
 
+// Trial/joining adjustments are recorded as free-text in payments.notes
+// (see AppContext convertTrialToStudent). Parse them back out so the
+// portal can explain why the paid amount is lower/higher than the plan fee.
+function feeAdjustments(notes) {
+  const trialMatch   = (notes || '').match(/Trial fee deducted[^₹]*₹([\d,]+)/)
+  const joiningMatch = (notes || '').match(/Joining fee included[^₹]*₹([\d,]+)/)
+  return {
+    trialAmt:   trialMatch   ? Number(trialMatch[1].replace(/,/g, ''))   : 0,
+    joiningAmt: joiningMatch ? Number(joiningMatch[1].replace(/,/g, '')) : 0,
+  }
+}
+
 export default function StudentPayments() {
   const { studentUser } = useApp()
   const [payments, setPayments] = useState([])
@@ -96,7 +108,11 @@ export default function StudentPayments() {
         </div>
       ) : (
         <div className="space-y-3">
-          {records.map(p => (
+          {records.map(p => {
+            const { trialAmt, joiningAmt } = feeAdjustments(p.notes)
+            const hasAdjustment = trialAmt > 0 || joiningAmt > 0
+            const isTrialFee = p.payment_type === 'trial'
+            return (
             <div key={p.id} className="bg-white rounded-2xl border border-gray-100 p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -104,7 +120,12 @@ export default function StudentPayments() {
                     {statusIcon[p.status] || <CreditCard size={16} className="text-gray-400" />}
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-900 text-sm">{p.month}</p>
+                    <p className="font-semibold text-gray-900 text-sm">
+                      {p.month}
+                      {isTrialFee && (
+                        <span className="ml-1.5 text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full align-middle">Trial fee</span>
+                      )}
+                    </p>
                     <p className="text-xs text-gray-400">
                       {p.date
                         ? `Paid on ${new Date(p.date).toLocaleDateString('en-IN', { day:'numeric', month:'short' })}`
@@ -118,13 +139,40 @@ export default function StudentPayments() {
                   <span className={`badge ${statusBadge[p.status] || 'badge-gray'}`}>{p.status}</span>
                 </div>
               </div>
-              {p.mode && (
+              {hasAdjustment && (
+                <div className="mt-2 pt-2 border-t border-gray-50 space-y-1">
+                  <p className="text-xs text-gray-400 flex items-center justify-between">
+                    <span>Fee amount</span>
+                    <span className="font-medium text-gray-600">₹{((p.amount || 0) + trialAmt - joiningAmt).toLocaleString('en-IN')}</span>
+                  </p>
+                  {trialAmt > 0 && (
+                    <p className="text-xs text-red-500 flex items-center justify-between gap-2">
+                      <span>Trial fee <span className="text-gray-400">(paid at trial — separate receipt above)</span></span>
+                      <span className="font-semibold whitespace-nowrap">− ₹{trialAmt.toLocaleString('en-IN')}</span>
+                    </p>
+                  )}
+                  {joiningAmt > 0 && (
+                    <p className="text-xs text-purple-500 flex items-center justify-between">
+                      <span>Joining fee</span>
+                      <span className="font-semibold">+ ₹{joiningAmt.toLocaleString('en-IN')}</span>
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 flex items-center justify-between font-semibold border-t border-gray-50 pt-1">
+                    <span>You paid</span>
+                    <span>₹{(p.amount || 0).toLocaleString('en-IN')}</span>
+                  </p>
+                  {p.mode && (
+                    <p className="text-xs text-gray-400">Payment mode: <span className="font-medium text-gray-600">{p.mode}</span></p>
+                  )}
+                </div>
+              )}
+              {!hasAdjustment && p.mode && (
                 <div className="mt-2 pt-2 border-t border-gray-50">
                   <p className="text-xs text-gray-400">Payment mode: <span className="font-medium text-gray-600">{p.mode}</span></p>
                 </div>
               )}
             </div>
-          ))}
+          )})}
         </div>
       )}
 

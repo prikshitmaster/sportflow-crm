@@ -1,4 +1,6 @@
+import { Capacitor } from '@capacitor/core'
 import { supabase } from './supabase'
+import { sendFcmToUser } from './fcm'
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
@@ -67,7 +69,10 @@ export function subscribeToNotifications(recipientType, recipientId, onNew) {
 const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY
 
 export function pushSupported() {
-  return 'serviceWorker' in navigator && 'PushManager' in window && !!VAPID_PUBLIC
+  // Native Android uses FCM (see fcm.js) instead — its WebView reports
+  // serviceWorker/PushManager support but web-push doesn't survive the app
+  // being backgrounded/killed there.
+  return !Capacitor.isNativePlatform() && 'serviceWorker' in navigator && 'PushManager' in window && !!VAPID_PUBLIC
 }
 
 export async function subscribeToPush() {
@@ -123,6 +128,7 @@ export async function notify({ academyId, recipientType, recipientId, title, bod
   await Promise.allSettled([
     insertNotification({ academyId, recipientType, recipientId, title, body, type, link, actionLabel }),
     sendPushToUser({ recipientType, recipientId, academyId, title, body, link }),
+    sendFcmToUser({ recipientType, recipientId, academyId, title, body, link }),
   ])
 }
 
