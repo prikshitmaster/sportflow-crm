@@ -89,10 +89,19 @@ function PerformanceView() {
   const isFootball = (selectedSport || '').toLowerCase() === 'football'
   const academyId  = user?.academyId
 
+  // Active only — matches every other performance surface (Reports'
+  // PerformanceTab and the coach's Assess/Goals tabs all filter to Active).
+  // Without this the "Assessed n/N" denominator counted suspended students who
+  // are never going to be assessed, so the ratio could never reach 100%.
+  const roster = useMemo(
+    () => students.filter(s => s.status === 'Active'),
+    [students]
+  )
+
   // The isolation boundary. Everything fetched is filtered against this.
   const visibleIds = useMemo(
-    () => new Set(students.map(s => String(s.id))),
-    [students]
+    () => new Set(roster.map(s => String(s.id))),
+    [roster]
   )
 
   useEffect(() => { setPage(1) }, [search, tierFilter, batchFilter, month])
@@ -100,11 +109,16 @@ function PerformanceView() {
   // ── List data: 2 queries, regardless of student count ──────────────────
   useEffect(() => {
     if (!isFootball || !academyId) { setLoading(false); return }
+    if (roster.length === 0) { setCurrent([]); setPrevious([]); setLoading(false); return }
     let alive = true
     setLoading(true)
+    // Query by the branch's own student ids, NOT academy-wide: an academy-wide
+    // month query can exceed PostgREST's max-rows cap and drop a whole branch's
+    // rows silently. The visibleIds filter below stays as a second line.
+    const ids = roster.map(s => s.id)
     Promise.all([
-      db.fetchAllAssessments(academyId, month),
-      db.fetchAllAssessments(academyId, prevMonthKey(month)),
+      db.fetchAssessmentsForStudents(ids, month),
+      db.fetchAssessmentsForStudents(ids, prevMonthKey(month)),
     ])
       .then(([cur, prev]) => {
         if (!alive) return
@@ -115,16 +129,37 @@ function PerformanceView() {
       .catch(() => { if (alive) { setCurrent([]); setPrevious([]) } })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [isFootball, academyId, month, visibleIds])
+  }, [isFootball, academyId, month, roster, visibleIds])
 
   // ── Rows: one entry per visible student ────────────────────────────────
-  const entries = useMemo(() => {
-    const curBy  = new Map(current.map(a  => [String(a.student_id), a]))
-    const prevBy = new Map(previous.map(a => [String(a.student_id), a]))
+  // skill_assessments is unique on (student_id, assessed_month, SPORT), so a
+  // student assessed in two sports in one month has two rows. Keying a Map by
+  // student_id alone would keep whichever happened to come last — pick the row
+  // matching the student's own sport instead, and only fall back if there
+  // isn't one.
+  const pickForSport = (rows, student) => {
+    if (!rows || rows.length === 0) return undefined
+    if (rows.length === 1) return rows[0]
+    const want = (student.sport || '').toLowerCase()
+    return rows.find(r => (r.sport || '').toLowerCase() === want) || rows[0]
+  }
 
-    return students.map(s => {
-      const a    = curBy.get(String(s.id))
-      const p    = prevBy.get(String(s.id))
+  const entries = useMemo(() => {
+    const groupBy = (list) => {
+      const m = new Map()
+      list.forEach(a => {
+        const k = String(a.student_id)
+        if (!m.has(k)) m.set(k, [])
+        m.get(k).push(a)
+      })
+      return m
+    }
+    const curBy  = groupBy(current)
+    const prevBy = groupBy(previous)
+
+    return roster.map(s => {
+      const a    = pickForSport(curBy.get(String(s.id)), s)
+      const p    = pickForSport(prevBy.get(String(s.id)), s)
       const cats = SPORT_CATEGORIES[a?.sport || s.sport] || FOOTBALL_CATEGORIES
       const score     = a ? getOverallScore(a.scores, cats) : null
       const prevScore = p ? getOverallScore(p.scores, cats) : null
@@ -134,7 +169,7 @@ function PerformanceView() {
         tier:  score != null ? getTier(score) : null,
       }
     })
-  }, [students, current, previous])
+  }, [roster, current, previous])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -243,7 +278,7 @@ function PerformanceView() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Kpi label="Assessed" value={`${kpis.assessed}/${kpis.total}`}
-          sub={kpis.total ? `${Math.round((kpis.assessed / kpis.total) * 100)}% of roster` : 'No students'}
+          sub={kpis.total ? `${Math.round((kpis.assessed / kpis.total) * 100)}% of active students` : 'No active students'}
           icon={CalendarCheck} />
         <Kpi label="Average Score" value={kpis.avg || '—'}
           sub={kpis.avg ? getTier(kpis.avg).label : 'Not assessed yet'} icon={Star} />
@@ -394,7 +429,11 @@ function DetailOverview({ entry, month, academyId, academyName, staffId, showToa
     ])
       .then(([hist, fb, spots, g, ...atts]) => {
         if (!alive) return
-        setHistory(hist || [])
+        // The fetch returns every sport this student was ever assessed in.
+        // Mixing rubrics on one trend line (and in the "months on record"
+        // count) would be misleading, so keep only their own sport.
+        const want = (s.sport || '').toLowerCase()
+        setHistory((hist || []).filter(a => !want || (a.sport || '').toLowerCase() === want))
         setPulse(fb || [])
         setSpotlights(spots || [])
         setGoal(g || null)

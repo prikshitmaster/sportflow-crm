@@ -513,19 +513,29 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 resize-none focus:outline-none focus:border-brand-500 bg-white"
               />
             </div>
+            <button
+              onClick={() => window.open(`/report/student/${student.id}`, '_blank')}
+              className="w-full flex items-center justify-center gap-2 text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-2xl py-3 font-bold text-sm mb-1"
+            >
+              <FileText size={14} /> View Assessment PDF
+            </button>
+          </div>
+        )}
 
+        {/* Save — pinned outside the scroll area. Previously this button lived
+            at the bottom of the scrollable form, after 4 category accordions;
+            closing the sheet before scrolling all the way down meant an
+            assessment could be fully filled in and never actually saved, with
+            no error and nothing to show for it. Mirrors GoalEditor's footer. */}
+        {mode === 'form' && (
+          <div className="flex-shrink-0 px-5 py-3 border-t border-gray-100"
+            style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
             <button
               onClick={handleSave} disabled={saving}
-              className="w-full bg-brand-600 text-white rounded-2xl py-4 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+              className="w-full bg-brand-600 text-white rounded-2xl py-3.5 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <Save size={16} />
               {saving ? 'Saving...' : 'Save Assessment'}
-            </button>
-            <button
-              onClick={() => window.open(`/report/student/${student.id}`, '_blank')}
-              className="w-full flex items-center justify-center gap-2 text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-2xl py-3 font-bold text-sm mb-4"
-            >
-              <FileText size={14} /> View Assessment PDF
             </button>
           </div>
         )}
@@ -897,6 +907,20 @@ function GoalEditor({ student, row, month, onClose, onSave }) {
     setSaving(false)
   }
 
+  // Footer "Clear" button — same confirm as typing the box empty and saving,
+  // just without needing the coach to select all and delete first.
+  async function handleClear() {
+    if (focus.length > 0) {
+      const ok = window.confirm(
+        `This clears the goal for ${student.name}. The ${focus.length} focus skill${focus.length !== 1 ? 's' : ''} will be removed too. Continue?`
+      )
+      if (!ok) return
+    }
+    setSaving(true)
+    await onSave('', focus)
+    setSaving(false)
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex flex-col justify-end">
       <div className="bg-white rounded-t-3xl flex flex-col" style={{ maxHeight: '85vh' }}>
@@ -1018,9 +1042,9 @@ function GoalEditor({ student, row, month, onClose, onSave }) {
 
         <div className="flex-shrink-0 px-5 py-3 border-t border-gray-100 flex gap-2"
           style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
-          {currentText && (
+          {row?.goal_text && (
             <button
-              onClick={() => onSave('')}
+              onClick={handleClear}
               disabled={saving}
               className="px-4 py-3 rounded-xl bg-red-50 text-red-600 font-bold text-sm"
             >

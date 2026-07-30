@@ -16,21 +16,36 @@ export async function fetchNotifications(recipientType, recipientId, limit = 40)
   return data ?? []
 }
 
+// These used to ignore `error` and return nothing, so a write that RLS refused
+// — or that matched zero rows because the session token had expired — was
+// indistinguishable from a successful one. The bell cleared its badge locally
+// and the count reappeared on the next load with no clue why.
+//
+// `.select()` makes PostgREST return the affected rows, so the caller can tell
+// "updated 3" from "updated nothing" and react honestly.
 export async function markAllRead(recipientType, recipientId) {
-  await supabase
+  const { data, error } = await supabase
     .from('notifications')
     .update({ read: true })
     .eq('recipient_type', recipientType)
     .eq('recipient_id', String(recipientId))
     .eq('read', false)
+    .select('id')
+  if (error) throw error
+  return data ?? []
 }
 
 export async function markRead(id) {
-  await supabase.from('notifications').update({ read: true }).eq('id', id)
+  const { data, error } = await supabase
+    .from('notifications').update({ read: true }).eq('id', id).select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error('Could not mark as read — your session may have expired')
+  return data
 }
 
 export async function deleteNotification(id) {
-  await supabase.from('notifications').delete().eq('id', id)
+  const { error } = await supabase.from('notifications').delete().eq('id', id)
+  if (error) throw error
 }
 
 // Housekeeping: drop notifications this user has already read and that are

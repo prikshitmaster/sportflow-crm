@@ -2330,6 +2330,33 @@ export async function fetchStudentAssessmentsForCoach(studentId, academyId) {
   return data || []
 }
 
+// Assessments for an explicit set of students in one month.
+//
+// Preferred over fetchAllAssessments() for any branch-scoped screen. Two
+// reasons, both real:
+//   1. PostgREST applies a default max-rows cap (1000 on Supabase). An
+//      academy-wide month query across several branches can exceed it and
+//      silently truncate — and because every row shares the same
+//      assessed_month, which rows survive is arbitrary. A whole branch can
+//      vanish from the results with no error.
+//   2. It pushes branch isolation into the query itself instead of relying on
+//      the caller to filter afterwards.
+// Chunked so a large roster can't blow the URL length limit on the GET.
+export async function fetchAssessmentsForStudents(studentIds, month) {
+  if (!studentIds?.length) return []
+  const CHUNK = 150
+  const out = []
+  for (let i = 0; i < studentIds.length; i += CHUNK) {
+    const slice = studentIds.slice(i, i + CHUNK)
+    let q = supabase.from('skill_assessments').select('*').in('student_id', slice)
+    if (month) q = q.eq('assessed_month', month)
+    const { data, error } = await q
+    if (error) { if (error.code === '42P01') return out; throw error }
+    if (data) out.push(...data)
+  }
+  return out
+}
+
 export async function fetchAllAssessments(academyId, month) {
   let q = supabase.from('skill_assessments').select('*')
   if (academyId) q = q.eq('academy_id', academyId)

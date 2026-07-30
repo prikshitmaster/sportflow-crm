@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Bell, X, Check, CheckCheck, Trash2, BellOff, BellRing,
-         CreditCard, CalendarDays, Zap, Megaphone, Info } from 'lucide-react'
+         CreditCard, CalendarDays, Zap, Megaphone, Info, TrendingUp } from 'lucide-react'
 import {
   fetchNotifications, markAllRead, markRead, deleteNotification,
   subscribeToNotifications, pushSupported, subscribeToPush, savePushSubscription, purgeOldRead,
@@ -17,6 +17,7 @@ const TYPE_STYLE = {
   session:      { Icon: CalendarDays, fg: 'text-blue-600',   bg: 'bg-blue-50'    },
   trial:        { Icon: Zap,          fg: 'text-amber-600',  bg: 'bg-amber-50'   },
   announcement: { Icon: Megaphone,    fg: 'text-violet-600', bg: 'bg-violet-50'  },
+  performance:  { Icon: TrendingUp,   fg: 'text-indigo-600', bg: 'bg-indigo-50'  },
   info:         { Icon: Info,         fg: 'text-gray-500',   bg: 'bg-gray-100'   },
 }
 
@@ -243,8 +244,33 @@ export default function NotificationBell({ recipientType, recipientId, academyId
     } catch {} finally { setPushLoading(false) }
   }
 
-  const onMarkAll  = () => { markAllRead(recipientType, recipientId); setNotifs(p => p.map(n => ({ ...n, read: true }))) }
-  const onMarkOne  = async (e, notif) => { e.stopPropagation(); if (notif.read) return; await markRead(notif.id); setNotifs(p => p.map(n => n.id === notif.id ? { ...n, read: true } : n)) }
+  // Both handlers update optimistically, then REVERT if the write did not land.
+  // Previously the local state was set regardless, so a refused or zero-row
+  // update left the badge cleared until the next fetch put the count straight
+  // back — which reads as "marking read doesn't work".
+  const onMarkAll = async () => {
+    const before = notifs
+    setNotifs(p => p.map(n => ({ ...n, read: true })))
+    try {
+      await markAllRead(recipientType, recipientId)
+    } catch (err) {
+      setNotifs(before)
+      showToast?.(err.message || 'Could not mark notifications as read', 'error')
+    }
+  }
+
+  const onMarkOne = async (e, notif) => {
+    e.stopPropagation()
+    if (notif.read) return
+    const before = notifs
+    setNotifs(p => p.map(n => n.id === notif.id ? { ...n, read: true } : n))
+    try {
+      await markRead(notif.id)
+    } catch (err) {
+      setNotifs(before)
+      showToast?.(err.message || 'Could not mark as read', 'error')
+    }
+  }
   // Bulk clear of everything already read — replaces the per-row bin. Unread is
   // deliberately untouched: you should never lose something you have not seen.
   const onClearRead = async () => {
