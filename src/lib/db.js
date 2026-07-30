@@ -2469,57 +2469,62 @@ export async function fetchSessionFeedback(date, batchId) {
 
 // Coach saves pulse for a batch — one upsert per student-rating tuple.
 // `records` shape: [{ studentId, effort, execution, focus }]
-export async function saveSessionPulse({ date, batchId, academyId, staffId, records }) {
+// ── session_feedback writes go through RPCs, never the table ────────────────
+// security-v3/12 dropped session_feedback's old USING(true) policy and left
+// only an anon SELECT policy — no INSERT/UPDATE for anon or authenticated. The
+// raw .upsert() calls these functions used to make had been failing for every
+// coach and student with "new row violates row-level security policy for table
+// session_feedback". Migration 0105 added the three SECURITY DEFINER RPCs to
+// fix it but db.js was never repointed at them; this is that other half.
+//
+// academy_id and staff_id are resolved from the session server-side, so they
+// are no longer sent from the client (the params are kept in the signatures
+// only so existing callers don't have to change).
+export async function saveSessionPulse({ date, batchId, records }) {
   if (!records?.length) return
-  const rows = records.map(r => ({
-    date,
-    batch_id:   batchId ?? null,
-    student_id: r.studentId,
-    academy_id: academyId ?? null,
-    staff_id:   staffId   ?? null,
-    effort:     r.effort,
-    execution:  r.execution,
-    focus:      r.focus,
-  }))
-  const { error } = await supabase
-    .from('session_feedback')
-    .upsert(rows, { onConflict: 'date,student_id,batch_id' })
+  const { error } = await supabase.rpc('secure_save_session_pulse', {
+    p_date:     date,
+    p_batch_id: batchId ?? null,
+    p_records:  records.map(r => ({
+      studentId: r.studentId,
+      effort:    r.effort,
+      execution: r.execution,
+      focus:     r.focus,
+    })),
+    p_token:    _sessionToken(),
+  })
   if (error) throw error
 }
 
 // Coach adds detailed 4-corner spotlight + note for one student — overlays
 // onto the same row as their pulse for that date/batch.
-export async function upsertSpotlight({ date, batchId, academyId, staffId, studentId, technical, tactical, physical, mental, note }) {
-  const { error } = await supabase
-    .from('session_feedback')
-    .upsert({
-      date,
-      batch_id:    batchId ?? null,
-      student_id:  studentId,
-      academy_id:  academyId ?? null,
-      staff_id:    staffId   ?? null,
-      technical, tactical, physical, mental,
-      note:        note || null,
-      spotlight_at: new Date().toISOString(),
-    }, { onConflict: 'date,student_id,batch_id' })
+export async function upsertSpotlight({ date, batchId, studentId, technical, tactical, physical, mental, note }) {
+  const { error } = await supabase.rpc('secure_upsert_spotlight', {
+    p_date:       date,
+    p_batch_id:   batchId ?? null,
+    p_student_id: studentId,
+    p_technical:  technical ?? null,
+    p_tactical:   tactical  ?? null,
+    p_physical:   physical  ?? null,
+    p_mental:     mental    ?? null,
+    p_note:       note || null,
+    p_token:      _sessionToken(),
+  })
   if (error) throw error
 }
 
 // Student saves their own post-session reflection. Lives on the same row;
 // keyed by date + student + their current batch (or null when no batch).
-export async function saveSelfReflection({ date, batchId, academyId, studentId, energy, performance, focus }) {
-  const { error } = await supabase
-    .from('session_feedback')
-    .upsert({
-      date,
-      batch_id:         batchId ?? null,
-      student_id:       studentId,
-      academy_id:       academyId ?? null,
-      self_energy:      energy,
-      self_performance: performance,
-      self_focus:       focus,
-      self_at:          new Date().toISOString(),
-    }, { onConflict: 'date,student_id,batch_id' })
+export async function saveSelfReflection({ date, batchId, studentId, energy, performance, focus }) {
+  const { error } = await supabase.rpc('secure_save_self_reflection', {
+    p_date:        date,
+    p_batch_id:    batchId ?? null,
+    p_student_id:  studentId,
+    p_energy:      energy      ?? null,
+    p_performance: performance ?? null,
+    p_focus:       focus       ?? null,
+    p_token:       _sessionToken(),
+  })
   if (error) throw error
 }
 
