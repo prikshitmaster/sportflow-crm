@@ -1727,21 +1727,29 @@ export function AppProvider({ children }) {
         await db.updateStaffProfile(created.id, { name: s.name, phone: s.phone, photoUrl })
       } catch (_) {}
     }
-    // Persist portal-access permissions if the modal supplied them.
-    // Without this the accessConfig was silently dropped, leaving every
-    // new staff with an empty permissions[] in staff_auth — the activation
-    // login then fell back to ROLE_PRESETS[access_role] which gave wider
-    // access than the owner intended.
-    if (accessConfig?.accessRole) {
-      try {
-        await db.updateStaffPermissions(created.id, {
-          accessRole:  accessConfig.accessRole,
-          permissions: accessConfig.permissions || [],
-        })
-      } catch (err) {
-        console.error('Failed to save staff permissions:', err)
-        showToast('Staff created but permissions did not save — edit Access to retry', 'error')
-      }
+    // Always persist explicit permissions — never leave staff_auth.permissions
+    // at its table default ('[]'). Login (staffCode + joinCode) is granted
+    // regardless of whether the owner filled in the "give portal access" step,
+    // and every screen's hasPermission() falls back to ROLE_PRESETS[accessRole]
+    // whenever permissions is empty — so a staff member with '[]' in the DB
+    // still SEES the full toolset (Assess, Session Pulse, Sessions...) but every
+    // secure_* RPC's server-side _require_perm() check (the one that actually
+    // matters) rejects them, since it reads the real, empty permissions column.
+    // That mismatch is what let a coach fill out a whole assessment/pulse and
+    // only find out it was rejected on submit. Writing the same preset the UI
+    // already assumes keeps client and server in agreement from creation.
+    const finalAccessRole  = accessConfig?.accessRole || 'coach'
+    const finalPermissions = accessConfig?.permissions?.length
+      ? accessConfig.permissions
+      : (ROLE_PRESETS[finalAccessRole] || ROLE_PRESETS.coach)
+    try {
+      await db.updateStaffPermissions(created.id, {
+        accessRole:  finalAccessRole,
+        permissions: finalPermissions,
+      })
+    } catch (err) {
+      console.error('Failed to save staff permissions:', err)
+      showToast('Staff created but permissions did not save — edit Access to retry', 'error')
     }
     setStaff(prev => [...prev, {
       ...created,
