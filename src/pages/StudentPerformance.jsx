@@ -75,7 +75,7 @@ export default function StudentPerformance() {
 }
 
 function PerformanceView() {
-  const { students, batches, selectedSport, user, showToast } = useApp()
+  const { students, batches, selectedSport, user, role, showToast } = useApp()
 
   const [month,       setMonth]       = useState(MONTH_OPTS[0].value)
   const [current,     setCurrent]     = useState([])   // assessments for `month`
@@ -87,7 +87,10 @@ function PerformanceView() {
   const [batchFilter, setBatchFilter] = useState('All')
   const [page,        setPage]        = useState(1)
 
-  const isFootball = (selectedSport || '').toLowerCase() === 'football'
+  // Non-owners use their own sport(s) — selectedSport is null in their
+  // session (owner-only concept). Mirrors Sidebar.jsx's footballOk check.
+  const effectiveSport = role === 'owner' ? selectedSport : (user?.sports?.[0] || null)
+  const isFootball = (effectiveSport || '').toLowerCase() === 'football'
   const academyId  = user?.academyId
 
   // Active only — matches every other performance surface (Reports'
@@ -244,8 +247,8 @@ function PerformanceView() {
             The skill rubric — 28 skills across Technical, Tactical, Fitness and Mental —
             is defined for Football. Switch to a Football branch to use this page.
           </p>
-          {selectedSport && selectedSport !== 'All' && (
-            <p className="text-xs text-gray-400 mt-3">Currently viewing {selectedSport}</p>
+          {effectiveSport && effectiveSport !== 'All' && (
+            <p className="text-xs text-gray-400 mt-3">Currently viewing {effectiveSport}</p>
           )}
         </div>
       </div>
