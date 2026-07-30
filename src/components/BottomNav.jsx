@@ -9,6 +9,7 @@ import {
   LayoutDashboard, Users, CalendarCheck, CreditCard,
   MoreHorizontal, X, LogOut,
   UserPlus, Layers, UserCog, BarChart3, Megaphone, Settings, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
+  TrendingUp,
 } from 'lucide-react'
 
 // Primary bar items
@@ -29,6 +30,9 @@ const moreItems = [
   { to: '/reports',   label: 'Reports',   icon: BarChart3, feature: 'reports',  permission: 'reports.view' },
   { to: '/drills',    label: 'Drills',    icon: BookOpen,    feature: null,       permission: 'dashboard.view', footballOnly: true },
   { to: '/sessions',  label: 'Sessions',  icon: CalendarDays,feature: null,       permission: 'dashboard.view', footballOnly: true },
+  // Matches the Sidebar convention (feature+permission gated), unlike the two
+  // Training items above which were left on feature:null / dashboard.view.
+  { to: '/performance', label: 'Performance', icon: TrendingUp, feature: 'training', permission: 'training.manage', footballOnly: true },
   { to: '/community', label: 'Community', icon: Megaphone, feature: 'community',permission: 'community.manage' },
   { to: '/settings',  label: 'Settings',  icon: Settings,  feature: null,       permission: 'settings.manage' },
 ]

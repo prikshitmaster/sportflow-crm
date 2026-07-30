@@ -598,8 +598,16 @@ function DataTab({ user, allStudents, showToast }) {
     if (!preview) return
     setImporting(true)
     try {
-      const existingCodes = new Set(allStudents.map(s => s.student_code).filter(Boolean))
-      const res = await importSportData(preview, user?.academy_id || null, existingCodes)
+      // Context students are camelCase (db.js maps student_code → studentCode);
+      // reading s.student_code here produced a Set of undefined, so the
+      // "already exists" pre-check never skipped anything.
+      const existingCodes = new Set(
+        allStudents.map(s => s.studentCode ?? s.student_code).filter(Boolean)
+      )
+      // Likewise the user object exposes academyId, not academy_id — with the
+      // wrong key this passed null and every imported student was written with
+      // a NULL academy_id, leaving the rows invisible to the app.
+      const res = await importSportData(preview, user?.academyId || null, existingCodes)
       setResults(res)
       setPreview(null)
       if (res.errors.length === 0) {

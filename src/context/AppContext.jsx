@@ -1217,10 +1217,14 @@ export function AppProvider({ children }) {
       // For advance payments, coverage starts from the month after the student's current paidTill
       const baseDate  = p.advanceStart ? new Date(p.advanceStart + 'T00:00:00') : collectionDate
       const months    = p.monthsCovered || (p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1)
-      const paidTill  = toLocalDateStr(new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0))
+      // Inactive months are covered but not charged, so coverage can run longer
+      // than the months billed. Defaults to months → unchanged for every
+      // caller that doesn't mark anything inactive.
+      const covered   = p.coverageMonths || months
+      const paidTill  = toLocalDateStr(new Date(baseDate.getFullYear(), baseDate.getMonth() + covered, 0))
       const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      const endDate    = new Date(baseDate.getFullYear(), baseDate.getMonth() + months, 0)
-      const monthLabel = months === 1
+      const endDate    = new Date(baseDate.getFullYear(), baseDate.getMonth() + covered, 0)
+      const monthLabel = covered === 1
         ? `${MONTHS[baseDate.getMonth()]} ${baseDate.getFullYear()}`
         : `${MONTHS[baseDate.getMonth()]}–${MONTHS[endDate.getMonth()]} ${
             baseDate.getFullYear() === endDate.getFullYear()
@@ -1229,6 +1233,35 @@ export function AppProvider({ children }) {
           }`
       const payDate      = toLocalDateStr(collectionDate)
       const coverageStart = toLocalDateStr(baseDate)
+
+      // ── Inactive months only — no money collected, so no invoice ──────────
+      // The student was not training these months. We move their coverage
+      // forward so the months stop showing as due, and change NOTHING else.
+      //
+      // Deliberately does not touch `status`, `batch` or `fees`. Reports and the
+      // dashboard derive expected revenue / forecast from the fees of students
+      // whose status is 'Active' (Reports.jsx `expected`, Dashboard `expectedAmt`).
+      // Flipping a suspended student to Active here would add their fee to those
+      // targets even though nothing was collected — inflating revenue for a
+      // student who is on a break. Status changes stay an explicit action.
+      if (p.noChargeOnly) {
+        const st = students.find(s => String(s.id) === String(p.studentId))
+        if (!st) { showToast('Student not found', 'error'); return }
+
+        await db.updateStudentPaidTill(st.id, paidTill, null)
+        setStudents(prev => prev.map(s => s.id === st.id ? { ...s, paidTill } : s))
+
+        logAuditSport({
+          actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student',
+          entityId: st.id, entityName: st.name,
+          changes: { inactiveMonths: String(p.inactiveCount || covered), paidTill, charged: '0' },
+          academyId: user?.academyId, sport: st.sport ?? null, branchId: st.branchId ?? null,
+        })
+
+        showToast(`${st.name} marked inactive for ${monthLabel} — no fee due, nothing collected`)
+        return
+      }
+
       const invoiceId    = await db.fetchNextInvoiceId()
       const isChequeEarly = p.mode === 'Cheque'
       const paymentRow   = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, academyId: user?.academyId, status: isChequeEarly ? 'Pending' : 'Paid' }
@@ -1269,7 +1302,11 @@ export function AppProvider({ children }) {
           } : s))
         }
       }
-      showToast(isCheque ? 'Cheque recorded as Pending — mark Paid once cleared' : 'Payment recorded')
+      showToast(
+        isCheque ? 'Cheque recorded as Pending — mark Paid once cleared'
+        : p.inactiveCount ? `Payment recorded · ${p.inactiveCount} month${p.inactiveCount !== 1 ? 's' : ''} marked inactive`
+        : 'Payment recorded'
+      )
       // Notify student — fire and forget
       if (p.studentId) {
         notify({
@@ -2058,6 +2095,29 @@ export function AppProvider({ children }) {
     hasBranchScope ? sportTrials.filter(t => t.branchId === effectiveBranch) : sportTrials
   , [sportTrials, effectiveBranch, hasBranchScope])
 
+  // A leave_requests row carries no sport/branch of its own — only staff_id.
+  // It inherits the scope of the staff member who raised it, so resolve that
+  // member against the RAW staff list (not filteredStaff — we need to find
+  // members who are outside the current scope precisely so we can drop them).
+  // Without this the owner sees every branch's leaves in one list.
+  const filteredLeaveRequests = useMemo(() => {
+    // Staff portal already gets a server-side "only my own" filter.
+    if (role === 'staff') return leaveRequests
+    if (!leaveRequests.length) return leaveRequests
+    const byId = new Map(staff.map(s => [String(s.id), s]))
+    return leaveRequests.filter(r => {
+      const st = byId.get(String(r.staff_id))
+      // Orphaned row (staff deleted, or staff not loaded yet) — surface it only
+      // in the unscoped view rather than leaking it into a specific branch.
+      if (!st) return isAllSports && !hasBranchScope
+      const sportOk = isAllSports || !st.sports?.length ||
+        st.sports.some(sp => sp?.toLowerCase() === selectedSport?.toLowerCase())
+      // Mirrors filteredStaff: staff with no branch stay visible everywhere.
+      const branchOk = !hasBranchScope || !st.branchId || st.branchId === effectiveBranch
+      return sportOk && branchOk
+    })
+  }, [leaveRequests, staff, role, isAllSports, selectedSport, hasBranchScope, effectiveBranch])
+
   // Coach-scope: when logged in as a staff member, limit batches/students to
   // only their sport(s). This prevents cross-sport data leakage while still
   // showing all batches within the coach's sports (even if no batch is assigned yet).
@@ -2213,7 +2273,7 @@ export function AppProvider({ children }) {
       allFeePlans: feePlans,
       attendanceData, loadAttendanceForDate, saveAttendance,
       announcements: staffScopedAnnouncements, addAnnouncement, removeAnnouncement, sendStaffNotice,
-      leaveRequests, submitLeave, loadLeaveRequests, updateLeave,
+      leaveRequests: filteredLeaveRequests, submitLeave, loadLeaveRequests, updateLeave,
       // staff portal management
       inviteStaff, updateStaffAccess, revokeStaffAccess,
       toast, showToast,

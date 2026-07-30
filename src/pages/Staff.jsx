@@ -434,7 +434,13 @@ function LeaveRequestsPanel({ leaveRequests, onUpdate, onDelete }) {
     try { await onUpdate(id, status) } finally { setLoading(null) }
   }
 
+  // AppContext does not expose a deleteLeave yet, so onDelete arrives undefined.
+  // Guard rather than throw "onDelete is not a function" mid-demo; the delete
+  // controls below stay hidden until a handler is actually wired up.
+  const canDelete = typeof onDelete === 'function'
+
   const handleDelete = async (id) => {
+    if (!canDelete) return
     setDeleting(id)
     try { await onDelete(id) } finally { setDeleting(null) }
   }
@@ -503,10 +509,10 @@ function LeaveRequestsPanel({ leaveRequests, onUpdate, onDelete }) {
                       <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg">
                         <Hourglass size={11} /> Pending
                       </span>
-                      <button onClick={() => handleDelete(r.id)} disabled={deleting === r.id}
+                      {canDelete && <button onClick={() => handleDelete(r.id)} disabled={deleting === r.id}
                         className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition disabled:opacity-50" title="Delete request">
                         {deleting === r.id ? '…' : <X size={13} />}
-                      </button>
+                      </button>}
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -558,10 +564,10 @@ function LeaveRequestsPanel({ leaveRequests, onUpdate, onDelete }) {
                     <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-lg">
                       <CheckCircle size={11} /> Approved
                     </span>
-                    <button onClick={() => handleDelete(r.id)} disabled={deleting === r.id}
+                    {canDelete && <button onClick={() => handleDelete(r.id)} disabled={deleting === r.id}
                       className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition disabled:opacity-50" title="Delete request">
                       {deleting === r.id ? '…' : <X size={13} />}
-                    </button>
+                    </button>}
                   </div>
                 </div>
               )
@@ -612,10 +618,10 @@ function LeaveRequestsPanel({ leaveRequests, onUpdate, onDelete }) {
                               {r.status === 'Approved' ? <CheckCircle size={10} /> : <XCircle size={10} />}
                               {r.status}
                             </span>
-                            <button onClick={() => handleDelete(r.id)} disabled={deleting === r.id}
+                            {canDelete && <button onClick={() => handleDelete(r.id)} disabled={deleting === r.id}
                               className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition disabled:opacity-50" title="Delete request">
                               {deleting === r.id ? '…' : <X size={13} />}
-                            </button>
+                            </button>}
                           </div>
                         </div>
                       )

@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
 import { SPORTS, BATCH_NAMES } from '../data/mockData'
@@ -194,6 +196,22 @@ export default function Students() {
     setSportFilter('All'); setBatchFilter('All'); setAccFilter('All')
     setSuspSportFilter('All'); setSuspBatchFilter('All'); setSuspSearch('')
   }, [selectedSport, selectedBranch])
+
+  // Deep link from the header's global search: /students?open=<id> opens that
+  // student's profile. The param is consumed immediately so a refresh or a
+  // back-navigation doesn't re-open the drawer.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const openId = searchParams.get('open')
+    if (!openId) return
+    // Wait for the student list before deciding — otherwise a cold load would
+    // consume the param before there was anything to match against.
+    if (!students.length) return
+    const target = students.find(s => String(s.id) === String(openId))
+    if (target) setProfile(target)
+    searchParams.delete('open')
+    setSearchParams(searchParams, { replace: true })
+  }, [searchParams, students, setSearchParams])
 
   const paged     = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const suspPaged = suspFiltered.slice((suspPage - 1) * PAGE_SIZE, suspPage * PAGE_SIZE)
@@ -1125,7 +1143,8 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
     </div>
   )
 
-  return (
+  // Portalled to <body> — see the Modal note at the bottom of this file.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-end">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white h-full w-full max-w-md shadow-2xl flex flex-col animate-slide-in-right overflow-hidden">
@@ -1286,7 +1305,8 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -1586,7 +1606,9 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
 // body can get tall — on a phone, action buttons placed in the scrolling body
 // end up below the fold and the form looks like it has no submit button.
 export function Modal({ title, onClose, children, footer }) {
-  return (
+  // Portalled to <body> so no ancestor stacking context (page transitions,
+  // transforms, opacity) can trap this fixed overlay under the header/sidebar.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh] max-h-[90dvh]">
@@ -1604,6 +1626,7 @@ export function Modal({ title, onClose, children, footer }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

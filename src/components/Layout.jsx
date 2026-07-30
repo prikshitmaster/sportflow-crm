@@ -53,6 +53,7 @@ export default function Layout() {
       import('../pages/Events')
       import('../pages/Drills')
       import('../pages/Sessions')
+      import('../pages/StudentPerformance')
     })
   }, [])
 

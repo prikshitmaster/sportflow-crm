@@ -56,6 +56,7 @@ const StaffAttendanceQR = lazy(() => import('./pages/StaffAttendanceQR'))
 const SportSelect      = lazy(() => import('./pages/SportSelect'))
 const Drills           = lazy(() => import('./pages/Drills'))
 const Sessions         = lazy(() => import('./pages/Sessions'))
+const StudentPerformance = lazy(() => import('./pages/StudentPerformance'))
 const Parents          = lazy(() => import('./pages/Parents'))
 const Backups          = lazy(() => import('./pages/Backups'))
 const Inventory        = lazy(() => import('./pages/Inventory'))
@@ -345,6 +346,7 @@ function AppRoutes() {
         <Route path="events"     element={<FeatureRoute feature="events"><Events /></FeatureRoute>} />
         <Route path="drills"     element={<FeatureRoute feature="training"><Drills /></FeatureRoute>} />
         <Route path="sessions"   element={<FeatureRoute feature="training"><Sessions /></FeatureRoute>} />
+        <Route path="performance" element={<FeatureRoute feature="training"><StudentPerformance /></FeatureRoute>} />
       </Route>
 
       {/* Staff */}

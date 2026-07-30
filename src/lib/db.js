@@ -2091,10 +2091,12 @@ export async function fetchMyLeaveRequests(staffId) {
   return data
 }
 
-// Owner approves or rejects
+// Owner approves or rejects.
+// p_id is TEXT server-side (migration 0116) because leave_requests.id is a
+// uuid — the original BIGINT signature made every approve/reject fail.
 export async function updateLeaveStatus(id, status) {
   const { error } = await supabase.rpc('secure_update_leave_status', {
-    p_id:     id,
+    p_id:     String(id),
     p_status: status,
     p_token:  _sessionToken(),
   })
@@ -2544,6 +2546,30 @@ export async function upsertPlayerGoal({ studentId, month, goalText, staffId }) 
     p_token:      _sessionToken(),
   })
   if (error) throw error
+  return data
+}
+
+// Development plan — the focus-skill list that sits alongside the monthly goal.
+// Separate RPC (migration 0117) rather than an extra arg on
+// secure_upsert_player_goal, so re-running security-v3/23 can't leave two
+// overloads behind and break every goal save.
+//
+// player_goals.goal_text is NOT NULL and blank text deletes the row, so callers
+// must save the goal FIRST and the focus list second. Throws P0002 ("no goal for
+// this student/month") if there is no row to attach the focus to.
+export async function setPlayerFocus({ studentId, month, focusSkills }) {
+  const { data, error } = await supabase.rpc('secure_set_player_focus', {
+    p_student_id:   studentId,
+    p_month:        month,
+    p_focus_skills: Array.isArray(focusSkills) ? focusSkills : [],
+    p_token:        _sessionToken(),
+  })
+  // 42883/PGRST202 = migration 0117 not applied yet. Goals still save; the
+  // focus list just doesn't persist, so don't blow up the whole plan save.
+  if (error) {
+    if (error.code === '42883' || error.code === 'PGRST202') return null
+    throw error
+  }
   return data
 }
 
