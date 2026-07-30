@@ -151,11 +151,19 @@ export async function sendFcmToUser({ recipientType, recipientId, academyId, tit
 
   await Promise.allSettled(tokens.map(async ({ token }) => {
     const res = await supabase.functions.invoke('send-fcm', { body: { token, title, body, link } })
+    // send-fcm always returns invalidToken alongside a non-2xx status (it never
+    // succeeds with invalidToken:true), so supabase-js puts the response in
+    // res.error, not res.data — checking res.data?.invalidToken here can never
+    // fire, and hardcoding status === 404 misses FCM's other invalid-token
+    // statuses (e.g. 400 INVALID_ARGUMENT for a malformed token). Parse the
+    // actual error body instead of guessing from the status code.
+    let invalidToken = false
     if (res.error) {
       console.warn('[fcm] send-fcm failed for', recipientType, recipientId, res.error.message || res.error)
+      try { invalidToken = (await res.error.context?.json())?.invalidToken === true } catch {}
     }
     // unregistered/invalid token — clean it up
-    if (res.error?.context?.status === 404 || res.data?.invalidToken) {
+    if (invalidToken) {
       await supabase.from('fcm_tokens').delete().eq('token', token)
     }
   }))
