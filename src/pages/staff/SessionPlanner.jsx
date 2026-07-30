@@ -19,6 +19,8 @@ import {
   Zap, Package, MapPin, TrendingUp, TrendingDown, Target, ListOrdered,
   Heart, Search, Upload, ImagePlus,
 } from 'lucide-react'
+import DevFillButton from '../../components/DevFillButton'
+import { fillDrill, fillWeeklySchedule } from '../../lib/devFill'
 
 // ── Pitch SVG presets (mirrors Drills.jsx) ───────────────────────────────────
 const PITCH_BG = '#2D7A3A'
@@ -420,9 +422,17 @@ function StaffDrillEditorModal({ drill, onClose, onSave, saving }) {
 
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-black text-gray-900">{isEdit ? 'Edit Drill' : 'New Custom Drill'}</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
-            <X size={16} className="text-gray-500"/>
-          </button>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {!isEdit && (
+              <>
+                <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillDrill() }))} />
+                <div className="w-px h-5 bg-gray-200" />
+              </>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 transition">
+              <X size={16} className="text-gray-500"/>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
@@ -1590,6 +1600,9 @@ function WeeklyScheduleFormModal({ schedule, batches, coachId, coachName, saving
               off a narrow screen */}
           <h2 className="text-base font-black text-gray-900 truncate min-w-0">{isEdit ? 'Edit Weekly Schedule' : 'New Weekly Schedule'}</h2>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {!isEdit && (
+              <DevFillButton onFill={() => setForm(f => ({ ...f, ...fillWeeklySchedule({ batches, form: f }) }))} />
+            )}
             {isEdit && (
               <button type="button" onClick={() => exportWeeklySchedulePDF({ schedule: form })}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition">

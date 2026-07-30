@@ -241,6 +241,55 @@ export function fillDrill() {
   }
 }
 
+// ── Branch ────────────────────────────────────────────────────
+const AREA_NAMES = ['Andheri','Bandra','Kharghar','Powai','Whitefield','Indiranagar',
+  'Gachibowli','Kondapur','Salt Lake','Koramangala','Vashi','Thane']
+const AREA_CITIES = ['Mumbai','Navi Mumbai','Bengaluru','Hyderabad','Kolkata','Pune']
+export function fillBranch() {
+  const area = pick(AREA_NAMES)
+  return {
+    name:    area,
+    address: `Plot ${rand(1, 90)}, Sector ${rand(1, 20)}, ${area}, ${pick(AREA_CITIES)}`,
+  }
+}
+
+// ── Weekly Training Schedule ──────────────────────────────────
+const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const WS_OBJECTIVE = ['Ball control & first touch','Speed & agility','Small-sided games','Set-piece practice','Fitness & conditioning','Match simulation']
+const WS_TECHNICAL = ['Passing accuracy drills','Dribbling under pressure','Shooting technique','1v1 finishing','Long ball control','Receiving on the half-turn']
+const WS_TACTICAL  = ['Pressing triggers','Build-up from the back','Transition play','Defensive shape 4-4-2','Overlapping runs','Zonal marking']
+const WS_MATCH     = ['7v7 internal match','Full-pitch scrimmage','Possession vs pressing','Friendly vs junior batch','Penalty shootout','Rest / recovery']
+
+export function fillWeeklySchedule({ batches = [], form = {} } = {}) {
+  const batch = batches.length ? pick(batches) : null
+  const grid = {}
+  WEEK_DAYS.forEach(day => {
+    grid[day] = {
+      objective: pick(WS_OBJECTIVE),
+      technical: pick(WS_TECHNICAL),
+      tactical:  pick(WS_TACTICAL),
+      match:     pick(WS_MATCH),
+    }
+  })
+  return {
+    batch_id:   batch ? batch.id : form.batch_id,
+    team_name:  batch?.name || form.team_name,
+    grid,
+  }
+}
+
+// ── Fee Plan ──────────────────────────────────────────────────
+export function fillFeePlan() {
+  const monthly = pick([800, 1000, 1200, 1500, 2000])
+  return {
+    name:          pick(['Daily Plan','Standard Plan','Premium Plan','Weekend Plan']),
+    trainingType:  pick(['daily', 'alternate']),
+    monthlyFee:    monthly,
+    quarterlyFee:  monthly * 3 - pick([0, 100, 200]),
+    yearlyFee:     monthly * 12 - pick([500, 1000, 1500]),
+  }
+}
+
 // ── Staff Invite ──────────────────────────────────────────────
 export function fillInvite() {
   return {

@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'sf_demo_mode'
+const CHANGE_EVENT = 'sf-demo-mode-change'
 const IS_DEV = import.meta.env.DEV
 
 function readDemoFlag() {
@@ -27,6 +28,21 @@ function readDemoFlag() {
   } catch { return false }
 }
 
+// Used by the Settings toggle so every mounted DevFillButton updates
+// instantly, without a page reload (localStorage writes don't fire
+// 'storage' events in the same tab that wrote them).
+export function setDemoMode(on) {
+  try {
+    if (on) localStorage.setItem(STORAGE_KEY, '1')
+    else localStorage.removeItem(STORAGE_KEY)
+  } catch { /* ignore */ }
+  window.dispatchEvent(new Event(CHANGE_EVENT))
+}
+
+export function isDemoModeEnabled() {
+  return readDemoFlag()
+}
+
 export default function DevFillButton({ onFill }) {
   const [enabled, setEnabled] = useState(() => IS_DEV || readDemoFlag())
 
@@ -34,7 +50,11 @@ export default function DevFillButton({ onFill }) {
     if (IS_DEV) return
     const handler = () => setEnabled(readDemoFlag())
     window.addEventListener('popstate', handler)
-    return () => window.removeEventListener('popstate', handler)
+    window.addEventListener(CHANGE_EVENT, handler)
+    return () => {
+      window.removeEventListener('popstate', handler)
+      window.removeEventListener(CHANGE_EVENT, handler)
+    }
   }, [])
 
   if (!enabled) return null
