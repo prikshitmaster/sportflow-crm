@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X, Send, Search, Trash2 } from 'lucide-react'
 import { Modal } from './Students'
 import SendStaffNoticeModal from '../components/SendStaffNoticeModal'
 import DevFillButton from '../components/DevFillButton'
 import { fillAnnouncement } from '../lib/devFill'
+import { fetchNoticeReceipts } from '../lib/notifications'
 
 const TYPE_CONFIG = {
   Holiday:     { cls: 'badge-yellow', icon: Calendar,     bg: 'bg-amber-50',   border: 'border-amber-100' },
@@ -56,6 +57,19 @@ export default function Community() {
     if (q && !((a.title || '').toLowerCase().includes(q) || (a.body || '').toLowerCase().includes(q))) return false
     return true
   })
+
+  // Read receipts for the open Staff Notice — owner can't confirm one
+  // themselves (they're never the recipient), just see who has. Fetched only
+  // when a Staff Notice's detail is opened, not for the whole feed at once.
+  const [detailReceipts, setDetailReceipts] = useState([])
+  useEffect(() => {
+    if (!detail || detail.type !== 'Staff Notice') { setDetailReceipts([]); return }
+    let alive = true
+    fetchNoticeReceipts(detail.id).then(rows => { if (alive) setDetailReceipts(rows) }).catch(() => {})
+    return () => { alive = false }
+  }, [detail])
+  const staffById = Object.fromEntries((staff || []).map(s => [String(s.id), s]))
+  const confirmedReceipts = detailReceipts.filter(r => r.actioned_at)
 
   return (
     <div className="space-y-5 max-w-[800px]">
@@ -172,6 +186,35 @@ export default function Community() {
             {detail.body || <span className="text-gray-400 italic">No message body</span>}
           </p>
           <p className="text-xs text-gray-400 mt-4">— {detail.author}</p>
+
+          {/* View-only — the owner isn't a recipient, so no confirm button
+              here, just who has confirmed so far. */}
+          {detail.type === 'Staff Notice' && detailReceipts.length > 0 && (
+            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
+              {confirmedReceipts.length > 0 && (
+                <div className="flex -space-x-2">
+                  {confirmedReceipts.slice(0, 6).map(r => {
+                    const m = staffById[r.recipient_id]
+                    return (
+                      <div key={r.recipient_id}
+                        title={`${m?.name || 'Staff'} — confirmed`}
+                        className="w-6 h-6 rounded-full bg-emerald-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-emerald-700">
+                        {m?.name?.[0]?.toUpperCase() || '?'}
+                      </div>
+                    )
+                  })}
+                  {confirmedReceipts.length > 6 && (
+                    <div className="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-[9px] font-bold text-gray-500">
+                      +{confirmedReceipts.length - 6}
+                    </div>
+                  )}
+                </div>
+              )}
+              <span className="text-[11px] text-gray-400">
+                {confirmedReceipts.length}/{detailReceipts.length} confirmed
+              </span>
+            </div>
+          )}
         </Modal>
       )}
 

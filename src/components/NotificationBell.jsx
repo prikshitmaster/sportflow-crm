@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Bell, X, Check, CheckCheck, Trash2, BellOff, BellRing,
+import { Bell, X, CheckCheck, Trash2, BellOff, BellRing,
          CreditCard, CalendarDays, Zap, Megaphone, Info, TrendingUp } from 'lucide-react'
 import {
   fetchNotifications, markAllRead, markRead, deleteNotification,
   subscribeToNotifications, pushSupported, subscribeToPush, savePushSubscription, purgeOldRead,
-  actionNotification,
 } from '../lib/notifications'
 import { fcmSupported, initFcm, saveFcmToken } from '../lib/fcm'
 import { useApp } from '../context/AppContext'
@@ -50,7 +49,7 @@ function groupByDay(list) {
 }
 
 function NotifPanel({ notifs, unread, recipientType, recipientId, pushEnabled, pushLoading,
-  enablePush, onMarkAll, onMarkOne, onClearRead, onAction, onClose }) {
+  enablePush, onMarkAll, onMarkOne, onClearRead, onClose }) {
   return (
     <>
       {/* Header */}
@@ -145,16 +144,9 @@ function NotifPanel({ notifs, unread, recipientType, recipientId, pushEnabled, p
                           ${n.read ? 'text-gray-400' : 'text-gray-600'}`}>{n.body}</p>
                       )}
                       <p className="text-[11px] text-gray-400 mt-1.5">{timeAgo(n.created_at)}</p>
-                      {n.action_label && (
-                        n.actioned_at
-                          ? <span className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-emerald-600">
-                              <Check size={11} /> {n.action_label}
-                            </span>
-                          : <button onClick={e => onAction(e, n.id)}
-                              className="mt-2 text-xs font-semibold bg-brand-600 text-white px-4 py-1.5 rounded-lg active:bg-brand-700 transition">
-                              {n.action_label}
-                            </button>
-                      )}
+                      {/* Confirming a staff notice ("Got it") happens on the
+                          Notices page itself, not here — the bell is just a
+                          list. See StaffNotices.jsx for the confirm button. */}
                     </div>
 
                     {/* No per-row bin: a delete control on every line is visual
@@ -279,10 +271,9 @@ export default function NotificationBell({ recipientType, recipientId, academyId
     setNotifs(p => p.filter(n => !n.read))
     await Promise.allSettled(readIds.map(id => deleteNotification(id)))
   }
-  const onAction   = async (e, id)   => { e.stopPropagation(); await actionNotification(id); setNotifs(p => p.map(n => n.id === id ? { ...n, actioned_at: new Date().toISOString(), read: true } : n)) }
   const onClose    = () => setOpen(false)
 
-  const panelProps = { notifs, unread, recipientType, recipientId, pushEnabled, pushLoading, enablePush, onMarkAll, onMarkOne, onClearRead, onAction, onClose }
+  const panelProps = { notifs, unread, recipientType, recipientId, pushEnabled, pushLoading, enablePush, onMarkAll, onMarkOne, onClearRead, onClose }
 
   return (
     <div className="relative" ref={ref}>

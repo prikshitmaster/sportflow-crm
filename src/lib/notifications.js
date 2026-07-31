@@ -79,11 +79,13 @@ export async function actionNotification(id) {
 
 // Per-recipient read/confirm status for a staff notice — one row per person
 // it was sent to (see announcement_id on notifications, migration 0127).
+// Includes id/action_label so a caller can find their OWN row and drive a
+// "Got it" button from the same fetch used to build the sender's receipts.
 export async function fetchNoticeReceipts(announcementId) {
   if (!announcementId) return []
   const { data, error } = await supabase
     .from('notifications')
-    .select('recipient_id, read, actioned_at')
+    .select('id, recipient_type, recipient_id, action_label, read, actioned_at')
     .eq('announcement_id', announcementId)
   if (error) throw error
   return data ?? []

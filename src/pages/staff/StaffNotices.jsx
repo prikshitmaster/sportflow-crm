@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { Bell, Calendar, Trophy, MapPin, Send, Megaphone } from 'lucide-react'
+import { Bell, Calendar, Trophy, MapPin, Send, Megaphone, Check } from 'lucide-react'
 import SendStaffNoticeModal from '../../components/SendStaffNoticeModal'
 import { staffMatchesAudience } from '../../lib/announcementAudience'
-import { fetchNoticeReceipts } from '../../lib/notifications'
+import { fetchNoticeReceipts, actionNotification } from '../../lib/notifications'
 
 export default function StaffNotices() {
   // `events` and `announcements` from context are already sport+branch scoped
@@ -40,21 +40,38 @@ export default function StaffNotices() {
   const staffNotices         = sorted.filter(a => a.type === 'Staff Notice')
   const generalAnnouncements = sorted.filter(a => a.type !== 'Staff Notice')
 
-  // Read/confirm receipts — only useful to whoever can send notices (a
-  // recipient doesn't need to see who else confirmed). Fetched once per
-  // visible notice; each notification row's announcement_id (migration 0127)
+  // Read/confirm receipts — fetched for every notice regardless of role: the
+  // sender/manager view (canSend) uses the full list to show "who confirmed";
+  // every recipient uses it to find their OWN row and drive the "Got it"
+  // button below. Each notification row's announcement_id (migration 0127)
   // is what makes "who has this been sent to, and who confirmed" queryable.
-  const [receipts, setReceipts] = useState({})   // { [noticeId]: [{recipient_id, read, actioned_at}] }
+  const [receipts, setReceipts] = useState({})   // { [noticeId]: [{id, recipient_type, recipient_id, action_label, read, actioned_at}] }
   const noticeIdsKey = staffNotices.map(a => a.id).join(',')
   useEffect(() => {
-    if (!canSend || staffNotices.length === 0) return
+    if (staffNotices.length === 0) return
     let alive = true
     Promise.all(staffNotices.map(a => fetchNoticeReceipts(a.id).then(rows => [a.id, rows])))
       .then(pairs => { if (alive) setReceipts(Object.fromEntries(pairs)) })
       .catch(() => {})
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canSend, noticeIdsKey])
+  }, [noticeIdsKey])
+
+  const [confirming, setConfirming] = useState(null)   // notification row id currently being confirmed
+  const handleConfirm = async (noticeId, rowId) => {
+    if (confirming) return
+    setConfirming(rowId)
+    try {
+      await actionNotification(rowId)
+      setReceipts(prev => ({
+        ...prev,
+        [noticeId]: (prev[noticeId] || []).map(r =>
+          r.id === rowId ? { ...r, actioned_at: new Date().toISOString(), read: true } : r),
+      }))
+    } finally {
+      setConfirming(null)
+    }
+  }
 
   const staffById = Object.fromEntries((staff || []).map(s => [String(s.id), s]))
 
@@ -125,6 +142,7 @@ export default function StaffNotices() {
             {staffNotices.map(a => {
               const rows      = receipts[a.id] || []
               const confirmed = rows.filter(r => r.actioned_at)
+              const mine      = rows.find(r => r.recipient_type === 'staff' && String(r.recipient_id) === String(user?.id))
               return (
                 <div key={a.id} className="bg-white rounded-2xl border border-gray-100 p-4">
                   <div className="flex items-start gap-3">
@@ -137,6 +155,23 @@ export default function StaffNotices() {
                       <p className="text-[10px] text-gray-400 mt-2">
                         {a.date ? new Date(a.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}) : ''}
                       </p>
+
+                      {/* Recipient's own confirm action — the one place this
+                          lives now, not the notification bell. */}
+                      {mine?.action_label && (
+                        mine.actioned_at
+                          ? <span className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-emerald-600">
+                              <Check size={11} /> {mine.action_label}
+                            </span>
+                          : <button
+                              onClick={() => handleConfirm(a.id, mine.id)}
+                              disabled={confirming === mine.id}
+                              className="mt-2 text-xs font-semibold bg-brand-600 text-white px-4 py-1.5 rounded-lg active:bg-brand-700 transition disabled:opacity-60">
+                              {confirming === mine.id ? '…' : mine.action_label}
+                            </button>
+                      )}
+
+                      {/* Sender/manager view: who has confirmed so far */}
                       {canSend && rows.length > 0 && (
                         <div className="flex items-center gap-2 mt-2.5">
                           {confirmed.length > 0 && (
