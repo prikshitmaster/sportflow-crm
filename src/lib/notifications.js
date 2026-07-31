@@ -63,10 +63,10 @@ export async function purgeOldRead(recipientType, recipientId, days = 30) {
     .lt('created_at', cutoff)
 }
 
-export async function insertNotification({ academyId, recipientType, recipientId, title, body, type = 'info', link = null, actionLabel = null }) {
+export async function insertNotification({ academyId, recipientType, recipientId, title, body, type = 'info', link = null, actionLabel = null, announcementId = null }) {
   const { data, error } = await supabase
     .from('notifications')
-    .insert({ academy_id: academyId, recipient_type: recipientType, recipient_id: String(recipientId), title, body, type, link, action_label: actionLabel })
+    .insert({ academy_id: academyId, recipient_type: recipientType, recipient_id: String(recipientId), title, body, type, link, action_label: actionLabel, announcement_id: announcementId })
     .select()
     .single()
   if (error) throw error
@@ -75,6 +75,18 @@ export async function insertNotification({ academyId, recipientType, recipientId
 
 export async function actionNotification(id) {
   await supabase.from('notifications').update({ actioned_at: new Date().toISOString(), read: true }).eq('id', id)
+}
+
+// Per-recipient read/confirm status for a staff notice — one row per person
+// it was sent to (see announcement_id on notifications, migration 0127).
+export async function fetchNoticeReceipts(announcementId) {
+  if (!announcementId) return []
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('recipient_id, read, actioned_at')
+    .eq('announcement_id', announcementId)
+  if (error) throw error
+  return data ?? []
 }
 
 // ── Realtime ──────────────────────────────────────────────────────────────────
@@ -154,9 +166,9 @@ export async function sendPushToUser({ recipientType, recipientId, academyId, ti
 
 // ── Convenience: insert + push in one call ────────────────────────────────────
 
-export async function notify({ academyId, recipientType, recipientId, title, body, type = 'info', link = null, actionLabel = null }) {
+export async function notify({ academyId, recipientType, recipientId, title, body, type = 'info', link = null, actionLabel = null, announcementId = null }) {
   await Promise.allSettled([
-    insertNotification({ academyId, recipientType, recipientId, title, body, type, link, actionLabel }),
+    insertNotification({ academyId, recipientType, recipientId, title, body, type, link, actionLabel, announcementId }),
     sendPushToUser({ recipientType, recipientId, academyId, title, body, link }),
     sendFcmToUser({ recipientType, recipientId, academyId, title, body, link }),
   ])

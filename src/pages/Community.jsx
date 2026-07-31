@@ -12,6 +12,7 @@ const TYPE_CONFIG = {
   Achievement: { cls: 'badge-green',  icon: PartyPopper,  bg: 'bg-emerald-50', border: 'border-emerald-100' },
   Reminder:    { cls: 'badge-gray',   icon: Bell,         bg: 'bg-gray-50',    border: 'border-gray-100' },
   Announcement:{ cls: 'badge-purple', icon: Megaphone,    bg: 'bg-purple-50',  border: 'border-purple-100' },
+  'Staff Notice': { cls: 'badge-yellow', icon: Bell,      bg: 'bg-amber-50',   border: 'border-amber-100' },
 }
 
 const TYPES = Object.keys(TYPE_CONFIG)
