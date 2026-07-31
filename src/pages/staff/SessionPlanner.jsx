@@ -17,7 +17,7 @@ import {
   Clock, Users, BookOpen, ChevronDown, ChevronUp, X, Save,
   CalendarDays, Trophy, ArrowUp, ArrowDown, FileDown, AlertCircle,
   Zap, Package, MapPin, TrendingUp, TrendingDown, Target, ListOrdered,
-  Heart, Search, Upload, ImagePlus,
+  Heart, Search, Upload, ImagePlus, Settings2,
 } from 'lucide-react'
 import DevFillButton from '../../components/DevFillButton'
 import { fillDrill, fillWeeklySchedule } from '../../lib/devFill'
@@ -102,16 +102,50 @@ const PHASE_CATEGORIES = [
   { key: 'cool_down',  label: 'Cool Down',    color: 'bg-gray-100 text-gray-600 border-gray-200' },
 ]
 
-// ── Drill library constants ───────────────────────────────────────────────────
-const CATEGORIES = {
-  warm_up:   { label: 'Warm-up',   bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', dot: 'bg-orange-400' },
-  technical: { label: 'Technical', bg: 'bg-blue-100',   text: 'text-blue-700',   border: 'border-blue-200',   dot: 'bg-blue-400'   },
-  passing:   { label: 'Passing',   bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-400' },
-  shooting:  { label: 'Shooting',  bg: 'bg-red-100',    text: 'text-red-700',    border: 'border-red-200',    dot: 'bg-red-400'    },
-  defending: { label: 'Defending', bg: 'bg-slate-100',  text: 'text-slate-700',  border: 'border-slate-200',  dot: 'bg-slate-400'  },
-  ssg:       { label: 'SSG',       bg: 'bg-green-100',  text: 'text-green-700',  border: 'border-green-200',  dot: 'bg-green-400'  },
-  match:     { label: 'Match',     bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-400' },
-  cool_down: { label: 'Cool-down', bg: 'bg-teal-100',   text: 'text-teal-700',   border: 'border-teal-200',   dot: 'bg-teal-400'   },
+// ── Drill categories ───────────────────────────────────────────────────────────
+// Categories are now a per-academy editable list (drill_categories table,
+// migration 0128) instead of this fixed set — these are just the fallback
+// shown before the academy's own list loads (or if it has none yet), and
+// must match the migration's backfill so existing drills' badges stay
+// identical for academies that never touch category management.
+const DEFAULT_DRILL_CATEGORIES = [
+  { key: 'warm_up',   label: 'Warm-up',   color: 'orange' },
+  { key: 'technical', label: 'Technical', color: 'blue'   },
+  { key: 'passing',   label: 'Passing',   color: 'purple' },
+  { key: 'shooting',  label: 'Shooting',  color: 'red'    },
+  { key: 'defending', label: 'Defending', color: 'slate'  },
+  { key: 'ssg',       label: 'SSG',       color: 'green'  },
+  { key: 'match',     label: 'Match',     color: 'indigo' },
+  { key: 'cool_down', label: 'Cool-down', color: 'teal'   },
+]
+// Fixed Tailwind class sets keyed by color name — classes must appear as
+// literal strings somewhere for Tailwind's build-time scan to keep them,
+// so a custom category's `color` is always one of these keys, never an
+// arbitrary dynamically-built class name.
+const COLOR_THEMES = {
+  orange: { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', dot: 'bg-orange-400' },
+  blue:   { bg: 'bg-blue-100',   text: 'text-blue-700',   border: 'border-blue-200',   dot: 'bg-blue-400'   },
+  purple: { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200', dot: 'bg-purple-400' },
+  red:    { bg: 'bg-red-100',    text: 'text-red-700',    border: 'border-red-200',    dot: 'bg-red-400'    },
+  slate:  { bg: 'bg-slate-100',  text: 'text-slate-700',  border: 'border-slate-200',  dot: 'bg-slate-400'  },
+  green:  { bg: 'bg-green-100',  text: 'text-green-700',  border: 'border-green-200',  dot: 'bg-green-400'  },
+  indigo: { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-400' },
+  teal:   { bg: 'bg-teal-100',   text: 'text-teal-700',   border: 'border-teal-200',   dot: 'bg-teal-400'   },
+  amber:  { bg: 'bg-amber-100',  text: 'text-amber-700',  border: 'border-amber-200',  dot: 'bg-amber-400'  },
+  pink:   { bg: 'bg-pink-100',   text: 'text-pink-700',   border: 'border-pink-200',   dot: 'bg-pink-400'   },
+  cyan:   { bg: 'bg-cyan-100',   text: 'text-cyan-700',   border: 'border-cyan-200',   dot: 'bg-cyan-400'   },
+  lime:   { bg: 'bg-lime-100',   text: 'text-lime-700',   border: 'border-lime-200',   dot: 'bg-lime-400'   },
+}
+const COLOR_KEYS = Object.keys(COLOR_THEMES)
+// `categories` is always the live per-academy list from context, falling
+// back to DEFAULT_DRILL_CATEGORIES when empty (see useApp().drillCategories).
+function drillCat(key, categories) {
+  return (categories || []).find(c => c.key === key)
+    || DEFAULT_DRILL_CATEGORIES.find(c => c.key === key)
+    || { key, label: key, color: 'slate' }
+}
+function drillCatTheme(key, categories) {
+  return COLOR_THEMES[drillCat(key, categories).color] || COLOR_THEMES.slate
 }
 const DIFFICULTIES = ['beginner', 'intermediate', 'advanced']
 const AGE_GROUPS   = ['All', 'U6', 'U8', 'U10', 'U12', 'U14', 'U16', 'U18', 'Senior']
@@ -151,11 +185,13 @@ function fmt(dateStr) {
 
 // ── Drill library shared components ──────────────────────────────────────────
 function CategoryBadge({ category }) {
-  const c = CATEGORIES[category] || CATEGORIES.technical
+  const { drillCategories } = useApp()
+  const cat = drillCat(category, drillCategories)
+  const c = drillCatTheme(category, drillCategories)
   return (
     <span className={`inline-flex items-center gap-1 font-black rounded-full border ${c.bg} ${c.text} ${c.border} text-[10px] px-2 py-0.5`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${c.dot}`} />
-      {c.label}
+      {cat.label}
     </span>
   )
 }
@@ -245,8 +281,9 @@ function StaffDrillCard({ drill, isFav, onFavorite, onClick, onClone, onEdit, on
 
 // ── Staff Drill Detail Modal ──────────────────────────────────────────────────
 function StaffDrillDetailModal({ drill, isFav, isOwn, onClose, onFavorite, onEdit, onClone, onDelete }) {
+  const { drillCategories } = useApp()
   if (!drill) return null
-  const c = CATEGORIES[drill.category] || CATEGORIES.technical
+  const c = drillCatTheme(drill.category, drillCategories)
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center"
       style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
@@ -364,13 +401,33 @@ function StaffDrillDetailModal({ drill, isFav, isOwn, onClose, onFavorite, onEdi
 
 // ── Staff Drill Editor Modal ──────────────────────────────────────────────────
 function StaffDrillEditorModal({ drill, onClose, onSave, saving }) {
+  const { drillCategories, addDrillCategory } = useApp()
+  const categories = drillCategories?.length ? drillCategories : DEFAULT_DRILL_CATEGORIES
   const isEdit = !!drill?.id
   const [form, setForm] = useState(() => drill ? { ...EMPTY_DRILL_FORM, ...drill } : { ...EMPTY_DRILL_FORM })
   const [errors, setErrors] = useState({})
   const [eqInput, setEqInput] = useState('')
   const [uploadingDiagram, setUploadingDiagram] = useState(false)
+  const [addingCat, setAddingCat] = useState(false)
+  const [newCatLabel, setNewCatLabel] = useState('')
+  const [savingCat, setSavingCat] = useState(false)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleAddCategory = async () => {
+    const label = newCatLabel.trim()
+    if (!label) return
+    setSavingCat(true)
+    try {
+      const color = COLOR_KEYS[categories.length % COLOR_KEYS.length]
+      const cat = await addDrillCategory(label, color)
+      if (cat?.key) set('category', cat.key)
+      setNewCatLabel('')
+      setAddingCat(false)
+    } finally {
+      setSavingCat(false)
+    }
+  }
 
   const handleDiagramUpload = async (e) => {
     const file = e.target.files?.[0]
@@ -449,15 +506,40 @@ function StaffDrillEditorModal({ drill, onClose, onSave, saving }) {
           <div>
             <label className="text-xs font-semibold text-gray-700 block mb-2">Category *</label>
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(CATEGORIES).map(([key, cat]) => (
-                <button key={key} type="button" onClick={() => set('category', key)}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition ${
-                    form.category === key ? `${cat.bg} ${cat.text} ${cat.border}` : 'bg-white text-gray-500 border-gray-200'
-                  }`}>
-                  {cat.label}
+              {categories.map(cat => {
+                const theme = COLOR_THEMES[cat.color] || COLOR_THEMES.slate
+                return (
+                  <button key={cat.key} type="button" onClick={() => set('category', cat.key)}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition ${
+                      form.category === cat.key ? `${theme.bg} ${theme.text} ${theme.border}` : 'bg-white text-gray-500 border-gray-200'
+                    }`}>
+                    {cat.label}
+                  </button>
+                )
+              })}
+              {!addingCat && (
+                <button type="button" onClick={() => setAddingCat(true)}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 transition">
+                  + New category
                 </button>
-              ))}
+              )}
             </div>
+            {addingCat && (
+              <div className="flex gap-2 mt-2">
+                <input value={newCatLabel} onChange={e => setNewCatLabel(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddCategory())}
+                  placeholder="e.g. Goalkeeping" autoFocus
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-brand-400" />
+                <button type="button" onClick={handleAddCategory} disabled={!newCatLabel.trim() || savingCat}
+                  className="px-3 py-1.5 bg-brand-600 text-white rounded-xl text-xs font-bold disabled:opacity-40">
+                  Add
+                </button>
+                <button type="button" onClick={() => { setAddingCat(false); setNewCatLabel('') }}
+                  className="px-2 py-1.5 text-gray-400 hover:text-gray-600">
+                  <X size={14} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Age / Duration / Players */}
@@ -618,6 +700,8 @@ function StaffDrillEditorModal({ drill, onClose, onSave, saving }) {
 
 // ── Staff Drill Library (full drill management for coaches) ───────────────────
 function StaffDrillLibrary({ academyId, coachId, sportName }) {
+  const { drillCategories, addDrillCategory, removeDrillCategory } = useApp()
+  const categories = drillCategories?.length ? drillCategories : DEFAULT_DRILL_CATEGORIES
   const [drills,     setDrills]     = useState([])
   const [favorites,  setFavorites]  = useState(new Set())
   const [loading,    setLoading]    = useState(true)
@@ -628,6 +712,7 @@ function StaffDrillLibrary({ academyId, coachId, sportName }) {
   const [selected,   setSelected]   = useState(null)
   const [editing,    setEditing]    = useState(null)
   const [showEditor, setShowEditor] = useState(false)
+  const [showCatManager, setShowCatManager] = useState(false)
   const [toast,      setToast]      = useState(null)
 
   const showToast = (msg, type = 'success') => {
@@ -733,6 +818,10 @@ function StaffDrillLibrary({ academyId, coachId, sportName }) {
             placeholder="Search drills…"
             className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400" />
         </div>
+        <button onClick={() => setShowCatManager(true)}
+          className="p-2 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition flex-shrink-0" title="Manage categories">
+          <Settings2 size={16} />
+        </button>
         <button onClick={() => { setEditing(null); setShowEditor(true) }}
           className="flex items-center gap-1 px-3 py-2 bg-brand-600 text-white rounded-xl text-sm font-semibold flex-shrink-0">
           <Plus size={14}/> Add
@@ -750,12 +839,15 @@ function StaffDrillLibrary({ academyId, coachId, sportName }) {
           className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 border transition ${catFilter === 'all' && !showFavs ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200 text-gray-600'}`}>
           All
         </button>
-        {Object.entries(CATEGORIES).map(([key, cat]) => (
-          <button key={key} onClick={() => { setCatFilter(key); setShowFavs(false) }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 border transition ${catFilter === key && !showFavs ? `${cat.bg} ${cat.text} ${cat.border}` : 'bg-white border-gray-200 text-gray-600'}`}>
-            {cat.label}
-          </button>
-        ))}
+        {categories.map(cat => {
+          const theme = COLOR_THEMES[cat.color] || COLOR_THEMES.slate
+          return (
+            <button key={cat.key} onClick={() => { setCatFilter(cat.key); setShowFavs(false) }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 border transition ${catFilter === cat.key && !showFavs ? `${theme.bg} ${theme.text} ${theme.border}` : 'bg-white border-gray-200 text-gray-600'}`}>
+              {cat.label}
+            </button>
+          )
+        })}
         <button onClick={() => { setShowFavs(f => !f); setCatFilter('all') }}
           className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 flex items-center gap-1.5 border transition ${showFavs ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white border-gray-200 text-gray-600'}`}>
           <Heart size={11} fill={showFavs ? 'currentColor' : 'none'}/> Favs ({favorites.size})
@@ -817,12 +909,76 @@ function StaffDrillLibrary({ academyId, coachId, sportName }) {
           saving={saving}
         />
       )}
+
+      {showCatManager && (
+        <DrillCategoryManager
+          categories={categories}
+          addDrillCategory={addDrillCategory}
+          removeDrillCategory={removeDrillCategory}
+          onClose={() => setShowCatManager(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Drill Category Manager Modal ────────────────────────────────────────────────
+function DrillCategoryManager({ categories, addDrillCategory, removeDrillCategory, onClose }) {
+  const [label, setLabel] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleAdd() {
+    if (!label.trim()) return
+    setSaving(true)
+    const color = COLOR_KEYS[categories.length % COLOR_KEYS.length]
+    await addDrillCategory(label.trim(), color)
+    setLabel('')
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100">
+          <h2 className="text-base font-black text-gray-900">Drill Categories</h2>
+          <button onClick={onClose} className="p-1.5 rounded-xl bg-gray-100"><X size={15} /></button>
+        </div>
+        <div className="px-5 py-4 space-y-3 max-h-72 overflow-y-auto">
+          {categories.map(cat => {
+            const theme = COLOR_THEMES[cat.color] || COLOR_THEMES.slate
+            return (
+              <div key={cat.key} className="flex items-center justify-between">
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${theme.bg} ${theme.text} ${theme.border}`}>
+                  {cat.label}
+                </span>
+                {cat.id && (
+                  <button onClick={() => removeDrillCategory(cat.id)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <div className="px-5 pb-5 border-t border-gray-100 pt-3 flex gap-2">
+          <input value={label} onChange={e => setLabel(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            placeholder="New category name…"
+            className="flex-1 input-field" />
+          <button onClick={handleAdd} disabled={!label.trim() || saving}
+            className="px-4 py-2 bg-brand-600 text-white rounded-xl text-sm font-bold disabled:opacity-40">
+            Add
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── Drill Picker Modal ────────────────────────────────────────────────────────
 function DrillPicker({ category, academyId, sportName, onSelect, onClose }) {
+  const { drillCategories } = useApp()
   const [drills, setDrills] = useState([])
   const [q, setQ] = useState('')
 
@@ -853,18 +1009,21 @@ function DrillPicker({ category, academyId, sportName, onSelect, onClose }) {
           />
         </div>
         <div className="overflow-y-auto flex-1 divide-y divide-gray-50">
-          {filtered.map(d => (
-            <button key={d.id} onClick={() => onSelect(d)}
-              className="w-full text-left px-4 py-3 hover:bg-gray-50 transition flex items-start gap-3">
-              <span className={`mt-0.5 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${catStyle(d.category)}`}>
-                {catLabel(d.category)}
-              </span>
-              <div>
-                <p className="font-semibold text-sm text-gray-900">{d.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{d.duration}m · {d.age_group} · {d.difficulty}</p>
-              </div>
-            </button>
-          ))}
+          {filtered.map(d => {
+            const t = drillCatTheme(d.category, drillCategories)
+            return (
+              <button key={d.id} onClick={() => onSelect(d)}
+                className="w-full text-left px-4 py-3 hover:bg-gray-50 transition flex items-start gap-3">
+                <span className={`mt-0.5 text-[10px] px-2 py-0.5 rounded-full font-semibold border ${t.bg} ${t.text} ${t.border}`}>
+                  {drillCat(d.category, drillCategories).label}
+                </span>
+                <div>
+                  <p className="font-semibold text-sm text-gray-900">{d.name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{d.duration}m · {d.age_group} · {d.difficulty}</p>
+                </div>
+              </button>
+            )
+          })}
           {filtered.length === 0 && (
             <p className="px-4 py-8 text-center text-sm text-gray-400">No drills found</p>
           )}

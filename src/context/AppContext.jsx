@@ -242,6 +242,7 @@ export function AppProvider({ children }) {
   const [leaveRequests,  setLeaveRequests]  = useState([])
   const [trialSources,   setTrialSources]   = useState([])
   const [ageGroups,      setAgeGroups]      = useState([])
+  const [drillCategories, setDrillCategories] = useState([])
   const [toast,          setToast]          = useState(null)
   const [dataLoading,    setDataLoading]    = useState(false)
 
@@ -317,6 +318,7 @@ export function AppProvider({ children }) {
         logger.warn?.('fetchFeePlans background failed', err) ?? console.warn('fetchFeePlans background failed', err))
       db.fetchTrialSources(academyId).then(setTrialSources).catch(() => {})
       db.fetchAgeGroups(academyId).then(setAgeGroups).catch(() => {})
+      db.fetchDrillCategories(academyId).then(setDrillCategories).catch(() => {})
 
       // Auto-suspend overdue students after configurable grace period.
       // Throttled to once per hour per browser so re-mounting AppProvider (sport switch,
@@ -1622,6 +1624,21 @@ export function AppProvider({ children }) {
     } catch (err) { showToast(err.message || 'Failed to remove age group', 'error') }
   }
 
+  const addDrillCategory = async (label, color) => {
+    try {
+      const cat = await db.insertDrillCategory(label, color)
+      setDrillCategories(prev => [...prev, cat])
+      return cat
+    } catch (err) { showToast(err.message || 'Failed to add category', 'error') }
+  }
+
+  const removeDrillCategory = async (id) => {
+    try {
+      await db.deleteDrillCategory(id)
+      setDrillCategories(prev => prev.filter(c => c.id !== id))
+    } catch (err) { showToast(err.message || 'Failed to remove category', 'error') }
+  }
+
   // ── Batches ───────────────────────────────────────────
 
   const addBatch = async (b) => {
@@ -2456,6 +2473,7 @@ export function AppProvider({ children }) {
       trials: staffScopedTrials, addTrial, updateTrialStatus, deleteTrial,
       trialSources, addTrialSource, removeTrialSource,
       ageGroups, addAgeGroup, removeAgeGroup,
+      drillCategories, addDrillCategory, removeDrillCategory,
       refreshData: loadAll,
       batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, reassignPrimaryBatch, updateBatch, updateBatchFee, deleteBatch,
       feePlans: filteredFeePlans, addFeePlan, editFeePlan, removeFeePlan,

@@ -754,6 +754,34 @@ export async function deleteAgeGroup(id) {
   if (error) throw error
 }
 
+// ── Drill categories (replaces hardcoded CATEGORIES list) ───
+
+export async function fetchDrillCategories(academyId) {
+  const { data, error } = await supabase
+    .from('drill_categories')
+    .select('*')
+    .eq('academy_id', academyId)
+    .order('sort_order')
+    .order('id')
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return data || []
+}
+
+export async function insertDrillCategory(label, color) {
+  const { data, error } = await supabase.rpc('secure_insert_drill_category', {
+    p_label: label.trim(), p_color: color || 'slate', p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+export async function deleteDrillCategory(id) {
+  const { error } = await supabase.rpc('secure_delete_drill_category', {
+    p_id: id, p_token: _sessionToken(),
+  })
+  if (error) throw error
+}
+
 // ── Batches ───────────────────────────────────────────────
 export async function fetchBatches(academyId) {
   let query = supabase.from('batches').select('*').order('id')
