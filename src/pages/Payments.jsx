@@ -970,7 +970,7 @@ async function exportPaymentsToExcel({ records, studentMap, title, showToast }) 
   try {
     const ExcelJS = (await import('exceljs')).default
     const wb = new ExcelJS.Workbook()
-    wb.creator = 'SportFlow CRM'
+    wb.creator = 'Khelit'
     wb.created = new Date()
 
     const BRAND = '2563eb', DARK = '1e3a5f'

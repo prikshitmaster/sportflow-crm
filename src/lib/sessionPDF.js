@@ -250,7 +250,7 @@ function buildBodyHTML({ plan, phaseHTML, totalDur, batchName, academyName, coac
 
   <!-- ── FOOTER ── -->
   <div style="margin-top:6px;border-top:1px solid #ddd;padding-top:4px;display:flex;justify-content:space-between;font-size:7pt;color:#999">
-    <span>SportFlow CRM</span>
+    <span>Khelit</span>
     <span>Generated: ${new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })}</span>
   </div>`
 }

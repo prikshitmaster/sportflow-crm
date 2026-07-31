@@ -142,7 +142,7 @@ export default function Inventory() {
           <p className="font-black text-gray-900 text-base">Available in a future Premium update</p>
           <p className="text-sm text-gray-600 mt-1">
             Inventory Management is in development and will be available as part of the
-            SportFlow Premium tier. Your existing data and features are unaffected.
+            Khelit Premium tier. Your existing data and features are unaffected.
           </p>
           <p className="text-xs text-amber-700 font-semibold mt-3 uppercase tracking-wide">
             Planned: Equipment catalogue · Issue & return tracking · Low stock alerts · Export reports

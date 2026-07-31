@@ -333,7 +333,7 @@ export default function SportSelect() {
               <Zap size={18} className="text-white" />
             </div>
             <div>
-              <p className="text-sm font-black text-gray-900 leading-tight">SportFlow</p>
+              <p className="text-sm font-black text-gray-900 leading-tight">Khelit</p>
               <p className="text-[11px] text-gray-500 leading-tight">{user?.academy}</p>
             </div>
           </div>

@@ -740,7 +740,7 @@ export async function exportAcademyData(academyId, { download = true, dateFrom, 
     XLSX.utils.book_append_sheet(wb, applySheet(hdrs, rows, [150, 80, 130, 140, 80, 80, 150, 90, 85, 130, 80, 80]), 'Batches')
   }
 
-  const filename = `SportFlow-Export-${stamp}${sport ? '-' + sport : ''}.xlsx`
+  const filename = `Khelit-Export-${stamp}${sport ? '-' + sport : ''}.xlsx`
   const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
   if (download) {
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })

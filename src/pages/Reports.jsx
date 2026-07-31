@@ -202,7 +202,7 @@ export default function Reports() {
       {/* Page header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">SportFlow CRM</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Khelit</p>
           <h2 className="text-2xl font-black text-gray-900 leading-none">Reports & Analytics</h2>
           <p className="text-xs text-gray-400 mt-1">Generated {generatedAt}</p>
         </div>

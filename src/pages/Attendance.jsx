@@ -51,7 +51,7 @@ async function exportToExcel({ students, batchName, fromDate, toDate, showToast 
     }
 
     const wb = new ExcelJS.Workbook()
-    wb.creator = 'SportFlow CRM'
+    wb.creator = 'Khelit'
     wb.created = new Date()
 
     // ── Sheet 1: Attendance Grid ─────────────────────────────

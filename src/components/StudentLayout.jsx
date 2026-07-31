@@ -63,7 +63,7 @@ export default function StudentLayout() {
               ? <img src={academyLogo} alt="logo" className="w-full h-full object-cover" />
               : <Zap size={13} className="text-white" />}
           </div>
-          <span className="font-bold text-gray-900 text-sm">SportFlow</span>
+          <span className="font-bold text-gray-900 text-sm">Khelit</span>
         </div>
         <div className="flex items-center gap-2">
           {studentUser && (

@@ -167,7 +167,7 @@ export default function TurfBooking() {
           <p className="font-black text-gray-900 text-base">Available in a future Premium update</p>
           <p className="text-sm text-gray-600 mt-1">
             Turf Booking is in development and will be available as part of the
-            SportFlow Premium tier. Supports multiple turfs, courts, or any bookable facility.
+            Khelit Premium tier. Supports multiple turfs, courts, or any bookable facility.
           </p>
           <p className="text-xs text-blue-700 font-semibold mt-3 uppercase tracking-wide">
             Planned: Slot management · Online payments · QR access · Recurring bookings · Utilisation reports

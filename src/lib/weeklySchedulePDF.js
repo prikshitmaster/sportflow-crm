@@ -82,7 +82,7 @@ export async function exportWeeklySchedulePDF({ schedule, academyName }) {
   </table>
 
   <div style="margin-top:8px;border-top:1px solid #ddd;padding-top:4px;display:flex;justify-content:space-between;font-size:8pt;color:#999">
-    <span>${esc(academyName) || 'SportFlow CRM'}</span>
+    <span>${esc(academyName) || 'Khelit'}</span>
     <span>Generated: ${new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })}</span>
   </div>
 

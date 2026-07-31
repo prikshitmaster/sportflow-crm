@@ -22,7 +22,7 @@ const steps = [
 ]
 
 const testimonials = [
-  { name: 'Rajesh Patel', academy: 'Patel Football Academy, Ahmedabad', avatar: 'RP', quote: 'Before SportFlow, I was managing 120 students on WhatsApp groups and Excel sheets. Now I know exactly who paid, who didn\'t, and who needs a follow-up. Game changer.' },
+  { name: 'Rajesh Patel', academy: 'Patel Football Academy, Ahmedabad', avatar: 'RP', quote: 'Before Khelit, I was managing 120 students on WhatsApp groups and Excel sheets. Now I know exactly who paid, who didn\'t, and who needs a follow-up. Game changer.' },
   { name: 'Priya Krishnan', academy: 'Step Up Dance Studio, Bangalore', avatar: 'PK', quote: 'The fee reminder feature alone has reduced my pending collections by 60%. Parents take it seriously when the invoice looks professional.' },
   { name: 'Amit Verma', academy: 'Striker Cricket Academy, Delhi', avatar: 'AV', quote: 'I was skeptical, but the trial management pipeline helped us convert 8 out of 10 trials last month. That\'s ₹20,000 extra per month.' },
 ]
@@ -45,7 +45,7 @@ export default function Landing() {
             <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
               <Zap size={16} className="text-white" />
             </div>
-            <span className="text-lg font-bold text-gray-900">SportFlow</span>
+            <span className="text-lg font-bold text-gray-900">Khelit</span>
           </div>
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-sm text-gray-600 hover:text-gray-900 transition">Features</a>
@@ -202,7 +202,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
             <p className="text-xs font-bold text-brand-600 uppercase tracking-widest mb-3">Real Results</p>
-            <h2 className="text-3xl md:text-4xl font-black text-gray-900">Academy owners love SportFlow</h2>
+            <h2 className="text-3xl md:text-4xl font-black text-gray-900">Academy owners love Khelit</h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {testimonials.map(t => (
@@ -276,7 +276,7 @@ export default function Landing() {
           <h2 className="text-3xl md:text-4xl font-black mb-4">
             Your academy deserves better than<br /><span className="text-brand-400">WhatsApp + Excel</span>
           </h2>
-          <p className="text-gray-400 mb-8">Join 500+ academies already running smarter with SportFlow CRM.</p>
+          <p className="text-gray-400 mb-8">Join 500+ academies already running smarter with Khelit.</p>
           <Link to="/login" className="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-500 text-white font-bold text-lg px-10 py-4 rounded-xl transition shadow-lg shadow-brand-600/30 active:scale-95">
             Start Your Free Trial Today
             <ArrowRight size={20} />
@@ -292,9 +292,9 @@ export default function Landing() {
             <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center">
               <Zap size={14} className="text-white" />
             </div>
-            <span className="text-white font-bold">SportFlow CRM</span>
+            <span className="text-white font-bold">Khelit</span>
           </div>
-          <p className="text-sm text-gray-500">© 2026 SportFlow. Made with ❤️ for Indian sports academies.</p>
+          <p className="text-sm text-gray-500">© 2026 Khelit. Made with ❤️ for Indian sports academies.</p>
           <div className="flex gap-6 text-sm text-gray-500">
             <a href="#" className="hover:text-white transition">Privacy</a>
             <a href="#" className="hover:text-white transition">Terms</a>

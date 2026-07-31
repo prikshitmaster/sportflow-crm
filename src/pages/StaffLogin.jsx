@@ -38,7 +38,7 @@ export default function StaffLogin() {
             <div className="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center">
               <Zap size={18} className="text-white" />
             </div>
-            <span className="text-xl font-bold text-gray-900">SportFlow</span>
+            <span className="text-xl font-bold text-gray-900">Khelit</span>
           </div>
 
           <h1 className="text-2xl font-black text-gray-900 mb-1">Staff login</h1>

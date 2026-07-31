@@ -633,7 +633,7 @@ function DataTab({ user, allStudents, showToast }) {
     <div>
       <SectionHeader
         title="Data Import"
-        desc="Restore a sport backup file (.json) exported from this or another SportFlow academy."
+        desc="Restore a sport backup file (.json) exported from this or another Khelit academy."
       />
 
       {/* Results panel */}
@@ -692,7 +692,7 @@ function DataTab({ user, allStudents, showToast }) {
             <Upload size={22} className="text-gray-400" />
           </div>
           <p className="text-sm font-bold text-gray-700 mb-1">Drop backup file here</p>
-          <p className="text-xs text-gray-400">JSON backup exported from SportFlow (.json)</p>
+          <p className="text-xs text-gray-400">JSON backup exported from Khelit (.json)</p>
           <input
             ref={fileRef}
             type="file"

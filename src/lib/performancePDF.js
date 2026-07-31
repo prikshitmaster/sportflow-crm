@@ -180,7 +180,7 @@ export async function exportPerformanceReport({
   ${assessment.notes ? `<p class="note"><strong>Overall coach note:</strong> ${esc(assessment.notes)}</p>` : ''}
 
   <footer>
-    <span>${esc(academyName || 'SportFlow')} · Football performance report</span>
+    <span>${esc(academyName || 'Khelit')} · Football performance report</span>
     <span>Generated ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
   </footer>
 

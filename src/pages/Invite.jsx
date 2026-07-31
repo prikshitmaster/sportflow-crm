@@ -70,7 +70,7 @@ export default function Invite() {
             <div className="w-12 h-12 bg-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
               <Zap size={22} className="text-white" />
             </div>
-            <h1 className="text-2xl font-black text-gray-900">SportFlow CRM</h1>
+            <h1 className="text-2xl font-black text-gray-900">Khelit</h1>
           </div>
           <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-6 text-center">
             <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -97,7 +97,7 @@ export default function Invite() {
             <div className="w-12 h-12 bg-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
               <Zap size={22} className="text-white" />
             </div>
-            <h1 className="text-2xl font-black text-gray-900">SportFlow CRM</h1>
+            <h1 className="text-2xl font-black text-gray-900">Khelit</h1>
           </div>
           <div className="bg-white rounded-2xl border border-red-200 shadow-sm p-6 text-center">
             <p className="text-sm font-bold text-red-600 mb-2">Invite link invalid or expired</p>
@@ -139,7 +139,7 @@ export default function Invite() {
           <div className="w-12 h-12 bg-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
             <Zap size={22} className="text-white" />
           </div>
-          <h1 className="text-2xl font-black text-gray-900">SportFlow CRM</h1>
+          <h1 className="text-2xl font-black text-gray-900">Khelit</h1>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
@@ -147,7 +147,7 @@ export default function Invite() {
           {invite && (
             <div className="bg-brand-50 border border-brand-100 rounded-xl px-4 py-3 mb-6">
               <p className="text-xs text-brand-600 font-semibold uppercase tracking-wide mb-0.5">You're invited to</p>
-              <p className="text-sm font-bold text-gray-900">{invite.academy_name || 'SportFlow Academy'}</p>
+              <p className="text-sm font-bold text-gray-900">{invite.academy_name || 'Khelit Academy'}</p>
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <span className="text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-semibold">
                   {ACCESS_ROLE_LABEL[invite.access_role] || invite.access_role}

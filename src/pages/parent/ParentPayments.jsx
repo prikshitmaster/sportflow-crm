@@ -79,7 +79,7 @@ export default function ParentPayments() {
         order_id: order.orderId,
         amount:   order.amount,
         currency: order.currency || 'INR',
-        name:     'SportFlow',
+        name:     'Khelit',
         description: `Fees for ${child.name}`,
         prefill:  order.prefill || {},
         theme:    { color: '#2563eb' },

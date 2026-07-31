@@ -41,7 +41,7 @@ export default function ParentLayout() {
           <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center">
             <Zap size={13} className="text-white" />
           </div>
-          <span className="font-bold text-gray-900 text-sm">SportFlow</span>
+          <span className="font-bold text-gray-900 text-sm">Khelit</span>
         </div>
         <div className="flex items-center gap-2">
           {parentUser && (

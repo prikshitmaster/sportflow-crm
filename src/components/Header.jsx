@@ -26,7 +26,7 @@ export default function Header({ onMenuClick }) {
   const { user, role, selectedSport, selectedBranch, sportBranches, students } = useApp()
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const title = titles[pathname] || 'SportFlow CRM'
+  const title = titles[pathname] || 'Khelit'
 
   const branchName = selectedBranch
     ? sportBranches.find(b => b.id === selectedBranch)?.branchName

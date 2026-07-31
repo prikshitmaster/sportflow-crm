@@ -79,7 +79,7 @@ export default function StaffActivate() {
           <div className="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center">
             <Zap size={18} className="text-white" />
           </div>
-          <span className="text-xl font-bold text-gray-900">SportFlow</span>
+          <span className="text-xl font-bold text-gray-900">Khelit</span>
         </div>
 
         {step < 3 && (

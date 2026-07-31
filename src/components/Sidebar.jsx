@@ -121,7 +121,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         </div>
         {!collapsed && (
           <div>
-            <p className="text-sm font-bold text-white leading-tight">SportFlow</p>
+            <p className="text-sm font-bold text-white leading-tight">Khelit</p>
             <p className="text-[10px] text-gray-400 leading-tight">CRM</p>
           </div>
         )}

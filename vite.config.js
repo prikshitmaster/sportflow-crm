@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon-192.svg', 'icon-512.svg'],
       manifest: {
-        name: 'SportFlow CRM',
-        short_name: 'SportFlow',
+        name: 'Khelit',
+        short_name: 'Khelit',
         description: 'Academy Management — Students, Attendance & Fees',
         theme_color: '#2563eb',
         background_color: '#ffffff',
