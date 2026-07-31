@@ -323,10 +323,14 @@ export async function findRecentDuplicatePayment(studentId, amount, withinSecond
   return data?.[0] || null
 }
 
+// Narrowly-scoped RPC (migration 0133) accepting students.manage OR
+// training.manage — position is set from a coach's assessment form as
+// often as from the office's student-edit screen, and coaches usually
+// only hold the latter permission.
 export async function updateStudentPosition(id, position) {
-  const { error } = await supabase.rpc('secure_update_student', {
+  const { error } = await supabase.rpc('secure_update_student_position', {
     p_student_id: id,
-    p_payload:    { position: position || null },
+    p_position:   position || null,
     p_token:      _sessionToken(),
   })
   if (error) throw error

@@ -327,8 +327,17 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
         categoryNotes,
         academyId: user?.academyId,
       })
+      let positionFailed = false
       if (position !== (student.position || '')) {
-        await db.updateStudentPosition(student.id, position || null)
+        // Position lives on the student record, so it goes through the
+        // general student-edit RPC (students.manage) — a stricter permission
+        // than assessments need. A coach who only has training.manage must
+        // still be able to save their scores even when they can't also
+        // update position; this used to throw here and abort the whole save
+        // before onSaved/audit-log/student-notify ran, even though the
+        // assessment itself had already been written by upsertAssessment above.
+        try { await db.updateStudentPosition(student.id, position || null) }
+        catch { positionFailed = true }
       }
       const isUpdate = !!existing
       logAudit({
@@ -337,7 +346,7 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
         entityType: 'assessment',
         entityId:   student.id,
         entityName: student.name,
-        changes:    { month, position: position || '—', batch: student.batch || '—', note: notes || '—' },
+        changes:    { month, position: (positionFailed ? student.position : position) || '—', batch: student.batch || '—', note: notes || '—' },
         academyId:  user?.academyId,
         sport:      sport || student.sport || null,
         branchId:   student.branchId ?? user?.branchId ?? null,
@@ -358,6 +367,10 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
         type:          'performance',
         link:          '/student/stats',
       }).catch(() => {})
+
+      if (positionFailed) {
+        alert('Assessment saved. Position could not be updated — ask an admin for permission to edit student details.')
+      }
     } catch (e) {
       alert(e.message)
     } finally {
