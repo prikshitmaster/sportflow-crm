@@ -1300,18 +1300,34 @@ export function AppProvider({ children }) {
       // than the months billed. Defaults to months → unchanged for every
       // caller that doesn't mark anything inactive.
       const covered   = p.coverageMonths || months
-      const paidTill  = toLocalDateStr(new Date(baseDate.getFullYear(), baseDate.getMonth() + covered, 0))
-      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      const endDate    = new Date(baseDate.getFullYear(), baseDate.getMonth() + covered, 0)
-      const monthLabel = covered === 1
-        ? `${MONTHS[baseDate.getMonth()]} ${baseDate.getFullYear()}`
-        : `${MONTHS[baseDate.getMonth()]}–${MONTHS[endDate.getMonth()]} ${
-            baseDate.getFullYear() === endDate.getFullYear()
-              ? baseDate.getFullYear()
-              : `${baseDate.getFullYear()}/${String(endDate.getFullYear()).slice(2)}`
-          }`
       const payDate      = toLocalDateStr(collectionDate)
-      const coverageStart = toLocalDateStr(baseDate)
+
+      // Manual override: an academy occasionally bills a non-month-aligned
+      // period (e.g. a student who joined mid-month) instead of the usual
+      // 1st-to-month-end coverage. When set, this exact date wins over the
+      // month-math below — everything else (amount, notes, mode) works the
+      // same either way.
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      let paidTill, monthLabel, coverageStart, coverageEnd
+      if (p.customPaidTill) {
+        paidTill      = p.customPaidTill
+        coverageStart = p.coverageStart || toLocalDateStr(baseDate)
+        coverageEnd   = p.customPaidTill
+        const fmt = d => d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+        monthLabel = `${fmt(new Date(coverageStart + 'T00:00:00'))} – ${fmt(new Date(coverageEnd + 'T00:00:00'))}`
+      } else {
+        const endDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + covered, 0)
+        paidTill      = toLocalDateStr(endDate)
+        coverageStart = toLocalDateStr(baseDate)
+        coverageEnd   = null
+        monthLabel = covered === 1
+          ? `${MONTHS[baseDate.getMonth()]} ${baseDate.getFullYear()}`
+          : `${MONTHS[baseDate.getMonth()]}–${MONTHS[endDate.getMonth()]} ${
+              baseDate.getFullYear() === endDate.getFullYear()
+                ? baseDate.getFullYear()
+                : `${baseDate.getFullYear()}/${String(endDate.getFullYear()).slice(2)}`
+            }`
+      }
 
       // ── Inactive months only — no money collected, so no invoice ──────────
       // The student was not training these months. We move their coverage
@@ -1343,7 +1359,7 @@ export function AppProvider({ children }) {
 
       const invoiceId    = await db.fetchNextInvoiceId()
       const isChequeEarly = p.mode === 'Cheque'
-      const paymentRow   = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, academyId: user?.academyId, status: isChequeEarly ? 'Pending' : 'Paid' }
+      const paymentRow   = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, coverageEnd, academyId: user?.academyId, status: isChequeEarly ? 'Pending' : 'Paid' }
       // DB insert first — if it fails (PK collision, RLS reject), no optimistic row gets left behind.
       await db.insertPayment(paymentRow, invoiceId)
 
@@ -1354,7 +1370,7 @@ export function AppProvider({ children }) {
       // Optimistic state update — only runs if DB insert succeeded above.
       setPayments(prev => [{
         ...paymentRow, id: invoiceId,
-        date: payDate, status: insertStatus, month: monthLabel, coverageStart,
+        date: payDate, status: insertStatus, month: monthLabel, coverageStart, coverageEnd,
       }, ...prev])
 
       const student = students.find(s => String(s.id) === String(p.studentId))
@@ -1425,13 +1441,19 @@ export function AppProvider({ children }) {
       const student = students.find(s => String(s.id) === String(payment.studentId))
       if (student) {
         // Find the previous payment with the highest coverage end date.
-        // Use coverageStart (stored since migration 0020) when available;
-        // fall back to date (collection date) for older rows — correct for non-advance payments.
+        // Use coverageEnd (stored since migration 0129) directly when the
+        // payment used a custom date range — recomputing it from months
+        // would land on the wrong, month-aligned date. Otherwise fall back
+        // to coverageStart (since 0020) + monthsCovered, or date for older
+        // rows without either — correct for non-advance payments.
         const studentPaid = remaining
           .filter(p => String(p.studentId) === String(payment.studentId) && p.status === 'Paid')
         let newPaidTill = null
         if (studentPaid.length > 0) {
           const withEnd = studentPaid.map(p => {
+            if (p.coverageEnd) {
+              return { end: new Date(p.coverageEnd + 'T00:00:00'), endStr: p.coverageEnd }
+            }
             const base = new Date((p.coverageStart || p.date) + 'T00:00:00')
             const m    = p.monthsCovered || 1
             const end  = new Date(base.getFullYear(), base.getMonth() + m, 0)

@@ -1389,6 +1389,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // Month keys (YYYY-MM) the student was inactive for — no fee charged, and no
   // invoice is created for them since no money changes hands.
   const [inactiveMonths, setInactiveMonths] = useState([])
+  // Manual override for a non-month-aligned billing period (e.g. a student
+  // who joined mid-month) — bypasses the whole due-months/plan system below.
+  const [customDates,    setCustomDates]   = useState(false)
+  const [customStart,    setCustomStart]   = useState('')
+  const [customEnd,      setCustomEnd]     = useState('')
 
   const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -1521,6 +1526,8 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     // no invoice is written — hence zero is only blocked when money was expected.
     if (!form.studentId) return
     if (finalAmount <= 0 && !isAllInactive) return
+    if (customDates && !hasCustomRange) return
+    if (hasCustomRange && customEnd < customStart) return
     setLoading(true)
     try {
       const isCheque = form.mode === 'Cheque'
@@ -1536,9 +1543,13 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         coverageMonths,              // months paidTill advances by (charged + inactive)
         inactiveCount: inactiveList.length,
         // Nothing collected → AppContext skips the invoice insert entirely.
-        noChargeOnly: isAllInactive,
+        noChargeOnly: !customDates && isAllInactive,
         lateFee: lateFeeAmt, paymentDate,
         advanceStart: coverageStart,
+        // Manual custom coverage period — see AppContext.addPayment, this
+        // exact end date wins over the month-count math above when present.
+        customPaidTill: hasCustomRange ? customEnd : undefined,
+        coverageEnd:    hasCustomRange ? customEnd : undefined,
       })
     } finally {
       setLoading(false)
@@ -1640,20 +1651,30 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   )
   const sanityRatio = sanityMismatch ? (finalAmount / expectedTotal) : 1
 
+  const hasCustomRange = customDates && customStart && customEnd
+
   // With the month picker on, coverage starts at the first pending month so the
   // payment clears arrears instead of pushing the student forward from today.
-  const coverageStart = monthPickerOn ? `${dueMonths[0].key}-01` : advanceStart
+  const coverageStart = hasCustomRange ? customStart
+    : monthPickerOn ? `${dueMonths[0].key}-01` : advanceStart
   const coverageBase = coverageStart ? new Date(coverageStart + 'T00:00:00') : new Date(paymentDate + 'T00:00:00')
 
   // Duplicate guard: paidTill already covers the start of the new coverage period
-  const coverageStartStr = `${coverageBase.getFullYear()}-${String(coverageBase.getMonth() + 1).padStart(2, '0')}-01`
+  const coverageStartStr = hasCustomRange
+    ? customStart
+    : `${coverageBase.getFullYear()}-${String(coverageBase.getMonth() + 1).padStart(2, '0')}-01`
   const isDuplicate = !!(form.studentId && selectedStudent?.paidTill && selectedStudent.paidTill >= coverageStartStr)
   // CONFIRM gate covers BOTH soft duplicate (paidTill already covers this period) and sanity mismatch.
   // Without this, the duplicate warning was visual-only — server-side 60s dedupe only catches rapid double-clicks.
   const confirmTyped = confirmText.trim().toUpperCase() === 'CONFIRM'
   const confirmOk = (!sanityMismatch && !isDuplicate) || confirmTyped
-  const coverageEnd  = new Date(coverageBase.getFullYear(), coverageBase.getMonth() + coverageMonths, 0)
-  const coverageLabel = coverageMonths === 1
+  const coverageEnd  = hasCustomRange
+    ? new Date(customEnd + 'T00:00:00')
+    : new Date(coverageBase.getFullYear(), coverageBase.getMonth() + coverageMonths, 0)
+  const fmtCoverageDate = d => d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+  const coverageLabel = hasCustomRange
+    ? `${fmtCoverageDate(coverageBase)} – ${fmtCoverageDate(coverageEnd)}`
+    : coverageMonths === 1
     ? `${MO[coverageBase.getMonth()]} ${coverageBase.getFullYear()}`
     : `${MO[coverageBase.getMonth()]}–${MO[coverageEnd.getMonth()]} ${
         coverageBase.getFullYear() === coverageEnd.getFullYear()
@@ -1782,36 +1803,70 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         </div>
 
         {/* Payment plan pills */}
-        <div>
-          <label className="label">Payment Plan</label>
-          <div className="grid grid-cols-4 gap-2">
-            {PLAN_OPTS.map(pt => (
-              <button key={pt.key} type="button"
-                onClick={() => {
-                  setAmountOverride(null)
-                  const planData = getFeePlanRate(form.batchId, selectedStudent?.trainingType, pt.key)
-                  setForm(f => ({ ...f, paymentType: pt.key, baseAmount: planData?.rate ?? f.baseAmount }))
-                }}
-                className={`py-2.5 rounded-xl text-xs font-bold border transition ${
-                  form.paymentType === pt.key
-                    ? 'bg-brand-600 text-white border-brand-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <div>{pt.label}</div>
-                <div className={`font-normal mt-0.5 ${form.paymentType === pt.key ? 'text-brand-200' : 'text-gray-400'}`}>{pt.sub}</div>
-              </button>
-            ))}
+        {!customDates && (
+          <div>
+            <label className="label">Payment Plan</label>
+            <div className="grid grid-cols-4 gap-2">
+              {PLAN_OPTS.map(pt => (
+                <button key={pt.key} type="button"
+                  onClick={() => {
+                    setAmountOverride(null)
+                    const planData = getFeePlanRate(form.batchId, selectedStudent?.trainingType, pt.key)
+                    setForm(f => ({ ...f, paymentType: pt.key, baseAmount: planData?.rate ?? f.baseAmount }))
+                  }}
+                  className={`py-2.5 rounded-xl text-xs font-bold border transition ${
+                    form.paymentType === pt.key
+                      ? 'bg-brand-600 text-white border-brand-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <div>{pt.label}</div>
+                  <div className={`font-normal mt-0.5 ${form.paymentType === pt.key ? 'text-brand-200' : 'text-gray-400'}`}>{pt.sub}</div>
+                </button>
+              ))}
+            </div>
+            {form.paymentType === 'custom' && (
+              <div className="mt-2 flex items-center gap-2">
+                <label className="text-xs text-gray-500 whitespace-nowrap">Number of months:</label>
+                <input
+                  className="input w-24 text-center font-bold"
+                  type="number" min="1" max="36"
+                  value={customMonths}
+                  onChange={e => { setCustomMonths(Math.max(1, Number(e.target.value))); setAmountOverride(null) }}
+                />
+              </div>
+            )}
           </div>
-          {form.paymentType === 'custom' && (
-            <div className="mt-2 flex items-center gap-2">
-              <label className="text-xs text-gray-500 whitespace-nowrap">Number of months:</label>
-              <input
-                className="input w-24 text-center font-bold"
-                type="number" min="1" max="36"
-                value={customMonths}
-                onChange={e => { setCustomMonths(Math.max(1, Number(e.target.value))); setAmountOverride(null) }}
-              />
+        )}
+
+        {/* Custom coverage date range — for a non-month-aligned billing
+            period (e.g. a student who joined mid-month). Manual override:
+            bypasses the plan pills and due-months picker entirely. */}
+        <div>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" checked={customDates}
+              onChange={e => { setCustomDates(e.target.checked); setAmountOverride(null) }}
+              className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+            <span className="text-xs font-semibold text-gray-700">Custom coverage dates</span>
+          </label>
+          {customDates && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] text-gray-500">Covers from</label>
+                <input type="date" className="input w-full" value={customStart}
+                  onChange={e => setCustomStart(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-[11px] text-gray-500">Covers until</label>
+                <input type="date" className="input w-full" value={customEnd}
+                  onChange={e => setCustomEnd(e.target.value)} />
+              </div>
+              {hasCustomRange && customEnd < customStart && (
+                <p className="col-span-2 text-xs text-red-600">"Covers until" must be on or after "Covers from".</p>
+              )}
+              <p className="col-span-2 text-[11px] text-gray-400">
+                Set the amount for this exact period in the Total field below.
+              </p>
             </div>
           )}
         </div>
@@ -1892,7 +1947,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         )}
 
         {/* Pending months — tick to charge, untick if the student was inactive */}
-        {monthPickerOn && (
+        {!customDates && monthPickerOn && (
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-3.5 py-2.5 bg-gray-50 border-b border-gray-200">
               <div>
@@ -1965,7 +2020,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
           </div>
         )}
 
-        {isAllInactive && (
+        {!customDates && isAllInactive && (
           <div className="bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-700 space-y-1">
             <p>
               <strong className="text-gray-900">
@@ -1998,7 +2053,9 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             </div>
           )}
           <div className="flex justify-between text-xs text-gray-500">
-            {monthPickerOn
+            {hasCustomRange
+              ? <span>Custom period · amount set below</span>
+              : monthPickerOn
               ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × {months} month{months !== 1 ? 's' : ''} charged</span>
               : form.paymentType === 'monthly'
               ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × 1 month</span>
@@ -2153,7 +2210,8 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         <button
           className={isDuplicate || sanityMismatch ? 'px-5 py-2.5 rounded-xl font-bold text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed' : 'btn-primary'}
           onClick={handleSave}
-          disabled={loading || (finalAmount <= 0 && !isAllInactive) || !confirmOk}
+          disabled={loading || (finalAmount <= 0 && !isAllInactive) || !confirmOk
+            || (customDates && (!hasCustomRange || customEnd < customStart))}
         >
           {loading ? '…'
             : isAllInactive ? `Mark ${dueMonths.length} month${dueMonths.length !== 1 ? 's' : ''} inactive`
