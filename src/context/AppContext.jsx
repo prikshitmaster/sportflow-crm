@@ -1303,8 +1303,19 @@ export function AppProvider({ children }) {
         return
       }
       const collectionDate = p.paymentDate ? new Date(p.paymentDate + 'T00:00:00') : new Date()
-      // For advance payments, coverage starts from the month after the student's current paidTill
-      const baseDate  = p.advanceStart ? new Date(p.advanceStart + 'T00:00:00') : collectionDate
+      // For advance payments, coverage starts from the month after the student's current paidTill.
+      //
+      // Otherwise coverage falls back to the collection date — and that date MUST
+      // be snapped to the 1st. Coverage always ENDS on a month boundary
+      // (`new Date(y, m + covered, 0)`), so a mid-month start silently charged
+      // for the part of the month that had already elapsed: a monthly payment
+      // dated the 31st produced paidTill = the 31st (zero days of cover, overdue
+      // next morning), and a quarterly paid on the 31st bought 61 days instead of
+      // 91. The other two paths (month picker, advance) already anchor to the 1st;
+      // this one is now consistent with them.
+      const baseDate  = p.advanceStart
+        ? new Date(p.advanceStart + 'T00:00:00')
+        : new Date(collectionDate.getFullYear(), collectionDate.getMonth(), 1)
       const months    = p.monthsCovered || (p.paymentType === 'quarterly' ? 3 : p.paymentType === 'yearly' ? 12 : 1)
       // Inactive months are covered but not charged, so coverage can run longer
       // than the months billed. Defaults to months → unchanged for every

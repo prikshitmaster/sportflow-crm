@@ -1664,7 +1664,16 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // payment clears arrears instead of pushing the student forward from today.
   const coverageStart = hasCustomRange ? customStart
     : monthPickerOn ? `${dueMonths[0].key}-01` : advanceStart
-  const coverageBase = coverageStart ? new Date(coverageStart + 'T00:00:00') : new Date(paymentDate + 'T00:00:00')
+  // No explicit start → fall back to the 1st of the collection month, never the
+  // collection day. Coverage always ends on a month boundary, so a mid-month
+  // start bills for days that already elapsed (see addPayment for the full note).
+  // Mirrors what addPayment actually writes, so this preview can't disagree.
+  const coverageBase = coverageStart
+    ? new Date(coverageStart + 'T00:00:00')
+    : (() => {
+        const d = new Date(paymentDate + 'T00:00:00')
+        return new Date(d.getFullYear(), d.getMonth(), 1)
+      })()
 
   // Duplicate guard: paidTill already covers the start of the new coverage period
   const coverageStartStr = hasCustomRange
