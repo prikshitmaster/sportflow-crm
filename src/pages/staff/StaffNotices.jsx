@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext'
 import { Bell, Calendar, Trophy, MapPin, Send, Megaphone, Check } from 'lucide-react'
 import SendStaffNoticeModal from '../../components/SendStaffNoticeModal'
 import { staffMatchesAudience } from '../../lib/announcementAudience'
-import { fetchNoticeReceipts, actionNotification } from '../../lib/notifications'
+import { fetchNoticeReceipts, actionNotification, markRead } from '../../lib/notifications'
 
 export default function StaffNotices() {
   // `events` and `announcements` from context are already sport+branch scoped
@@ -51,7 +51,24 @@ export default function StaffNotices() {
     if (staffNotices.length === 0) return
     let alive = true
     Promise.all(staffNotices.map(a => fetchNoticeReceipts(a.id).then(rows => [a.id, rows])))
-      .then(pairs => { if (alive) setReceipts(Object.fromEntries(pairs)) })
+      .then(pairs => {
+        if (!alive) return
+        setReceipts(Object.fromEntries(pairs))
+        // The full notice body is already shown inline in the list below, so
+        // this tab IS how staff read a notice — not only the separate bell
+        // dropdown. Mark each one's own row read here too, or a staff member
+        // who never opens the bell would never appear in read receipts.
+        pairs.forEach(([noticeId, rows]) => {
+          const mine = rows.find(r => r.recipient_type === 'staff' && String(r.recipient_id) === String(user?.id))
+          if (mine && !mine.read) {
+            markRead(mine.id).catch(() => {})
+            setReceipts(prev => ({
+              ...prev,
+              [noticeId]: (prev[noticeId] || []).map(r => r.id === mine.id ? { ...r, read: true } : r),
+            }))
+          }
+        })
+      })
       .catch(() => {})
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,7 +158,12 @@ export default function StaffNotices() {
           <div className="space-y-3">
             {staffNotices.map(a => {
               const rows      = receipts[a.id] || []
-              const confirmed = rows.filter(r => r.actioned_at)
+              // See Community.jsx's identical fallback — a notice with no
+              // action_label has no "Got it" button to ever set actioned_at,
+              // so it must fall back to the plain `read` flag or it can never
+              // show a single confirmation.
+              const needsAction = rows.some(r => r.action_label)
+              const confirmed = rows.filter(r => needsAction ? r.actioned_at : r.read)
               const mine      = rows.find(r => r.recipient_type === 'staff' && String(r.recipient_id) === String(user?.id))
               return (
                 <div key={a.id} className="bg-white rounded-2xl border border-gray-100 p-4">
@@ -178,9 +200,12 @@ export default function StaffNotices() {
                             <div className="flex -space-x-2">
                               {confirmed.slice(0, 5).map(r => {
                                 const m = staffById[r.recipient_id]
-                                return (
-                                  <div key={r.recipient_id}
-                                    title={`${m?.name || 'Staff'} — confirmed`}
+                                const label = `${m?.name || 'Staff'} — ${needsAction ? 'confirmed' : 'read'}`
+                                return m?.photoUrl ? (
+                                  <img key={r.recipient_id} src={m.photoUrl} alt={m.name} title={label}
+                                    className="w-6 h-6 rounded-full object-cover border-2 border-white flex-shrink-0" />
+                                ) : (
+                                  <div key={r.recipient_id} title={label}
                                     className="w-6 h-6 rounded-full bg-emerald-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-emerald-700">
                                     {m?.name?.[0]?.toUpperCase() || '?'}
                                   </div>
@@ -194,7 +219,7 @@ export default function StaffNotices() {
                             </div>
                           )}
                           <span className="text-[11px] text-gray-400">
-                            {confirmed.length}/{rows.length} confirmed
+                            {confirmed.length}/{rows.length} {needsAction ? 'confirmed' : 'read'}
                           </span>
                         </div>
                       )}

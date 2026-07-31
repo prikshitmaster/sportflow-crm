@@ -69,7 +69,13 @@ export default function Community() {
     return () => { alive = false }
   }, [detail])
   const staffById = Object.fromEntries((staff || []).map(s => [String(s.id), s]))
-  const confirmedReceipts = detailReceipts.filter(r => r.actioned_at)
+  // Only notices with an explicit action_label have a "Got it" button to set
+  // actioned_at — a plain FYI notice never gets one, so counting only
+  // actioned_at left those permanently at "0 confirmed" no matter how many
+  // staff had opened and read it. Fall back to the plain `read` flag (set
+  // when a staff member taps the notice in their bell) for those.
+  const receiptsNeedAction = detailReceipts.some(r => r.action_label)
+  const confirmedReceipts  = detailReceipts.filter(r => receiptsNeedAction ? r.actioned_at : r.read)
 
   return (
     <div className="space-y-5 max-w-[800px]">
@@ -195,9 +201,12 @@ export default function Community() {
                 <div className="flex -space-x-2">
                   {confirmedReceipts.slice(0, 6).map(r => {
                     const m = staffById[r.recipient_id]
-                    return (
-                      <div key={r.recipient_id}
-                        title={`${m?.name || 'Staff'} — confirmed`}
+                    const label = `${m?.name || 'Staff'} — ${receiptsNeedAction ? 'confirmed' : 'read'}`
+                    return m?.photoUrl ? (
+                      <img key={r.recipient_id} src={m.photoUrl} alt={m.name} title={label}
+                        className="w-6 h-6 rounded-full object-cover border-2 border-white flex-shrink-0" />
+                    ) : (
+                      <div key={r.recipient_id} title={label}
                         className="w-6 h-6 rounded-full bg-emerald-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-emerald-700">
                         {m?.name?.[0]?.toUpperCase() || '?'}
                       </div>
@@ -211,7 +220,7 @@ export default function Community() {
                 </div>
               )}
               <span className="text-[11px] text-gray-400">
-                {confirmedReceipts.length}/{detailReceipts.length} confirmed
+                {confirmedReceipts.length}/{detailReceipts.length} {receiptsNeedAction ? 'confirmed' : 'read'}
               </span>
             </div>
           )}
