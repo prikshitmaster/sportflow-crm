@@ -41,6 +41,7 @@ function coachName(plan, staff) {
 
 // ── Session Detail Slide-in ───────────────────────────────────────────────────
 function SessionDetail({ planId, batches, batchColorMap, staff, onClose, onDeleted }) {
+  const { user, drillCategories } = useApp()
   const [plan, setPlan]     = useState(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
@@ -68,7 +69,9 @@ function SessionDetail({ planId, batches, batchColorMap, staff, onClose, onDelet
       plan,
       phases: plan.session_phases || [],
       batchName: batch?.name || '—',
-      academyName: plan.academy_id ? undefined : '—',
+      academyName: user?.academy,
+      coachName: coachName(plan, staff),
+      drillCategories,
     })
   }
 

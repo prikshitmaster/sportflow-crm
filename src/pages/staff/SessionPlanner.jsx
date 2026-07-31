@@ -91,17 +91,6 @@ function DrillDiagram({ url, preset }) {
   return null
 }
 
-// ── Session phase categories ──────────────────────────────────────────────────
-const PHASE_CATEGORIES = [
-  { key: 'warm_up',    label: 'Warm Up',      color: 'bg-orange-100 text-orange-700 border-orange-200' },
-  { key: 'technical',  label: 'Technical',    color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  { key: 'passing',    label: 'Passing',      color: 'bg-green-100 text-green-700 border-green-200' },
-  { key: 'shooting',   label: 'Shooting',     color: 'bg-red-100 text-red-700 border-red-200' },
-  { key: 'defending',  label: 'Defending',    color: 'bg-purple-100 text-purple-700 border-purple-200' },
-  { key: 'ssg',        label: 'Small-Sided',  color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  { key: 'cool_down',  label: 'Cool Down',    color: 'bg-gray-100 text-gray-600 border-gray-200' },
-]
-
 // ── Drill categories ───────────────────────────────────────────────────────────
 // Categories are now a per-academy editable list (drill_categories table,
 // migration 0128) instead of this fixed set — these are just the fallback
@@ -169,13 +158,6 @@ const EMPTY_DRILL_FORM = {
   procedure: [''], coaching_points: [''],
   progressions: [], regressions: [], objectives: [],
   diagram_preset: '', diagram_url: '',
-}
-
-function catStyle(key) {
-  return PHASE_CATEGORIES.find(c => c.key === key)?.color || 'bg-gray-100 text-gray-600 border-gray-200'
-}
-function catLabel(key) {
-  return PHASE_CATEGORIES.find(c => c.key === key)?.label || key
 }
 
 function fmt(dateStr) {
@@ -1041,6 +1023,7 @@ function DrillPicker({ category, academyId, sportName, onSelect, onClose }) {
 
 // ── Phase Card ────────────────────────────────────────────────────────────────
 function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDown }) {
+  const { drillCategories } = useApp()
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [dur, setDur] = useState(phase.duration || 15)
@@ -1076,9 +1059,14 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
       {/* Row header */}
       <div className="flex items-center gap-2 px-3 py-3">
         <span className="text-xs font-bold text-gray-400 w-5 text-center">{index + 1}</span>
-        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${catStyle(phase.phase_name)}`}>
-          {catLabel(phase.phase_name)}
-        </span>
+        {(() => {
+          const theme = drillCatTheme(phase.phase_name, drillCategories)
+          return (
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${theme.bg} ${theme.text} ${theme.border}`}>
+              {drillCat(phase.phase_name, drillCategories).label}
+            </span>
+          )
+        })()}
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm text-gray-900 truncate">
             {drill?.name || phase.area || 'Custom phase'}
@@ -1263,6 +1251,8 @@ function PhaseCard({ phase, index, total, onChange, onDelete, onMoveUp, onMoveDo
 
 // ── Session Editor ────────────────────────────────────────────────────────────
 function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, onSaved }) {
+  const { user, staff, drillCategories } = useApp()
+  const categories = drillCategories?.length ? drillCategories : DEFAULT_DRILL_CATEGORIES
   const [plan, setPlan] = useState(initPlan)
   const [phases, setPhases] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1390,7 +1380,12 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
           <p className="text-xs text-gray-400">{fmt(plan.date)} · {totalDur}m total</p>
         </div>
         <button
-          onClick={() => exportSessionPDF({ plan, phases, batchName: batch?.name || '—' })}
+          onClick={() => exportSessionPDF({
+            plan, phases, batchName: batch?.name || '—',
+            academyName: user?.academy,
+            coachName: (staff || []).find(s => String(s.id) === String(plan.coach_id))?.name || user?.name,
+            drillCategories: categories,
+          })}
           className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition"
           title="Export PDF">
           <FileDown size={17} />
@@ -1479,13 +1474,16 @@ function SessionEditor({ plan: initPlan, batches, academyId, sportName, onBack, 
           <>
             <p className="text-xs font-semibold text-gray-500 px-1">Add phase</p>
             <div className="grid grid-cols-4 gap-2">
-              {PHASE_CATEGORIES.map(cat => (
-                <button key={cat.key}
-                  onClick={() => setPicker(cat.key)}
-                  className={`rounded-xl border py-2 text-[11px] font-semibold ${cat.color} hover:opacity-80 transition`}>
-                  {cat.label}
-                </button>
-              ))}
+              {categories.map(cat => {
+                const theme = COLOR_THEMES[cat.color] || COLOR_THEMES.slate
+                return (
+                  <button key={cat.key}
+                    onClick={() => setPicker(cat.key)}
+                    className={`rounded-xl border py-2 text-[11px] font-semibold ${theme.bg} ${theme.text} ${theme.border} hover:opacity-80 transition`}>
+                    {cat.label}
+                  </button>
+                )
+              })}
             </div>
           </>
         )}

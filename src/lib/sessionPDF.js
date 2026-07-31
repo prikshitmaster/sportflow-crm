@@ -101,7 +101,12 @@ function fmtDate(d) {
   })
 }
 
-function catLabel(key) {
+// `categories` is the academy's own per-academy drill_categories list
+// (migration 0128) — a custom category's label must win over this fallback
+// map, which only covers the fixed set every academy starts with.
+function catLabel(key, categories) {
+  const custom = (categories || []).find(c => c.key === key)
+  if (custom) return custom.label
   return {
     warm_up: 'Warm Up', technical: 'Technical', passing: 'Passing',
     shooting: 'Shooting', defending: 'Defending', ssg: 'Small-Sided Game',
@@ -147,7 +152,7 @@ async function diagBox(phase) {
   return `<div style="border:1px dashed #ccc;border-radius:4px;padding:20px;text-align:center;color:#aaa;font-size:8pt">No diagram</div>`
 }
 
-async function renderPhase(phase, index) {
+async function renderPhase(phase, index, categories) {
   const drill = phase.drills
   const area  = phase.area || drill?.area || ''
   const ct    = phase.context_ct || drill?.context_ct || ''
@@ -164,7 +169,7 @@ async function renderPhase(phase, index) {
   <div style="margin-bottom:8px;border:1.5px solid #1e3a5f;border-radius:4px;page-break-inside:avoid;break-inside:avoid">
     <!-- Phase header -->
     <div style="background:#1e3a5f;color:white;padding:4px 8px;display:flex;justify-content:space-between;align-items:center;border-radius:2px 2px 0 0">
-      <span style="font-weight:bold;font-size:9pt">Phase ${index + 1} — ${catLabel(phase.phase_name)}</span>
+      <span style="font-weight:bold;font-size:9pt">Phase ${index + 1} — ${catLabel(phase.phase_name, categories)}</span>
       <span style="font-size:8pt;opacity:0.85">${phase.duration || 0} min</span>
     </div>
     <!-- Phase body: text left, diagram right -->
@@ -295,11 +300,11 @@ async function renderToPDF(bodyHTML) {
   }
 }
 
-export async function exportSessionPDF({ plan, phases, batchName, academyName, coachName }) {
+export async function exportSessionPDF({ plan, phases, batchName, academyName, coachName, drillCategories }) {
   const totalDur = phases.reduce((s, p) => s + (p.duration || 0), 0)
 
   const sortedPhases = phases.slice().sort((a, b) => a.position - b.position)
-  const phaseHTML = (await Promise.all(sortedPhases.map((p, i) => renderPhase(p, i)))).join('')
+  const phaseHTML = (await Promise.all(sortedPhases.map((p, i) => renderPhase(p, i, drillCategories)))).join('')
   const bodyHTML = buildBodyHTML({ plan, phaseHTML, totalDur, batchName, academyName, coachName })
 
   const safeDate  = (plan.date || 'export').replace(/[^\w-]/g, '_')
