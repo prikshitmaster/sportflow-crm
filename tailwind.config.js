@@ -15,6 +15,7 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
+        cream: '#FFFAF2',
         brand: {
           50:  '#eff6ff',
           100: '#dbeafe',

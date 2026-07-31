@@ -58,7 +58,7 @@ export default function Layout() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-cream flex">
       {/* Desktop sidebar — hidden on mobile */}
       <div className="hidden lg:block">
         <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
