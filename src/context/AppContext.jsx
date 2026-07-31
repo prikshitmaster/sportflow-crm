@@ -1221,9 +1221,18 @@ export function AppProvider({ children }) {
           ? { ...b, enrolled: Math.max(0, (b.enrolled || 0) - 1) } : b))
       }
       setStudents(prev => prev.filter(s => s.id !== student.id))
-      setPayments(prev => prev.filter(p => p.studentId !== student.id))
-      logAuditSport({ actor: user, action: ACTIONS.STUDENT_DELETE, entityType: 'student', entityId: student.id, entityName: student.name, changes: { batch: student.batch || '—', sport: student.sport }, academyId: user?.academyId })
-      showToast(`${student.name} deleted`)
+      // Payments are NOT removed — money that was collected stays on the books
+      // (migration 0131; the FK nulls student_id and the row keeps its amount,
+      // invoice id and the student's name). Dropping them here would make
+      // revenue appear to fall until the next refetch put it back.
+      setPayments(prev => prev.map(p => p.studentId === student.id ? { ...p, studentId: null } : p))
+      const keptCount = payments.filter(p => String(p.studentId) === String(student.id)).length
+      logAuditSport({ actor: user, action: ACTIONS.STUDENT_DELETE, entityType: 'student', entityId: student.id, entityName: student.name, changes: { batch: student.batch || '—', sport: student.sport, paymentsKept: String(keptCount) }, academyId: user?.academyId })
+      showToast(
+        keptCount > 0
+          ? `${student.name} deleted — ${keptCount} payment${keptCount === 1 ? '' : 's'} kept on record`
+          : `${student.name} deleted`
+      )
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
     }

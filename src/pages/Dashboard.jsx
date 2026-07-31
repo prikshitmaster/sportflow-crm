@@ -106,7 +106,11 @@ export default function Dashboard() {
     .map(s => ({
       id: `DUE-${s.id}`, studentId: s.id, student: s.name,
       amount: s.fees || 0,
-      month: `Paid till ${new Date(s.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`,
+      // A never-paid student now counts as outstanding (studentRules.paidUpTo
+      // ages them from their join date) — they have no paidTill to print.
+      month: s.paidTill
+        ? `Paid till ${new Date(s.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`
+        : 'Never paid',
       status: 'Overdue', isVirtual: true,
     }))
 

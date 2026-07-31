@@ -72,6 +72,29 @@ function effectiveAnchor(s, liveAnchor) {
 }
 
 /**
+ * The date a student is "paid up to" for outstanding/ageing maths.
+ *
+ * A student who has NEVER paid has no paidTill at all. Treating that as
+ * "nothing owed" made them invisible in every financial report — excluded
+ * from Reports' Total Outstanding, from the Dashboard overdue figure and
+ * from ageing — no matter how long they had been enrolled. Live example
+ * before this fix: an Active student on ₹13,000/month, 79 days enrolled,
+ * never paid a rupee, appearing in no financial total.
+ *
+ * So fall back to the day before they joined: they owe from their join
+ * month onward. This keeps the documented intent that a brand-new student
+ * isn't dunned before their first invoice is due — someone who joined this
+ * month still isn't outstanding, because joinDate >= firstOfMonth.
+ *
+ * Returns null when there is nothing to compare against at all (no paidTill
+ * AND no joinDate), so callers can keep treating that as "unknown".
+ */
+function paidUpTo(s) {
+  if (s.paidTill) return s.paidTill
+  return s.joinDate || null
+}
+
+/**
  * Reports / Payments / Dashboard "outstanding" rule.
  * A student (Active OR Suspended) owes money when paidTill is strictly
  * before their effective anchor date. Suspended students are included
@@ -81,7 +104,8 @@ function effectiveAnchor(s, liveAnchor) {
  */
 export function isOutstanding(s, firstOfMonth = firstOfMonthIso()) {
   if (s.status !== 'Active' && s.status !== 'Suspended') return false
-  return !!s.paidTill && s.paidTill < effectiveAnchor(s, firstOfMonth)
+  const upTo = paidUpTo(s)
+  return !!upTo && upTo < effectiveAnchor(s, firstOfMonth)
 }
 
 /**
@@ -92,11 +116,14 @@ export function isOutstanding(s, firstOfMonth = firstOfMonthIso()) {
  * climbing while the student is paused.
  */
 export function daysOverdue(s, today = new Date()) {
-  if (!s.paidTill) return null
+  // Same fallback as isOutstanding — a never-paid student ages from their
+  // join date, otherwise they were missing from the ageing report entirely.
+  const upTo = paidUpTo(s)
+  if (!upTo) return null
   const liveToday = today instanceof Date ? today : new Date(today)
   const anchorStr = effectiveAnchor(s, toLocalDateStr(liveToday))
   const anchor = anchorStr === toLocalDateStr(liveToday) ? liveToday : new Date(anchorStr + 'T00:00:00')
-  const ms = anchor - new Date(s.paidTill + 'T00:00:00')
+  const ms = anchor - new Date(upTo + 'T00:00:00')
   if (ms <= 0) return 0
   return Math.floor(ms / MS_PER_DAY)
 }
