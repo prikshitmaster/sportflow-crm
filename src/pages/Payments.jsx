@@ -354,9 +354,12 @@ export default function Payments() {
     // batch filter correctly excludes these rows.
     const matchBatch = batchFilter === 'All' || stu?.batch === batchFilter || String(stu?.batchId) === batchFilter
     // Match by date (Paid/Overdue with a paid date) OR by billing month (Pending where date is NULL)
-    const matchMonth = !monthFilter || p.isVirtual ||
-      (p.date && p.date.slice(0, 7) === monthFilter) ||
-      (!p.date && p.month === monthFilter)
+    // Virtual overdue rows have no date/month string — re-derive "was this student
+    // overdue as of the selected month" instead of the real current month.
+    const matchMonth = !monthFilter ||
+      (p.isVirtual && isOutstanding(stu, monthFilter + '-01')) ||
+      (!p.isVirtual && p.date && p.date.slice(0, 7) === monthFilter) ||
+      (!p.isVirtual && !p.date && p.month === monthFilter)
     return matchQ && matchS && matchSport && matchBatch && matchMonth
   })
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
