@@ -14,7 +14,7 @@ function createWindow() {
       contextIsolation: true,
       zoomFactor: 0.75,
     },
-    title: 'SportFlow CRM',
+    title: 'Khelit',
   });
 
   if (isDev) {

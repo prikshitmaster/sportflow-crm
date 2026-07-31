@@ -24,6 +24,32 @@ import { toLocalDateStr } from './dates'
 const MS_PER_DAY = 86_400_000
 
 /**
+ * Training type is stored with DIFFERENT casing on either side of the join:
+ *   students.training_type   → 'Daily' / 'Alternate'   (capitalised)
+ *   fee_plans.training_type  → 'daily' / 'alternate'   (lower-case)
+ * Verified in production: 467 'Daily' + 80 'Alternate' students against
+ * 2 'daily' + 4 'alternate' plans.
+ *
+ * A strict `plan.trainingType === student.trainingType` therefore never
+ * matched, so fee-plan suggestions silently fell through — batches with one
+ * plan offered it even when it was for the other training type (wrong rate),
+ * and batches with two plans offered nothing. Always normalise before
+ * comparing or labelling. Returns '' when unset.
+ */
+export function normTrainingType(v) {
+  return (v || '').trim().toLowerCase()
+}
+
+/**
+ * Human label for a training type, from either casing. Returns null when
+ * unset so callers can omit the field rather than print a wrong default.
+ */
+export function trainingTypeLabel(v) {
+  const n = normTrainingType(v)
+  return n === 'alternate' ? 'Alternate Day' : n === 'daily' ? 'Daily' : null
+}
+
+/**
  * ISO date helper. Returns 'YYYY-MM-DD' for the given Date (default: now).
  */
 export function todayIso(d = new Date()) {

@@ -9,6 +9,7 @@ import {
 import DevFillButton from '../components/DevFillButton'
 import { fillTrial } from '../lib/devFill'
 import { toLocalDateStr } from '../lib/dates'
+import { normTrainingType, trainingTypeLabel } from '../lib/studentRules'
 
 // ── Stage config ─────────────────────────────────────────────
 
@@ -881,7 +882,10 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     setForm(f => ({
       ...f,
       feePlanId:    plan.id,
-      trainingType: plan.trainingType === 'alternate' ? 'Alternate' : 'Daily',
+      // Bridge the casing gap: fee plans store 'alternate'/'daily', students
+      // store 'Alternate'/'Daily'. Normalise first so a plan saved with any
+      // casing doesn't silently land the student on 'Daily'.
+      trainingType: normTrainingType(plan.trainingType) === 'alternate' ? 'Alternate' : 'Daily',
       fees:         feeMap[f.feePlan] || plan.monthlyFee || '',
     }))
   }
@@ -1014,7 +1018,7 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
                 <select className="input" value={form.feePlanId} onChange={e => handleFeePlanPick(e.target.value)}>
                   <option value="">— Select Plan —</option>
                   {feePlans.filter(p => p.batchId === Number(form.batchId)).map(p => (
-                    <option key={p.id} value={p.id}>{p.name} ({p.trainingType === 'alternate' ? 'Alternate' : 'Daily'})</option>
+                    <option key={p.id} value={p.id}>{p.name} ({trainingTypeLabel(p.trainingType) || 'Any'})</option>
                   ))}
                 </select>
               </div>

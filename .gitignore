@@ -22,3 +22,9 @@ playwright.config.js
 .claude/settings.local.json
 
 .vercel
+
+# Android release signing (never commit — losing these means never
+# updating the Play Store listing under this key again)
+android/*.keystore
+android/*.jks
+android/keystore.properties

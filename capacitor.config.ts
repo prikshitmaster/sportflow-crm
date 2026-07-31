@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId:   'com.sportflow.crm',
-  appName: 'SportFlow',
+  appId:   'com.khelit.app',
+  appName: 'Khelit',
   webDir:  'dist',
   server: {
     // Load live Vercel URL so updates deploy instantly without rebuilding APK

@@ -1,4 +1,4 @@
-package com.sportflow.crm;
+package com.khelit.app;
 
 import android.Manifest;
 import android.content.pm.PackageManager;

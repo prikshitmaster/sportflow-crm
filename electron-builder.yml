@@ -1,6 +1,6 @@
-appId: com.sportflow.crm
-productName: SportFlow CRM
-copyright: Copyright © 2024 SportFlow
+appId: com.khelit.app
+productName: Khelit
+copyright: Copyright © 2024 Khelit
 
 directories:
   output: dist-electron
@@ -16,7 +16,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: SportFlow-CRM-Setup-${version}.${ext}
+  artifactName: Khelit-Setup-${version}.${ext}
 
 nsis:
   oneClick: false

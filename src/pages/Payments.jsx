@@ -4,13 +4,18 @@ import { useApp } from '../context/AppContext'
 import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer, Link as LinkIcon, MessageCircle, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { isOutstanding } from '../lib/studentRules'
+import { isOutstanding, normTrainingType, trainingTypeLabel } from '../lib/studentRules'
 import DevFillButton from '../components/DevFillButton'
 import { fillPayment } from '../lib/devFill'
 import SendPayLinkModal from '../components/SendPayLinkModal'
 import WhatsAppBulkModal from '../components/WhatsAppBulkModal'
 import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/whatsapp'
 import { todayStr, toLocalDateStr } from '../lib/dates'
+
+// Casing differs either side of the students ↔ fee_plans join — see
+// normTrainingType in lib/studentRules.js for the full story.
+const normTraining  = normTrainingType
+const trainingLabel = trainingTypeLabel
 
 // ── Payment Receipt Printer ───────────────────────────────────
 
@@ -1480,16 +1485,31 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     : students
 
   const getFeePlanRate = (batchId, trainingType, paymentType) => {
-    // 1. Named fee plan for batch + training type
+    // 1. Named fee plan for batch + training type.
+    //
+    // fee_plans.training_type is stored lower-case ('daily'/'alternate') while
+    // students.training_type is capitalised ('Daily'/'Alternate') — verified in
+    // production: 4 'alternate' + 2 'daily' plans vs 80 'Alternate' + 467
+    // 'Daily' students. A strict === could therefore NEVER match, so the plan
+    // lookup always fell through: batches with one plan silently offered it even
+    // when it was for the other training type (wrong rate), and batches with two
+    // plans offered nothing at all. Compare case-insensitively.
     const batchPlans = feePlans.filter(p => String(p.batchId) === String(batchId))
-    // Only fall back to first plan if trainingType matches, or there's exactly one plan (no ambiguity).
-    const plan = batchPlans.find(p => p.trainingType === trainingType)
-              || (batchPlans.length === 1 ? batchPlans[0] : null)
+    const want  = normTraining(trainingType)
+    const exact = batchPlans.find(p => normTraining(p.trainingType) === want)
+    // A plan with no training type set is generic — safe for anyone.
+    const generic = batchPlans.find(p => !normTraining(p.trainingType))
+    const plan = exact || generic || (batchPlans.length === 1 ? batchPlans[0] : null)
     if (plan) {
       const rate = paymentType === 'quarterly' ? plan.quarterlyFee
                  : paymentType === 'yearly'    ? plan.yearlyFee
                  : plan.monthlyFee
-      return { plan, rate: rate || 0, source: 'plan' }
+      return {
+        plan, rate: rate || 0, source: 'plan',
+        // True when we fell back to a plan meant for the OTHER training type —
+        // the rate is probably wrong, so the UI says so instead of pretending.
+        mismatch: !exact && !generic && !!want && normTraining(plan.trainingType) !== want,
+      }
     }
     // 2. Fallback: batch default fee (only meaningful for monthly; skip for quarterly/yearly)
     const batch = batches.find(b => String(b.id) === String(batchId))
@@ -1889,17 +1909,31 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
 
         {/* Fee plan / batch reference info */}
         {(activePlanData || typicalBatchFee > 0) && (
-          <div className="bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 text-xs text-brand-700 flex items-center justify-between gap-2">
+          <div className={`border rounded-lg px-3 py-2 text-xs flex items-center justify-between gap-2 ${
+            activePlanData?.mismatch
+              ? 'bg-amber-50 border-amber-200 text-amber-800'
+              : 'bg-brand-50 border-brand-100 text-brand-700'
+          }`}>
             {activePlanData ? (
               activePlanData.source === 'plan' ? (
                 <span>
                   <span className="font-semibold">{activePlanData.plan.name}</span>
-                  <span className="text-brand-400 mx-1.5">·</span>
-                  {activePlanData.plan.trainingType === 'alternate' ? 'Alternate Day' : 'Daily'}
-                  <span className="text-brand-400 mx-1.5">·</span>
+                  {trainingLabel(activePlanData.plan.trainingType) && (
+                    <>
+                      <span className="opacity-50 mx-1.5">·</span>
+                      {trainingLabel(activePlanData.plan.trainingType)}
+                    </>
+                  )}
+                  <span className="opacity-50 mx-1.5">·</span>
                   M ₹{activePlanData.plan.monthlyFee?.toLocaleString('en-IN')}
                   {activePlanData.plan.quarterlyFee > 0 && <> · Q ₹{activePlanData.plan.quarterlyFee?.toLocaleString('en-IN')}</>}
                   {activePlanData.plan.yearlyFee > 0 && <> · Y ₹{activePlanData.plan.yearlyFee?.toLocaleString('en-IN')}</>}
+                  {activePlanData.mismatch && (
+                    <span className="block mt-0.5 font-semibold">
+                      ⚠ No {trainingLabel(selectedStudent?.trainingType) || 'matching'} plan for this batch — showing the{' '}
+                      {trainingLabel(activePlanData.plan.trainingType)} rate. Check before charging.
+                    </span>
+                  )}
                 </span>
               ) : (
                 <span>Batch default: <span className="font-semibold">₹{activePlanData.plan.monthlyFee?.toLocaleString('en-IN')}/month</span></span>
@@ -1907,11 +1941,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             ) : (
               <span>
                 Other students in this batch pay <span className="font-semibold">₹{typicalBatchFee.toLocaleString('en-IN')}/month</span>
-                <span className="text-brand-400 ml-1">({batchmateFees.length} students)</span>
+                <span className="opacity-60 ml-1">({batchmateFees.length} students)</span>
               </span>
             )}
             <button type="button"
-              className="text-brand-600 font-bold hover:underline whitespace-nowrap"
+              className="font-bold hover:underline whitespace-nowrap"
               onClick={() => { setAmountOverride(null); setForm(f => ({ ...f, baseAmount: referenceRate })) }}>
               Use this rate
             </button>

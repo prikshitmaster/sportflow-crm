@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
-import { isOutstanding, firstOfMonthIso, daysOverdue } from '../lib/studentRules'
+import { isOutstanding, firstOfMonthIso, daysOverdue, normTrainingType, trainingTypeLabel } from '../lib/studentRules'
 
 // ── 360° record detail page — /detail/:type/:id ──────────────────────────
 // One page for any record the AI assistant (or, later, any list) links to:
@@ -455,8 +455,8 @@ function BatchView({ id, batches, students, staff, feePlans, goDetail }) {
             {plans.map(p => (
               <div key={p.id} className="flex items-center justify-between gap-3 py-2.5 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${p.trainingType === 'daily' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>
-                    {p.trainingType === 'daily' ? 'Daily' : 'Alternate Day'}
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${normTrainingType(p.trainingType) === 'daily' ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700'}`}>
+                    {trainingTypeLabel(p.trainingType) || 'Any'}
                   </span>
                   <span className="text-sm font-bold text-gray-800">{p.name}</span>
                 </div>

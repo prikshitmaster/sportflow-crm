@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:696979493379:android:7564329c16bd933a463436",
+        "android_client_info": {
+          "package_name": "com.khelit.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtI-Jnu1adOtA1w-7UaQtm7hjBMpXLtkA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:696979493379:android:ec2dc2beb7f53d63463436",
         "android_client_info": {
           "package_name": "com.sportflow.crm"
