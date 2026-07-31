@@ -111,6 +111,7 @@ function buildPrintHTML(trial, academyName, logoUrl, customLogo) {
   const logo      = customLogo || logoUrl || ''
   const isAcademy = trial.programType !== 'development'
   const isDev     = trial.programType === 'development'
+  const feeCollected = trial.trialFeeMode !== 'Not collected'
   const age       = trial.age || calcAge(trial.dob) || ''
   // Prefer the real payments row id so the printed slip and the revenue
   // record carry the same number.
@@ -166,6 +167,7 @@ function buildPrintHTML(trial, academyName, logoUrl, customLogo) {
   .fee-label { font-size: 10px; color: #166534; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
   .fee-amount { font-size: 20px; font-weight: 900; color: #15803d; }
   .fee-badge { background: #15803d; color: #fff; font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; letter-spacing: 1px; }
+  .fee-badge.unpaid { background: #b91c1c; }
 
   /* Signatures */
   .sig-row { display: flex; gap: 16px; margin-top: 4px; }
@@ -236,7 +238,7 @@ function buildPrintHTML(trial, academyName, logoUrl, customLogo) {
         <div class="fee-label">Trial Registration Fee</div>
         <div class="fee-amount">₹${(trial.trialFeePaid ?? 590).toLocaleString('en-IN')}</div>
       </div>
-      <div class="fee-badge">PAID</div>
+      <div class="fee-badge ${feeCollected ? '' : 'unpaid'}">${feeCollected ? 'PAID' : 'NOT COLLECTED'}</div>
     </div>
 
     <div class="sig-row">
@@ -283,6 +285,7 @@ function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
   const age       = trial.age || calcAge(trial.dob) || '—'
   const isAcademy = trial.programType !== 'development'
   const isDev     = trial.programType === 'development'
+  const feeCollected = trial.trialFeeMode !== 'Not collected'
   const fmtD      = iso => iso ? new Date(iso).toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' }) : '—'
 
   return (
@@ -368,9 +371,11 @@ function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
             <div className="ml-auto flex items-center gap-2">
               <div className="text-right">
                 <p className="text-[9px] text-gray-400 uppercase tracking-wide">Trial Fee</p>
-                <p className="text-base font-black text-green-700">₹{(trial.trialFeePaid ?? 590).toLocaleString('en-IN')}</p>
+                <p className={`text-base font-black ${feeCollected ? 'text-green-700' : 'text-red-700'}`}>₹{(trial.trialFeePaid ?? 590).toLocaleString('en-IN')}</p>
               </div>
-              <span className="text-[9px] bg-green-600 text-white px-2 py-0.5 rounded-full font-black tracking-wide">PAID</span>
+              <span className={`text-[9px] text-white px-2 py-0.5 rounded-full font-black tracking-wide ${feeCollected ? 'bg-green-600' : 'bg-red-600'}`}>
+                {feeCollected ? 'PAID' : 'NOT COLLECTED'}
+              </span>
             </div>
           </div>
 
