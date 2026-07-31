@@ -972,7 +972,17 @@ export function AppProvider({ children }) {
         // linked to this student a few lines below. Netting it off the
         // first month is therefore CORRECT: ₹590 + ₹20,410 = ₹21,000.
         // Removing the subtraction would double-book the trial fee.
-        const payAmount = Math.max(0, amount - trialDeduct + joiningFee)
+        const rawAmount = amount - trialDeduct + joiningFee
+        const payAmount = Math.max(0, rawAmount)
+        // A payment row can't be negative, but the clamp used to eat the
+        // difference in silence — e.g. a ₹590 trial fee against a ₹500 first
+        // month left ₹90 of credit that simply vanished. Still clamp, but say so.
+        if (rawAmount < 0) {
+          showToast(
+            `₹${Math.abs(rawAmount)} trial-fee credit is left over after the first payment — carry it forward manually.`,
+            'error',
+          )
+        }
         const invoiceId = await db.fetchNextInvoiceId()
         payment = { invoiceId, amount: payAmount, label, startDate, monthsCovered }
       }
@@ -1308,13 +1318,19 @@ export function AppProvider({ children }) {
       // month-math below — everything else (amount, notes, mode) works the
       // same either way.
       const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      let paidTill, monthLabel, coverageStart, coverageEnd
+      let paidTill, monthLabel, coverageStart, coverageEnd, customRangeNote = ''
       if (p.customPaidTill) {
         paidTill      = p.customPaidTill
         coverageStart = p.coverageStart || toLocalDateStr(baseDate)
         coverageEnd   = p.customPaidTill
+        // `month` MUST stay in the machine-readable 'Mon YYYY' shape — Dashboard.jsx
+        // parses this text and silently files anything it can't read into the
+        // CURRENT month (see monthLabelFor above). A "15 Jul – 15 Aug" style label
+        // here misreported advance payments as this-month revenue. The exact range
+        // lives in coverage_start / coverage_end (and is restated in notes for humans).
+        monthLabel = monthLabelFor(coverageStart)
         const fmt = d => d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-        monthLabel = `${fmt(new Date(coverageStart + 'T00:00:00'))} – ${fmt(new Date(coverageEnd + 'T00:00:00'))}`
+        customRangeNote = `Custom coverage: ${fmt(new Date(coverageStart + 'T00:00:00'))} – ${fmt(new Date(coverageEnd + 'T00:00:00'))}`
       } else {
         const endDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + covered, 0)
         paidTill      = toLocalDateStr(endDate)
@@ -1359,7 +1375,10 @@ export function AppProvider({ children }) {
 
       const invoiceId    = await db.fetchNextInvoiceId()
       const isChequeEarly = p.mode === 'Cheque'
-      const paymentRow   = { ...p, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, coverageEnd, academyId: user?.academyId, status: isChequeEarly ? 'Pending' : 'Paid' }
+      const rowNotes     = customRangeNote
+        ? [customRangeNote, p.notes].filter(Boolean).join('\n')
+        : p.notes
+      const paymentRow   = { ...p, notes: rowNotes, month: monthLabel, monthsCovered: months, amount: p.amount, date: payDate, coverageStart, coverageEnd, academyId: user?.academyId, status: isChequeEarly ? 'Pending' : 'Paid' }
       // DB insert first — if it fails (PK collision, RLS reject), no optimistic row gets left behind.
       await db.insertPayment(paymentRow, invoiceId)
 
@@ -1402,14 +1421,18 @@ export function AppProvider({ children }) {
         : p.inactiveCount ? `Payment recorded · ${p.inactiveCount} month${p.inactiveCount !== 1 ? 's' : ''} marked inactive`
         : 'Payment recorded'
       )
-      // Notify student — fire and forget
+      // Notify student — fire and forget. A cheque is NOT money received yet;
+      // saying "Payment Received" while it is still uncleared tells the student
+      // they are paid up and leaves no trail if it later bounces.
       if (p.studentId) {
         notify({
           academyId: user.academyId,
           recipientType: 'student',
           recipientId: p.studentId,
-          title: 'Payment Received',
-          body: `₹${p.amount} for ${monthLabel} has been recorded.`,
+          title: isCheque ? 'Cheque Received' : 'Payment Received',
+          body: isCheque
+            ? `Cheque for ₹${p.amount} (${monthLabel}) received — it will be confirmed once cleared.`
+            : `₹${p.amount} for ${monthLabel} has been recorded.`,
           type: 'payment',
           link: '/student/payments',
         }).catch(() => {})
@@ -1480,13 +1503,21 @@ export function AppProvider({ children }) {
         p.id === id ? { ...p, status: 'Paid', mode, date: today } : p
       ))
 
-      // When clearing a cheque (Pending→Paid), advance the student's paidTill
+      // When clearing a cheque (Pending→Paid), advance the student's paidTill.
+      // A cheque taken for a custom date range stored its exact end in
+      // coverage_end — recomputing from monthsCovered would snap it back to a
+      // month boundary and silently shorten the period the student paid for.
       if (payment?.status === 'Pending') {
         const student = students.find(s => String(s.id) === String(payment.studentId))
         if (student) {
-          const base   = new Date((payment.coverageStart || today) + 'T00:00:00')
-          const months = payment.monthsCovered || 1
-          const newPaidTill = toLocalDateStr(new Date(base.getFullYear(), base.getMonth() + months, 0))
+          let newPaidTill
+          if (payment.coverageEnd) {
+            newPaidTill = payment.coverageEnd
+          } else {
+            const base   = new Date((payment.coverageStart || today) + 'T00:00:00')
+            const months = payment.monthsCovered || 1
+            newPaidTill  = toLocalDateStr(new Date(base.getFullYear(), base.getMonth() + months, 0))
+          }
           if (!student.paidTill || newPaidTill > student.paidTill) {
             await db.updateStudentPaidTill(student.id, newPaidTill, null)
             setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
@@ -1495,6 +1526,20 @@ export function AppProvider({ children }) {
       }
 
       logAuditSport({ actor: user, action: ACTIONS.PAYMENT_PAID, entityType: 'payment', entityId: id, entityName: payment?.student, changes: { mode }, academyId: user?.academyId })
+
+      // Close the loop opened by the "will be confirmed once cleared" message
+      // sent when the cheque was first taken.
+      if (payment?.status === 'Pending' && payment?.studentId) {
+        notify({
+          academyId: user.academyId,
+          recipientType: 'student',
+          recipientId: payment.studentId,
+          title: 'Payment Confirmed',
+          body: `₹${payment.amount} for ${payment.month} has cleared.`,
+          type: 'payment',
+          link: '/student/payments',
+        }).catch(() => {})
+      }
       showToast('Payment marked as paid')
     } catch (err) {
       showToast(err.message || 'Update failed', 'error')

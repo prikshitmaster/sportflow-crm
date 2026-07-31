@@ -1429,19 +1429,26 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   })()
 
   // The picker drives coverage itself, so it stands down when staff explicitly
-  // backdate the collection date (that path already sets coverage by hand).
-  const monthPickerOn = form.paymentType === 'monthly'
+  // backdate the collection date (that path already sets coverage by hand), and
+  // when a custom date range is in play — otherwise `months`/`subtotal` below
+  // keep computing from a picker the staff can no longer see, pre-filling the
+  // total with a month-count that has nothing to do with the custom period.
+  const monthPickerOn = !customDates
+    && form.paymentType === 'monthly'
     && dueMonths.length > 0
     && paymentDate === toLocalDateStr()
 
-  // Default: charge the current month only, and show older back months as
-  // inactive. That is exactly what this modal did before the picker existed —
-  // coverage jumped to the end of the current month and the back months were
-  // dropped — except now it is visible and staff can tick those months back on
-  // to actually bill them.
+  // Default: charge EVERY pending month. Unticking a month still covers it
+  // without charging (the student wasn't training) — but that is a write-off,
+  // so it has to be a deliberate act, never the default.
+  //
+  // This previously defaulted to `dueMonths.slice(0, -1)` — i.e. every month
+  // except the newest was auto-marked inactive. Since coverage still advanced
+  // across all of them, opening this modal on a student who owed 5 months and
+  // clicking Confirm collected 1 month and silently forgave the other 4.
   const dueKey = dueMonths.map(d => d.key).join(',')
   useEffect(() => {
-    setInactiveMonths(dueMonths.slice(0, -1).map(d => d.key))
+    setInactiveMonths([])
   }, [dueKey])
 
   const billedMonths   = dueMonths.filter(d => !inactiveMonths.includes(d.key))
@@ -1543,7 +1550,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         coverageMonths,              // months paidTill advances by (charged + inactive)
         inactiveCount: inactiveList.length,
         // Nothing collected → AppContext skips the invoice insert entirely.
-        noChargeOnly: !customDates && isAllInactive,
+        noChargeOnly: isAllInactive,
         lateFee: lateFeeAmt, paymentDate,
         advanceStart: coverageStart,
         // Manual custom coverage period — see AppContext.addPayment, this
@@ -1947,7 +1954,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         )}
 
         {/* Pending months — tick to charge, untick if the student was inactive */}
-        {!customDates && monthPickerOn && (
+        {monthPickerOn && (
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-3.5 py-2.5 bg-gray-50 border-b border-gray-200">
               <div>
@@ -2017,10 +2024,19 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                 Covered through <strong className="text-gray-800">{dueMonths[dueMonths.length - 1].label}</strong>
               </span>
             </div>
+
+            {/* Unticking still advances coverage — that is a write-off, so state
+                the rupee value plainly instead of leaving it to be inferred. */}
+            {inactiveList.length > 0 && !isAllInactive && (
+              <div className="px-3.5 py-2 bg-amber-50 border-t border-amber-200 text-xs text-amber-800">
+                <strong>Writing off ₹{(form.baseAmount * inactiveList.length).toLocaleString('en-IN')}</strong>
+                {' '}— {inactiveList.map(m => m.label).join(', ')} will be marked covered but never charged.
+              </div>
+            )}
           </div>
         )}
 
-        {!customDates && isAllInactive && (
+        {isAllInactive && (
           <div className="bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-700 space-y-1">
             <p>
               <strong className="text-gray-900">

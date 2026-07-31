@@ -569,10 +569,14 @@ export async function updatePaymentAmount(id, amount, monthsCovered) {
   if (error) throw error
 }
 
-export async function updatePaymentDate(id, date) {
+export async function updatePaymentDate(id, date, month) {
+  // `month` is the label Dashboard parses to decide which month a collection
+  // belongs to; `date` is what Reports filters on. Moving one without the
+  // other reports the same payment under two different months.
+  const payload = month ? { date, month } : { date }
   const { error } = await supabase.rpc('secure_update_payment', {
     p_payment_id: id,
-    p_payload: { date },
+    p_payload: payload,
     p_token: _sessionToken(),
   })
   if (error) throw error

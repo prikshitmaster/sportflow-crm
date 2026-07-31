@@ -76,8 +76,18 @@ Deno.serve(async (req) => {
   let evt: any
   try { evt = JSON.parse(rawBody) } catch { return ok({ error: 'bad json' }, 400) }
 
-  const eventId   = evt.id || evt.event_id || `${evt.event}-${Date.now()}`
+  // Idempotency hangs entirely on this id being STABLE across Razorpay's
+  // retries. The old fallback appended Date.now(), which minted a fresh key on
+  // every retry — the dedupe check would miss and the same payment could be
+  // booked twice. With no stable id there is no safe way to dedupe, so refuse
+  // and let Razorpay retry rather than risk double-booking money.
+  const eventId   = evt.id || evt.event_id
   const eventType = evt.event as string
+
+  if (!eventId) {
+    console.error('webhook has no stable event id — refusing to process', { eventType })
+    return ok({ error: 'missing event id' }, 400)
+  }
 
   // We care primarily about payment.captured for v1
   if (eventType !== 'payment.captured') {
