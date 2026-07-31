@@ -17,7 +17,7 @@
   }
 
   body {
-    @apply font-sans antialiased text-gray-900 bg-cream;
+    @apply font-sans antialiased text-gray-900 bg-canvas;
     height: 100%;
     overscroll-behavior-y: none;
     -webkit-font-smoothing: antialiased;

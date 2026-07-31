@@ -82,7 +82,7 @@ export default function StaffLayout() {
   const handleLogout = async () => { await logoutStaff(); navigate('/login') }
 
   return (
-    <div className="min-h-screen bg-cream flex flex-col max-w-md mx-auto">
+    <div className="min-h-screen bg-canvas flex flex-col max-w-md mx-auto">
       {/* Sticky header */}
       <header className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between"
         style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}>

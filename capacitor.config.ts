@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: false,
-    backgroundColor:   '#FFFAF2',
+    backgroundColor:   '#F8FAFC',
   },
   plugins: {
     SplashScreen: {
