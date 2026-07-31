@@ -388,6 +388,30 @@ export function AppProvider({ children }) {
     }
   }, [user?.academyId])
 
+  // ── Silent background refresh (no skeleton flash) ─────
+  // Same core lists as loadAll, but skips setDataLoading and the auto-suspend
+  // side effects — used when the tab/app regains focus so changes made on
+  // another device (or another tab) show up without blanking the screen.
+  const refreshAllSilent = useCallback(async () => {
+    const academyId = user?.academyId
+    if (!academyId) return
+    try {
+      const [studentsPage, b, st] = await Promise.all([
+        db.fetchStudentsPaginated(academyId, { page: 0, pageSize: 1000 }),
+        db.fetchBatches(academyId),
+        db.fetchStaff(academyId),
+      ])
+      setStudents(studentsPage.students); setBatches(b); setStaff(st)
+      db.fetchPayments(academyId).then(setPayments).catch(() => {})
+      db.fetchTrials(academyId).then(setTrials).catch(() => {})
+      db.fetchAnnouncements(academyId).then(setAnnouncements).catch(() => {})
+      db.fetchEvents(academyId).then(setEvents).catch(() => {})
+      db.fetchFeePlans(academyId).then(setFeePlans).catch(() => {})
+    } catch (err) {
+      logger.warn?.('refreshAllSilent failed', err) ?? console.warn('refreshAllSilent failed', err)
+    }
+  }, [user?.academyId])
+
   // ── Tag every Sentry error with the current user ──────
   useEffect(() => {
     if (!user && !studentUser) { setSentryUser(null); return }
@@ -567,23 +591,29 @@ export function AppProvider({ children }) {
     if (role === 'owner' || role === 'staff') loadAll()
   }, [role, loadAll])
 
-  // Re-fetch when app comes back to foreground (mobile PWA wakes from background).
-  // Throttled to once per 5 min — without this, every tab focus re-downloads the
-  // full students/payments/batches/staff payload (~6MB at 1000 students).
+  // Re-fetch when app comes back to foreground (mobile PWA wakes from background,
+  // or the user switches back to this tab). Throttled to once per 60s — short
+  // enough to feel live when a change was made on another device/tab, long
+  // enough to avoid re-downloading the full payload on every alt-tab. Uses the
+  // silent refresh (no dataLoading flag) so the screen doesn't flash a skeleton.
   const lastRefreshRef = useRef(Date.now())
   useEffect(() => {
     if (role !== 'owner' && role !== 'staff') return
-    const REFRESH_THROTTLE_MS = 5 * 60 * 1000
+    const REFRESH_THROTTLE_MS = 60 * 1000
     const handleVisibility = () => {
       if (document.visibilityState !== 'visible') return
       const now = Date.now()
       if (now - lastRefreshRef.current < REFRESH_THROTTLE_MS) return
       lastRefreshRef.current = now
-      loadAll()
+      refreshAllSilent()
     }
     document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [role, loadAll])
+    window.addEventListener('focus', handleVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', handleVisibility)
+    }
+  }, [role, refreshAllSilent])
 
   // Load branches when academy is known. Always replace state — even if the DB
   // returns an empty list, so newly-added sports (e.g. Tennis) are picked up by

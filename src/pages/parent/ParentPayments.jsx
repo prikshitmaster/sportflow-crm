@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import * as db from '../../lib/db'
 import { CreditCard, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
@@ -31,14 +31,19 @@ export default function ParentPayments() {
   const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
 
+  const loadDashboard = useCallback(async () => {
+    const dash = await db.fetchParentDashboard()
+    const list = dash?.children || []
+    setChildren(list)
+    return list
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const dash = await db.fetchParentDashboard()
+        const list = await loadDashboard()
         if (cancelled) return
-        const list = dash?.children || []
-        setChildren(list)
         setActiveChildId(preselect ? Number(preselect) : list[0]?.id ?? null)
       } catch (e) {
         if (!cancelled) setError(e?.message || 'Could not load')
@@ -47,7 +52,7 @@ export default function ParentPayments() {
       }
     })()
     return () => { cancelled = true }
-  }, [preselect])
+  }, [preselect, loadDashboard])
 
   const child = useMemo(() => children.find(c => c.id === activeChildId), [children, activeChildId])
 
@@ -79,9 +84,13 @@ export default function ParentPayments() {
         prefill:  order.prefill || {},
         theme:    { color: '#2563eb' },
         handler: function () {
-          // Checkout closed after payment. The webhook will record it server-side
-          // within a few seconds. Show optimistic success.
+          // Checkout closed after payment. The webhook records it server-side
+          // within a few seconds — poll briefly so dues update without a manual reload.
           setSuccessMsg('Payment received — your receipt will appear shortly.')
+          setPaying(false)
+          ;[3000, 6000, 10000].forEach(delay => {
+            setTimeout(() => { loadDashboard().catch(() => {}) }, delay)
+          })
         },
         modal: {
           ondismiss: () => setPaying(false),
