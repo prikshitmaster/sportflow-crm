@@ -23,7 +23,7 @@ import {
 } from 'recharts'
 import {
   Search, TrendingUp, TrendingDown, Star, Target, FileDown, FileSpreadsheet,
-  CalendarCheck, Activity, ChevronRight, X,
+  CalendarCheck, Activity, ChevronRight, ChevronLeft, X, Sparkles,
 } from 'lucide-react'
 import { Modal } from './Students'
 import StudentAvatar from '../components/StudentAvatar'
@@ -295,7 +295,12 @@ function PerformanceView() {
       <div className="grid lg:grid-cols-3 gap-5 items-start">
 
         {/* ── List pane ── */}
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        {/* On phones this and the detail pane are two separate "screens" —
+            only one is ever visible, swapped by selection — since the grid
+            just stacks them on narrow viewports otherwise, burying the
+            detail a full scrolled-past list below where you tapped. lg+
+            keeps the always-both-visible desktop layout unconditionally. */}
+        <div className={`bg-white border border-gray-200 rounded-xl overflow-hidden ${selected ? 'hidden lg:block' : ''}`}>
           <div className="px-4 py-3 border-b border-gray-200 space-y-2.5">
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
               <Search size={14} className="text-gray-400 shrink-0" />
@@ -330,7 +335,7 @@ function PerformanceView() {
                 {paged.map(e => (
                   <button
                     key={e.s.id}
-                    onClick={() => setSelectedId(e.s.id)}
+                    onClick={() => { setSelectedId(e.s.id); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
                     className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors ${
                       String(selectedId) === String(e.s.id) ? 'bg-gray-50' : 'hover:bg-gray-50'
                     }`}
@@ -362,7 +367,13 @@ function PerformanceView() {
         </div>
 
         {/* ── Detail pane ── */}
-        <div className="lg:col-span-2">
+        <div className={`lg:col-span-2 ${selected ? '' : 'hidden lg:block'}`}>
+          {selected && (
+            <button onClick={() => setSelectedId(null)}
+              className="lg:hidden flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-gray-700 mb-3">
+              <ChevronLeft size={16} /> Back to list
+            </button>
+          )}
           {selected ? (
             <DetailOverview
               key={selected.s.id}
@@ -576,6 +587,44 @@ function DetailOverview({ entry, month, academyId, academyName, staffId, showToa
         )}
       </div>
 
+      {/* Coach spotlights — surfaced right under the snapshot, not buried
+          below the charts, since a coach's in-session note about a student
+          is often the single most useful thing here at a glance. */}
+      {spotlights.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h4 className="text-sm font-semibold text-amber-900 mb-1 flex items-center gap-1.5">
+            <Sparkles size={14} className="text-amber-500" /> Coach spotlights
+          </h4>
+          <p className="text-[11px] text-amber-700/70 mb-3">
+            Recorded in session, scored /3 — a different instrument from the monthly assessment
+          </p>
+          <div className="space-y-3">
+            {spotlights.map(sp => (
+              <div key={sp.id} className="bg-white border border-amber-100 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-medium text-gray-500">
+                    {sp.date ? new Date(sp.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                  </span>
+                  <div className="flex gap-3">
+                    {[['Technical', sp.technical], ['Tactical', sp.tactical], ['Physical', sp.physical], ['Mental', sp.mental]].map(([label, v]) => (
+                      <span key={label} className="text-[10px] text-gray-500 flex items-center gap-1">
+                        {label}
+                        <span className="flex gap-0.5">
+                          {[1, 2, 3].map(n => (
+                            <span key={n} className={`w-1.5 h-1.5 rounded-full ${(v ?? 0) >= n ? 'bg-gray-700' : 'bg-gray-200'}`} />
+                          ))}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {sp.note && <p className="text-xs text-gray-700 font-medium">{sp.note}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {assessment && (
         <>
           {/* Radar + categories */}
@@ -751,40 +800,6 @@ function DetailOverview({ entry, month, academyId, academyName, staffId, showToa
           )}
         </div>
       </div>
-
-      {/* Spotlights */}
-      {spotlights.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <h4 className="text-sm font-semibold text-gray-900 mb-1">Coach spotlights</h4>
-          <p className="text-[11px] text-gray-400 mb-3">
-            Recorded in session, scored /3 — a different instrument from the monthly assessment
-          </p>
-          <div className="space-y-3">
-            {spotlights.map(sp => (
-              <div key={sp.id} className="border border-gray-200 rounded-lg p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-medium text-gray-500">
-                    {sp.date ? new Date(sp.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-                  </span>
-                  <div className="flex gap-3">
-                    {[['Technical', sp.technical], ['Tactical', sp.tactical], ['Physical', sp.physical], ['Mental', sp.mental]].map(([label, v]) => (
-                      <span key={label} className="text-[10px] text-gray-500 flex items-center gap-1">
-                        {label}
-                        <span className="flex gap-0.5">
-                          {[1, 2, 3].map(n => (
-                            <span key={n} className={`w-1.5 h-1.5 rounded-full ${(v ?? 0) >= n ? 'bg-gray-700' : 'bg-gray-200'}`} />
-                          ))}
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                {sp.note && <p className="text-xs text-gray-600">{sp.note}</p>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Development plan */}
       <div className="bg-white border border-gray-200 rounded-xl p-4">
