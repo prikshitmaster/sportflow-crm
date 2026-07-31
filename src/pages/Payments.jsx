@@ -10,7 +10,7 @@ import { fillPayment } from '../lib/devFill'
 import SendPayLinkModal from '../components/SendPayLinkModal'
 import WhatsAppBulkModal from '../components/WhatsAppBulkModal'
 import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/whatsapp'
-import { todayStr, toLocalDateStr } from '../lib/dates'
+import { todayStr, toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 
 // Casing differs either side of the students ↔ fee_plans join — see
 // normTrainingType in lib/studentRules.js for the full story.
@@ -270,7 +270,10 @@ export default function Payments() {
   const [statusFilter,    setStatusFilter]    = useState('All')
   const [sportFilter,     setSportFilter]     = useState('All')
   const [batchFilter,     setBatchFilter]     = useState('All')
-  const [monthFilter,     setMonthFilter]     = useState(new Date().toISOString().slice(0, 7))
+  // toISOString() is UTC — in IST (UTC+5:30) it still reads as the previous
+  // month until 05:30 on the 1st, so the page would open filtered to last
+  // month and today's collections would look missing. See lib/dates.js.
+  const [monthFilter,     setMonthFilter]     = useState(toLocalMonthStr())
   const [showModal,       setShowModal]       = useState(false)
   const [showPayLink,     setShowPayLink]     = useState(false)
   const [showBulkWA,      setShowBulkWA]      = useState(false)

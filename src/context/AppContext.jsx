@@ -1080,7 +1080,11 @@ export function AppProvider({ children }) {
           student:        s.name,
           amount:         payment.amount,
           month:          payment.label,
-          date:           payment.startDate,
+          // Mirror migration 0132: `date` is when the money was taken (never
+          // in the future — a student joining next month used to produce a
+          // future-dated row that the current-month filter hid), while the
+          // period it covers lives in coverageStart.
+          date:           payment.startDate > todayStr ? todayStr : payment.startDate,
           coverageStart:  payment.startDate,
           status:         'Paid',
           mode:           'Cash',
