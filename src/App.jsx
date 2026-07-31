@@ -367,6 +367,7 @@ function AppRoutes() {
         <Route path="students"  element={<PermRequired perm="students.view">   <Students />     </PermRequired>} />
         <Route path="payments"  element={<PermRequired perm="payments.view">   <Payments />     </PermRequired>} />
         <Route path="sessions"  element={<PermRequired perm="training.manage"> <SessionPlanner /></PermRequired>} />
+        <Route path="performance" element={<PermRequired perm="training.manage"><StudentPerformance /></PermRequired>} />
         <Route path="trials"    element={<PermRequired perm="trials.manage">  <StaffTrials /></PermRequired>} />
         <Route path="batches"   element={<PermRequired perm="batches.view">   <Batches />   </PermRequired>} />
         <Route path="reports"   element={<PermRequired perm="reports.view">   <Reports />   </PermRequired>} />

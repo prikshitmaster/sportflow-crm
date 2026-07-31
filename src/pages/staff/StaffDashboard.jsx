@@ -21,6 +21,9 @@ const WORK_TILES = [
   { perm: 'events.manage',     Icon: Trophy,          label: 'Events',      bg: 'bg-indigo-600',  route: '/staff/events'     },
   { perm: 'staff.manage',      Icon: UserCog,         label: 'Staff',       bg: 'bg-gray-700',    route: '/staff/coaches'    },
   { perm: 'settings.manage',   Icon: Settings,        label: 'Settings',    bg: 'bg-gray-600',    route: '/staff/settings'   },
+  // Matches Sidebar/BottomNav's Performance entry (owner side) — same
+  // permission, same football-only restriction (page itself is football-only).
+  { perm: 'training.manage',   Icon: Activity,        label: 'Performance', bg: 'bg-cyan-600',    route: '/staff/performance', footballOnly: true },
 ]
 
 export default function StaffDashboard() {
@@ -86,8 +89,10 @@ export default function StaffDashboard() {
   const firstBatch    = todayBatches[0]
   const batchLabel    = firstBatch ? `${firstBatch.startTime || firstBatch.time || 'Morning'} batch` : dateStr
 
-  // Tiles the current user can see — always permission-based regardless of role
-  const myTiles = WORK_TILES.filter(t => hasPermission(t.perm))
+  // Tiles the current user can see — always permission-based regardless of role.
+  // footballOnly mirrors StaffLayout's own coach-tab sport filter.
+  const isFootball = !user?.sports?.length || user.sports.some(s => s.toLowerCase() === 'football')
+  const myTiles = WORK_TILES.filter(t => hasPermission(t.perm) && (!t.footballOnly || isFootball))
 
   return (
     <div className="px-4 pt-5 pb-4 space-y-5">
