@@ -81,10 +81,15 @@ export default function StaffLayout() {
 
   const handleLogout = async () => { await logoutStaff(); navigate('/login') }
 
+  // Phone-width on mobile, a normal app width on desktop. Not edge-to-edge on
+  // purpose: several staff routes mount the full admin pages (Students,
+  // Payments, Reports, Performance), which need real room, but the
+  // coach-native pages are mobile-first with no max-width of their own and
+  // would stretch badly across a wide monitor.
   return (
-    <div className="min-h-screen bg-canvas flex flex-col max-w-md mx-auto">
+    <div className="min-h-screen bg-canvas flex flex-col max-w-md lg:max-w-7xl mx-auto">
       {/* Sticky header */}
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between"
+      <header className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 lg:px-6 py-3 flex items-center justify-between gap-4"
         style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))' }}>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center overflow-hidden">
@@ -95,6 +100,24 @@ export default function StaffLayout() {
           <span className="font-bold text-gray-900 text-sm">SportFlow</span>
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${badgeColor}`}>{badge}</span>
         </div>
+
+        {/* Desktop nav — same tabs as the mobile bottom bar, inline in the
+            header instead, since a fixed bottom bar on a monitor reads as a
+            phone app shrunk onto a big screen. */}
+        <nav className="hidden lg:flex items-center gap-1">
+          {tabs.map(({ to, label, icon: Icon }) => (
+            <NavLink key={to} to={to}
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold whitespace-nowrap transition ${
+                  isActive ? 'bg-brand-50 text-brand-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                }`
+              }
+            >
+              <Icon size={15} /> {label}
+            </NavLink>
+          ))}
+        </nav>
+
         <div className="flex items-center gap-2">
           {user && <p className="hidden xs:block text-xs font-semibold text-gray-700 truncate max-w-[100px]">{user.name}</p>}
           <NotificationBell
@@ -108,7 +131,9 @@ export default function StaffLayout() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
+      {/* Bottom-bar clearance is a class, not an inline style, so it can drop
+          on lg where there is no bottom bar to clear. */}
+      <main className="flex-1 overflow-y-auto pb-[calc(5rem_+_env(safe-area-inset-bottom))] lg:pb-8">
         <Suspense fallback={<PageSkeleton />}>
           <div className="page-enter">
             <Outlet />
@@ -117,7 +142,7 @@ export default function StaffLayout() {
       </main>
 
       {/* Bottom navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-100 flex max-w-md mx-auto"
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-100 flex max-w-md mx-auto"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {tabs.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to}
