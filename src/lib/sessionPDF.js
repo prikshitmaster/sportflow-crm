@@ -1,15 +1,24 @@
 // sessionPDF.js — AFC B License format session plan export
-// Generates an HTML string, opens in a new window, triggers browser print → Save as PDF
-// Zero external dependencies.
+//
+// Web: renders HTML, opens in a new window, triggers browser print → the
+// user picks "Save as PDF" in the native print dialog. Zero extra deps,
+// already produces a real PDF.
 //
 // Native Android (Capacitor): window.open()+print() doesn't work there — the
-// WebView has no print-to-PDF dialog (silent no-op), and the popup is a bare
-// document outside the SPA's router, so it has no back button either. Instead
-// we hand the rendered HTML to the native Share sheet (same nativeSave.js
-// pattern already used for Excel/CSV/QR exports) — the user can open it in
-// Chrome to view/print/save as PDF, or forward it directly via WhatsApp/Drive.
+// WebView has no print-to-PDF dialog (silent no-op). Previously this branch
+// shared the raw HTML file instead, which (a) isn't actually a PDF and
+// (b) showed broken diagram images once opened outside the app, since the
+// image was a live network URL and whatever app opened the shared file
+// often can't/won't fetch it. Fixed by rendering the same HTML off-screen,
+// rasterizing it with html2canvas, and paginating it into a real multi-page
+// PDF with jsPDF — self-contained, no network access needed to view it.
+// Diagram images are embedded as base64 data URIs (both platforms) so they
+// never depend on a live fetch at view time, and so html2canvas doesn't
+// hit a cross-origin canvas-tainting error.
 
 import { Capacitor } from '@capacitor/core'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
 import { saveOrShareFile } from './nativeSave'
 
 // ── Pitch SVG strings ─────────────────────────────────────────────────────────
@@ -100,12 +109,37 @@ function catLabel(key) {
   }[key] || key
 }
 
-function diagBox(phase) {
+// Fetches a (usually remote, public Supabase Storage) image URL and inlines
+// it as a base64 data URI, so the exported file never depends on a live
+// network fetch to display it, and html2canvas doesn't hit a cross-origin
+// canvas-tainting error on the rasterize step. Returns null on any failure
+// so the caller can fall back to a placeholder instead of a broken <img>.
+async function toDataURL(url) {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(String(reader.result))
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
+async function diagBox(phase) {
   const drill = phase.drills
   const preset = phase.diagram_preset || drill?.diagram_preset
   const url    = phase.diagram_url    || drill?.diagram_url
   if (url) {
-    return `<img src="${esc(url)}" style="max-width:100%;max-height:120px;display:block;margin:auto;border-radius:4px" />`
+    const dataUrl = await toDataURL(url)
+    if (dataUrl) {
+      return `<img src="${dataUrl}" style="max-width:100%;max-height:120px;display:block;margin:auto;border-radius:4px" />`
+    }
+    return `<div style="border:1px dashed #ccc;border-radius:4px;padding:20px;text-align:center;color:#aaa;font-size:8pt">Image unavailable</div>`
   }
   if (preset && PITCH_SVGS[preset]) {
     return `<div style="max-width:180px;margin:auto">${PITCH_SVGS[preset]}</div>`
@@ -113,7 +147,7 @@ function diagBox(phase) {
   return `<div style="border:1px dashed #ccc;border-radius:4px;padding:20px;text-align:center;color:#aaa;font-size:8pt">No diagram</div>`
 }
 
-function renderPhase(phase, index) {
+async function renderPhase(phase, index) {
   const drill = phase.drills
   const area  = phase.area || drill?.area || ''
   const ct    = phase.context_ct || drill?.context_ct || ''
@@ -124,6 +158,7 @@ function renderPhase(phase, index) {
   const regr  = drill?.regressions  || []
 
   const drillName = drill?.name ? `<div style="font-size:8pt;color:#555;margin-bottom:3px">Drill: <em>${esc(drill.name)}</em></div>` : ''
+  const diagramHtml = await diagBox(phase)
 
   return `
   <div style="margin-bottom:8px;border:1.5px solid #1e3a5f;border-radius:4px;page-break-inside:avoid;break-inside:avoid">
@@ -168,35 +203,22 @@ function renderPhase(phase, index) {
           ` : ''}
         </td>
         <td style="width:40%;vertical-align:middle;padding:8px;text-align:center">
-          ${diagBox(phase)}
+          ${diagramHtml}
         </td>
       </tr>
     </table>
   </div>`
 }
 
-export async function exportSessionPDF({ plan, phases, batchName, academyName, coachName }) {
-  const totalDur = phases.reduce((s, p) => s + (p.duration || 0), 0)
+const PAGE_STYLE = `
+  @page { size: A4 landscape; margin: 12mm 12mm 10mm 12mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 9pt; color: #000; margin: 0; }
+  table { border-collapse: collapse; }
+`
 
-  const phaseHTML = phases
-    .sort((a, b) => a.position - b.position)
-    .map((p, i) => renderPhase(p, i))
-    .join('')
-
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Session Plan — ${esc(batchName)} — ${esc(plan.date)}</title>
-  <style>
-    @page { size: A4 landscape; margin: 12mm 12mm 10mm 12mm; }
-    * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; font-size: 9pt; color: #000; margin: 0; }
-    table { border-collapse: collapse; }
-  </style>
-</head>
-<body>
-
+function buildBodyHTML({ plan, phaseHTML, totalDur, batchName, academyName, coachName }) {
+  return `
   <!-- ── HEADER ── -->
   <table style="width:100%;margin-bottom:8px;border:1.5px solid #1e3a5f;border-radius:4px;overflow:hidden">
     <tr>
@@ -225,19 +247,90 @@ export async function exportSessionPDF({ plan, phases, batchName, academyName, c
   <div style="margin-top:6px;border-top:1px solid #ddd;padding-top:4px;display:flex;justify-content:space-between;font-size:7pt;color:#999">
     <span>SportFlow CRM</span>
     <span>Generated: ${new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' })}</span>
-  </div>
+  </div>`
+}
 
+// Rasterizes bodyHTML off-screen and paginates it into a real multi-page A4
+// landscape PDF. Doesn't try to avoid slicing a phase card across a page
+// boundary — acceptable tradeoff for a from-scratch native PDF exporter.
+async function renderToPDF(bodyHTML) {
+  const container = document.createElement('div')
+  container.style.position = 'fixed'
+  container.style.left = '-99999px'
+  container.style.top = '0'
+  container.style.width = '1600px'
+  container.style.background = '#ffffff'
+  container.innerHTML = `<style>${PAGE_STYLE}</style><div style="padding:24px">${bodyHTML}</div>`
+  document.body.appendChild(container)
+
+  try {
+    const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' })
+
+    const pageWidthMm  = 297
+    const pageHeightMm = 210
+    const pxPerMm = canvas.width / pageWidthMm
+    const pageHeightPx = pageHeightMm * pxPerMm
+
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+    let renderedPx = 0
+    let firstPage = true
+    while (renderedPx < canvas.height) {
+      const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx)
+      const pageCanvas = document.createElement('canvas')
+      pageCanvas.width  = canvas.width
+      pageCanvas.height = sliceHeightPx
+      pageCanvas.getContext('2d').drawImage(
+        canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx
+      )
+      const sliceData = pageCanvas.toDataURL('image/jpeg', 0.95)
+      if (!firstPage) pdf.addPage()
+      pdf.addImage(sliceData, 'JPEG', 0, 0, pageWidthMm, sliceHeightPx / pxPerMm)
+      renderedPx += sliceHeightPx
+      firstPage = false
+    }
+
+    return pdf.output('blob')
+  } finally {
+    document.body.removeChild(container)
+  }
+}
+
+export async function exportSessionPDF({ plan, phases, batchName, academyName, coachName }) {
+  const totalDur = phases.reduce((s, p) => s + (p.duration || 0), 0)
+
+  const sortedPhases = phases.slice().sort((a, b) => a.position - b.position)
+  const phaseHTML = (await Promise.all(sortedPhases.map((p, i) => renderPhase(p, i)))).join('')
+  const bodyHTML = buildBodyHTML({ plan, phaseHTML, totalDur, batchName, academyName, coachName })
+
+  const safeDate  = (plan.date || 'export').replace(/[^\w-]/g, '_')
+  const safeBatch = (batchName || 'session').replace(/[^\w-]/g, '_')
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const pdfBlob = await renderToPDF(bodyHTML)
+      await saveOrShareFile(pdfBlob, `session-plan-${safeBatch}-${safeDate}.pdf`)
+    } catch (err) {
+      // If canvas rendering fails for any reason, fall back to sharing the
+      // HTML directly rather than leaving the user with no export at all.
+      console.error('PDF render failed, falling back to HTML share', err)
+      const blob = new Blob([`<!DOCTYPE html><html><head><style>${PAGE_STYLE}</style></head><body>${bodyHTML}</body></html>`], { type: 'text/html' })
+      await saveOrShareFile(blob, `session-plan-${safeBatch}-${safeDate}.html`)
+    }
+    return
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Session Plan — ${esc(batchName)} — ${esc(plan.date)}</title>
+  <style>${PAGE_STYLE}</style>
+</head>
+<body>
+  ${bodyHTML}
   <script>window.onload = () => { window.print(); }<\/script>
 </body>
 </html>`
-
-  if (Capacitor.isNativePlatform()) {
-    const safeDate  = (plan.date || 'export').replace(/[^\w-]/g, '_')
-    const safeBatch = (batchName || 'session').replace(/[^\w-]/g, '_')
-    const blob = new Blob([html], { type: 'text/html' })
-    await saveOrShareFile(blob, `session-plan-${safeBatch}-${safeDate}.html`)
-    return
-  }
 
   const w = window.open('', '_blank', 'width=1000,height=700')
   if (!w) {
