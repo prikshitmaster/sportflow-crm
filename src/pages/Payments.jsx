@@ -231,10 +231,10 @@ function printReceipt(p, student, academyName, logoUrl) {
   setTimeout(() => { w.print() }, 400)
 }
 
+// Exact rupee amount, Indian comma grouping — no k/L abbreviation (see
+// Dashboard.jsx's fmtAmt for why: it hides real amounts at this scale).
 function fmtMoney(n) {
-  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`
-  if (n >= 1000)   return `₹${(n / 1000).toFixed(0)}k`
-  return `₹${n.toLocaleString('en-IN')}`
+  return `₹${Math.round(n).toLocaleString('en-IN')}`
 }
 
 const STATUS_MAP = {
@@ -1189,9 +1189,9 @@ function StudentPaymentPanel({ student, payments, studentMap, onClose, showToast
           </div>
           <div className="grid grid-cols-3 gap-2 mt-4">
             {[
-              { label: 'Collected', value: `₹${(totals.paid/1000).toFixed(totals.paid>=1000?1:0)}${totals.paid>=1000?'k':''}`, color: 'bg-emerald-500/80' },
-              { label: 'Pending',   value: `₹${(totals.pending/1000).toFixed(totals.pending>=1000?1:0)}${totals.pending>=1000?'k':''}`, color: 'bg-amber-400/80' },
-              { label: 'Overdue',   value: `₹${(totals.overdue/1000).toFixed(totals.overdue>=1000?1:0)}${totals.overdue>=1000?'k':''}`, color: 'bg-red-500/80' },
+              { label: 'Collected', value: fmtMoney(totals.paid),    color: 'bg-emerald-500/80' },
+              { label: 'Pending',   value: fmtMoney(totals.pending), color: 'bg-amber-400/80' },
+              { label: 'Overdue',   value: fmtMoney(totals.overdue), color: 'bg-red-500/80' },
             ].map(s => (
               <div key={s.label} className={`${s.color} rounded-xl p-2 text-center`}>
                 <p className="text-sm font-black text-white">{s.value}</p>

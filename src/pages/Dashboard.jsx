@@ -627,10 +627,12 @@ function KpiCard({ label, value, sub, icon: Icon, tone = 'default' }) {
 
 // ── Helpers ───────────────────────────────────────────────────
 
+// Exact rupee amount, Indian comma grouping — no k/L abbreviation. A ₹1,180
+// figure showing as "₹1k" reads as exactly ₹1,000 and hides ₹180; at these
+// stakes (fee collections, not investor-deck totals) precision matters more
+// than a shorter label. Whole rupees only — paise were never tracked here.
 function fmtAmt(n) {
-  if (n >= 100000) return `${(n / 100000).toFixed(1)}L`
-  if (n >= 1000)   return `${(n / 1000).toFixed(0)}k`
-  return n.toLocaleString('en-IN')
+  return Math.round(n).toLocaleString('en-IN')
 }
 
 function fmtDate(d) {
