@@ -96,6 +96,15 @@ const SUSPEND_RUN_KEY  = 'sf_last_auto_suspend_at'  // throttle per-tab to avoid
 const SUSPEND_THROTTLE_MS = 60 * 60 * 1000  // 1 hour
 const getSuspendDays = () => Number(localStorage.getItem(SUSPEND_KEY) || 3)
 
+// Single source of truth for both loadAll and refreshAllSilent — these used
+// to hardcode 1000 independently, so raising one without the other would
+// have silently reintroduced the "roster truncated above N students" bug
+// (fixed 2026-08-01) for a customer who never hit the old ceiling but would
+// hit a new mismatched one. Matches the Supabase project's max_rows setting
+// (also raised to 10000) — requesting more than max_rows would just get
+// silently capped at the platform level anyway.
+const STUDENTS_PAGE_SIZE = 10000
+
 const MO = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 // For non-monthly plans, fees IS the flat rate — no multiplication
@@ -277,8 +286,6 @@ export function AppProvider({ children }) {
     if (!academyId) return
     setDataLoading(true)
     try {
-      const STUDENTS_PAGE_SIZE = 1000
-
       // ── Critical fetches: block render until these land ──
       // Students, batches, and staff are referenced by nearly every page
       // (Dashboard, Students, Attendance, Batches, Reports) and by the
@@ -291,11 +298,18 @@ export function AppProvider({ children }) {
       ])
       const s = studentsPage.students
       if (studentsPage.total > STUDENTS_PAGE_SIZE) {
-        // Hard-flag this so we don't quietly serve stale rosters at scale.
+        // A console.warn here is invisible to every actual user — this was
+        // silently hiding students above the old 1000 cap with zero visible
+        // signal. An owner scaling past STUDENTS_PAGE_SIZE needs to know
+        // immediately, not find out when a student can't be found anywhere.
         // eslint-disable-next-line no-console
         console.warn(
           `[AppContext] Roster paginated: showing ${s.length} of ${studentsPage.total} students. ` +
           `Increase STUDENTS_PAGE_SIZE or add chunked loading to avoid missing rows.`
+        )
+        showToast(
+          `⚠ Showing ${s.length} of ${studentsPage.total} students — some are hidden. Contact support to raise this limit.`,
+          'error'
         )
       }
       setStudents(s); setBatches(b); setStaff(st)
@@ -399,7 +413,7 @@ export function AppProvider({ children }) {
     if (!academyId) return
     try {
       const [studentsPage, b, st] = await Promise.all([
-        db.fetchStudentsPaginated(academyId, { page: 0, pageSize: 1000 }),
+        db.fetchStudentsPaginated(academyId, { page: 0, pageSize: STUDENTS_PAGE_SIZE }),
         db.fetchBatches(academyId),
         db.fetchStaff(academyId),
       ])
