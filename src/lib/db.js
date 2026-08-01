@@ -1045,11 +1045,17 @@ export async function validateStaffSession(token) {
   // Routed through secure_validate_staff_session (security-v3/04).
   // Returns the staff bundle (same shape as loginStaffAccount) or null
   // when the token is missing/expired.
+  //
+  // THROW on a request error (network blip, timeout) — that is NOT the same
+  // thing as "token is invalid," but returning null for both used to let the
+  // caller treat a transient failure as a real logout and delete the saved
+  // session, so a flaky connection during a page refresh could permanently
+  // sign someone out. Only an RPC that actually RAN and said "no" means null.
   const { data, error } = await supabase.rpc('secure_validate_staff_session', {
     p_token: token,
   })
-  if (error || !data) return null
-  return data
+  if (error) throw error
+  return data || null
 }
 
 export async function fetchStaffProfileExtra(staffId) {
@@ -1420,11 +1426,14 @@ export async function createStudentSession(_studentId, _token) {
 
 export async function validateStudentSession(token) {
   // Routed through secure_validate_student_session (security-v3/04).
+  // See validateStaffSession's comment — throw on a request error instead of
+  // collapsing it into the same null as "token genuinely invalid," or a
+  // transient network failure during a refresh permanently signs them out.
   const { data, error } = await supabase.rpc('secure_validate_student_session', {
     p_token: token,
   })
-  if (error || !data) return null
-  return data
+  if (error) throw error
+  return data || null
 }
 
 export async function deleteStudentSession(token) {

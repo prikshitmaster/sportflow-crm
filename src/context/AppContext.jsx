@@ -461,23 +461,40 @@ export function AppProvider({ children }) {
         const stuSess = getStudentSession()
         if (stuSess?.token) {
           diag.path = 'student-token'
-          const student = await db.validateStudentSession(stuSess.token)
-          if (student) {
-            setStudentUser(student)
-            setRole('student')
-            _startOps('student', student.id, student.name, student.academy_id, '')
-            if (typeof window !== 'undefined') window.__sf_auth = diag
-            setLoading(false)
-            return
+          try {
+            const student = await db.validateStudentSession(stuSess.token)
+            if (student) {
+              setStudentUser(student)
+              setRole('student')
+              _startOps('student', student.id, student.name, student.academy_id, '')
+              if (typeof window !== 'undefined') window.__sf_auth = diag
+              setLoading(false)
+              return
+            }
+            // The RPC ran fine and confirmed this token really is dead.
+            clearStudentSession()
+          } catch (err) {
+            // The REQUEST failed (network blip, timeout) — not the same as
+            // "invalid token." Leave the saved session alone so the next
+            // load (e.g. the user's very next refresh) can still recover it,
+            // instead of permanently signing them out over a transient hiccup.
+            console.warn('[auth] student session validation request failed (session kept):', err?.message)
           }
-          clearStudentSession()
         }
 
         // ── 2. Staff session ──────────────────────────────────
         const stfSess = getStaffSession()
         if (stfSess?.token) {
           diag.path = 'staff-token'
-          const member = await db.validateStaffSession(stfSess.token)
+          let member = null
+          try {
+            member = await db.validateStaffSession(stfSess.token)
+            if (!member) clearStaffSession()   // RPC ran fine — token really is dead
+          } catch (err) {
+            // Same reasoning as the student branch above: a failed request
+            // must not delete a still-valid saved session.
+            console.warn('[auth] staff session validation request failed (session kept):', err?.message)
+          }
           if (member) {
             const academyId   = member.academy_id
             const [flags, academyData2] = await Promise.all([
@@ -512,7 +529,6 @@ export function AppProvider({ children }) {
             setLoading(false)
             return
           }
-          clearStaffSession()
         }
 
         // ── 3. Supabase session (owner or parent) ─────────────
