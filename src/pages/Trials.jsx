@@ -874,12 +874,21 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
   const handleBatch = (id) => {
     const b = batches.find(b => String(b.id) === id)
     const batchPlans = feePlans.filter(p => p.batchId === Number(id))
+    // Auto-fill from whichever plan matches the CURRENT training type
+    // (defaults to 'Daily') so picking a batch alone already suggests a fee
+    // — the type is already visually selected, no need to make them re-click
+    // it just to trigger handleTrainingType's own matching.
+    const matches     = batchPlans.filter(p => normTrainingType(p.trainingType) === normTrainingType(form.trainingType))
+    const matchedPlan = matches.length === 1 ? matches[0] : null
+    const feeMap       = matchedPlan ? { monthly: matchedPlan.monthlyFee, quarterly: matchedPlan.quarterlyFee, yearly: matchedPlan.yearlyFee } : null
     setForm(f => ({
       ...f,
       batchId:    id ? Number(id) : '',
       batchName:  b ? b.name : '',
-      feePlanId:  '',
-      ...(batchPlans.length === 0 && b?.defaultFee  ? { fees: b.defaultFee }    : {}),
+      feePlanId:  matchedPlan ? matchedPlan.id : '',
+      ...(matchedPlan
+        ? { fees: feeMap[f.feePlan] || matchedPlan.monthlyFee || '' }
+        : (batchPlans.length === 0 && b?.defaultFee ? { fees: b.defaultFee } : {})),
       ...(batchPlans.length === 0 && b?.defaultPlan ? { feePlan: b.defaultPlan } : {}),
     }))
   }
@@ -897,6 +906,28 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
       trainingType: normTrainingType(plan.trainingType) === 'alternate' ? 'Alternate' : 'Daily',
       fees:         feeMap[f.feePlan] || plan.monthlyFee || '',
     }))
+  }
+
+  // Daily/Alternate is now the ONE way to pick training type, whether or not
+  // the batch has named fee plans — unifies what used to be two disconnected
+  // UIs (a "Fee Plan" dropdown when plans existed, plain buttons that never
+  // touched the fee when they didn't). Picking a type looks up whichever
+  // named plan matches THIS batch + type and auto-fills the fee from it; if
+  // more than one plan matches, the caller shows a small disambiguation
+  // dropdown instead of guessing which one they meant.
+  const handleTrainingType = (type) => {
+    const candidates = feePlans.filter(p =>
+      p.batchId === Number(form.batchId) &&
+      normTrainingType(p.trainingType) === normTrainingType(type))
+    if (candidates.length === 1) {
+      const plan = candidates[0]
+      const feeMap = { monthly: plan.monthlyFee, quarterly: plan.quarterlyFee, yearly: plan.yearlyFee }
+      setForm(f => ({ ...f, trainingType: type, feePlanId: plan.id, fees: feeMap[f.feePlan] || plan.monthlyFee || '' }))
+    } else {
+      // 0 matches: nothing to auto-fill, fee stays manually editable as
+      // before. >1 match: caller renders a small picker to disambiguate.
+      setForm(f => ({ ...f, trainingType: type, feePlanId: '' }))
+    }
   }
 
   const handleJoinDate = (date) => {
@@ -1030,30 +1061,38 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
               {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
             </div>
 
-            {/* Named fee plan OR training type */}
-            {form.batchId && feePlans.some(p => p.batchId === Number(form.batchId)) ? (
-              <div className="sm:col-span-2">
-                <label className="label">Fee Plan</label>
-                <select className="input" value={form.feePlanId} onChange={e => handleFeePlanPick(e.target.value)}>
-                  <option value="">— Select Plan —</option>
-                  {feePlans.filter(p => p.batchId === Number(form.batchId)).map(p => (
-                    <option key={p.id} value={p.id}>{p.name} ({trainingTypeLabel(p.trainingType) || 'Any'})</option>
-                  ))}
-                </select>
+            {/* Training type — always the primary control now. Picking Daily/
+                Alternate auto-fills the fee from whichever named plan matches
+                this batch + type; if more than one plan matches, a small
+                picker below lets them disambiguate instead of guessing. */}
+            <div className="sm:col-span-2">
+              <label className="label">Training Type</label>
+              <div className="flex gap-2">
+                {['Daily','Alternate'].map(t => (
+                  <button key={t} type="button" onClick={() => handleTrainingType(t)}
+                    className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                    {t}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <div>
-                <label className="label">Training Type</label>
-                <div className="flex gap-2">
-                  {['Daily','Alternate'].map(t => (
-                    <button key={t} type="button" onClick={() => set('trainingType', t)}
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+              {(() => {
+                const matches = form.batchId ? feePlans.filter(p =>
+                  p.batchId === Number(form.batchId) &&
+                  normTrainingType(p.trainingType) === normTrainingType(form.trainingType)) : []
+                if (matches.length > 1) {
+                  return (
+                    <select className="input mt-2" value={form.feePlanId} onChange={e => handleFeePlanPick(e.target.value)}>
+                      <option value="">— Select Plan —</option>
+                      {matches.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  )
+                }
+                if (form.feePlanId && matches.length === 1) {
+                  return <p className="text-[11px] text-emerald-600 mt-1.5">Fee auto-filled from "{matches[0].name}"</p>
+                }
+                return null
+              })()}
+            </div>
 
             {/* Fee duration */}
             <div className="sm:col-span-2">
