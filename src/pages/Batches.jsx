@@ -248,7 +248,7 @@ function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit, canEdi
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden hover:shadow-md active:scale-[0.98] transition-all border border-gray-100/80">
       {/* Gradient header — click opens detail panel */}
       <div
-        className="px-4 pt-4 pb-5 relative cursor-pointer"
+        className="px-4 pt-3.5 pb-3.5 relative cursor-pointer"
         style={{ background: `linear-gradient(135deg, ${hex} 0%, ${hexDark} 100%)` }}
         onClick={() => onSelect(b)}
       >
@@ -265,17 +265,21 @@ function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit, canEdi
 
         {/* Sport badge */}
         {b.sports?.length > 0 && (
-          <span className="inline-block text-[10px] font-bold text-white/90 bg-white/20 px-2 py-0.5 rounded-full mb-2">
+          <span className="inline-block text-[10px] font-bold text-white/90 bg-white/20 px-2 py-0.5 rounded-full mb-1.5">
             {b.sports[0]}
           </span>
         )}
 
-        {/* Batch name */}
-        <h3 className="font-black text-white text-base leading-snug pr-8">{b.name}</h3>
-        {b.code && <p className="font-mono text-[10px] text-white/50 mt-0.5">{b.code}</p>}
+        {/* Batch name + code on one line — stacking them as two near-identical
+            lines ("Under 15" / "u15") read as a duplicated title. The code is
+            now a small trailing tag instead of a second line. */}
+        <div className="flex items-baseline gap-1.5 min-w-0 pr-8">
+          <h3 className="font-black text-white text-base leading-snug truncate">{b.name}</h3>
+          {b.code && <span className="font-mono text-[10px] text-white/50 flex-shrink-0">{b.code}</span>}
+        </div>
 
         {/* Schedule */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2.5">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
           {b.time && (
             <span className="flex items-center gap-1 text-white/80 text-xs">
               <Clock size={10} className="flex-shrink-0" />{b.time}
@@ -295,7 +299,7 @@ function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit, canEdi
       {/* Card body */}
       <div className="px-4 py-3 cursor-pointer" onClick={() => onSelect(b)}>
         {/* Capacity bar */}
-        <div className="mb-2.5">
+        <div className="mb-2">
           <div className="flex justify-between text-xs mb-1">
             <span className="text-gray-500">{enrolled} / {b.capacity} students</span>
             <span className="font-bold" style={{ color: barColor }}>{pct}%</span>
@@ -306,7 +310,7 @@ function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit, canEdi
         </div>
 
         {/* Status badges + age */}
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-2.5">
           {isFull && <span className="badge badge-red text-[10px]">Full</span>}
           {!isFull && b.waitlist > 0 && <span className="badge badge-yellow text-[10px]">{b.waitlist} waitlist</span>}
           {(b.ageMin > 0 || b.ageMax < 99) && (
@@ -315,7 +319,7 @@ function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit, canEdi
         </div>
 
         {/* Coach footer */}
-        <div className="flex items-center justify-between pt-2.5 border-t border-gray-100">
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
           <div className="flex items-center gap-2 min-w-0">
             {coachStaff?.photoUrl ? (
               <img src={coachStaff.photoUrl} alt={b.coach}
