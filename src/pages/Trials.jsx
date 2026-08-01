@@ -292,7 +292,9 @@ function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
   const fmtD      = iso => iso ? new Date(iso).toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' }) : '—'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    {/* No backdrop-blur — see ConvertModal's comment on this pattern; here
+        it's worse, since this same element both blurs AND scrolls. */}
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col my-4">
 
         {/* Modal header */}
@@ -497,7 +499,8 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
   const canSave = form.name.trim() && form.phone.trim() && form.sport && form.trialDate
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+    {/* No backdrop-blur — see ConvertModal's comment on this pattern. */}
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl ring-1 ring-black/5">
 
         {/* Header */}
@@ -936,7 +939,11 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      {/* No backdrop-blur — it forces the browser to keep recompositing this
+          layer as the modal's own content scrolls, which reads as jank even
+          with body scroll locked. Plain dimming has the same visual read
+          without the performance cost. */}
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[92vh]">
 
         {/* Header */}
