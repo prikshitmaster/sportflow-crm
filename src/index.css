@@ -14,6 +14,12 @@
     height: 100%;
     /* Prevent elastic bounce scroll on iOS at page level */
     overscroll-behavior: none;
+    /* This app is light-themed only — without this, native form popups
+       (select dropdowns, date/month pickers) fall back to the OS's dark/
+       light preference independent of our own CSS. On a system set to dark
+       mode, that renders those popups in a dark theme that clashes badly
+       with our light custom styling, reading as a solid black/broken box. */
+    color-scheme: light;
   }
 
   body {
