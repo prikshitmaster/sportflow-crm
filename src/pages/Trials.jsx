@@ -935,7 +935,13 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
   }
 
   const preview     = coveragePreview(form.joinDate, form.paidTill)
-  const trialDeduct = trial.trialFeePaid || 0
+  // trialFeePaid ALWAYS defaults to 590 on every trial row regardless of
+  // whether it was actually collected — trialFeeMode is the real signal
+  // (same gotcha already handled in TrialCard/TrialSlipModal in this file).
+  // Without this check, a trial explicitly marked "Not collected" still had
+  // its fee deducted here, undercharging the first payment by that amount —
+  // real lost revenue, not just a cosmetic display bug.
+  const trialDeduct = trial.trialFeeMode !== 'Not collected' ? (trial.trialFeePaid || 0) : 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1537,7 +1543,14 @@ export default function Trials() {
         trainingType: form.trainingType || 'Daily',
         paidTill:     form.paidTill    || null,
         fromTrial:    true,
-        trialFeePaid: trial.trialFeePaid || 0,
+        // trialFeePaid always defaults to 590 on every trial row regardless
+        // of whether it was collected — trialFeeMode is the real signal.
+        // Without this check, converting a "Not collected" trial still
+        // deducted the fee from the actual saved first payment (real lost
+        // revenue), even after the modal's own preview was fixed to show
+        // the correct amount — this is a separate code path that bypassed
+        // that fix entirely.
+        trialFeePaid: trial.trialFeeMode !== 'Not collected' ? (trial.trialFeePaid || 0) : 0,
         // Lets addStudent attach the fee receipt already booked at trial
         // time to this student, instead of creating a second payment row.
         trialId:      trial.id,
