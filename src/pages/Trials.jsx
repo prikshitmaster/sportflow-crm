@@ -1263,6 +1263,12 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
   const st    = STAGE_STYLE[trial.stage] || STAGE_STYLE.new
   const rec   = trial.coachRec ? REC_STYLE[trial.coachRec] : null
   const isDone = trial.stage === 'converted' || trial.stage === 'rejected'
+  // trialFeePaid always defaults to 590 regardless of whether it was actually
+  // collected — trialFeeMode is the real signal (see trial-fee-revenue-model
+  // memory). The quoted program fee (below) is a different number entirely
+  // and showing it alone reads as "the trial fee," so it's easy to mistake a
+  // ₹1,000 quote for a paid trial fee when nothing was collected.
+  const feeCollected = trial.trialFeeMode !== 'Not collected'
 
   return (
     <div className={`bg-white rounded-2xl border p-4 space-y-3 ${isDone ? 'border-gray-100 opacity-70' : 'border-gray-200 shadow-sm'}`}>
@@ -1273,8 +1279,17 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
             <p className="font-black text-gray-900 text-sm">{trial.name}</p>
             {trial.age && <span className="text-[10px] text-gray-400 font-semibold">{trial.age}y</span>}
             {trial.quotedFee && (
-              <span className="text-[10px] text-emerald-600 font-bold">₹{trial.quotedFee.toLocaleString('en-IN')}</span>
+              <span className="text-[10px] text-gray-400 font-semibold">Fee ₹{trial.quotedFee.toLocaleString('en-IN')}</span>
             )}
+          </div>
+          <div className="mt-1">
+            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+              feeCollected ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
+            }`}>
+              {feeCollected
+                ? `✓ Trial fee paid · ₹${(trial.trialFeePaid ?? 590).toLocaleString('en-IN')}`
+                : '✗ Trial fee not collected'}
+            </span>
           </div>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             <span className="text-[10px] text-gray-400 flex items-center gap-1"><Phone size={9} />{trial.phone}</span>
