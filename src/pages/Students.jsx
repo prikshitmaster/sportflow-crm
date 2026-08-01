@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from './Payments'
 import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition, fetchAttendanceForMonth } from '../lib/db'
 import StudentAvatar from '../components/StudentAvatar'
+import useBodyScrollLock from '../hooks/useBodyScrollLock'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment, isLowAttendanceUnpaid as ruleIsLowAttendanceUnpaid } from '../lib/studentRules'
 import { toLocalDateStr } from '../lib/dates'
@@ -1611,6 +1612,8 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
 export function Modal({ title, onClose, children, footer }) {
   // Portalled to <body> so no ancestor stacking context (page transitions,
   // transforms, opacity) can trap this fixed overlay under the header/sidebar.
+  // Locks background scroll while open — see useBodyScrollLock for why.
+  useBodyScrollLock()
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />

@@ -10,6 +10,7 @@ import DevFillButton from '../components/DevFillButton'
 import { fillTrial } from '../lib/devFill'
 import { toLocalDateStr } from '../lib/dates'
 import { normTrainingType, trainingTypeLabel } from '../lib/studentRules'
+import useBodyScrollLock from '../hooks/useBodyScrollLock'
 
 // ── Stage config ─────────────────────────────────────────────
 
@@ -269,6 +270,7 @@ function printTrialSlip(trial, academyName, logoUrl, customLogo) {
 // ── Trial Slip Preview Modal ──────────────────────────────────
 
 function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
+  useBodyScrollLock()
   const [customLogo, setCustomLogo] = useState(null)
   const activeLogo = customLogo || logoUrl
 
@@ -431,6 +433,7 @@ const fieldCls = 'w-full px-3.5 py-2.5 text-sm text-gray-900 bg-gray-50 border b
 const selectCls = fieldCls + ' appearance-none cursor-pointer'
 
 function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, selectedSport = null }) {
+  useBodyScrollLock()
   const { ageGroups } = useApp()
   const ageGroupOptions = ageGroups.length ? ageGroups.map(g => g.label) : AGE_GROUPS
   const [form, setForm] = useState({
@@ -720,6 +723,7 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
 // ── Schedule Modal (new → scheduled, or reschedule) ──────────
 
 function ScheduleModal({ trial, batches, onClose, onSave }) {
+  useBodyScrollLock()
   const [date,    setDate]    = useState(trial.trialDate || todayStr())
   const [batchId, setBatchId] = useState(trial.batchId ? String(trial.batchId) : '')
   const [saving,  setSaving]  = useState(false)
@@ -769,6 +773,7 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
 // ── Session Modal (mark attended + optional note) ─────────────
 
 function SessionModal({ trial, onClose, onSave }) {
+  useBodyScrollLock()
   const [note,   setNote]   = useState('')
   const [rec,    setRec]    = useState('')
   const [saving, setSaving] = useState(false)
@@ -832,6 +837,7 @@ function SessionModal({ trial, onClose, onSave }) {
 // ── Convert Modal ─────────────────────────────────────────────
 
 function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
+  useBodyScrollLock()
   const batchOpts = trial.sport
     ? batches.filter(b => (b.sports || []).includes(trial.sport))
     : batches
@@ -1159,6 +1165,7 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
 // ── Source Manager Modal ──────────────────────────────────────
 
 function SourceManager({ trialSources, addTrialSource, removeTrialSource, onClose }) {
+  useBodyScrollLock()
   const [label, setLabel] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -1209,6 +1216,7 @@ function SourceManager({ trialSources, addTrialSource, removeTrialSource, onClos
 // ── Age Group Manager Modal ───────────────────────────────────
 
 function AgeGroupManager({ ageGroups, addAgeGroup, removeAgeGroup, onClose }) {
+  useBodyScrollLock()
   const [label, setLabel] = useState('')
   const [saving, setSaving] = useState(false)
 

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { X, Send, Users, User, CheckSquare, Square } from 'lucide-react'
+import useBodyScrollLock from '../hooks/useBodyScrollLock'
 
 const ACTION_PRESETS = ['Got it', 'Acknowledge', 'Confirm', 'Done', 'Will do']
 
 export default function SendStaffNoticeModal({ staff = [], onSend, onClose }) {
+  useBodyScrollLock()
   const [title,       setTitle]       = useState('')
   const [body,        setBody]        = useState('')
   const [actionLabel, setActionLabel] = useState('')
