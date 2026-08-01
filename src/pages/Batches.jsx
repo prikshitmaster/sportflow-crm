@@ -475,7 +475,7 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
         <div>
           <label className="label">Assigned Coach</label>
           <select className="input" value={form.coach} onChange={e => set('coach', e.target.value)}>
-            {staff.filter(s => s.role !== 'Admin').map(s => <option key={s.id}>{s.name}</option>)}
+            {staff.filter(s => s.staffType !== 'office').map(s => <option key={s.id}>{s.name}</option>)}
           </select>
         </div>
         <div>
@@ -524,7 +524,7 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
     } catch {}
     setPosSaving(false)
   }
-  const coaches = staff.filter(s => s.role !== 'Admin')
+  const coaches = staff.filter(s => s.staffType !== 'office')
 
   useEffect(() => {
     fetchBatchEnrolments(b.id).then(rows => setMbEnrolments(rows)).catch(() => {})

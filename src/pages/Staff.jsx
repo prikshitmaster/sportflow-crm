@@ -357,7 +357,7 @@ function StaffCard({ s, batches, onSelect, onDelete, canDelete, currentUserId, b
         onClick={() => onSelect(s)}
         className="w-full mt-4 btn-secondary text-xs justify-center py-2 gap-2"
       >
-        View Profile & Assign Batch <ChevronRight size={12} />
+        {s.staffType === 'office' ? 'View Profile' : 'View Profile & Assign Batch'} <ChevronRight size={12} />
       </button>
 
       {isBroken && (
@@ -861,40 +861,45 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPe
               </div>
             )}
 
-            <div className="bg-white rounded-2xl border border-gray-100 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Assigned Batches</p>
-                {unassignedBatches.length > 0 && (
-                  <button onClick={() => setAssigning(a => !a)} className="text-xs text-brand-600 font-semibold hover:underline">+ Assign</button>
+            {/* Office staff are never assigned to batches — that's a
+                coach/field-staff concept. Owners and branch managers manage
+                batches from the Batches page, not through a staff profile. */}
+            {isField && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Assigned Batches</p>
+                  {unassignedBatches.length > 0 && (
+                    <button onClick={() => setAssigning(a => !a)} className="text-xs text-brand-600 font-semibold hover:underline">+ Assign</button>
+                  )}
+                </div>
+                {assigning && (
+                  <div className="flex gap-2 mb-3">
+                    <select className="input flex-1 text-xs" value={selectedBatch} onChange={e => setSelectedBatch(e.target.value)}>
+                      <option value="">— Select batch —</option>
+                      {unassignedBatches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''} · {b.time}</option>)}
+                    </select>
+                    <button onClick={handleBatchAssign} disabled={!selectedBatch || batchSaving} className="btn-primary text-xs px-3 py-2">
+                      {batchSaving ? '…' : 'Assign'}
+                    </button>
+                  </div>
+                )}
+                {assignedBatches.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-3">No batches assigned yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {assignedBatches.map(b => (
+                      <div key={b.id} className="flex items-center justify-between bg-brand-50 rounded-xl px-3 py-2.5">
+                        <div>
+                          <p className="text-sm font-bold text-brand-700">{b.name}</p>
+                          <p className="text-xs text-brand-500">{b.time} · {b.enrolled}/{b.capacity}</p>
+                        </div>
+                        <button onClick={() => onUnassign(b.id)} className="p-1 rounded text-gray-400 hover:text-red-500 transition"><X size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-              {assigning && (
-                <div className="flex gap-2 mb-3">
-                  <select className="input flex-1 text-xs" value={selectedBatch} onChange={e => setSelectedBatch(e.target.value)}>
-                    <option value="">— Select batch —</option>
-                    {unassignedBatches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''} · {b.time}</option>)}
-                  </select>
-                  <button onClick={handleBatchAssign} disabled={!selectedBatch || batchSaving} className="btn-primary text-xs px-3 py-2">
-                    {batchSaving ? '…' : 'Assign'}
-                  </button>
-                </div>
-              )}
-              {assignedBatches.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-3">No batches assigned yet</p>
-              ) : (
-                <div className="space-y-2">
-                  {assignedBatches.map(b => (
-                    <div key={b.id} className="flex items-center justify-between bg-brand-50 rounded-xl px-3 py-2.5">
-                      <div>
-                        <p className="text-sm font-bold text-brand-700">{b.name}</p>
-                        <p className="text-xs text-brand-500">{b.time} · {b.enrolled}/{b.capacity}</p>
-                      </div>
-                      <button onClick={() => onUnassign(b.id)} className="p-1 rounded text-gray-400 hover:text-red-500 transition"><X size={13} /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            )}
 
             <div className="bg-white rounded-2xl border border-gray-100 p-4">
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Details</p>
