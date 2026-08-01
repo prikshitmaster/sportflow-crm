@@ -291,9 +291,9 @@ function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
   const feeCollected = trial.trialFeeMode !== 'Not collected'
   const fmtD      = iso => iso ? new Date(iso).toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' }) : '—'
 
+  // No backdrop-blur — see ConvertModal's comment on this pattern; here
+  // it's worse, since this same element both blurs AND scrolls.
   return (
-    {/* No backdrop-blur — see ConvertModal's comment on this pattern; here
-        it's worse, since this same element both blurs AND scrolls. */}
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col my-4">
 
@@ -498,8 +498,8 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
 
   const canSave = form.name.trim() && form.phone.trim() && form.sport && form.trialDate
 
+  // No backdrop-blur — see ConvertModal's comment on this pattern.
   return (
-    {/* No backdrop-blur — see ConvertModal's comment on this pattern. */}
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-md max-h-[92vh] flex flex-col shadow-2xl ring-1 ring-black/5">
 
