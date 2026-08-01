@@ -8,11 +8,12 @@ import { useApp } from '../context/AppContext'
 import {
   LayoutDashboard, Users, CalendarCheck, CreditCard, UserPlus,
   Layers, UserCog, BarChart3, Megaphone, Settings, LogOut,
-  Zap, ChevronLeft, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
+  ChevronLeft, QrCode, Trophy, RefreshCw, BookOpen, CalendarDays,
   ChevronDown, ChevronRight, UserCircle, ShieldCheck, Package, MapPin, Sparkles,
   TrendingUp,
 } from 'lucide-react'
 import { useState } from 'react'
+import BrandMark from './BrandMark'
 
 // Items with the same `group` string are nested under a collapsible parent.
 // The parent row uses the first item's icon by default; override with `groupIcon`.
@@ -117,7 +118,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
         <div className="flex-shrink-0 w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center overflow-hidden">
           {user?.academyLogo
             ? <img src={user.academyLogo} alt="logo" className="w-full h-full object-cover" />
-            : <Zap size={16} className="text-white" />}
+            : <BrandMark size={16} className="text-white" />}
         </div>
         {!collapsed && (
           <div>
@@ -191,7 +192,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
       )}
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
         {rendered.map((entry) => {
           if (entry.type === 'item') {
             const { to, label, icon: Icon, premium } = entry.item

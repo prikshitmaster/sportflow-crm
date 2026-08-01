@@ -38,6 +38,9 @@ import ParentLogin from './pages/ParentLogin'
 import Activate from './pages/Activate'
 import Invite from './pages/Invite'
 
+// Marketing homepage — lazy loaded (large page, only needed by logged-out visitors)
+const Landing          = lazy(() => import('./pages/Landing'))
+
 // Owner pages — lazy loaded
 const Dashboard        = lazy(() => import('./pages/Dashboard'))
 const RecordDetail     = lazy(() => import('./pages/RecordDetail'))
@@ -319,7 +322,7 @@ function AppRoutes() {
   useAndroidBackButton()
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
 
       {/* Owner */}
       <Route path="/login"  element={<PublicRoute><Login /></PublicRoute>} />

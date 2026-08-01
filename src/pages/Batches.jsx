@@ -11,8 +11,11 @@ import StudentAvatar from '../components/StudentAvatar'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { updateStudentPosition } from '../lib/db'
 
-const COLOR_HEX      = ['#4f46e5', '#059669', '#7c3aed', '#d97706', '#e11d48']
-const COLOR_HEX_DARK = ['#3730a3', '#047857', '#6d28d9', '#b45309', '#be123c']
+// One consistent brand-blue treatment for every batch card header — matches
+// the rest of the app's accent color instead of cycling through unrelated
+// hues per card index.
+const BRAND_HEX = '#2563eb'
+const NAVY_HEX  = '#0f172a'
 
 export default function Batches() {
   const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch, role, user, hasPermission } = useApp()
@@ -172,9 +175,9 @@ export default function Batches() {
                   {branchBatches.length} batch{branchBatches.length !== 1 ? 'es' : ''} · {branchBatches.reduce((s,b) => s + (liveCountByBatch[b.id] || 0), 0)} enrolled
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {branchBatches.map((b, idx) => (
-                  <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {branchBatches.map((b) => (
+                  <BatchCard key={b.id} b={b} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
                 ))}
               </div>
             </div>
@@ -187,17 +190,17 @@ export default function Batches() {
         </div>
       ) : (
         /* Single branch selected — flat grid */
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {visibleBatches.map((b, idx) => (
-            <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {visibleBatches.map((b) => (
+            <BatchCard key={b.id} b={b} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
           ))}
         </div>
       )}
 
       {/* Fallback flat grid when no branches configured */}
       {!grouped && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {batches.map((b, idx) => <BatchCard key={b.id} b={b} idx={idx} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />)}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {batches.map((b) => <BatchCard key={b.id} b={b} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />)}
         </div>
       )}
 
@@ -233,67 +236,68 @@ export default function Batches() {
   )
 }
 
-function BatchCard({ b, idx, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) {
+function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) {
   const enrolled      = liveCount
   const pct           = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
   const isFull        = enrolled >= b.capacity
-  const hex           = COLOR_HEX[idx % COLOR_HEX.length]
-  const hexDark       = COLOR_HEX_DARK[idx % COLOR_HEX_DARK.length]
+  const hex           = BRAND_HEX
   const barColor      = isFull ? '#ef4444' : pct > 80 ? '#f59e0b' : hex
   const todayDayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]
 
   const coachStaff = b.coach ? staff.find(s => s.name === b.coach) : null
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden hover:shadow-md active:scale-[0.98] transition-all border border-gray-100/80">
-      {/* Gradient header — click opens detail panel */}
-      <div
-        className="px-4 pt-3.5 pb-3.5 relative cursor-pointer"
-        style={{ background: `linear-gradient(135deg, ${hex} 0%, ${hexDark} 100%)` }}
-        onClick={() => onSelect(b)}
-      >
-        {/* Edit button top-right */}
-        {canEdit && (
-          <button
-            onClick={e => { e.stopPropagation(); onEdit(b) }}
-            className="absolute top-3 right-3 p-1.5 rounded-lg bg-white/20 hover:bg-white/35 active:bg-white/40 transition"
-            title="Edit batch"
-          >
-            <Pencil size={12} className="text-white" />
-          </button>
-        )}
+    <div className="bg-white rounded-2xl shadow-sm hover:shadow-lg active:scale-[0.98] transition-all border border-gray-200">
+      {/* Header — click opens detail panel. Solid deep-navy band, inset with
+          its own rounded corners so adjacent cards read as clearly separate
+          chips instead of merging into one dark strip at a glance. */}
+      <div className="p-2 pb-0">
+        <div
+          className="relative cursor-pointer rounded-xl px-4 pt-3.5 pb-3.5"
+          style={{ background: NAVY_HEX }}
+          onClick={() => onSelect(b)}
+        >
+          {/* Edit button top-right */}
+          {canEdit && (
+            <button
+              onClick={e => { e.stopPropagation(); onEdit(b) }}
+              className="absolute top-3 right-3 p-1.5 rounded-lg text-white/50 hover:bg-white/10 hover:text-white transition"
+              title="Edit batch"
+            >
+              <Pencil size={12} />
+            </button>
+          )}
 
-        {/* Sport badge */}
-        {b.sports?.length > 0 && (
-          <span className="inline-block text-[10px] font-bold text-white/90 bg-white/20 px-2 py-0.5 rounded-full mb-1.5">
-            {b.sports[0]}
-          </span>
-        )}
-
-        {/* Batch name + code on one line — stacking them as two near-identical
-            lines ("Under 15" / "u15") read as a duplicated title. The code is
-            now a small trailing tag instead of a second line. */}
-        <div className="flex items-baseline gap-1.5 min-w-0 pr-8">
-          <h3 className="font-black text-white text-base leading-snug truncate">{b.name}</h3>
-          {b.code && <span className="font-mono text-[10px] text-white/50 flex-shrink-0">{b.code}</span>}
-        </div>
-
-        {/* Schedule */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
-          {b.time && (
-            <span className="flex items-center gap-1 text-white/80 text-xs">
-              <Clock size={10} className="flex-shrink-0" />{b.time}
+          {/* Sport badge */}
+          {b.sports?.length > 0 && (
+            <span className="inline-block text-[10px] font-bold text-white/80 bg-white/10 px-2 py-0.5 rounded-full mb-1.5">
+              {b.sports[0]}
             </span>
           )}
-          {b.days?.map(d => (
-            <span key={d} className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-              d === todayDayShort
-                ? 'bg-white/70 text-gray-800'
-                : 'bg-white/15 text-white/45'
-            }`}>{d}</span>
-          ))}
+
+          {/* Batch name + code on one line — stacking them as two near-identical
+              lines ("Under 15" / "u15") read as a duplicated title. The code is
+              now a small trailing tag instead of a second line. */}
+          <div className="flex items-baseline gap-1.5 min-w-0 pr-8">
+            <h3 className="font-bold text-white text-base leading-snug truncate">{b.name}</h3>
+            {b.code && <span className="font-mono text-[10px] text-white/40 flex-shrink-0">{b.code}</span>}
+          </div>
+
+          {/* Schedule */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
+            {b.time && (
+              <span className="flex items-center gap-1 text-white/60 text-xs">
+                <Clock size={10} className="flex-shrink-0" />{b.time}
+              </span>
+            )}
+            {b.days?.map(d => (
+              <span key={d} className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                d === todayDayShort ? 'bg-white/25 text-white' : 'bg-white/10 text-white/40'
+              }`}>{d}</span>
+            ))}
+          </div>
+          {b.ground && <p className="text-white/40 text-[10px] mt-1 truncate">{b.ground}</p>}
         </div>
-        {b.ground && <p className="text-white/50 text-[10px] mt-1 truncate">{b.ground}</p>}
       </div>
 
       {/* Card body */}

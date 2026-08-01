@@ -12,10 +12,32 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
         canvas: '#F8FAFC',
+        // Cooler, blue-tinted neutral (Tailwind's own "slate" scale) in place
+        // of the default warm gray — the palette most enterprise CRM UIs
+        // (Salesforce, Zoho, HubSpot) use. Overriding the built-in `gray`
+        // name means every existing `gray-*` class across the app picks
+        // this up automatically, no per-component edits needed.
+        gray: {
+          50:  '#f8fafc',
+          100: '#f1f5f9',
+          200: '#e2e8f0',
+          300: '#cbd5e1',
+          // 400/500 are the ones almost every page uses for secondary/muted
+          // text (labels, metadata, timestamps) — darkened a step past pure
+          // slate so that text stays legible on white, while 50-300 (mostly
+          // backgrounds/borders) keep the lighter slate tone.
+          400: '#7c8896',
+          500: '#5b6b7f',
+          600: '#475569',
+          700: '#334155',
+          800: '#1e293b',
+          900: '#0f172a',
+          950: '#020617',
+        },
         brand: {
           50:  '#eff6ff',
           100: '#dbeafe',
