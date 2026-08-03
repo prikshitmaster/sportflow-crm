@@ -7,6 +7,7 @@ import {
 import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
 import { isOutstanding, firstOfMonthIso, daysOverdue, normTrainingType, trainingTypeLabel } from '../lib/studentRules'
+import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getOverallScore } from '../lib/performance'
 
 // ── 360° record detail page — /detail/:type/:id ──────────────────────────
 // One page for any record the AI assistant (or, later, any list) links to:
@@ -185,7 +186,12 @@ function StudentView({ id, students, payments, batches, staff, goDetail }) {
   const batch = batches.find(b => String(b.id) === String(student.batchId)) || batches.find(b => b.name === student.batch)
   const coach = batch && staff.find(s => s.name?.trim().toLowerCase() === batch.coach?.trim().toLowerCase())
   const scores = assessment?.scores && typeof assessment.scores === 'object' ? Object.entries(assessment.scores) : []
-  const avgScore = scores.length ? Math.round(scores.reduce((a, [, v]) => a + Number(v || 0), 0) / scores.length) : null
+  // Same category-weighted average used everywhere else assessments are shown
+  // (StaffAssess, StudentPerformance, StudentStats) — this used to be a flat
+  // mean of every raw skill score here, which silently disagreed with those
+  // pages for the exact same assessment.
+  const assessCategories = SPORT_CATEGORIES[student.sport] || FOOTBALL_CATEGORIES
+  const avgScore = assessment?.scores ? getOverallScore(assessment.scores, assessCategories) || null : null
   const now = new Date()
 
   return (
@@ -283,7 +289,7 @@ function StudentView({ id, students, payments, batches, staff, goDetail }) {
           <KV label="Joined" value={fmtDate(student.joinDate)} />
           <KV label="Training" value={student.trainingType} />
           <KV label="Fee plan" value={student.feePlan} />
-          <KV label="Fee due day" value={student.feeDueDay ? `${student.feeDueDay} of each month` : '—'} />
+          <KV label="Position" value={student.position || '—'} />
           <KV label="Coach" value={coach ? <button className="text-brand-600 font-semibold hover:underline" onClick={() => goDetail('coach', coach.id)}>{coach.name}</button> : (batch?.coach || '—')} />
         </div>
       </Section>
