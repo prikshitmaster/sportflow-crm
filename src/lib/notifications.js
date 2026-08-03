@@ -93,7 +93,12 @@ export async function fetchNoticeReceipts(announcementId) {
 
 // ── Realtime ──────────────────────────────────────────────────────────────────
 
-export function subscribeToNotifications(recipientType, recipientId, onNew) {
+// `onUpdate` exists because "read" isn't only ever set from the bell itself —
+// StaffNotices/StudentAnnouncements etc. call markRead()/actionNotification()
+// directly against the DB to drive their own "Got it" buttons. Without an
+// UPDATE listener the bell's local list never learns about that write, so its
+// badge count stays stuck at the old number until the component remounts.
+export function subscribeToNotifications(recipientType, recipientId, onNew, onUpdate) {
   return supabase
     .channel(`notif:${recipientType}:${recipientId}`)
     .on('postgres_changes', {
@@ -104,6 +109,14 @@ export function subscribeToNotifications(recipientType, recipientId, onNew) {
     }, payload => {
       // double-check type in case of id collision across user types
       if (payload.new.recipient_type === recipientType) onNew(payload.new)
+    })
+    .on('postgres_changes', {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'notifications',
+      filter: `recipient_id=eq.${String(recipientId)}`,
+    }, payload => {
+      if (payload.new.recipient_type === recipientType) onUpdate?.(payload.new)
     })
     .subscribe()
 }
