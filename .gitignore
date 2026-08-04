@@ -28,3 +28,10 @@ playwright.config.js
 android/*.keystore
 android/*.jks
 android/keystore.properties
+
+# Same, for the enroll-app/ Capacitor shell — a separate signing identity,
+# not anchored by the patterns above (those only match the root android/).
+enroll-app/android/*.keystore
+enroll-app/android/*.jks
+enroll-app/android/keystore.properties
+enroll-app/node_modules

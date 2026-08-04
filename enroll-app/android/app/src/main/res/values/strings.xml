@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Ahmedabad Racquet Academy</string>
+    <string name="title_activity_main">Ahmedabad Racquet Academy</string>
+    <string name="package_name">com.khelit.enroll</string>
+    <string name="custom_url_scheme">com.khelit.enroll</string>
+</resources>

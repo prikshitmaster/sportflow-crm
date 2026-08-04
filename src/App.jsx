@@ -87,6 +87,9 @@ const ParentMe             = lazy(() => import('./pages/parent/ParentMe'))
 // Public Razorpay pay-link landing page — no auth required
 const PayPublic            = lazy(() => import('./pages/PayPublic'))
 
+// Public trial self-enrollment funnel — no auth required (has its own OTP step)
+const TrialEnroll          = lazy(() => import('./pages/TrialEnroll'))
+
 // Standalone printable assessment report — no app chrome
 const AssessmentReport     = lazy(() => import('./pages/AssessmentReport'))
 
@@ -408,6 +411,9 @@ function AppRoutes() {
 
       {/* Razorpay pay-link landing — public, no auth required */}
       <Route path="/pay/:shortCode" element={<PayPublic />} />
+
+      {/* Public trial self-enrollment funnel — public, no auth required */}
+      <Route path="/join" element={<TrialEnroll />} />
 
       {/* Printable assessment report — standalone (no app chrome).
           Owner/coach pass studentId; student route auto-uses logged-in id. */}

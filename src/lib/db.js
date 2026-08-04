@@ -3291,3 +3291,106 @@ export async function clockOut(checkinId) {
   if (error) throw error
   return typeof data === 'string' ? JSON.parse(data) : data
 }
+
+// ── Public trial self-enrollment (migration 0136) ───────────────────────────
+// Prospect flow, no staff/student/owner session — real Supabase Auth phone
+// OTP, same primitive ParentLogin/AppContext already use. This bypasses
+// AppContext entirely (see src/pages/TrialEnroll.jsx), so the auth calls
+// live here rather than there.
+
+export async function sendTrialOtp(phoneE164) {
+  const { error } = await supabase.auth.signInWithOtp({ phone: phoneE164 })
+  if (error) throw error
+}
+
+export async function verifyTrialOtp(phoneE164, code) {
+  const { error } = await supabase.auth.verifyOtp({ phone: phoneE164, token: code, type: 'sms' })
+  if (error) throw error
+}
+
+// DEV ONLY — bypass phone OTP. Mirrors parentTestLogin exactly, but calls a
+// dedicated edge function since there's no pre-existing row to claim here
+// (a trial doesn't exist yet — it's created fresh at submit time). Gated
+// server-side behind ENABLE_TRIAL_TEST_LOGIN.
+export async function trialTestLogin(phone) {
+  const phone10 = String(phone || '').replace(/\D/g, '').slice(-10)
+  const resp = await fetch(`${_functionsBase()}/trial-test-login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey':       import.meta.env.VITE_SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ phone: phone10 }),
+  })
+  const json = await resp.json().catch(() => ({}))
+  if (!resp.ok) throw new Error(json?.error || 'Test login failed')
+  const { error } = await supabase.auth.signInWithPassword({ email: json.email, password: json.password })
+  if (error) throw error
+}
+
+const _mapPublicTrialBranch = (row) => ({
+  id:         row.id,
+  sportName:  row.sport_name,
+  branchName: row.branch_name,
+})
+
+export async function fetchPublicTrialBranches() {
+  const { data, error } = await supabase.rpc('secure_public_trial_branches')
+  if (error) throw error
+  const rows = typeof data === 'string' ? JSON.parse(data) : data
+  return (rows || []).map(_mapPublicTrialBranch)
+}
+
+const _mapPublicTrialBatch = (row) => ({
+  id:        row.id,
+  name:      row.name,
+  days:      row.days || [],
+  startTime: row.start_time,
+  endTime:   row.end_time,
+  capacity:  row.capacity,
+  waitlist:  row.waitlist,
+  seatsLeft: row.seats_left,
+})
+
+export async function fetchPublicTrialBatches(branchId) {
+  const { data, error } = await supabase.rpc('secure_public_trial_batches', { p_branch_id: branchId })
+  if (error) throw error
+  const rows = typeof data === 'string' ? JSON.parse(data) : data
+  return (rows || []).map(_mapPublicTrialBatch)
+}
+
+// Uploads to the trial-documents bucket (public + unguessable path — same
+// convention as uploadStudentPhoto/student-documents). Path is keyed by
+// auth.uid() since that's the only stable identifier before the trial row
+// exists yet.
+export async function uploadPublicTrialDocument(file) {
+  const { compressImage } = await import('./imageUtils.js')
+  const compressed = await compressImage(file, { maxSize: 1200, quality: 0.82 })
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not signed in')
+  const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase()
+  const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('trial-documents').upload(path, compressed, {
+    contentType: compressed.type || 'image/jpeg',
+  })
+  if (error) throw error
+  return path
+}
+
+export async function submitPublicTrial(payload) {
+  const { data, error } = await supabase.rpc('secure_submit_public_trial', {
+    p_branch_id:               payload.branchId,
+    p_batch_id:                payload.batchId || null,
+    p_name:                    payload.name,
+    p_parent_name:             payload.parentName,
+    p_emergency_contact_name:  payload.emergencyContactName || null,
+    p_emergency_contact_phone: payload.emergencyContactPhone || null,
+    p_dob:                     payload.dob || null,
+    p_age:                     payload.age || null,
+    p_medical_notes:           payload.medicalNotes || null,
+    p_document_path:           payload.documentPath || null,
+  })
+  if (error) throw error
+  return typeof data === 'string' ? JSON.parse(data) : data
+}

@@ -1,0 +1,13 @@
+{
+  "name": "khelit-enroll-shell",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Thin Capacitor native wrapper for the public trial self-enrollment funnel (/join). No React/Vite here — it just loads the main app's live Vercel deployment at that route, same pattern as the root app's own capacitor.config.ts.",
+  "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2"
+  }
+}
