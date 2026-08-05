@@ -5,8 +5,10 @@ const config: CapacitorConfig = {
   appName: 'Khelit',
   webDir:  'dist',
   server: {
-    // Load live Vercel URL so updates deploy instantly without rebuilding APK
-    url:             'https://clubcrm-rosy.vercel.app',
+    // Load live Vercel URL so updates deploy instantly without rebuilding APK.
+    // khelit.com is a custom domain on the same Vercel project/deployment as
+    // clubcrm-rosy.vercel.app — same content, not a different backend.
+    url:             'https://khelit.com',
     cleartext:       false,
     androidScheme:   'https',
   },

@@ -11,7 +11,9 @@ const config: CapacitorConfig = {
     // Same live Vercel deployment as the main app (com.khelit.app) — just a
     // different route. No second deployment needed; vercel.json's catch-all
     // SPA rewrite already serves /join correctly on first load and refresh.
-    url:             'https://clubcrm-rosy.vercel.app/join',
+    // khelit.com is a custom domain on the same Vercel project, not a
+    // different backend.
+    url:             'https://khelit.com/join',
     cleartext:       false,
     androidScheme:   'https',
   },

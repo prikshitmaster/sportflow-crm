@@ -5,7 +5,8 @@ import * as db from '../lib/db'
 import {
   Zap, LogOut, Trophy, Users, UserCog, Layers, Plus, Sparkles,
   X, Check, Trash2, Download, AlertTriangle, Loader2, IndianRupee,
-  ArrowLeft, MapPin, Pencil, TrendingUp, ShieldCheck,
+  ArrowLeft, MapPin, Pencil, TrendingUp, ShieldCheck, Camera, Image as ImageIcon,
+  Link2, Copy, Share2,
 } from 'lucide-react'
 import { exportSportData, downloadJSON, downloadExcel } from '../lib/exportImport'
 import { SPORT_CATALOG } from '../lib/sportCatalog'
@@ -194,10 +195,11 @@ export default function SportSelect() {
     )
     if (dup) { showToast(`${newName} already exists in ${drillSport}`, 'info'); return }
     try {
-      // 1. Save name + address only (no manager_id here)
+      // 1. Save name + address + photo (no manager_id here)
       await db.updateSportBranch(editingBranch.id, {
         branchName: newName,
         address:    fields.address ?? '',
+        photoUrl:   fields.photoUrl ?? editingBranch.photoUrl ?? '',
       })
 
       // 2. Manager change → call the dedicated assign/unassign RPCs which
@@ -365,7 +367,7 @@ export default function SportSelect() {
             onCancelAdd={() => { setAddingBranch(false); setNewBranch(''); setNewBranchAddress('') }}
             onConfirmAdd={handleAddBranch}
             editingBranch={editingBranch}
-            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '', managerId: b.managerId || null })}
+            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '', managerId: b.managerId || null, photoUrl: b.photoUrl || '' })}
             onCancelEdit={() => setEditingBranch(null)}
             onSaveEdit={handleSaveEditBranch}
             deletingBranch={deletingBranch}
@@ -419,6 +421,8 @@ export default function SportSelect() {
             </div>
           </div>
         </div>
+
+        <RegistrationLinkBanner />
 
         {/* Sport cards grid */}
         {dataLoading ? (
@@ -642,6 +646,89 @@ export default function SportSelect() {
   )
 }
 
+// ── Student registration link — share/copy the /join/:slug URL ──────
+function RegistrationLinkBanner() {
+  const navigate = useNavigate()
+  const { fetchOwnAcademyBranding, showToast } = useApp()
+  const [slug, setSlug]   = useState(undefined) // undefined = loading, '' = no slug set yet
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchOwnAcademyBranding()
+      .then(b => { if (!cancelled) setSlug(b.slug || '') })
+      .catch(() => { if (!cancelled) setSlug('') })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  if (slug === undefined) return null // avoid a layout flash while loading
+
+  if (!slug) {
+    return (
+      <button
+        onClick={() => navigate('/settings')}
+        className="w-full mb-6 bg-white border border-dashed border-gray-200 hover:border-brand-300 hover:bg-brand-50/40 rounded-2xl px-5 py-4 flex items-center justify-between transition text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Link2 size={16} className="text-gray-400" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-gray-700">Set up your student registration link</p>
+            <p className="text-xs text-gray-400">Let students self-register for a trial online — set it up in Settings</p>
+          </div>
+        </div>
+        <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Set up →</span>
+      </button>
+    )
+  }
+
+  const url = `https://khelit.com/join/${slug}`
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      showToast('Link copied')
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      showToast('Could not copy — copy the link manually', 'error')
+    }
+  }
+
+  const share = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Register for a trial', url }) } catch { /* user cancelled */ }
+    } else {
+      copy()
+    }
+  }
+
+  return (
+    <div className="mb-6 bg-white border border-gray-100 rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center flex-shrink-0">
+          <Link2 size={16} className="text-brand-600" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Student registration link</p>
+          <p className="text-sm font-bold text-gray-900 truncate">{url}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <button onClick={copy} className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-lg transition">
+          {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+        <button onClick={share} className="flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 px-3 py-2 rounded-lg transition">
+          <Share2 size={13} /> Share
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Branch picker view (rendered when user drills into a sport) ─────
 function BranchView({
   sportName, branches, counts, studentsInBranch, allStaff,
@@ -695,9 +782,13 @@ function BranchView({
 
             <button onClick={() => onPickBranch(b.id)} className="w-full text-left">
               <div className="flex items-start justify-between mb-3">
-                <div className="w-11 h-11 bg-purple-50 rounded-xl flex items-center justify-center group-hover:bg-purple-100 transition">
-                  <MapPin size={20} className="text-purple-600" />
-                </div>
+                {b.photoUrl ? (
+                  <img src={b.photoUrl} alt={b.branchName} className="w-11 h-11 rounded-xl object-cover" />
+                ) : (
+                  <div className="w-11 h-11 bg-purple-50 rounded-xl flex items-center justify-center group-hover:bg-purple-100 transition">
+                    <MapPin size={20} className="text-purple-600" />
+                  </div>
+                )}
                 <span className="text-[10px] font-bold text-gray-400 group-hover:text-brand-600 uppercase tracking-wider transition">Open →</span>
               </div>
               <p className="text-lg font-black text-gray-900 mb-0.5">{b.branchName}</p>
@@ -812,19 +903,33 @@ function BranchView({
 
 // ── Edit branch modal ───────────────────────────────────────────────
 function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
-  const [name,      setName]      = useState(initial.branchName || '')
-  const [address,   setAddress]   = useState(initial.address    || '')
-  const [managerId, setManagerId] = useState(initial.managerId  || '')
-  const [saving,    setSaving]    = useState(false)
+  const [name,        setName]        = useState(initial.branchName || '')
+  const [address,     setAddress]     = useState(initial.address    || '')
+  const [managerId,   setManagerId]   = useState(initial.managerId  || '')
+  const [photoFile,   setPhotoFile]   = useState(null)   // newly picked File, not yet uploaded
+  const [photoPreview, setPhotoPreview] = useState(initial.photoUrl || '')
+  const [saving,      setSaving]      = useState(false)
   // Only offer staff who are free (no branch) or already in THIS branch — a
   // staff member assigned to another branch shouldn't manage this one.
   // Always keep the current manager visible even if data is inconsistent.
   const options = staffList.filter(s =>
     s.id === initial.managerId || !s.branchId || s.branchId === initial.id
   )
+  const pickPhoto = (file) => {
+    if (!file) return
+    setPhotoFile(file)
+    setPhotoPreview(URL.createObjectURL(file))
+  }
   const submit = async () => {
     setSaving(true)
-    try { await onSave({ branchName: name, address, managerId: managerId || null }) } finally { setSaving(false) }
+    try {
+      let photoUrl = initial.photoUrl || ''
+      if (photoFile) {
+        const db = await import('../lib/db')
+        photoUrl = await db.uploadBranchPhoto(photoFile, initial.id)
+      }
+      await onSave({ branchName: name, address, managerId: managerId || null, photoUrl })
+    } finally { setSaving(false) }
   }
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -834,6 +939,25 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
           <button onClick={onCancel} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
         <div className="space-y-3">
+          <div>
+            <label className="label">
+              Branch photo <span className="text-gray-400 font-normal">(shown to students registering online)</span>
+            </label>
+            <label className="relative block w-full h-32 rounded-xl overflow-hidden border-2 border-dashed border-gray-200 hover:border-brand-300 cursor-pointer group bg-gray-50">
+              {photoPreview ? (
+                <img src={photoPreview} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 group-hover:text-brand-500 transition">
+                  <ImageIcon size={22} />
+                  <span className="text-[11px] font-semibold mt-1">Add a photo</span>
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                <Camera size={18} className="text-white" />
+              </div>
+              <input type="file" accept="image/*" className="hidden" onChange={e => pickPhoto(e.target.files?.[0])} />
+            </label>
+          </div>
           <div>
             <label className="label">Branch name *</label>
             <input className="input" value={name} onChange={e => setName(e.target.value)} autoFocus />

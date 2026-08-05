@@ -2087,6 +2087,17 @@ export function AppProvider({ children }) {
     return url
   }
 
+  // Settings-only fields (slug/brand color/app display name for the public
+  // /join funnel) — deliberately NOT threaded into the login/session-restore
+  // fetch like academyLogo is, since nothing outside Settings needs them.
+  // On-demand read/write instead.
+  const fetchOwnAcademyBranding = async () => db.fetchOwnAcademyBranding(user.academyId)
+
+  const saveAcademyBranding = async (fields) => {
+    await db.updateAcademyBranding(user.academyId, fields)
+    showToast('Registration link settings saved')
+  }
+
   const editStaffMember = async (id, { name, phone, photoFile, photoUrl: existingUrl, age }) => {
     const old = staff.find(s => s.id === id)
     let photoUrl = existingUrl
@@ -2571,7 +2582,7 @@ export function AppProvider({ children }) {
       features, isFeatureOn, toggleFeature,
       permissions, hasPermission,
       // owner auth
-      saveAcademyLogo,
+      saveAcademyLogo, fetchOwnAcademyBranding, saveAcademyBranding,
       academyLogo: user?.academyLogo || academyLogo,
       signupOwner, loginOwner, logoutOwner, logoutAdmin,
       // staff auth

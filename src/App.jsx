@@ -412,8 +412,12 @@ function AppRoutes() {
       {/* Razorpay pay-link landing — public, no auth required */}
       <Route path="/pay/:shortCode" element={<PayPublic />} />
 
-      {/* Public trial self-enrollment funnel — public, no auth required */}
-      <Route path="/join" element={<TrialEnroll />} />
+      {/* Public trial self-enrollment funnel — public, no auth required.
+          Bare /join is kept permanently (not just during migration) —
+          enroll-app/capacitor.config.ts's server.url has this exact URL
+          baked into an already-built APK. */}
+      <Route path="/join" element={<TrialEnroll academySlug="ara" />} />
+      <Route path="/join/:academySlug" element={<TrialEnroll />} />
 
       {/* Printable assessment report — standalone (no app chrome).
           Owner/coach pass studentId; student route auto-uses logged-in id. */}

@@ -1,23 +1,21 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useParams } from 'react-router-dom'
 import { Phone, ArrowRight, ArrowLeft, MapPin, Trophy, Users, CheckCircle2, Camera, X } from 'lucide-react'
 import * as db from '../lib/db'
 
-// Public, no-auth trial self-enrollment funnel for Ahmedabad Racquet Academy.
-// Deliberately does NOT use AppContext (see plan: this is a one-shot
-// anonymous submission, not an ongoing role) — talks to db.js directly,
-// same convention as PayPublic.jsx.
+// Public, no-auth, multi-tenant trial self-enrollment funnel. Served at
+// /join (hardcoded to slug "ara" — the bare route is kept permanently
+// since enroll-app/capacitor.config.ts's server.url has that exact URL
+// baked into an already-built APK) and /join/:academySlug for every other
+// academy. Branding (name/logo/color) is fetched per-slug at mount, not
+// hardcoded — see deriveShades() below for how one stored hex becomes the
+// light/border tint variants the UI needs.
 //
-// *** BRANDING PLACEHOLDER: these are stand-in green values, not sampled
-// *** from the real Ahmedabad Racquet Academy logo (no accessible file to
-// *** sample from). Swap for the exact hex before shipping.
-const GREEN         = '#1B4332'
-const GREEN_LIGHT   = '#E9F2ED'
-const GREEN_BORDER  = '#CFE3D8'
+// Deliberately does NOT use AppContext (this is a one-shot anonymous
+// submission, not an ongoing role) — talks to db.js directly, same
+// convention as PayPublic.jsx.
 
 const STEPS = ['phone', 'otp', 'branch', 'sport', 'batch', 'form', 'confirm']
-
-const FIELD_CLASS = 'w-full px-3.5 py-2.5 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 placeholder-gray-400 transition'
-const FIELD_STYLE = { '--tw-ring-color': GREEN }
 
 // Same normalisation as ParentLogin.jsx (India-default E.164), duplicated
 // locally since this page intentionally doesn't import from AppContext-tied
@@ -27,6 +25,22 @@ function normalisePhone(raw) {
   if (digits.startsWith('+')) return digits
   if (digits.length === 10)   return '+91' + digits
   return digits
+}
+
+// One stored hex per academy -> a main/light/border trio the UI needs.
+// Blends toward white at fixed ratios rather than asking every academy
+// owner to pick three colors (bad UX) or hand-picking tints that only
+// suit one specific green (the old hardcoded approach).
+function deriveShades(hex) {
+  const clean = /^#[0-9a-fA-F]{6}$/.test(hex || '') ? hex : '#1B4332'
+  const r = parseInt(clean.slice(1, 3), 16)
+  const g = parseInt(clean.slice(3, 5), 16)
+  const b = parseInt(clean.slice(5, 7), 16)
+  const mix = (ratio) => {
+    const toHex = (c) => Math.round(c + (255 - c) * ratio).toString(16).padStart(2, '0')
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+  }
+  return { main: clean, light: mix(0.92), border: mix(0.82) }
 }
 
 function Spinner() {
@@ -47,20 +61,46 @@ function ErrorBox({ msg }) {
   )
 }
 
-function PrimaryButton({ children, loading, ...props }) {
+function PrimaryButton({ children, loading, color, ...props }) {
   return (
     <button
       {...props}
       disabled={loading || props.disabled}
       className="w-full flex items-center justify-center gap-2 py-3.5 text-base font-semibold text-white rounded-xl active:scale-95 transition-all duration-150 shadow-sm disabled:opacity-50"
-      style={{ backgroundColor: GREEN }}
+      style={{ backgroundColor: color }}
     >
       {loading ? <Spinner /> : children}
     </button>
   )
 }
 
-export default function TrialEnroll() {
+export default function TrialEnroll({ academySlug: slugProp }) {
+  const { academySlug: slugParam } = useParams()
+  const slug = slugProp || slugParam
+
+  // Branding is fetched before anything else renders — the whole point is
+  // showing the RIGHT academy immediately, never a flash of wrong/default
+  // branding for an unknown or mistyped slug.
+  const [brandingStatus, setBrandingStatus] = useState('loading') // 'loading' | 'not-found' | 'ready'
+  const [branding, setBranding] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setBrandingStatus('loading')
+    db.fetchAcademyBranding(slug)
+      .then(b => {
+        if (cancelled) return
+        if (b) { setBranding(b); setBrandingStatus('ready') }
+        else { setBrandingStatus('not-found') }
+      })
+      .catch(() => { if (!cancelled) setBrandingStatus('not-found') })
+    return () => { cancelled = true }
+  }, [slug])
+
+  const colors = useMemo(() => deriveShades(branding?.brandColor), [branding])
+  const fieldStyle = useMemo(() => ({ '--tw-ring-color': colors.main }), [colors])
+  const fieldClass = 'w-full px-3.5 py-2.5 text-sm text-gray-900 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 placeholder-gray-400 transition'
+
   const [step, setStep] = useState('phone')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -95,7 +135,7 @@ export default function TrialEnroll() {
   // After OTP success (real or dev-skip): fetch branches, then skip any
   // step that has only one option — cheap, real progress toward "minimal tap."
   async function afterAuthed() {
-    const rows = await db.fetchPublicTrialBranches()
+    const rows = await db.fetchPublicTrialBranches(slug)
     setBranchRows(rows)
     const uniqueLocations = [...new Set(rows.map(r => r.branchName))]
     if (uniqueLocations.length === 1) {
@@ -120,7 +160,7 @@ export default function TrialEnroll() {
     setChosenRow(row)
     setLoading(true); setError('')
     try {
-      const list = await db.fetchPublicTrialBatches(row.id)
+      const list = await db.fetchPublicTrialBatches(slug, row.id)
       setBatches(list)
       setStep('batch')
     } catch (err) {
@@ -184,7 +224,7 @@ export default function TrialEnroll() {
       if (documentFile) {
         documentPath = await db.uploadPublicTrialDocument(documentFile)
       }
-      const res = await db.submitPublicTrial({
+      const res = await db.submitPublicTrial(slug, {
         branchId: chosenRow.id,
         batchId,
         name: form.name.trim(),
@@ -205,17 +245,43 @@ export default function TrialEnroll() {
     }
   }
 
+  if (brandingStatus === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <Spinner />
+      </div>
+    )
+  }
+
+  if (brandingStatus === 'not-found') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-center">
+          <h1 className="text-lg font-black text-gray-900 mb-2">Link not found</h1>
+          <p className="text-sm text-gray-500">
+            This registration link isn't valid. Please contact the academy directly for the correct link.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   const stepIndex = STEPS.indexOf(step)
+  const displayName = branding?.appDisplayName || branding?.name || ''
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         {/* Header */}
         <div className="flex items-center gap-2 mb-6">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: GREEN }}>
-            <Trophy size={18} className="text-white" />
-          </div>
-          <span className="text-lg font-bold text-gray-900">Ahmedabad Racquet Academy</span>
+          {branding?.logoUrl ? (
+            <img src={branding.logoUrl} alt={displayName} className="w-9 h-9 rounded-xl object-cover" />
+          ) : (
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.main }}>
+              <Trophy size={18} className="text-white" />
+            </div>
+          )}
+          <span className="text-lg font-bold text-gray-900">{displayName}</span>
         </div>
 
         {/* Progress dots — only for the steps before confirm */}
@@ -223,7 +289,7 @@ export default function TrialEnroll() {
           <div className="flex items-center gap-1.5 mb-6">
             {STEPS.slice(0, -1).map((s, i) => (
               <div key={s} className="h-1.5 flex-1 rounded-full transition-all"
-                style={{ backgroundColor: i <= stepIndex ? GREEN : '#E5E7EB' }} />
+                style={{ backgroundColor: i <= stepIndex ? colors.main : '#E5E7EB' }} />
             ))}
           </div>
         )}
@@ -240,12 +306,12 @@ export default function TrialEnroll() {
                   <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     className="w-full pl-9 pr-3.5 py-3 text-base text-gray-900 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 placeholder-gray-400"
-                    style={{ '--tw-ring-color': GREEN }}
+                    style={fieldStyle}
                     type="tel" inputMode="tel" placeholder="98765 43210"
                     value={phone} onChange={e => setPhone(e.target.value)} autoComplete="tel" autoFocus
                   />
                 </div>
-                <PrimaryButton type="submit" loading={loading}>
+                <PrimaryButton type="submit" loading={loading} color={colors.main}>
                   Send code <ArrowRight size={16} />
                 </PrimaryButton>
                 {import.meta.env.DEV && (
@@ -265,11 +331,12 @@ export default function TrialEnroll() {
               <form onSubmit={verifyCode} className="space-y-4">
                 <input
                   className="w-full px-3.5 py-3 text-lg text-center tracking-widest text-gray-900 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2"
+                  style={fieldStyle}
                   type="text" inputMode="numeric" maxLength={8} placeholder="123456"
                   value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
                   autoComplete="one-time-code" autoFocus
                 />
-                <PrimaryButton type="submit" loading={loading}>
+                <PrimaryButton type="submit" loading={loading} color={colors.main}>
                   Verify & continue <ArrowRight size={16} />
                 </PrimaryButton>
                 <button type="button" onClick={() => { setStep('phone'); setOtp(''); setError('') }}
@@ -282,21 +349,24 @@ export default function TrialEnroll() {
 
           {step === 'branch' && (
             <>
-              <StepHeader icon={<MapPin size={20} />} title="Choose a location" subtitle="Which branch is closest to you?" />
-              <div className="space-y-2">
-                {locations.map(loc => (
-                  <OptionRow key={loc} label={loc} onClick={() => chooseLocation(loc)} />
-                ))}
+              <StepHeader icon={<MapPin size={20} />} title="Choose a location" subtitle="Which branch is closest to you?" colors={colors} />
+              <div className="grid grid-cols-2 gap-3">
+                {locations.map(loc => {
+                  const photo = branchRows.find(r => r.branchName === loc && r.photoUrl)?.photoUrl
+                  return (
+                    <PhotoOptionCard key={loc} label={loc} photoUrl={photo} onClick={() => chooseLocation(loc)} colors={colors} />
+                  )
+                })}
               </div>
             </>
           )}
 
           {step === 'sport' && (
             <>
-              <StepHeader icon={<Trophy size={20} />} title="Choose a sport" subtitle={branchName} back={() => setStep('branch')} />
+              <StepHeader icon={<Trophy size={20} />} title="Choose a sport" subtitle={branchName} back={() => setStep('branch')} colors={colors} />
               <div className="space-y-2">
                 {sportsAtLocation.map(row => (
-                  <OptionRow key={row.id} label={row.sportName} loading={loading} onClick={() => chooseSport(row)} />
+                  <OptionRow key={row.id} label={row.sportName} loading={loading} onClick={() => chooseSport(row)} colors={colors} />
                 ))}
               </div>
             </>
@@ -304,7 +374,7 @@ export default function TrialEnroll() {
 
           {step === 'batch' && (
             <>
-              <StepHeader icon={<Users size={20} />} title="Choose a batch" subtitle={`${chosenRow?.sportName} · ${chosenRow?.branchName}`} back={() => setStep(sportsAtLocation.length > 1 ? 'sport' : 'branch')} />
+              <StepHeader icon={<Users size={20} />} title="Choose a batch" subtitle={`${chosenRow?.sportName} · ${chosenRow?.branchName}`} back={() => setStep(sportsAtLocation.length > 1 ? 'sport' : 'branch')} colors={colors} />
               <div className="space-y-2 mb-3">
                 {batches.map(b => (
                   <button key={b.id} type="button" onClick={() => { setBatchId(b.id); setStep('form') }}
@@ -316,7 +386,7 @@ export default function TrialEnroll() {
                       </p>
                     </div>
                     <span className="text-xs font-semibold px-2 py-1 rounded-full"
-                      style={{ backgroundColor: b.seatsLeft > 0 ? GREEN_LIGHT : '#FEF3C7', color: b.seatsLeft > 0 ? GREEN : '#92400E' }}>
+                      style={{ backgroundColor: b.seatsLeft > 0 ? colors.light : '#FEF3C7', color: b.seatsLeft > 0 ? colors.main : '#92400E' }}>
                       {b.seatsLeft > 0 ? `${b.seatsLeft} seats left` : 'Waitlist'}
                     </span>
                   </button>
@@ -331,30 +401,30 @@ export default function TrialEnroll() {
 
           {step === 'form' && (
             <>
-              <StepHeader icon={<Users size={20} />} title="A few details" subtitle="So the academy can prepare for you" back={() => setStep('batch')} />
+              <StepHeader icon={<Users size={20} />} title="A few details" subtitle="So the academy can prepare for you" back={() => setStep('batch')} colors={colors} />
               <form onSubmit={submit} className="space-y-3.5">
                 <Field label="Student name *">
-                  <input className={FIELD_CLASS} style={FIELD_STYLE} value={form.name} onChange={e => set('name', e.target.value)} autoFocus />
+                  <input className={fieldClass} style={fieldStyle} value={form.name} onChange={e => set('name', e.target.value)} autoFocus />
                 </Field>
                 <Field label="Parent / guardian name *">
-                  <input className={FIELD_CLASS} style={FIELD_STYLE} value={form.parentName} onChange={e => set('parentName', e.target.value)} />
+                  <input className={fieldClass} style={fieldStyle} value={form.parentName} onChange={e => set('parentName', e.target.value)} />
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Date of birth">
-                    <input className={FIELD_CLASS} style={FIELD_STYLE} type="date" value={form.dob} onChange={e => set('dob', e.target.value)} />
+                    <input className={fieldClass} style={fieldStyle} type="date" value={form.dob} onChange={e => set('dob', e.target.value)} />
                   </Field>
                   <Field label="Age">
-                    <input className={FIELD_CLASS} style={FIELD_STYLE} type="number" min="1" max="99" value={form.age} onChange={e => set('age', e.target.value)} />
+                    <input className={fieldClass} style={fieldStyle} type="number" min="1" max="99" value={form.age} onChange={e => set('age', e.target.value)} />
                   </Field>
                 </div>
                 <Field label="Emergency contact name *">
-                  <input className={FIELD_CLASS} style={FIELD_STYLE} value={form.emergencyContactName} onChange={e => set('emergencyContactName', e.target.value)} placeholder="Someone we can call if needed" />
+                  <input className={fieldClass} style={fieldStyle} value={form.emergencyContactName} onChange={e => set('emergencyContactName', e.target.value)} placeholder="Someone we can call if needed" />
                 </Field>
                 <Field label="Emergency contact phone *">
-                  <input className={FIELD_CLASS} style={FIELD_STYLE} type="tel" inputMode="tel" value={form.emergencyContactPhone} onChange={e => set('emergencyContactPhone', e.target.value)} />
+                  <input className={fieldClass} style={fieldStyle} type="tel" inputMode="tel" value={form.emergencyContactPhone} onChange={e => set('emergencyContactPhone', e.target.value)} />
                 </Field>
                 <Field label="Medical notes (optional)">
-                  <textarea className={FIELD_CLASS} style={FIELD_STYLE} rows={2} value={form.medicalNotes} onChange={e => set('medicalNotes', e.target.value)} placeholder="Allergies, conditions, anything the coach should know" />
+                  <textarea className={fieldClass} style={fieldStyle} rows={2} value={form.medicalNotes} onChange={e => set('medicalNotes', e.target.value)} placeholder="Allergies, conditions, anything the coach should know" />
                 </Field>
                 <Field label="ID / medical document photo (optional)">
                   {!documentFile ? (
@@ -373,7 +443,7 @@ export default function TrialEnroll() {
                   )}
                 </Field>
                 <div className="pt-2">
-                  <PrimaryButton type="submit" loading={submitting}>
+                  <PrimaryButton type="submit" loading={submitting} color={colors.main}>
                     Submit <ArrowRight size={16} />
                   </PrimaryButton>
                 </div>
@@ -384,7 +454,7 @@ export default function TrialEnroll() {
           {step === 'confirm' && (
             <div className="text-center py-4">
               <div className="flex justify-center mb-5">
-                <CheckCircle2 size={56} style={{ color: GREEN }} strokeWidth={1.5} />
+                <CheckCircle2 size={56} style={{ color: colors.main }} strokeWidth={1.5} />
               </div>
               <h2 className="text-2xl font-black text-gray-900 mb-2">You're on the list! 🎉</h2>
               <p className="text-gray-500 text-sm mb-1">
@@ -398,7 +468,7 @@ export default function TrialEnroll() {
   )
 }
 
-function StepHeader({ icon, title, subtitle, back }) {
+function StepHeader({ icon, title, subtitle, back, colors }) {
   return (
     <div className="flex items-start gap-3 mb-5">
       {back && (
@@ -406,7 +476,7 @@ function StepHeader({ icon, title, subtitle, back }) {
           <ArrowLeft size={18} />
         </button>
       )}
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: GREEN_LIGHT, color: GREEN }}>
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: colors.light, color: colors.main }}>
         {icon}
       </div>
       <div>
@@ -417,11 +487,30 @@ function StepHeader({ icon, title, subtitle, back }) {
   )
 }
 
-function OptionRow({ label, onClick, loading }) {
+function PhotoOptionCard({ label, photoUrl, onClick, loading, colors }) {
+  return (
+    <button type="button" onClick={onClick} disabled={loading}
+      className="group relative rounded-xl overflow-hidden border border-gray-200 hover:border-gray-300 transition text-left disabled:opacity-50 h-32"
+      style={{ borderColor: colors.border }}>
+      {photoUrl ? (
+        <img src={photoUrl} alt={label} className="absolute inset-0 w-full h-full object-cover" />
+      ) : (
+        <div className="absolute inset-0" style={{ backgroundColor: colors.light }} />
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 p-2.5 flex items-center justify-between">
+        <span className="text-sm font-bold text-white leading-tight">{label}</span>
+        {loading ? <Spinner /> : <ArrowRight size={14} className="text-white flex-shrink-0" />}
+      </div>
+    </button>
+  )
+}
+
+function OptionRow({ label, onClick, loading, colors }) {
   return (
     <button type="button" onClick={onClick} disabled={loading}
       className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl border border-gray-200 hover:border-gray-300 transition text-left disabled:opacity-50"
-      style={{ borderColor: GREEN_BORDER }}>
+      style={{ borderColor: colors.border }}>
       <span className="text-sm font-semibold text-gray-900">{label}</span>
       {loading ? <Spinner /> : <ArrowRight size={16} className="text-gray-400" />}
     </button>

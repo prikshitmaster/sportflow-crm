@@ -2056,7 +2056,7 @@ export async function fetchSportBranches(academyId) {
   // Try with address first; if the column doesn't exist (42703), retry without it
   let { data, error } = await supabase
     .from('sport_branches')
-    .select(`${baseColumns}, address, manager_id`)
+    .select(`${baseColumns}, address, manager_id, photo_url`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
@@ -2090,15 +2090,17 @@ export async function fetchSportBranches(academyId) {
     branchName: r.branch_name,
     address:    r.address || '',
     managerId:  r.manager_id || null,
+    photoUrl:   r.photo_url || '',
     createdAt:  r.created_at,
   }))
 }
 
-export async function insertSportBranch(_academyId, sportName, branchName, address = '') {
+export async function insertSportBranch(_academyId, sportName, branchName, address = '', photoUrl = '') {
   const { data, error } = await supabase.rpc('secure_insert_sport_branch', {
     p_sport_name:  sportName,
     p_branch_name: branchName,
     p_address:     address || null,
+    p_photo_url:   photoUrl || null,
     p_token:       _sessionToken(),
   })
   if (error) throw error
@@ -2107,11 +2109,12 @@ export async function insertSportBranch(_academyId, sportName, branchName, addre
     sportName:  data.sport_name,
     branchName: data.branch_name,
     address:    data.address || '',
+    photoUrl:   data.photo_url || '',
     createdAt:  data.created_at,
   }
 }
 
-export async function updateSportBranch(branchId, { branchName, address, managerId }) {
+export async function updateSportBranch(branchId, { branchName, address, managerId, photoUrl }) {
   // Coerce managerId to integer — select option values are strings; staff.id is bigint
   let mid = null
   if (managerId !== undefined && managerId !== null && managerId !== '') {
@@ -2126,9 +2129,25 @@ export async function updateSportBranch(branchId, { branchName, address, manager
     p_branch_name: branchName !== undefined ? branchName : null,
     p_address:     address    !== undefined ? (address || null) : null,
     p_manager_id:  mid,
+    p_photo_url:   photoUrl   !== undefined ? (photoUrl || null) : null,
     p_token:       _sessionToken(),
   })
   if (error) throw error
+}
+
+// Fixed path per branch — upsert overwrites old file automatically, no orphans.
+// Same pattern as uploadStudentPhoto/uploadStaffPhoto.
+export async function uploadBranchPhoto(file, branchId) {
+  const { compressImage } = await import('./imageUtils.js')
+  const compressed = await compressImage(file)
+  const path = `${branchId}.jpg`
+  const { error } = await supabase.storage.from('branch-photos').upload(path, compressed, {
+    upsert: true,
+    contentType: 'image/jpeg',
+  })
+  if (error) throw error
+  const { data } = supabase.storage.from('branch-photos').getPublicUrl(path)
+  return `${data.publicUrl}?v=${Date.now()}`
 }
 
 export async function deleteSportBranch(branchId) {
@@ -3329,14 +3348,64 @@ export async function trialTestLogin(phone) {
   if (error) throw error
 }
 
+// Academy branding for the /join/:academySlug funnel — pre-auth, public
+// (name/logo/color, shown before the OTP screen even renders). Returns
+// null for an unresolved slug rather than throwing, since "unknown slug"
+// is a real page state (see TrialEnroll.jsx), not an error condition.
+const _mapAcademyBranding = (row) => row ? ({
+  name:            row.name,
+  appDisplayName:  row.app_display_name || '',
+  logoUrl:         row.logo_url || '',
+  brandColor:      row.brand_color || '',
+}) : null
+
+export async function fetchAcademyBranding(slug) {
+  const { data, error } = await supabase.rpc('secure_public_academy_branding', { p_slug: slug })
+  if (error) throw error
+  const row = typeof data === 'string' ? JSON.parse(data) : data
+  return _mapAcademyBranding(row)
+}
+
+// Owner-only read of their OWN academy's branding fields (includes slug,
+// which the public secure_public_academy_branding RPC deliberately omits
+// from its response — an owner needs to see/edit their own slug, a public
+// visitor never needs it echoed back). RLS (academies_read/academies_owner_read)
+// already scopes SELECT to the owner's own academy row.
+export async function fetchOwnAcademyBranding(academyId) {
+  const { data, error } = await supabase
+    .from('academies')
+    .select('slug, brand_color, app_display_name, logo_url')
+    .eq('id', academyId)
+    .single()
+  if (error) throw error
+  return {
+    slug:            data.slug || '',
+    brandColor:      data.brand_color || '',
+    appDisplayName:  data.app_display_name || '',
+    logoUrl:         data.logo_url || '',
+  }
+}
+
+// Owner-only — same plain-update pattern as updateAcademyLogoUrl. RLS
+// (academies_owner_update, migration 0121) scopes this to owner_id = auth.uid().
+export async function updateAcademyBranding(academyId, { slug, brandColor, appDisplayName }) {
+  const { error } = await supabase.from('academies').update({
+    slug:              slug || null,
+    brand_color:       brandColor || null,
+    app_display_name:  appDisplayName || null,
+  }).eq('id', academyId)
+  if (error) throw error
+}
+
 const _mapPublicTrialBranch = (row) => ({
   id:         row.id,
   sportName:  row.sport_name,
   branchName: row.branch_name,
+  photoUrl:   row.photo_url || '',
 })
 
-export async function fetchPublicTrialBranches() {
-  const { data, error } = await supabase.rpc('secure_public_trial_branches')
+export async function fetchPublicTrialBranches(slug) {
+  const { data, error } = await supabase.rpc('secure_public_trial_branches_v2', { p_slug: slug })
   if (error) throw error
   const rows = typeof data === 'string' ? JSON.parse(data) : data
   return (rows || []).map(_mapPublicTrialBranch)
@@ -3353,8 +3422,10 @@ const _mapPublicTrialBatch = (row) => ({
   seatsLeft: row.seats_left,
 })
 
-export async function fetchPublicTrialBatches(branchId) {
-  const { data, error } = await supabase.rpc('secure_public_trial_batches', { p_branch_id: branchId })
+export async function fetchPublicTrialBatches(slug, branchId) {
+  const { data, error } = await supabase.rpc('secure_public_trial_batches_v2', {
+    p_slug: slug, p_branch_id: branchId,
+  })
   if (error) throw error
   const rows = typeof data === 'string' ? JSON.parse(data) : data
   return (rows || []).map(_mapPublicTrialBatch)
@@ -3378,8 +3449,9 @@ export async function uploadPublicTrialDocument(file) {
   return path
 }
 
-export async function submitPublicTrial(payload) {
-  const { data, error } = await supabase.rpc('secure_submit_public_trial', {
+export async function submitPublicTrial(slug, payload) {
+  const { data, error } = await supabase.rpc('secure_submit_public_trial_v2', {
+    p_slug:                    slug,
     p_branch_id:               payload.branchId,
     p_batch_id:                payload.batchId || null,
     p_name:                    payload.name,

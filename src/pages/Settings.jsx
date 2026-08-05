@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   Building, Bell, MessageCircle, Shield, CreditCard, Check, ToggleLeft, Key,
-  Database, Upload, FileJson, AlertTriangle, Loader2, CheckCircle2, X, Wand2,
+  Database, Upload, FileJson, AlertTriangle, Loader2, CheckCircle2, X, Wand2, Link2,
 } from 'lucide-react'
 import { parseImportFile, importSportData } from '../lib/exportImport'
 import DevFillButton, { setDemoMode, isDemoModeEnabled } from '../components/DevFillButton'
@@ -174,6 +174,127 @@ function AcademyTab({ user, onSave, saved }) {
         </div>
       </div>
       <SaveButton onSave={onSave} saved={saved} />
+
+      <PublicRegistrationLinkSection />
+    </div>
+  )
+}
+
+// Slugify a suggestion from the academy name — a starting point the owner
+// must confirm/edit, never auto-saved. Auto-saving a naive slugify risks
+// silent collisions (this exact platform has two differently-cased
+// academies named "ARA"/"ara" today).
+function slugify(name) {
+  return String(name || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+}
+
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/
+const COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
+
+function PublicRegistrationLinkSection() {
+  const { user, fetchOwnAcademyBranding, saveAcademyBranding } = useApp()
+  const [loaded, setLoaded] = useState(false)
+  const [slug, setSlug] = useState('')
+  const [brandColor, setBrandColor] = useState('#1B4332')
+  const [appDisplayName, setAppDisplayName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [savedFlag, setSavedFlag] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    fetchOwnAcademyBranding().then(b => {
+      if (cancelled) return
+      setSlug(b.slug || slugify(user?.academy))
+      setBrandColor(COLOR_PATTERN.test(b.brandColor) ? b.brandColor : '#1B4332')
+      setAppDisplayName(b.appDisplayName || '')
+      setLoaded(true)
+    }).catch(() => setLoaded(true))
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const slugValid = slug === '' || SLUG_PATTERN.test(slug)
+
+  const submit = async () => {
+    if (!SLUG_PATTERN.test(slug)) {
+      setErr('URL must be 3-50 characters: lowercase letters, numbers, and hyphens only')
+      return
+    }
+    setSaving(true); setErr('')
+    try {
+      await saveAcademyBranding({ slug, brandColor, appDisplayName: appDisplayName.trim() || null })
+      setSavedFlag(true)
+      setTimeout(() => setSavedFlag(false), 2000)
+    } catch (e) {
+      if (e?.code === '23505') setErr('That URL is already taken by another academy — try a different one.')
+      else setErr(e?.message || 'Could not save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!loaded) return null
+
+  return (
+    <div className="mt-8 pt-6 border-t border-gray-100">
+      <div className="flex items-center gap-2 mb-1">
+        <Link2 size={15} className="text-brand-600" />
+        <h4 className="font-bold text-gray-900 text-sm">Public Registration Link</h4>
+      </div>
+      <p className="text-xs text-gray-500 mb-4">
+        Students can self-register for a trial at this link — pick your own web address and brand color.
+      </p>
+
+      {err && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg mb-3">{err}</div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <label className="label">Registration URL</label>
+          <div className="flex items-center">
+            <span className="text-xs text-gray-400 bg-gray-50 border border-r-0 border-gray-200 rounded-l-lg px-3 py-2.5 whitespace-nowrap">
+              khelit.com/join/
+            </span>
+            <input
+              className={`input rounded-l-none flex-1 ${!slugValid ? 'border-red-400' : ''}`}
+              value={slug}
+              onChange={e => setSlug(e.target.value.toLowerCase())}
+              placeholder="your-academy-name"
+            />
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">
+            Changing this after your Android app is published will require a new app build.
+          </p>
+        </div>
+        <div>
+          <label className="label">Brand Color</label>
+          <div className="flex items-center gap-2">
+            <input type="color" value={brandColor} onChange={e => setBrandColor(e.target.value)}
+              className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer" />
+            <input className="input flex-1 font-mono text-sm" value={brandColor}
+              onChange={e => setBrandColor(e.target.value)} placeholder="#1B4332" />
+          </div>
+        </div>
+        <div>
+          <label className="label">App Display Name <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input className="input" value={appDisplayName} onChange={e => setAppDisplayName(e.target.value)}
+            placeholder={user?.academy} />
+          <p className="text-[11px] text-gray-400 mt-1">Shown to students on the registration page.</p>
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <button className="btn-primary" onClick={submit} disabled={saving}>
+          {saving ? <Loader2 size={15} className="animate-spin" /> : savedFlag ? <><Check size={15} /> Saved!</> : 'Save Link Settings'}
+        </button>
+      </div>
     </div>
   )
 }
