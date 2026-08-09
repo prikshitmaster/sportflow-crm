@@ -781,11 +781,16 @@ function SessionModal({ trial, onClose, onSave }) {
   const [rec,    setRec]    = useState('')
   const [saving, setSaving] = useState(false)
   const newDone = (trial.sessionsDone || 0) + 1
+  // Matches StaffTrials.jsx's AttendSheet exactly — only advance the pipeline
+  // stage once the LAST expected session is marked, not every session. A
+  // multi-session trial (trialSessions > 1) should stay "Scheduled" between
+  // sessions; only the final one completes it.
+  const isLastSession = newDone >= (trial.trialSessions || 1)
 
   async function handleSave() {
     setSaving(true)
     try {
-      const updates = { sessionsDone: newDone }
+      const updates = { sessionsDone: newDone, ...(isLastSession ? { stage: 'attended' } : {}) }
       if (note.trim()) updates.coachNote = note.trim()
       if (rec)         updates.coachRec  = rec
       await onSave(trial.id, updates)
@@ -829,7 +834,7 @@ function SessionModal({ trial, onClose, onSave }) {
         <div className="px-5 pb-5">
           <button onClick={handleSave} disabled={saving}
             className="w-full bg-brand-600 text-white rounded-xl py-3 font-bold text-sm disabled:opacity-40">
-            {saving ? 'Saving…' : 'Mark Attended'}
+            {saving ? 'Saving…' : isLastSession ? 'Mark Attended' : `Save Session ${newDone}`}
           </button>
         </div>
       </div>

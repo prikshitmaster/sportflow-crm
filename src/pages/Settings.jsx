@@ -616,6 +616,8 @@ function FeaturesTab() {
     { key: 'gate_qr',    label: 'Gate QR Attendance', desc: 'QR code-based entry attendance' },
     { key: 'training',   label: 'Training',           desc: 'Sessions, drills and training planner' },
     { key: 'backups',    label: 'Backups',             desc: 'Data backup and restore' },
+    { key: 'student_code_login', label: 'Student Direct Login', desc: 'Students log in with their own Student ID + Join Code' },
+    { key: 'family_login',       label: 'Family (Parent) Login', desc: 'Parents log in with just their phone number and pick a child — supports siblings under one number' },
   ]
 
   return (

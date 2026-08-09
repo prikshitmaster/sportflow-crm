@@ -244,7 +244,7 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user, hasPermission, showToast } = useApp()
+  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user, hasPermission, showToast, isFeatureOn } = useApp()
   const canManage = hasPermission('payments.manage')
   const [editingDate,            setEditingDate]            = useState(null)
   const [markingPaid,            setMarkingPaid]            = useState(null)
@@ -400,11 +400,11 @@ export default function Payments() {
               Remind ({overdueCount})
             </button>
           )}
-          {/* Hidden — Razorpay/parent portal disabled for v1. Uncomment to re-enable:
-          <button className="btn-secondary" onClick={() => setShowPayLink(true)}>
-            <LinkIcon size={14} /> Send Pay Link
-          </button>
-          */}
+          {isFeatureOn('family_login') && (
+            <button className="btn-secondary" onClick={() => setShowPayLink(true)}>
+              <LinkIcon size={14} /> Send Pay Link
+            </button>
+          )}
           <button
             onClick={async () => {
               setExportingAll(true)

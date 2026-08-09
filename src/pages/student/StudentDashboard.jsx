@@ -21,6 +21,7 @@ export default function StudentDashboard() {
   const [uploading,     setUploading]     = useState(false)
   const [batchInfo,     setBatchInfo]     = useState(null) // { trainsToday, startTime }
   const [monthGoal,     setMonthGoal]     = useState(null) // coach-set focus for the month
+  const [streak,        setStreak]        = useState(0)   // consecutive Present sessions, real attendance data
   const fileRef = useRef(null)
 
   const handlePhotoChange = async (e) => {
@@ -72,9 +73,14 @@ export default function StudentDashboard() {
       const year  = now.getFullYear()
       const month = now.getMonth()
 
+      // Previous month too, purely for the streak calc below — a student who
+      // started the month on a run shouldn't have it reset to 0 on the 1st.
+      const prevDate  = new Date(year, month - 1, 1)
+
       const batchId = studentUser?.batch_id || studentUser?.batchId
-      const [monthAtt, pays, batchRes] = await Promise.all([
+      const [monthAtt, prevMonthAtt, pays, batchRes] = await Promise.all([
         db.fetchStudentOwnAttendance(studentUser.id, year, month),
+        db.fetchStudentOwnAttendance(studentUser.id, prevDate.getFullYear(), prevDate.getMonth()),
         db.fetchStudentOwnPayments(studentUser.id),
         batchId
           ? supabase.from('batches').select('days, start_time').eq('id', batchId).maybeSingle()
@@ -88,16 +94,28 @@ export default function StudentDashboard() {
       // Deduplicate per date (best-status wins) — Daily students have MWF + TTS batch records
       const STATUS_PRI = { Present: 4, Late: 3, Leave: 2, Absent: 1 }
       const byDate = {}
-      monthAtt.forEach(r => {
+      ;[...prevMonthAtt, ...monthAtt].forEach(r => {
         const st = r.status || (r.present ? 'Present' : 'Absent')
         const cur = byDate[r.date]
         if (!cur || (STATUS_PRI[st] || 0) > (STATUS_PRI[cur] || 0)) byDate[r.date] = st
       })
 
       setTodayStatus(byDate[todayStr] || null)
-      const presentDays = Object.values(byDate).filter(s => s === 'Present').length
-      setMonthStats({ present: presentDays, total: Object.keys(byDate).length })
+      const monthDates  = Object.keys(byDate).filter(d => d.slice(0, 7) === `${year}-${pad(month + 1)}`)
+      const presentDays = monthDates.filter(d => byDate[d] === 'Present').length
+      setMonthStats({ present: presentDays, total: monthDates.length })
       setPayments(pays)
+
+      // Current streak of consecutive attended sessions (walking back from
+      // the most recent marked day) — replaces a static "Keep it up!" card
+      // that never reflected real attendance.
+      const sortedDates = Object.keys(byDate).sort()
+      let streakCount = 0
+      for (let i = sortedDates.length - 1; i >= 0; i--) {
+        if (byDate[sortedDates[i]] === 'Present') streakCount++
+        else break
+      }
+      setStreak(streakCount)
     } catch (err) {
       console.error(err)
     } finally {
@@ -295,14 +313,25 @@ export default function StudentDashboard() {
         </div>
       )}
 
-      {/* Achievement placeholder */}
-      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center gap-3">
-        <Trophy size={24} className="text-amber-500 flex-shrink-0" />
-        <div>
-          <p className="text-sm font-bold text-amber-800">Keep it up!</p>
-          <p className="text-xs text-amber-600">Scan QR daily to maintain perfect attendance</p>
+      {/* Attendance streak — real consecutive-Present count, not a static message */}
+      {!loadingData && (
+        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-center gap-3">
+          <Trophy size={24} className="text-amber-500 flex-shrink-0" />
+          <div>
+            {streak > 0 ? (
+              <>
+                <p className="text-sm font-bold text-amber-800">{streak}-session streak 🔥</p>
+                <p className="text-xs text-amber-600">Scan QR at your next session to keep it going</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-bold text-amber-800">Start a streak</p>
+                <p className="text-xs text-amber-600">Scan QR at your next session to begin one</p>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -2056,7 +2056,7 @@ export async function fetchSportBranches(academyId) {
   // Try with address first; if the column doesn't exist (42703), retry without it
   let { data, error } = await supabase
     .from('sport_branches')
-    .select(`${baseColumns}, address, manager_id, photo_url`)
+    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
@@ -2091,16 +2091,18 @@ export async function fetchSportBranches(academyId) {
     address:    r.address || '',
     managerId:  r.manager_id || null,
     photoUrl:   r.photo_url || '',
+    trialFee:   r.trial_fee != null ? Number(r.trial_fee) : null,
     createdAt:  r.created_at,
   }))
 }
 
-export async function insertSportBranch(_academyId, sportName, branchName, address = '', photoUrl = '') {
+export async function insertSportBranch(_academyId, sportName, branchName, address = '', photoUrl = '', trialFee = null) {
   const { data, error } = await supabase.rpc('secure_insert_sport_branch', {
     p_sport_name:  sportName,
     p_branch_name: branchName,
     p_address:     address || null,
     p_photo_url:   photoUrl || null,
+    p_trial_fee:   trialFee !== null && trialFee !== '' ? Number(trialFee) : null,
     p_token:       _sessionToken(),
   })
   if (error) throw error
@@ -2110,11 +2112,12 @@ export async function insertSportBranch(_academyId, sportName, branchName, addre
     branchName: data.branch_name,
     address:    data.address || '',
     photoUrl:   data.photo_url || '',
+    trialFee:   data.trial_fee != null ? Number(data.trial_fee) : null,
     createdAt:  data.created_at,
   }
 }
 
-export async function updateSportBranch(branchId, { branchName, address, managerId, photoUrl }) {
+export async function updateSportBranch(branchId, { branchName, address, managerId, photoUrl, trialFee }) {
   // Coerce managerId to integer — select option values are strings; staff.id is bigint
   let mid = null
   if (managerId !== undefined && managerId !== null && managerId !== '') {
@@ -2130,6 +2133,7 @@ export async function updateSportBranch(branchId, { branchName, address, manager
     p_address:     address    !== undefined ? (address || null) : null,
     p_manager_id:  mid,
     p_photo_url:   photoUrl   !== undefined ? (photoUrl || null) : null,
+    p_trial_fee:   trialFee !== undefined && trialFee !== null && trialFee !== '' ? Number(trialFee) : null,
     p_token:       _sessionToken(),
   })
   if (error) throw error
@@ -3327,6 +3331,16 @@ export async function verifyTrialOtp(phoneE164, code) {
   if (error) throw error
 }
 
+// Supabase Auth persists the phone-OTP session to localStorage by default,
+// so it survives a page reload even though TrialEnroll's own React state
+// (isAuthed, step, etc.) does not — without this check, a reload looked
+// like being logged out even though the underlying session was still valid.
+// Returns the raw phone (no '+') if a session exists, else null.
+export async function getCurrentAuthPhone() {
+  const { data } = await supabase.auth.getSession()
+  return data?.session?.user?.phone || null
+}
+
 // DEV ONLY — bypass phone OTP. Mirrors parentTestLogin exactly, but calls a
 // dedicated edge function since there's no pre-existing row to claim here
 // (a trial doesn't exist yet — it's created fresh at submit time). Gated
@@ -3358,6 +3372,19 @@ const _mapAcademyBranding = (row) => row ? ({
   logoUrl:         row.logo_url || '',
   brandColor:      row.brand_color || '',
 }) : null
+
+// Just the two login-related flags, pre-auth-safe — see migration 0145 for
+// why this can't just reuse AppContext's isFeatureOn (the /join funnel never
+// loads AppContext at all).
+export async function fetchPublicAcademyFeatures(slug) {
+  const { data, error } = await supabase.rpc('secure_public_academy_features', { p_slug: slug })
+  if (error) throw error
+  const row = typeof data === 'string' ? JSON.parse(data) : data
+  return {
+    studentCodeLogin: row?.student_code_login !== false,
+    familyLogin:      row?.family_login !== false,
+  }
+}
 
 export async function fetchAcademyBranding(slug) {
   const { data, error } = await supabase.rpc('secure_public_academy_branding', { p_slug: slug })
@@ -3402,6 +3429,8 @@ const _mapPublicTrialBranch = (row) => ({
   sportName:  row.sport_name,
   branchName: row.branch_name,
   photoUrl:   row.photo_url || '',
+  address:    row.address || '',
+  trialFee:   row.trial_fee != null ? Number(row.trial_fee) : 590,
 })
 
 export async function fetchPublicTrialBranches(slug) {
@@ -3462,7 +3491,65 @@ export async function submitPublicTrial(slug, payload) {
     p_age:                     payload.age || null,
     p_medical_notes:           payload.medicalNotes || null,
     p_document_path:           payload.documentPath || null,
+    p_trial_fee_mode:          payload.trialFeeMode   || 'Not collected',
+    p_trial_fee_amount:        payload.trialFeeAmount ?? null,
+    p_relationship:            payload.relationship      || null,
+    p_sibling_of_trial_id:     payload.siblingOfTrialId  || null,
   })
   if (error) throw error
   return typeof data === 'string' ? JSON.parse(data) : data
+}
+
+// Powers the /join Profile tab — every trial at this academy that matches
+// the CALLER'S OWN verified phone (server-derived, never a parameter), so a
+// prospect can only ever see their own family's registrations.
+export async function fetchMyTrials(slug) {
+  const { data, error } = await supabase.rpc('secure_my_trials_v1', { p_slug: slug })
+  if (error) throw error
+  const rows = typeof data === 'string' ? JSON.parse(data) : data
+  return (rows || []).map(r => ({
+    id:               r.id,
+    name:             r.name,
+    sport:            r.sport,
+    branchName:       r.branch_name || '',
+    status:           r.status,
+    stage:            r.stage,
+    trialDate:        r.trial_date,
+    trialFeePaid:     r.trial_fee_paid,
+    trialFeeMode:     r.trial_fee_mode,
+    relationship:     r.relationship || '',
+    siblingOfTrialId: r.sibling_of_trial_id || null,
+    createdAt:        r.created_at,
+    coachNote:        r.coach_note || '',
+    coachRec:         r.coach_rec  || '',
+    batchName:        r.batch_name || '',
+    batchDays:        r.batch_days || [],
+    batchStartTime:   r.batch_start_time || '',
+    batchEndTime:      r.batch_end_time   || '',
+    studentCode:      r.student_code   || '',
+    joinCode:         r.join_code      || '',
+    accountStatus:    r.account_status || '',
+  }))
+}
+
+// Trial online-payment — uses supabase.functions.invoke() so the CURRENT
+// phone-OTP session's access token is forwarded automatically as the
+// Authorization header (that's the only auth these two functions require —
+// no owner/staff actor_kind, unlike the student-payment razorpay-create-order).
+export async function createTrialRazorpayOrder({ slug, branchId, trialId }) {
+  const { data, error } = await supabase.functions.invoke('razorpay-create-trial-order', {
+    body: { slug, branchId, trialId },
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
+export async function verifyTrialRazorpayPayment({ slug, trialId, orderId, paymentId, signature }) {
+  const { data, error } = await supabase.functions.invoke('razorpay-verify-trial-payment', {
+    body: { slug, trialId, orderId, paymentId, signature },
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data
 }

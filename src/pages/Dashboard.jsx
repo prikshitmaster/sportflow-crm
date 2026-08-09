@@ -16,7 +16,7 @@ export default function Dashboard() {
     students, payments, trials, batches, staff,
     user, role, hasPermission, dataLoading, attendanceData,
     leaveRequests, loadLeaveRequests, updateLeave,
-    selectedSport,
+    selectedSport, selectedBranch, loadAttendanceForDate,
   } = useApp()
 
   // Multi-batch enrolments — same source as Attendance page so counts match
@@ -35,6 +35,13 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => { loadLeaveRequests?.() }, [])
+
+  // Attendance cache is wiped on sport/branch switch (AppContext) and this
+  // page never triggered a refetch of its own — batches would show as
+  // unmarked/0% after switching scope until some other page reloaded it.
+  useEffect(() => {
+    loadAttendanceForDate?.(toLocalDateStr(new Date()))
+  }, [selectedSport, selectedBranch])
 
   // ── Clock-in (staff only) ──────────────────────────────────────
   const [todayCheckin,  setTodayCheckin]  = useState(null)
@@ -80,23 +87,28 @@ export default function Dashboard() {
     .filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth)
     .reduce((s, p) => s + (p.amount ?? 0), 0)
 
-  // Split collected into "for this month" vs "advance (future months)"
-  const MONTH_MAP = { Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12 }
-  const paidForCurrentMonth = (p) => {
-    const m = p.month
-    if (!m) return true
-    if (/^\d{4}-\d{2}/.test(m)) return m.slice(0, 7) === currentMonth
-    const nameM = m.match(/^([A-Za-z]+)/), yearM = m.match(/(\d{4})/)
-    if (nameM && yearM && MONTH_MAP[nameM[1]])
-      return `${yearM[1]}-${String(MONTH_MAP[nameM[1]]).padStart(2,'0')}` === currentMonth
-    return true
+  // Split collected into "for this month" vs "advance (future months)".
+  // Uses the real coverageStart/monthsCovered fields, not p.month text —
+  // that label collapses a multi-month span to "Aug–Oct 2026", and reading
+  // only the first word made a quarterly/yearly payment starting this month
+  // count its FULL amount (incl. 2-3 future months) as "this month".
+  // Each payment's amount is prorated evenly across the months it covers;
+  // only the current month's share lands in "this month", the rest in "advance".
+  const thisMonthShare = (p) => {
+    const months = Math.max(1, p.monthsCovered || 1)
+    const start  = p.coverageStart?.slice(0, 7) || p.date?.slice(0, 7) || null
+    if (!start) return p.amount ?? 0 // legacy row with no coverage data — assume current month
+    const [sy, sm] = start.split('-').map(Number)
+    for (let i = 0; i < months; i++) {
+      const y = sy + Math.floor((sm - 1 + i) / 12)
+      const m = ((sm - 1 + i) % 12) + 1
+      if (`${y}-${String(m).padStart(2, '0')}` === currentMonth) return (p.amount ?? 0) / months
+    }
+    return 0
   }
-  const thisMonthCollected = payments
-    .filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth && paidForCurrentMonth(p))
-    .reduce((s, p) => s + (p.amount ?? 0), 0)
-  const advanceCollected = payments
-    .filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth && !paidForCurrentMonth(p))
-    .reduce((s, p) => s + (p.amount ?? 0), 0)
+  const paidThisCalMonth = payments.filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth)
+  const thisMonthCollected = paidThisCalMonth.reduce((s, p) => s + thisMonthShare(p), 0)
+  const advanceCollected   = paidThisCalMonth.reduce((s, p) => s + ((p.amount ?? 0) - thisMonthShare(p)), 0)
 
   const studentsWithRecord = new Set(
     payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => String(p.studentId))
@@ -131,7 +143,10 @@ export default function Dashboard() {
     // Active only — used for attendance % denominator (same as Attendance page)
     const activeBs = allBs.filter(s => s.status === 'Active')
     const present = activeBs.filter(s => todayAtt[s.id] === 'Present' || todayAtt[s.id] === true).length
-    const marked  = Object.keys(todayAtt).length > 0
+    // Per-batch, not academy-wide — todayAtt spans every batch, so checking
+    // "any entry exists" flagged every other batch "Marked" the moment ONE
+    // batch's attendance was taken.
+    const marked  = activeBs.some(s => todayAtt[s.id] !== undefined)
     const pct = activeBs.length ? Math.round((present / activeBs.length) * 100) : 0
     // A batch trains today if it has no day schedule (trains every day) or today is in its days list
     const trainsToday = b.days?.length > 0 ? b.days.includes(todayDayShort) : true

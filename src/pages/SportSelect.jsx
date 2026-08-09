@@ -195,11 +195,12 @@ export default function SportSelect() {
     )
     if (dup) { showToast(`${newName} already exists in ${drillSport}`, 'info'); return }
     try {
-      // 1. Save name + address + photo (no manager_id here)
+      // 1. Save name + address + photo + trial fee (no manager_id here)
       await db.updateSportBranch(editingBranch.id, {
         branchName: newName,
         address:    fields.address ?? '',
         photoUrl:   fields.photoUrl ?? editingBranch.photoUrl ?? '',
+        trialFee:   fields.trialFee ?? null,
       })
 
       // 2. Manager change → call the dedicated assign/unassign RPCs which
@@ -367,7 +368,7 @@ export default function SportSelect() {
             onCancelAdd={() => { setAddingBranch(false); setNewBranch(''); setNewBranchAddress('') }}
             onConfirmAdd={handleAddBranch}
             editingBranch={editingBranch}
-            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '', managerId: b.managerId || null, photoUrl: b.photoUrl || '' })}
+            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '', managerId: b.managerId || null, photoUrl: b.photoUrl || '', trialFee: b.trialFee ?? null })}
             onCancelEdit={() => setEditingBranch(null)}
             onSaveEdit={handleSaveEditBranch}
             deletingBranch={deletingBranch}
@@ -807,11 +808,14 @@ function BranchView({
                 </p>
               )}
               {b.address && (
-                <p className="flex items-start gap-1 text-[11px] text-gray-500 mb-2 leading-snug">
+                <p className="flex items-start gap-1 text-[11px] text-gray-500 mb-1 leading-snug">
                   <MapPin size={10} className="mt-0.5 flex-shrink-0" />
                   <span className="line-clamp-2">{b.address}</span>
                 </p>
               )}
+              <p className="text-[11px] text-gray-400 mb-2">
+                Trial fee: <span className="font-semibold text-gray-600">₹{(b.trialFee ?? 590).toLocaleString('en-IN')}</span>
+              </p>
               <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
                 <div>
                   <div className="flex items-center gap-1 text-gray-400 text-[10px] mb-0.5"><Users size={10} /> Students</div>
@@ -906,6 +910,7 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
   const [name,        setName]        = useState(initial.branchName || '')
   const [address,     setAddress]     = useState(initial.address    || '')
   const [managerId,   setManagerId]   = useState(initial.managerId  || '')
+  const [trialFee,    setTrialFee]    = useState(initial.trialFee != null ? String(initial.trialFee) : '')
   const [photoFile,   setPhotoFile]   = useState(null)   // newly picked File, not yet uploaded
   const [photoPreview, setPhotoPreview] = useState(initial.photoUrl || '')
   const [saving,      setSaving]      = useState(false)
@@ -928,7 +933,7 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
         const db = await import('../lib/db')
         photoUrl = await db.uploadBranchPhoto(photoFile, initial.id)
       }
-      await onSave({ branchName: name, address, managerId: managerId || null, photoUrl })
+      await onSave({ branchName: name, address, managerId: managerId || null, photoUrl, trialFee: trialFee.trim() === '' ? null : Number(trialFee) })
     } finally { setSaving(false) }
   }
   return (
@@ -965,6 +970,12 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
           <div>
             <label className="label">Address <span className="text-gray-400 font-normal">(optional)</span></label>
             <input className="input" value={address} onChange={e => setAddress(e.target.value)} placeholder="Street, city, landmark…" />
+          </div>
+          <div>
+            <label className="label">
+              Trial fee (₹) <span className="text-gray-400 font-normal">(shown &amp; charged on the online registration page — defaults to ₹590 if left blank)</span>
+            </label>
+            <input className="input" type="number" min="0" value={trialFee} onChange={e => setTrialFee(e.target.value)} placeholder="590" />
           </div>
           <div>
             <label className="label">

@@ -185,7 +185,10 @@ export default function StaffDashboard() {
             {sortedBatches.map(b => {
               const trains   = batchTrainsToday(b)
               const bStu     = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name))
-              const bPresent = bStu.filter(s => todayAtt[s.id] === 'Present').length
+              // Label below says "marked" — count anyone with an attendance
+              // entry today, not just Present, or a fully-marked batch with
+              // absences looked like attendance hadn't been taken yet.
+              const bMarked  = bStu.filter(s => todayAtt[s.id] !== undefined).length
               return (
                 <button key={b.id} onClick={() => navigate('/staff/attendance')}
                   className={`w-full rounded-2xl p-4 border text-left flex items-center justify-between transition ${
@@ -206,7 +209,7 @@ export default function StaffDashboard() {
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0 ml-3">
-                    <p className={`text-sm font-black ${trains ? 'text-gray-900' : 'text-gray-400'}`}>{bPresent}/{bStu.length}</p>
+                    <p className={`text-sm font-black ${trains ? 'text-gray-900' : 'text-gray-400'}`}>{bMarked}/{bStu.length}</p>
                     <p className="text-[10px] text-gray-400">marked</p>
                   </div>
                 </button>

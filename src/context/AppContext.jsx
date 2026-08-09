@@ -1135,17 +1135,21 @@ export function AppProvider({ children }) {
           : p))
       }
 
-      // Parent auto-link disabled for v1 — parent portal hidden. Re-enable
-      // when /parents page + /parent-login go live.
-      // const parentPhone10 = (s.parentPhone || '').replace(/\D/g, '').slice(-10)
-      // if (s.parent && parentPhone10.length === 10) {
-      //   db.createParent({
-      //     name:         s.parent,
-      //     phone:        parentPhone10,
-      //     studentId:    newId,
-      //     relationship: 'guardian',
-      //   }).catch(err => console.warn('parent auto-link failed:', err.message))
-      // }
+      // Auto-link (or reuse) a parent record by (academy_id, phone) so Family
+      // Login has an account waiting the moment this student exists — gated
+      // by the toggle so academies that turn Family Login off don't get
+      // parent rows they never asked for.
+      if (isFeatureOn('family_login')) {
+        const parentPhone10 = (s.parentPhone || '').replace(/\D/g, '').slice(-10)
+        if (s.parent && parentPhone10.length === 10) {
+          db.createParent({
+            name:         s.parent,
+            phone:        parentPhone10,
+            studentId:    newId,
+            relationship: 'guardian',
+          }).catch(err => console.warn('parent auto-link failed:', err.message))
+        }
+      }
 
       showToast(`Student created — Code: ${studentCode} · Join: ${joinCode}`, 'success')
       logAuditSport({ actor: user, action: ACTIONS.STUDENT_ADD, entityType: 'student', entityId: mapped.id, entityName: mapped.name, changes: { batch: mapped.batch || '—', sport: mapped.sport, fees: String(mapped.fees) }, academyId: user?.academyId, sport: mapped.sport ?? null, branchId: mapped.branchId ?? null })
@@ -1200,16 +1204,19 @@ export function AppProvider({ children }) {
         }))
       }
 
-      // Parent auto-link disabled for v1 — see addStudent for re-enable steps.
-      // const editParentPhone10 = (s.parentPhone || '').replace(/\D/g, '').slice(-10)
-      // if (s.parent && editParentPhone10.length === 10) {
-      //   db.createParent({
-      //     name:         s.parent,
-      //     phone:        editParentPhone10,
-      //     studentId:    id,
-      //     relationship: 'guardian',
-      //   }).catch(err => console.warn('parent auto-link failed:', err.message))
-      // }
+      // Same Family Login auto-link as addStudent — kept in sync on edits too
+      // (e.g. a parent's phone gets corrected after the student was created).
+      if (isFeatureOn('family_login')) {
+        const editParentPhone10 = (s.parentPhone || '').replace(/\D/g, '').slice(-10)
+        if (s.parent && editParentPhone10.length === 10) {
+          db.createParent({
+            name:         s.parent,
+            phone:        editParentPhone10,
+            studentId:    id,
+            relationship: 'guardian',
+          }).catch(err => console.warn('parent auto-link failed:', err.message))
+        }
+      }
 
       showToast('Student updated')
       const diff = diffObjects(
