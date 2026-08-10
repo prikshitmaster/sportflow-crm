@@ -43,7 +43,7 @@ export default function Community() {
   const [detail,     setDetail]     = useState(null)   // announcement being viewed
   const [confirmDel, setConfirmDel] = useState(null)   // announcement pending delete
 
-  // Deleting community content goes with managing it.
+  // Posting and deleting community content both go with managing it.
   const canManage = hasPermission('community.manage')
   // Messaging the whole staff body is a staff-management action, deliberately a
   // higher bar than posting announcements: owners bypass, branch_manager/admin
@@ -91,9 +91,11 @@ export default function Community() {
               <Send size={15} /> Staff Notice
             </button>
           )}
-          <button className="btn-primary" onClick={() => setShowModal(true)}>
-            <Plus size={16} /> New Announcement
-          </button>
+          {canManage && (
+            <button className="btn-primary" onClick={() => setShowModal(true)}>
+              <Plus size={16} /> New Announcement
+            </button>
+          )}
         </div>
       </div>
 

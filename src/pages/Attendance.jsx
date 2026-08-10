@@ -10,7 +10,9 @@ import { fetchBatchEnrolments, fetchAllBatchEnrolments, fetchAttendanceForStuden
 import { saveOrShareFile } from '../lib/nativeSave'
 
 // ── constants ──────────────────────────────────────────────────
-const STATUS_CYCLE = ['Present', 'Absent', 'Late', 'Leave']
+// Trailing '' is deliberate: a tap on 'Leave' must return to unmarked so a
+// coach can undo an accidental mark, matching StaffAttendance.jsx's cycle.
+const STATUS_CYCLE = ['Present', 'Absent', 'Late', 'Leave', '']
 const S = {
   Present: { icon: '✓', bg: 'bg-emerald-500', text: 'text-emerald-600', light: 'bg-emerald-50 border-emerald-200',  label: 'Present', hex: '22c55e' },
   Absent:  { icon: '✗', bg: 'bg-red-500',     text: 'text-red-600',     light: 'bg-red-50 border-red-200',          label: 'Absent',  hex: 'ef4444' },

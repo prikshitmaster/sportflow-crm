@@ -2264,7 +2264,7 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
                   )}
                   {!linkedBranchName && (
                     <div className="text-amber-600">
-                      ⚠ No branch selected — this staff will see <strong>all branches</strong>. Switch to a specific branch first if you want them scoped.
+                      ⚠ No branch selected — a branch is required to add staff. Switch to a specific branch first.
                     </div>
                   )}
                 </div>

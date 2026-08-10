@@ -35,3 +35,6 @@ enroll-app/android/*.keystore
 enroll-app/android/*.jks
 enroll-app/android/keystore.properties
 enroll-app/node_modules
+
+# QA harness run output — regenerated per run, holds live tokens/JWTs
+scripts/_qa/state.json
