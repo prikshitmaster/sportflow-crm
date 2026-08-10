@@ -88,6 +88,36 @@ export async function rpc(name, args = {}, mode = {}) {
   return { status: res.status, ok: res.ok, body }
 }
 
+// ── Storage REST helpers (raw fetch — mirrors what supabase-js does) ───────
+// Storage requires a real Authorization header on every request (unlike
+// PostgREST, which is happy with just apikey + x-staff-token/x-student-token)
+// — supabase-js always sends the session JWT, falling back to the anon key
+// itself as a bearer token when there's no JWT (staff/student custom-token
+// sessions never get a Supabase JWT at all).
+function storageHeadersFor(mode = {}) {
+  const h = headersFor(mode)
+  h['Authorization'] = mode.ownerJwt ? `Bearer ${mode.ownerJwt}` : `Bearer ${ANON_KEY}`
+  return h
+}
+export async function storageUpload(bucket, path, bytes, mode = {}) {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+    method: 'POST',
+    headers: { ...storageHeadersFor(mode), 'Content-Type': 'application/octet-stream', 'x-upsert': 'true' },
+    body: bytes,
+  })
+  const text = await res.text()
+  let body; try { body = JSON.parse(text) } catch { body = text }
+  return { status: res.status, ok: res.ok, body }
+}
+export async function storagePublicGet(bucket, path) {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`)
+  return { status: res.status, ok: res.ok }
+}
+export async function storageAuthGet(bucket, path, mode = {}) {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, { headers: storageHeadersFor(mode) })
+  return { status: res.status, ok: res.ok }
+}
+
 export function assert(cond, label, detail) {
   if (cond) { console.log(`  ✓ ${label}`); return true }
   console.log(`  ✗ FAIL ${label}${detail ? '  (' + JSON.stringify(detail).slice(0,200) + ')' : ''}`)

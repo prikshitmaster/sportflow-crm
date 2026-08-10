@@ -354,18 +354,26 @@ export async function uploadStudentPhoto(file, studentId) {
 // ── Student document vault (migration 0103) ───────────────
 // Reads go through RLS on student_documents (student sees own; staff need
 // 'documents.view'; owner sees academy). Writes via SECURITY DEFINER RPCs.
-const _mapStudentDoc = (row) => ({
-  id:        row.id,
-  studentId: row.student_id,
-  docType:   row.doc_type,
-  title:     row.title,
-  filePath:  row.file_path,
-  fileName:  row.file_name || null,
-  mimeType:  row.mime_type || null,
-  sizeBytes: row.size_bytes || null,
-  createdAt: row.created_at,
-  url:       supabase.storage.from('student-documents').getPublicUrl(row.file_path).data.publicUrl,
-})
+// student-documents is a PRIVATE bucket (security-v3/28) — the file itself
+// needs its own signed URL, the same RLS-gated check the metadata row
+// already passed doesn't extend to the storage object automatically.
+const STUDENT_DOC_URL_TTL = 3600 // 1 hour — long enough to view/download in one sitting
+const _mapStudentDoc = async (row) => {
+  const { data } = await supabase.storage.from('student-documents')
+    .createSignedUrl(row.file_path, STUDENT_DOC_URL_TTL)
+  return {
+    id:        row.id,
+    studentId: row.student_id,
+    docType:   row.doc_type,
+    title:     row.title,
+    filePath:  row.file_path,
+    fileName:  row.file_name || null,
+    mimeType:  row.mime_type || null,
+    sizeBytes: row.size_bytes || null,
+    createdAt: row.created_at,
+    url:       data?.signedUrl || null,
+  }
+}
 
 export async function fetchStudentDocuments(studentId) {
   const { data, error } = await supabase
@@ -377,7 +385,7 @@ export async function fetchStudentDocuments(studentId) {
     if (error.code === '42P01') return []  // table not migrated yet
     throw error
   }
-  return (data || []).map(_mapStudentDoc)
+  return Promise.all((data || []).map(_mapStudentDoc))
 }
 
 export async function uploadStudentDocument(file, { studentId, docType = 'other', title = '' } = {}) {
@@ -404,7 +412,7 @@ export async function uploadStudentDocument(file, { studentId, docType = 'other'
     throw error
   }
   const row = typeof data === 'string' ? JSON.parse(data) : data
-  return _mapStudentDoc(row)
+  return await _mapStudentDoc(row)
 }
 
 export async function deleteStudentDocument(docId) {
