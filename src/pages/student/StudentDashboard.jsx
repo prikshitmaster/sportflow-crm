@@ -12,7 +12,7 @@ import {
 const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 export default function StudentDashboard() {
-  const { studentUser, updateStudentPhoto } = useApp()
+  const { studentUser, updateStudentPhoto, showToast } = useApp()
   const [todayStatus,   setTodayStatus]   = useState(null)
   const [monthStats,    setMonthStats]    = useState(null)
   const [payments,      setPayments]      = useState([])
@@ -33,7 +33,7 @@ export default function StudentDashboard() {
     } catch (err) {
       console.error('Photo upload error:', err)
       const detail = err?.message || err?.error?.message || err?.statusCode || JSON.stringify(err)
-      alert(`Photo upload failed:\n${detail}\n\n(Open DevTools console for full error)`)
+      showToast(`Photo upload failed: ${detail}`, 'error')
     }
     setUploading(false)
     e.target.value = ''

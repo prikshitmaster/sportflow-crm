@@ -17,7 +17,7 @@ import {
 const MONTH_OPTS = buildMonthOpts()
 
 export default function StaffAssess() {
-  const { user, batches, students } = useApp()
+  const { user, batches, students, showToast } = useApp()
   const [tab, setTab] = useState('assess')
 
   return (
@@ -369,10 +369,10 @@ function AssessmentModal({ student, existing, sport, categories, month, batchId,
       }).catch(() => {})
 
       if (positionFailed) {
-        alert('Assessment saved. Position could not be updated — ask an admin for permission to edit student details.')
+        showToast('Assessment saved. Position could not be updated — ask an admin for permission to edit student details.', 'info')
       }
     } catch (e) {
-      alert(e.message)
+      showToast(e.message || 'Failed to save assessment', 'error')
     } finally {
       setSaving(false)
     }
@@ -769,7 +769,7 @@ function GoalsTab({ user, batches, students }) {
         }).catch(() => {})
       }
     } catch (e) {
-      alert(`Save failed: ${e.message}`)
+      showToast(`Save failed: ${e.message}`, 'error')
     }
   }
 

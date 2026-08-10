@@ -143,12 +143,17 @@ Deno.serve(async (req) => {
   const rzpJson = await rzpResp.json().catch(() => ({}))
   if (!rzpResp.ok) return json({ error: 'razorpay order failed', details: rzpJson }, 502)
 
+  // callerPhone is Supabase Auth's raw auth.users.phone — digits only, no
+  // leading '+' (e.g. "919998887777"). Razorpay Checkout's prefill.contact
+  // expects proper E.164 (+91XXXXXXXXXX); passing the ambiguous bare-digit
+  // form risks Checkout mis-parsing it and disabling phone-linked payment
+  // methods.
   return json({
     ok:       true,
     orderId:  rzpJson.id,
     keyId:    cfg.razorpay_key_id,
     amount:   amountPaise,
     currency: 'INR',
-    prefill:  { name: trial.name, contact: callerPhone },
+    prefill:  { name: trial.name, contact: `+${callerPhone}` },
   })
 })

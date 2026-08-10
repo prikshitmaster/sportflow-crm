@@ -41,7 +41,7 @@ function formatDate(dateStr) {
 }
 
 export default function StudentProgress() {
-  const { studentUser, updateStudentProfile } = useApp()
+  const { studentUser, updateStudentProfile, showToast } = useApp()
   const isFootball = studentUser?.sport?.toLowerCase() === 'football'
   const [editProfile, setEditProfile] = useState(false)
   const now      = new Date()
@@ -109,7 +109,7 @@ export default function StudentProgress() {
       })
       setSavedSelf(true)
     } catch (e) {
-      alert(`Save failed: ${e.message}`)
+      showToast(`Save failed: ${e.message}`, 'error')
     } finally {
       setSavingSelf(false)
     }
@@ -316,7 +316,7 @@ export default function StudentProgress() {
               await updateStudentProfile(fields)
               setEditProfile(false)
             } catch (e) {
-              alert('Save failed: ' + (e?.message || 'Unknown error'))
+              showToast('Save failed: ' + (e?.message || 'Unknown error'), 'error')
             }
           }}
         />

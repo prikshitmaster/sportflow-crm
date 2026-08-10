@@ -60,7 +60,7 @@ const COLOR_CLASS = {
 }
 
 export default function StaffPulse() {
-  const { user, batches, students } = useApp()
+  const { user, batches, students, showToast } = useApp()
   const navigate = useNavigate()
 
   // LOCAL date — toISOString returns UTC and would key against yesterday in IST mornings.
@@ -208,7 +208,7 @@ export default function StaffPulse() {
             })
           }
         } catch (e) {
-          alert(`Save failed: ${e.message}`)
+          showToast(`Save failed: ${e.message}`, 'error')
           setSaving(false)
           return
         }

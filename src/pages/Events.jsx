@@ -299,6 +299,7 @@ function MatchCard({ match, input, onChange, onSave, saving, isRR }) {
 
 // ── Tournament Modal ─────────────────────────────────────────
 function TournamentModal({ event, students, onClose }) {
+  const { showToast } = useApp()
   const [tab,          setTab]          = useState(event.participants?.length ? 'bracket' : 'participants')
   const [participants, setParticipants] = useState(event.participants || [])
   const [matches,      setMatches]      = useState([])
@@ -328,10 +329,10 @@ function TournamentModal({ event, students, onClose }) {
   )
 
   const saveParticipants = async () => {
-    if (participants.length < 2) { alert('Add at least 2 participants'); return }
+    if (participants.length < 2) { showToast('Add at least 2 participants', 'error'); return }
     setSaving(true)
     try { await db.updateEvent(event.id, { participants }); event.participants = participants; setTab('bracket') }
-    catch (e) { alert(e.message) }
+    catch (e) { showToast(e.message || 'Failed to save participants', 'error') }
     finally { setSaving(false) }
   }
 
@@ -344,20 +345,20 @@ function TournamentModal({ event, students, onClose }) {
       await db.insertTournamentMatches(event.id, newMatches)
       const fresh = await db.fetchTournamentMatches(event.id)
       setMatches(fresh); setActiveRound(1); setInputs({})
-    } catch (e) { alert(e.message) }
+    } catch (e) { showToast(e.message || 'Failed to generate bracket', 'error') }
     finally { setSaving(false) }
   }
 
   const saveResult = async (match) => {
     const inp = inputs[match.id] || {}
-    if (!inp.winnerId) { alert('Select a winner'); return }
+    if (!inp.winnerId) { showToast('Select a winner', 'error'); return }
     setSaving(true)
     try {
       await db.updateTournamentMatch(match.id, { winnerId: inp.winnerId, winnerName: inp.winnerName, score: inp.score })
       setMatches(prev => prev.map(m => m.id === match.id
         ? { ...m, winner_id: inp.winnerId, winner_name: inp.winnerName, score: inp.score || null } : m))
       setInputs(prev => { const n = { ...prev }; delete n[match.id]; return n })
-    } catch (e) { alert(e.message) }
+    } catch (e) { showToast(e.message || 'Failed to save result', 'error') }
     finally { setSaving(false) }
   }
 
@@ -365,11 +366,11 @@ function TournamentModal({ event, students, onClose }) {
     setSaving(true)
     try {
       const next = genNextRound(matches, activeRound)
-      if (!next.length) { alert('Cannot generate next round'); setSaving(false); return }
+      if (!next.length) { showToast('Cannot generate next round', 'error'); setSaving(false); return }
       await db.insertTournamentMatches(event.id, next)
       const fresh = await db.fetchTournamentMatches(event.id)
       setMatches(fresh); setActiveRound(activeRound + 1); setInputs({})
-    } catch (e) { alert(e.message) }
+    } catch (e) { showToast(e.message || 'Failed to advance round', 'error') }
     finally { setSaving(false) }
   }
 

@@ -436,7 +436,7 @@ const selectCls = fieldCls + ' appearance-none cursor-pointer'
 
 function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, selectedSport = null }) {
   useBodyScrollLock()
-  const { ageGroups } = useApp()
+  const { ageGroups, showToast } = useApp()
   const ageGroupOptions = ageGroups.length ? ageGroups.map(g => g.label) : AGE_GROUPS
   const [form, setForm] = useState({
     name: '', parent: '', age: '', dob: '',
@@ -490,7 +490,7 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
       })
       onClose()
     } catch (e) {
-      alert(e.message)
+      showToast(e.message || 'Failed to save trial', 'error')
     } finally {
       setSaving(false)
     }
@@ -727,6 +727,7 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
 
 function ScheduleModal({ trial, batches, onClose, onSave }) {
   useBodyScrollLock()
+  const { showToast } = useApp()
   const [date,    setDate]    = useState(trial.trialDate || todayStr())
   const [batchId, setBatchId] = useState(trial.batchId ? String(trial.batchId) : '')
   const [saving,  setSaving]  = useState(false)
@@ -738,7 +739,7 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
     try {
       await onSave(trial.id, { stage: 'scheduled', trialDate: date, batchId: batchId ? Number(batchId) : null })
       onClose()
-    } catch (e) { alert(e.message) } finally { setSaving(false) }
+    } catch (e) { showToast(e.message || 'Failed to schedule trial', 'error') } finally { setSaving(false) }
   }
 
   return (
@@ -777,6 +778,7 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
 
 function SessionModal({ trial, onClose, onSave }) {
   useBodyScrollLock()
+  const { showToast } = useApp()
   const [note,   setNote]   = useState('')
   const [rec,    setRec]    = useState('')
   const [saving, setSaving] = useState(false)
@@ -795,7 +797,7 @@ function SessionModal({ trial, onClose, onSave }) {
       if (rec)         updates.coachRec  = rec
       await onSave(trial.id, updates)
       onClose()
-    } catch (e) { alert(e.message) } finally { setSaving(false) }
+    } catch (e) { showToast(e.message || 'Failed to save session', 'error') } finally { setSaving(false) }
   }
 
   return (
