@@ -63,31 +63,57 @@ DROP POLICY IF EXISTS drill_diagrams_write     ON storage.objects;
 -- staff_photos_anon_select and drill_diagrams_read are SELECT-only and
 -- already correctly scoped to just their own bucket_id — left as-is.
 
+-- Re-runs of this file need to drop its OWN previously-created policies too
+-- (CREATE POLICY has no OR REPLACE in Postgres).
+DROP POLICY IF EXISTS student_photos_write      ON storage.objects;
+DROP POLICY IF EXISTS student_photos_update     ON storage.objects;
+DROP POLICY IF EXISTS student_photos_all        ON storage.objects;
+DROP POLICY IF EXISTS staff_photos_write        ON storage.objects;
+DROP POLICY IF EXISTS staff_photos_update       ON storage.objects;
+DROP POLICY IF EXISTS staff_photos_all          ON storage.objects;
+DROP POLICY IF EXISTS branch_photos_write       ON storage.objects;
+DROP POLICY IF EXISTS student_documents_read    ON storage.objects;
+DROP POLICY IF EXISTS student_documents_write   ON storage.objects;
+DROP POLICY IF EXISTS student_documents_delete  ON storage.objects;
+DROP POLICY IF EXISTS trial_documents_owner_only ON storage.objects;
+
 -- ════════════════════════════════════════════════════════════════
 -- student-photos — path: {studentId}.jpg
 -- Read: public (unchanged). Write: owner/staff (own academy, students.manage)
 -- or the student uploading their own photo.
 -- ════════════════════════════════════════════════════════════════
-CREATE POLICY student_photos_write ON storage.objects
-  FOR INSERT TO anon, authenticated
-  WITH CHECK (
-    bucket_id = 'student-photos' AND (
-      EXISTS (SELECT 1 FROM students s WHERE s.id = (regexp_replace(name, '\.jpg$', ''))::bigint
-              AND s.academy_id = get_my_academy_id())
-      OR EXISTS (SELECT 1 FROM students s WHERE s.id = (regexp_replace(name, '\.jpg$', ''))::bigint
-                 AND s.academy_id = current_staff_academy() AND current_staff_has_perm('students.manage'))
-      OR (regexp_replace(name, '\.jpg$', ''))::bigint = current_student_id()
-    )
-  );
-CREATE POLICY student_photos_update ON storage.objects
-  FOR UPDATE TO anon, authenticated
+-- NOTE ON `objects.name`: inside a correlated subquery joining a table that
+-- ALSO has a `name` column (students.name, staff.name), an unqualified bare
+-- `name` resolves to the INNER table's column, not storage.objects.name —
+-- confirmed live: a first draft of this migration cast the STUDENT'S NAME
+-- to bigint instead of the file path and failed every legitimate upload.
+-- Every reference below is qualified as `objects.name` to avoid that.
+-- Single FOR ALL policy (USING + WITH CHECK together), not split into
+-- separate INSERT/UPDATE policies — confirmed live that Storage's x-upsert
+-- path (INSERT ... ON CONFLICT DO UPDATE) only reliably worked against the
+-- combined form (matching branch_photos_write, which worked first try);
+-- the split form intermittently rejected legitimate uploads for reasons
+-- that didn't reproduce under a direct SQL simulation of the same USING/
+-- WITH CHECK expression, so this sidesteps the discrepancy entirely rather
+-- than chasing an unconfirmed theory about upsert internals.
+CREATE POLICY student_photos_all ON storage.objects
+  FOR ALL TO anon, authenticated
   USING (
     bucket_id = 'student-photos' AND (
-      EXISTS (SELECT 1 FROM students s WHERE s.id = (regexp_replace(name, '\.jpg$', ''))::bigint
+      EXISTS (SELECT 1 FROM students s WHERE s.id = (regexp_replace(objects.name, '\.jpg$', ''))::bigint
               AND s.academy_id = get_my_academy_id())
-      OR EXISTS (SELECT 1 FROM students s WHERE s.id = (regexp_replace(name, '\.jpg$', ''))::bigint
+      OR EXISTS (SELECT 1 FROM students s WHERE s.id = (regexp_replace(objects.name, '\.jpg$', ''))::bigint
                  AND s.academy_id = current_staff_academy() AND current_staff_has_perm('students.manage'))
-      OR (regexp_replace(name, '\.jpg$', ''))::bigint = current_student_id()
+      OR (regexp_replace(objects.name, '\.jpg$', ''))::bigint = current_student_id()
+    )
+  )
+  WITH CHECK (
+    bucket_id = 'student-photos' AND (
+      EXISTS (SELECT 1 FROM students s WHERE s.id = (regexp_replace(objects.name, '\.jpg$', ''))::bigint
+              AND s.academy_id = get_my_academy_id())
+      OR EXISTS (SELECT 1 FROM students s WHERE s.id = (regexp_replace(objects.name, '\.jpg$', ''))::bigint
+                 AND s.academy_id = current_staff_academy() AND current_staff_has_perm('students.manage'))
+      OR (regexp_replace(objects.name, '\.jpg$', ''))::bigint = current_student_id()
     )
   );
 
@@ -96,29 +122,27 @@ CREATE POLICY student_photos_update ON storage.objects
 -- Read: public (unchanged, staff_photos_anon_select kept as-is). Write:
 -- owner/staff-manager (own academy) or the staff member uploading their own.
 -- ════════════════════════════════════════════════════════════════
-CREATE POLICY staff_photos_write ON storage.objects
-  FOR INSERT TO anon, authenticated
-  WITH CHECK (
+CREATE POLICY staff_photos_all ON storage.objects
+  FOR ALL TO anon, authenticated
+  USING (
     bucket_id = 'staff-photos' AND (
-      EXISTS (SELECT 1 FROM staff st WHERE st.id = (regexp_replace(regexp_replace(name, '^staff/', ''), '\.jpg$', ''))::bigint
+      EXISTS (SELECT 1 FROM staff st WHERE st.id = (regexp_replace(regexp_replace(objects.name, '^staff/', ''), '\.jpg$', ''))::bigint
               AND st.academy_id = get_my_academy_id())
-      OR EXISTS (SELECT 1 FROM staff st WHERE st.id = (regexp_replace(regexp_replace(name, '^staff/', ''), '\.jpg$', ''))::bigint
+      OR EXISTS (SELECT 1 FROM staff st WHERE st.id = (regexp_replace(regexp_replace(objects.name, '^staff/', ''), '\.jpg$', ''))::bigint
                  AND st.academy_id = current_staff_academy() AND current_staff_has_perm('staff.manage'))
-      OR (regexp_replace(regexp_replace(name, '^staff/', ''), '\.jpg$', ''))::bigint = (
+      OR (regexp_replace(regexp_replace(objects.name, '^staff/', ''), '\.jpg$', ''))::bigint = (
             SELECT s.id FROM staff_sessions ss JOIN staff s ON s.id = ss.staff_id
             WHERE ss.token = current_setting('request.headers', true)::json->>'x-staff-token'
               AND ss.expires_at > now() LIMIT 1)
     )
-  );
-CREATE POLICY staff_photos_update ON storage.objects
-  FOR UPDATE TO anon, authenticated
-  USING (
+  )
+  WITH CHECK (
     bucket_id = 'staff-photos' AND (
-      EXISTS (SELECT 1 FROM staff st WHERE st.id = (regexp_replace(regexp_replace(name, '^staff/', ''), '\.jpg$', ''))::bigint
+      EXISTS (SELECT 1 FROM staff st WHERE st.id = (regexp_replace(regexp_replace(objects.name, '^staff/', ''), '\.jpg$', ''))::bigint
               AND st.academy_id = get_my_academy_id())
-      OR EXISTS (SELECT 1 FROM staff st WHERE st.id = (regexp_replace(regexp_replace(name, '^staff/', ''), '\.jpg$', ''))::bigint
+      OR EXISTS (SELECT 1 FROM staff st WHERE st.id = (regexp_replace(regexp_replace(objects.name, '^staff/', ''), '\.jpg$', ''))::bigint
                  AND st.academy_id = current_staff_academy() AND current_staff_has_perm('staff.manage'))
-      OR (regexp_replace(regexp_replace(name, '^staff/', ''), '\.jpg$', ''))::bigint = (
+      OR (regexp_replace(regexp_replace(objects.name, '^staff/', ''), '\.jpg$', ''))::bigint = (
             SELECT s.id FROM staff_sessions ss JOIN staff s ON s.id = ss.staff_id
             WHERE ss.token = current_setting('request.headers', true)::json->>'x-staff-token'
               AND ss.expires_at > now() LIMIT 1)
@@ -133,13 +157,13 @@ CREATE POLICY branch_photos_write ON storage.objects
   FOR ALL TO authenticated
   USING (
     bucket_id = 'branch-photos' AND EXISTS (
-      SELECT 1 FROM sport_branches b WHERE b.id = (regexp_replace(name, '\.jpg$', ''))::uuid
+      SELECT 1 FROM sport_branches b WHERE b.id = (regexp_replace(objects.name, '\.jpg$', ''))::uuid
         AND b.academy_id = get_my_academy_id()
     )
   )
   WITH CHECK (
     bucket_id = 'branch-photos' AND EXISTS (
-      SELECT 1 FROM sport_branches b WHERE b.id = (regexp_replace(name, '\.jpg$', ''))::uuid
+      SELECT 1 FROM sport_branches b WHERE b.id = (regexp_replace(objects.name, '\.jpg$', ''))::uuid
         AND b.academy_id = get_my_academy_id()
     )
   );
@@ -167,10 +191,10 @@ CREATE POLICY student_documents_read ON storage.objects
   FOR SELECT TO anon, authenticated
   USING (
     bucket_id = 'student-documents' AND (
-      ((storage.foldername(name))[1])::bigint = current_student_id()
-      OR EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(name))[1])::bigint
+      ((storage.foldername(objects.name))[1])::bigint = current_student_id()
+      OR EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(objects.name))[1])::bigint
                  AND s.academy_id = current_staff_academy() AND current_staff_has_perm('documents.view'))
-      OR EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(name))[1])::bigint
+      OR EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(objects.name))[1])::bigint
                  AND s.academy_id = get_my_academy_id())
     )
   );
@@ -178,9 +202,9 @@ CREATE POLICY student_documents_write ON storage.objects
   FOR INSERT TO anon, authenticated
   WITH CHECK (
     bucket_id = 'student-documents' AND (
-      EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(name))[1])::bigint
+      EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(objects.name))[1])::bigint
               AND s.academy_id = current_staff_academy() AND current_staff_has_perm('students.manage'))
-      OR EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(name))[1])::bigint
+      OR EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(objects.name))[1])::bigint
                  AND s.academy_id = get_my_academy_id())
     )
   );
@@ -188,9 +212,9 @@ CREATE POLICY student_documents_delete ON storage.objects
   FOR DELETE TO anon, authenticated
   USING (
     bucket_id = 'student-documents' AND (
-      EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(name))[1])::bigint
+      EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(objects.name))[1])::bigint
               AND s.academy_id = current_staff_academy() AND current_staff_has_perm('students.manage'))
-      OR EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(name))[1])::bigint
+      OR EXISTS (SELECT 1 FROM students s WHERE s.id = ((storage.foldername(objects.name))[1])::bigint
                  AND s.academy_id = get_my_academy_id())
     )
   );
