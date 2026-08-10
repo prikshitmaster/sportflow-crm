@@ -308,7 +308,8 @@ function FeePlansTab({ onSave, saved }) {
   // Use `batches` (scope-filtered by current sport + branch) instead of allBatches
   // so the Fee Plans tab only shows batches — and therefore plans — in the
   // currently-selected sport/branch. Fee plans inherit scope via their batch_id.
-  const { suspendAfterDays, updateSuspendAfterDays, batches: allBatches, feePlans, addFeePlan, editFeePlan, removeFeePlan } = useApp()
+  const { suspendAfterDays, updateSuspendAfterDays, batches: allBatches, feePlans, addFeePlan, editFeePlan, removeFeePlan, hasPermission } = useApp()
+  const canManage = hasPermission('settings.manage')
   const [adding,  setAdding]  = useState({})   // batchId → form state
   const [editing, setEditing] = useState({})   // planId  → form state
   const [dueDay,  setDueDay]  = useState('10')
@@ -346,7 +347,7 @@ function FeePlansTab({ onSave, saved }) {
                 {/* Batch header */}
                 <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
                   <p className="text-sm font-bold text-gray-800">{b.name}</p>
-                  {!addForm && (
+                  {!addForm && canManage && (
                     <button onClick={() => startAdd(b.id)}
                       className="text-xs text-brand-600 font-semibold hover:underline flex items-center gap-1">
                       + Add Plan
@@ -409,11 +410,13 @@ function FeePlansTab({ onSave, saved }) {
                                 <span>Yearly: <strong className="text-gray-800">₹{p.yearlyFee.toLocaleString('en-IN')}</strong></span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <button onClick={() => startEdit(p)} className="text-xs text-brand-600 font-semibold hover:underline">Edit</button>
-                              <button onClick={() => { if (window.confirm(`Delete "${p.name}"?`)) removeFeePlan(p.id) }}
-                                className="text-xs text-red-400 hover:text-red-600 font-semibold hover:underline">Delete</button>
-                            </div>
+                            {canManage && (
+                              <div className="flex items-center gap-3">
+                                <button onClick={() => startEdit(p)} className="text-xs text-brand-600 font-semibold hover:underline">Edit</button>
+                                <button onClick={() => { if (window.confirm(`Delete "${p.name}"?`)) removeFeePlan(p.id) }}
+                                  className="text-xs text-red-400 hover:text-red-600 font-semibold hover:underline">Delete</button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

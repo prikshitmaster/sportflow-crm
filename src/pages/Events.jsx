@@ -531,7 +531,8 @@ function TournamentModal({ event, students, onClose }) {
 
 // ── Main Page ────────────────────────────────────────────────
 export default function Events() {
-  const { events, addEvent, updateEvent, updateEventStatus, removeEvent, batches, students, staff } = useApp()
+  const { events, addEvent, updateEvent, updateEventStatus, removeEvent, batches, students, staff, hasPermission } = useApp()
+  const canManage = hasPermission('events.manage')
   const [showForm,        setShowForm]        = useState(false)
   const [editTarget,      setEditTarget]      = useState(null)
   const [tournamentEvent, setTournamentEvent] = useState(null)
@@ -602,7 +603,9 @@ export default function Events() {
           <h1 className="text-2xl font-black text-gray-900">Events &amp; Tournaments</h1>
           <p className="text-sm text-gray-500 mt-0.5">{allEvents.length} total</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary"><Plus size={16} /> New Event</button>
+        {canManage && (
+          <button onClick={() => setShowForm(true)} className="btn-primary"><Plus size={16} /> New Event</button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2 mb-5">
@@ -668,13 +671,15 @@ export default function Events() {
                 <span className={`badge ${STATUS_COLOR[e.status]||'badge-gray'}`}>{e.status}</span>
                 {e.sport && <span className="badge badge-blue">{e.sport}</span>}
               </div>
-              <div className="flex gap-1 flex-shrink-0">
-                <button onClick={() => setEditTarget(e)} className="p-1.5 rounded-lg hover:bg-gray-100"><Pencil size={13} className="text-gray-400" /></button>
-                <button onClick={async () => { setDeletingId(e.id); await removeEvent(e.id); setDeletingId(null) }}
-                  disabled={deletingId===e.id} className="p-1.5 rounded-lg hover:bg-red-50">
-                  <Trash2 size={13} className="text-red-400" />
-                </button>
-              </div>
+              {canManage && (
+                <div className="flex gap-1 flex-shrink-0">
+                  <button onClick={() => setEditTarget(e)} className="p-1.5 rounded-lg hover:bg-gray-100"><Pencil size={13} className="text-gray-400" /></button>
+                  <button onClick={async () => { setDeletingId(e.id); await removeEvent(e.id); setDeletingId(null) }}
+                    disabled={deletingId===e.id} className="p-1.5 rounded-lg hover:bg-red-50">
+                    <Trash2 size={13} className="text-red-400" />
+                  </button>
+                </div>
+              )}
             </div>
             <h3 className="font-black text-gray-900 text-base mb-2 leading-snug">{e.title}</h3>
             <div className="space-y-1.5 mb-3 flex-1">

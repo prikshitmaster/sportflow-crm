@@ -14,6 +14,26 @@
 //
 // ADDING A NEW PERMISSION = add the key here, gate the UI, and require it in
 // the RPC migration. All three places, same string.
+//
+// "*.view" PERMISSIONS ARE UI-ONLY, NOT A DATA BOUNDARY — deliberately, not
+// an oversight. AppContext's session bootstrap (loadAll) fetches the full
+// branch-scoped student/payment/batch roster for every staff session up
+// front, unconditionally, because nearly every page (including
+// attendance.manage's own marking screen) needs to read student names
+// regardless of which "view" permissions were granted. Only students.view,
+// payments.view, batches.view, reports.view, dashboard.view control which
+// PAGES a staff member can navigate to — they were checked (2026-08-11
+// permission-matrix audit) against every RLS policy in the database and
+// confirmed to have zero effect on what rows a valid staff session can
+// actually read via a direct API call. documents.view is the one exception:
+// it's the only "view" permission wired into an RLS policy
+// (student_documents, via current_staff_has_perm()), because document
+// contents (ID proofs etc.) aren't part of that unconditional bootstrap
+// fetch. If a real data-level boundary is ever wanted for the others, it
+// needs a redesign of loadAll's bootstrap fetch first — bolting RLS onto
+// students/payments/batches today would break every staff account that
+// currently relies on implicit read access (e.g. a coach with only
+// attendance.manage still needs to read student names to mark them present).
 // ═════════════════════════════════════════════════════════════════════════════
 export const ALL_PERMISSIONS = [
   'dashboard.view',
