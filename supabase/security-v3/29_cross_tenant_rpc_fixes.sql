@@ -98,6 +98,42 @@ $function$;
 GRANT EXECUTE ON FUNCTION public.secure_update_session_phase(uuid, jsonb, text) TO anon, authenticated;
 
 -- ════════════════════════════════════════════════════════════════
+-- secure_create_session_phase — found in the same audit pass: no check at
+-- all on the client-supplied session_id, and jsonb_populate_record accepts
+-- whatever fields the client sends. A phase could be created attached to
+-- ANY academy's session plan, not just deleted/updated after the fact.
+-- ════════════════════════════════════════════════════════════════
+CREATE OR REPLACE FUNCTION public.secure_create_session_phase(p_phase jsonb, p_token text DEFAULT NULL::text)
+RETURNS json
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$
+DECLARE
+  a       RECORD;
+  v_row   session_phases%ROWTYPE;
+  v_phase JSONB;
+  v_acad  UUID;
+BEGIN
+  SELECT * INTO a FROM current_actor(p_token) LIMIT 1;
+  IF a.actor_kind IS NULL OR a.actor_kind = 'student' THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT sp.academy_id INTO v_acad FROM session_plans sp WHERE sp.id = (p_phase->>'session_id')::UUID;
+  IF NOT FOUND OR v_acad IS DISTINCT FROM a.academy_id THEN
+    RAISE EXCEPTION 'forbidden: session plan not in your academy' USING ERRCODE = '42501';
+  END IF;
+
+  v_phase := p_phase;
+  IF NOT (v_phase ? 'id') OR v_phase->>'id' IS NULL THEN
+    v_phase := v_phase || jsonb_build_object('id', gen_random_uuid());
+  END IF;
+  INSERT INTO session_phases SELECT * FROM jsonb_populate_record(null::session_phases, v_phase)
+  RETURNING * INTO v_row;
+  RETURN row_to_json(v_row);
+END;
+$function$;
+GRANT EXECUTE ON FUNCTION public.secure_create_session_phase(jsonb, text) TO anon, authenticated;
+
+-- ════════════════════════════════════════════════════════════════
 -- secure_save_session_pulse — add branch check per record (was academy-only)
 -- ════════════════════════════════════════════════════════════════
 CREATE OR REPLACE FUNCTION public.secure_save_session_pulse(p_date date, p_batch_id bigint, p_records jsonb, p_token text DEFAULT NULL::text)

@@ -125,6 +125,21 @@ export function fillTrial({ sports = [], batches = [] } = {}) {
   }
 }
 
+// ── Public /join registration form ──────────────────────────────
+export function fillPublicRegistration() {
+  const age = rand(6, 16)
+  return {
+    name:                  fakeName(),
+    parentName:            fakeName(),
+    emergencyContactName:  fakeName(),
+    emergencyContactPhone: fakePhone(),
+    dob:                   randomDob(age, age),
+    age:                   String(age),
+    medicalNotes:          '',
+    relationship:          pick(['Son', 'Daughter', 'Ward']),
+  }
+}
+
 // ── Payment ───────────────────────────────────────────────────
 // Returns a student to select + payment overrides (student must be picked by caller).
 export function fillPayment({ students = [] } = {}) {

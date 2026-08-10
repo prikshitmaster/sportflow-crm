@@ -5,6 +5,8 @@ import {
   Camera, X, User, Home as HomeIcon, CalendarDays, Search, Bell, ChevronDown,
 } from 'lucide-react'
 import * as db from '../lib/db'
+import DevFillButton from '../components/DevFillButton'
+import { fillPublicRegistration } from '../lib/devFill'
 
 // Public, no-auth-to-browse, multi-tenant student self-registration funnel.
 // Served at /join (hardcoded slug "ara" — the bare route is kept permanently
@@ -116,6 +118,19 @@ function deriveShades(hex) {
   const toWhite = (ratio) => `#${hx(r + (255 - r) * ratio)}${hx(g + (255 - g) * ratio)}${hx(b + (255 - b) * ratio)}`
   const toBlack = (ratio) => `#${hx(r * (1 - ratio))}${hx(g * (1 - ratio))}${hx(b * (1 - ratio))}`
   return { main: clean, dark: toBlack(0.42), tint: toWhite(0.9) }
+}
+
+// Derives age from a yyyy-mm-dd DOB — the form shouldn't ask a parent for
+// both when one directly implies the other.
+function ageFromDob(dobStr) {
+  if (!dobStr) return ''
+  const dob = new Date(dobStr + 'T00:00:00')
+  if (Number.isNaN(dob.getTime())) return ''
+  const now = new Date()
+  let age = now.getFullYear() - dob.getFullYear()
+  const monthDiff = now.getMonth() - dob.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) age--
+  return age >= 0 ? String(age) : ''
 }
 
 function greetingWord() {
@@ -473,6 +488,17 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   }
 
   const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
+
+  // DevFillButton shows in local dev AND on the live site once ?demo=1 has
+  // been visited (see DevFillButton.jsx) — this only fills form FIELDS with
+  // fake data, unlike the OTP-skip buttons below which stay dev-only since
+  // bypassing phone verification on the live public funnel would be a real
+  // security hole, not just a testing convenience.
+  const handleDevFill = () => {
+    const data = fillPublicRegistration()
+    setForm(f => ({ ...f, ...data }))
+    setRelationship(data.relationship)
+  }
 
   // ── submit ───────────────────────────────────────────────────
   const startSubmit = () => {
@@ -1053,13 +1079,21 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               <TopBar title="Student Registration" subtitle={`${chosenSport} · ${chosenRow?.branchName}`} onBack={() => setStep('batch')} C={C} />
 
               <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <DevFillButton onFill={handleDevFill} />
+                </div>
                 <ErrorBox msg={error} />
 
                 <SectionCard index="01" title="STUDENT DETAILS">
                   <LabeledInput placeholder="Full name" value={form.name} onChange={e => set('name', e.target.value)} />
                   <div style={{ display: 'flex', gap: 12 }}>
-                    <LabeledInput type="date" value={form.dob} onChange={e => set('dob', e.target.value)} style={{ flex: 1 }} />
-                    <LabeledInput type="number" min="1" max="99" placeholder="Age" value={form.age} onChange={e => set('age', e.target.value)} style={{ width: 96 }} />
+                    <LabeledInput type="date" value={form.dob}
+                      onChange={e => { const dob = e.target.value; setForm(f => ({ ...f, dob, age: dob ? ageFromDob(dob) : f.age })) }}
+                      style={{ flex: 1 }} />
+                    <LabeledInput type="number" min="1" max="99" placeholder="Age" value={form.age}
+                      onChange={e => set('age', e.target.value)}
+                      readOnly={!!form.dob} title={form.dob ? 'Calculated from date of birth' : ''}
+                      style={{ width: 96, ...(form.dob ? { color: N.muted, cursor: 'not-allowed' } : {}) }} />
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
