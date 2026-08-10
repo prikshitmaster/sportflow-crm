@@ -17,6 +17,13 @@ import { todayStr, toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 const normTraining  = normTrainingType
 const trainingLabel = trainingTypeLabel
 
+// Defangs the classic CSV/Excel formula-injection pattern: a cell value
+// that starts with =, +, -, or @ can be interpreted as a formula by some
+// spreadsheet apps when the exported file is opened. A leading apostrophe
+// is the standard "force text" convention Excel/Sheets both already
+// recognize, so this never changes what a legitimate value displays as.
+const excelSafe = (v) => (typeof v === 'string' && /^[=+\-@]/.test(v)) ? `'${v}` : v
+
 // ── Payment Receipt Printer ───────────────────────────────────
 
 function buildReceiptHTML(p, student, academyName, logoUrl) {
@@ -1043,7 +1050,7 @@ async function exportPaymentsToExcel({ records, studentMap, title, showToast }) 
       const vals = [idx+1, p.isVirtual ? '—' : (p.id||'—'), p.student||'—', stu?.sport||p.sport||'—', stu?.batch||(p.paymentType==='trial'?'Trial':'—'), p.month||'—', p.amount||0, p.mode||'—', p.date||'—', p.status||'—']
       vals.forEach((v, i) => {
         const cell = row.getCell(i + 1)
-        cell.value = v
+        cell.value = excelSafe(v)
         cell.font = i === 9 ? { ...dFont, bold: true, color: { argb: p.status==='Paid'?'FF166534':p.status==='Pending'?'FF92400e':'FFb91c1c' } } : dFont
         cell.fill = i === 9 ? (STATUS_FILLS[p.status] || fill) : (isEven ? { type:'pattern',pattern:'solid',fgColor:{argb:'FFf9fafb'} } : { type:'pattern',pattern:'solid',fgColor:{argb:'FFffffff'} })
         if (i === 6) { cell.numFmt = '₹#,##0'; cell.alignment = { horizontal: 'right' } }
@@ -1090,7 +1097,7 @@ async function exportPaymentsToExcel({ records, studentMap, title, showToast }) 
       const vals = [idx+1, p?.student||'—', stu?.sport||'—', stu?.batch||'—', b.paid, b.pending, b.overdue, b.count, b.lastDate||'—']
       vals.forEach((v,i) => {
         const cell = ws2.getCell(r2, i+1)
-        cell.value = v
+        cell.value = excelSafe(v)
         cell.font = dFont
         cell.fill = rowFill
         if (i===4||i===5||i===6) { cell.numFmt='₹#,##0'; cell.alignment={horizontal:'right'} }

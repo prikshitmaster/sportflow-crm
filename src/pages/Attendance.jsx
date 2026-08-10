@@ -13,6 +13,11 @@ import { saveOrShareFile } from '../lib/nativeSave'
 // Trailing '' is deliberate: a tap on 'Leave' must return to unmarked so a
 // coach can undo an accidental mark, matching StaffAttendance.jsx's cycle.
 const STATUS_CYCLE = ['Present', 'Absent', 'Late', 'Leave', '']
+
+// Defangs the classic CSV/Excel formula-injection pattern (a cell value
+// starting with =, +, -, or @ can be read as a formula by some spreadsheet
+// apps) — see the matching helper + comment in Payments.jsx.
+const excelSafe = (v) => (typeof v === 'string' && /^[=+\-@]/.test(v)) ? `'${v}` : v
 const S = {
   Present: { icon: '✓', bg: 'bg-emerald-500', text: 'text-emerald-600', light: 'bg-emerald-50 border-emerald-200',  label: 'Present', hex: '22c55e' },
   Absent:  { icon: '✗', bg: 'bg-red-500',     text: 'text-red-600',     light: 'bg-red-50 border-red-200',          label: 'Absent',  hex: 'ef4444' },
@@ -132,7 +137,7 @@ async function exportToExcel({ students, batchName, fromDate, toDate, showToast 
       const baseVals = [i + 1, s.name, s.sport || '', s.batch || '']
       baseVals.forEach((v, ci) => {
         const cell = ws.getCell(rowIdx, ci + 1)
-        cell.value = v
+        cell.value = excelSafe(v)
         cell.font = ci === 1 ? { ...dataFont, bold: true } : dataFont
         cell.fill = rowBg
         cell.alignment = ci === 0 ? { horizontal: 'center' } : { horizontal: 'left' }
@@ -205,7 +210,7 @@ async function exportToExcel({ students, batchName, fromDate, toDate, showToast 
       const rowBg = i%2===0 ? 'FFffffff' : 'FFf9fafb'
       rowData.forEach((v, ci) => {
         const cell = ws2.getCell(i + 2, ci + 1)
-        cell.value = v
+        cell.value = excelSafe(v)
         cell.font = ci === 1 ? { ...dataFont, bold: true } : dataFont
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } }
         cell.alignment = ci <= 3 ? { horizontal: 'left' } : { horizontal: 'center' }
