@@ -126,16 +126,24 @@ export function fillTrial({ sports = [], batches = [] } = {}) {
 }
 
 // ── Public /join registration form ──────────────────────────────
+const OCCUPATIONS = ['Software Engineer', 'Teacher', 'Doctor', 'Business Owner', 'Accountant', 'Homemaker']
 export function fillPublicRegistration() {
   const age = rand(6, 16)
+  const area = pick(AREA_NAMES)
   return {
     name:                  fakeName(),
     parentName:            fakeName(),
+    motherName:            fakeName(),
     emergencyContactName:  fakeName(),
     emergencyContactPhone: fakePhone(),
     dob:                   randomDob(age, age),
     age:                   String(age),
+    gender:                pick(['Male', 'Female']),
     medicalNotes:          '',
+    address:               `Plot ${rand(1, 90)}, Sector ${rand(1, 20)}, ${area}, ${pick(AREA_CITIES)}`,
+    occupation:            pick(OCCUPATIONS),
+    alternateContactPhone: fakePhone(),
+    email:                 `parent.${Date.now().toString().slice(-6)}@test.local`,
     relationship:          pick(['Son', 'Daughter', 'Ward']),
   }
 }

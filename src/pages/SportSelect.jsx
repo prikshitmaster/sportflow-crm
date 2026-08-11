@@ -201,6 +201,7 @@ export default function SportSelect() {
         address:    fields.address ?? '',
         photoUrl:   fields.photoUrl ?? editingBranch.photoUrl ?? '',
         trialFee:   fields.trialFee ?? null,
+        kitFee:     fields.kitFee   ?? null,
       })
 
       // 2. Manager change → call the dedicated assign/unassign RPCs which
@@ -368,7 +369,7 @@ export default function SportSelect() {
             onCancelAdd={() => { setAddingBranch(false); setNewBranch(''); setNewBranchAddress('') }}
             onConfirmAdd={handleAddBranch}
             editingBranch={editingBranch}
-            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '', managerId: b.managerId || null, photoUrl: b.photoUrl || '', trialFee: b.trialFee ?? null })}
+            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '', managerId: b.managerId || null, photoUrl: b.photoUrl || '', trialFee: b.trialFee ?? null, kitFee: b.kitFee ?? null })}
             onCancelEdit={() => setEditingBranch(null)}
             onSaveEdit={handleSaveEditBranch}
             deletingBranch={deletingBranch}
@@ -815,6 +816,7 @@ function BranchView({
               )}
               <p className="text-[11px] text-gray-400 mb-2">
                 Trial fee: <span className="font-semibold text-gray-600">₹{(b.trialFee ?? 590).toLocaleString('en-IN')}</span>
+                {b.kitFee > 0 && <> · Kit fee: <span className="font-semibold text-gray-600">₹{b.kitFee.toLocaleString('en-IN')}</span></>}
               </p>
               <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
                 <div>
@@ -911,6 +913,7 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
   const [address,     setAddress]     = useState(initial.address    || '')
   const [managerId,   setManagerId]   = useState(initial.managerId  || '')
   const [trialFee,    setTrialFee]    = useState(initial.trialFee != null ? String(initial.trialFee) : '')
+  const [kitFee,      setKitFee]      = useState(initial.kitFee   != null ? String(initial.kitFee)   : '')
   const [photoFile,   setPhotoFile]   = useState(null)   // newly picked File, not yet uploaded
   const [photoPreview, setPhotoPreview] = useState(initial.photoUrl || '')
   const [saving,      setSaving]      = useState(false)
@@ -933,7 +936,11 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
         const db = await import('../lib/db')
         photoUrl = await db.uploadBranchPhoto(photoFile, initial.id)
       }
-      await onSave({ branchName: name, address, managerId: managerId || null, photoUrl, trialFee: trialFee.trim() === '' ? null : Number(trialFee) })
+      await onSave({
+        branchName: name, address, managerId: managerId || null, photoUrl,
+        trialFee: trialFee.trim() === '' ? null : Number(trialFee),
+        kitFee:   kitFee.trim()   === '' ? null : Number(kitFee),
+      })
     } finally { setSaving(false) }
   }
   return (
@@ -976,6 +983,12 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
               Trial fee (₹) <span className="text-gray-400 font-normal">(shown &amp; charged on the online registration page — defaults to ₹590 if left blank)</span>
             </label>
             <input className="input" type="number" min="0" value={trialFee} onChange={e => setTrialFee(e.target.value)} placeholder="590" />
+          </div>
+          <div>
+            <label className="label">
+              Kit fee (₹) <span className="text-gray-400 font-normal">(optional — added on top of the trial fee at online registration)</span>
+            </label>
+            <input className="input" type="number" min="0" value={kitFee} onChange={e => setKitFee(e.target.value)} placeholder="0" />
           </div>
           <div>
             <label className="label">

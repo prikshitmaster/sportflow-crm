@@ -2064,7 +2064,7 @@ export async function fetchSportBranches(academyId) {
   // Try with address first; if the column doesn't exist (42703), retry without it
   let { data, error } = await supabase
     .from('sport_branches')
-    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee`)
+    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
@@ -2100,17 +2100,19 @@ export async function fetchSportBranches(academyId) {
     managerId:  r.manager_id || null,
     photoUrl:   r.photo_url || '',
     trialFee:   r.trial_fee != null ? Number(r.trial_fee) : null,
+    kitFee:     r.kit_fee   != null ? Number(r.kit_fee)   : null,
     createdAt:  r.created_at,
   }))
 }
 
-export async function insertSportBranch(_academyId, sportName, branchName, address = '', photoUrl = '', trialFee = null) {
+export async function insertSportBranch(_academyId, sportName, branchName, address = '', photoUrl = '', trialFee = null, kitFee = null) {
   const { data, error } = await supabase.rpc('secure_insert_sport_branch', {
     p_sport_name:  sportName,
     p_branch_name: branchName,
     p_address:     address || null,
     p_photo_url:   photoUrl || null,
     p_trial_fee:   trialFee !== null && trialFee !== '' ? Number(trialFee) : null,
+    p_kit_fee:     kitFee   !== null && kitFee   !== '' ? Number(kitFee)   : null,
     p_token:       _sessionToken(),
   })
   if (error) throw error
@@ -2121,11 +2123,12 @@ export async function insertSportBranch(_academyId, sportName, branchName, addre
     address:    data.address || '',
     photoUrl:   data.photo_url || '',
     trialFee:   data.trial_fee != null ? Number(data.trial_fee) : null,
+    kitFee:     data.kit_fee   != null ? Number(data.kit_fee)   : null,
     createdAt:  data.created_at,
   }
 }
 
-export async function updateSportBranch(branchId, { branchName, address, managerId, photoUrl, trialFee }) {
+export async function updateSportBranch(branchId, { branchName, address, managerId, photoUrl, trialFee, kitFee }) {
   // Coerce managerId to integer — select option values are strings; staff.id is bigint
   let mid = null
   if (managerId !== undefined && managerId !== null && managerId !== '') {
@@ -2142,6 +2145,7 @@ export async function updateSportBranch(branchId, { branchName, address, manager
     p_manager_id:  mid,
     p_photo_url:   photoUrl   !== undefined ? (photoUrl || null) : null,
     p_trial_fee:   trialFee !== undefined && trialFee !== null && trialFee !== '' ? Number(trialFee) : null,
+    p_kit_fee:     kitFee   !== undefined && kitFee   !== null && kitFee   !== '' ? Number(kitFee)   : null,
     p_token:       _sessionToken(),
   })
   if (error) throw error
@@ -3439,6 +3443,7 @@ const _mapPublicTrialBranch = (row) => ({
   photoUrl:   row.photo_url || '',
   address:    row.address || '',
   trialFee:   row.trial_fee != null ? Number(row.trial_fee) : 590,
+  kitFee:     row.kit_fee  != null ? Number(row.kit_fee)  : 0,
 })
 
 export async function fetchPublicTrialBranches(slug) {
@@ -3503,6 +3508,12 @@ export async function submitPublicTrial(slug, payload) {
     p_trial_fee_amount:        payload.trialFeeAmount ?? null,
     p_relationship:            payload.relationship      || null,
     p_sibling_of_trial_id:     payload.siblingOfTrialId  || null,
+    p_mother_name:             payload.motherName             || null,
+    p_address:                 payload.address                || null,
+    p_gender:                  payload.gender                 || null,
+    p_occupation:              payload.occupation              || null,
+    p_alternate_contact_phone: payload.alternateContactPhone  || null,
+    p_email:                   payload.email                   || null,
   })
   if (error) throw error
   return typeof data === 'string' ? JSON.parse(data) : data

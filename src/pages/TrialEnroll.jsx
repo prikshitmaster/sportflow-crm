@@ -325,8 +325,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const [siblingOfId, setSiblingOfId] = useState('')
 
   const [form, setForm] = useState({
-    name: '', parentName: '', emergencyContactName: '', emergencyContactPhone: '',
-    dob: '', age: '', medicalNotes: '',
+    name: '', parentName: '', motherName: '', emergencyContactName: '', emergencyContactPhone: '',
+    dob: '', age: '', gender: '', medicalNotes: '',
+    address: '', occupation: '', alternateContactPhone: '', email: '',
   })
   const [documentFile, setDocumentFile] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -345,6 +346,65 @@ export default function TrialEnroll({ academySlug: slugProp }) {
       .catch(() => { /* non-fatal; Home shows an empty state */ })
     return () => { cancelled = true }
   }, [brandingStatus, slug])
+
+  // In-progress registration draft — a page reload otherwise wipes the sport/
+  // branch/batch already chosen and everything typed into the form, which is
+  // the real complaint behind "reloading logs me out" (true even for someone
+  // who never verified at all, since Skip-mode has no session to lose in the
+  // first place — there was never anything to "log out" of). Independent of
+  // auth entirely: keyed by slug, sessionStorage (clears when the tab
+  // closes), expires after 2h so a very old abandoned draft can't resurrect
+  // with mismatched branch/batch data.
+  const DRAFT_KEY = `sf_join_draft_${slug}`
+  const DRAFT_STEPS = ['branch', 'batch', 'form']
+  const clearDraft = () => { try { sessionStorage.removeItem(DRAFT_KEY) } catch {} }
+
+  // Restore once, as soon as we know the slug — before the user can see
+  // anything, so there's no flash of an empty Home before jumping back in.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      let draft = null
+      try {
+        const raw = sessionStorage.getItem(DRAFT_KEY)
+        if (raw) draft = JSON.parse(raw)
+      } catch { draft = null }
+      if (!draft || !DRAFT_STEPS.includes(draft.step) || Date.now() - (draft.savedAt || 0) > 2 * 60 * 60 * 1000) {
+        return
+      }
+      if (draft.chosenSport) setChosenSport(draft.chosenSport)
+      if (draft.chosenRow)   setChosenRow(draft.chosenRow)
+      if (draft.batchId !== undefined) setBatchId(draft.batchId)
+      if (draft.form)        setForm(f => ({ ...f, ...draft.form }))
+      if (draft.relationship)       setRelationship(draft.relationship)
+      if (draft.relationshipCustom) setRelationshipCustom(draft.relationshipCustom)
+      if (draft.siblingOfId) setSiblingOfId(draft.siblingOfId)
+      if (draft.feeMode)     setFeeMode(draft.feeMode)
+
+      // 'batch' and 'form' need a real batches list — re-fetch it for the
+      // restored branch rather than trusting a stale saved array.
+      if ((draft.step === 'batch' || draft.step === 'form') && draft.chosenRow?.id) {
+        try {
+          const list = await db.fetchPublicTrialBatches(slug, draft.chosenRow.id)
+          if (!cancelled) setBatches(list)
+        } catch { /* non-fatal; batch step just shows empty */ }
+      }
+      if (!cancelled) setStep(draft.step)
+    })()
+    return () => { cancelled = true }
+  }, [slug])
+
+  // Save on every relevant change, but only while there's genuinely
+  // something worth not losing (branch/batch/form steps).
+  useEffect(() => {
+    if (!DRAFT_STEPS.includes(step)) return
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+        savedAt: Date.now(), step, chosenSport, chosenRow, batchId,
+        form, relationship, relationshipCustom, siblingOfId, feeMode,
+      }))
+    } catch {}
+  }, [slug, step, chosenSport, chosenRow, batchId, form, relationship, relationshipCustom, siblingOfId, feeMode])
 
   // Profile tab shows this phone's own registered students — fetch whenever
   // it's opened while verified. Also the source for the "Sibling of" picker
@@ -460,17 +520,18 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   }
 
   // ── navigation ───────────────────────────────────────────────
-  // Resets everything EXCEPT isAuthed and the parent/emergency-contact
-  // fields — one verified phone number can register several students
-  // (siblings) back to back without repeating OTP or retyping the same
-  // household's contact info. Only the STUDENT-specific fields clear, so
-  // the next child's form doesn't start pre-filled with the previous
-  // child's name/DOB/medical notes/document.
+  // Resets everything EXCEPT isAuthed and the household-level fields
+  // (parent/mother name, address, occupation, alternate contact, email,
+  // emergency contact) — one verified phone number can register several
+  // students (siblings) back to back without repeating OTP or retyping the
+  // same household's info. Only the STUDENT-specific fields clear, so the
+  // next child's form doesn't start pre-filled with the previous child's
+  // name/DOB/gender/medical notes/document.
   function goHome() {
     setStep('home'); setHomeTab('home'); setChosenSport(''); setChosenRow(null)
     setOtpSent(false); setOtp(''); setError('')
     setBatches([]); setBatchId(null)
-    setForm(f => ({ ...f, name: '', dob: '', age: '', medicalNotes: '' }))
+    setForm(f => ({ ...f, name: '', dob: '', age: '', gender: '', medicalNotes: '' }))
     setDocumentFile(null); setResult(null)
     setFeeMode('walkin'); setPaymentStatus('idle')
     setRelationship(''); setRelationshipCustom(''); setSiblingOfId('')
@@ -510,6 +571,8 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   }
 
   const trialFee = chosenRow?.trialFee ?? 590
+  const kitFee   = chosenRow?.kitFee   ?? 0
+  const totalDue = trialFee + kitFee
 
   async function doSubmit() {
     setSubmitting(true); setError('')
@@ -529,7 +592,13 @@ export default function TrialEnroll({ academySlug: slugProp }) {
         emergencyContactPhone: form.emergencyContactPhone.trim(),
         dob: form.dob || null,
         age: form.age ? Number(form.age) : null,
+        gender: form.gender || null,
         medicalNotes: form.medicalNotes.trim() || null,
+        motherName: form.motherName.trim() || null,
+        address: form.address.trim() || null,
+        occupation: form.occupation.trim() || null,
+        alternateContactPhone: form.alternateContactPhone.trim() || null,
+        email: form.email.trim() || null,
         documentPath,
         // Always 'Not collected' at submission — true either way (walk-in
         // hasn't been paid yet; online hasn't succeeded yet). The verify
@@ -537,7 +606,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
         // once payment actually succeeds — trial_fee_mode has a DB check
         // constraint limited to Cash/UPI/Card/Not collected, no "Pending".
         trialFeeMode:   'Not collected',
-        trialFeeAmount: trialFee,
+        trialFeeAmount: totalDue,
         relationship:      relationship === 'Other' ? relationshipCustom.trim() : relationship,
         siblingOfTrialId:  siblingOfId || null,
       })
@@ -1096,6 +1165,14 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       style={{ width: 96, ...(form.dob ? { color: N.muted, cursor: 'not-allowed' } : {}) }} />
                   </div>
 
+                  <select value={form.gender} onChange={e => set('gender', e.target.value)}
+                    style={{ ...inputStyle, cursor: 'pointer', color: form.gender ? N.text : N.faint }}>
+                    <option value="">Gender (optional)</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: N.muted }}>Relationship to parent</div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1132,7 +1209,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 </SectionCard>
 
                 <SectionCard index="02" title="CONTACT">
-                  <LabeledInput placeholder="Parent / guardian name" value={form.parentName} onChange={e => set('parentName', e.target.value)} />
+                  <LabeledInput placeholder="Father's / guardian's name" value={form.parentName} onChange={e => set('parentName', e.target.value)} />
+                  <LabeledInput placeholder="Mother's name (optional)" value={form.motherName} onChange={e => set('motherName', e.target.value)} />
+                  <LabeledInput type="email" inputMode="email" placeholder="Email (optional)" value={form.email} onChange={e => set('email', e.target.value)} />
+                  <LabeledInput type="tel" inputMode="tel" placeholder="Alternate contact number (optional)" value={form.alternateContactPhone} onChange={e => set('alternateContactPhone', e.target.value)} />
+                  <LabeledInput placeholder="Occupation (optional)" value={form.occupation} onChange={e => set('occupation', e.target.value)} />
+                  <LabeledInput placeholder="Address (optional)" value={form.address} onChange={e => set('address', e.target.value)} />
                   <LabeledInput placeholder="Emergency contact name" value={form.emergencyContactName} onChange={e => set('emergencyContactName', e.target.value)} />
                   <LabeledInput type="tel" inputMode="tel" placeholder="Emergency contact number" value={form.emergencyContactPhone} onChange={e => set('emergencyContactPhone', e.target.value)} />
                 </SectionCard>
@@ -1159,9 +1241,22 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 </SectionCard>
 
                 <SectionCard index="05" title="TRIAL FEE">
+                  {kitFee > 0 && (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Trial fee</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: N.text }}>₹{trialFee.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Kit fee</span>
+                        <span style={{ fontSize: 13.5, fontWeight: 700, color: N.text }}>₹{kitFee.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div style={{ height: 1, background: N.line, margin: '2px 0' }} />
+                    </>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 }}>
                     <span style={{ fontSize: 13, color: N.muted, fontWeight: 600 }}>Amount due</span>
-                    <span style={{ fontSize: 20, fontWeight: 800, color: N.text }}>₹{trialFee.toLocaleString('en-IN')}</span>
+                    <span style={{ fontSize: 20, fontWeight: 800, color: N.text }}>₹{totalDue.toLocaleString('en-IN')}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     {[
@@ -1221,19 +1316,19 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               </div>
               <div style={{ height: 1, background: N.line }} />
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Trial fee</span>
+                <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>{kitFee > 0 ? 'Trial + kit fee' : 'Trial fee'}</span>
                 <span style={{ fontSize: 12.5, fontWeight: 800, color: paymentStatus === 'paid' ? C.main : paymentStatus === 'failed' ? '#B45309' : N.text }}>
                   {feeMode === 'online'
-                    ? (paymentStatus === 'paid' ? `₹${trialFee.toLocaleString('en-IN')} paid online ✓`
-                       : paymentStatus === 'failed' ? `₹${trialFee.toLocaleString('en-IN')} — pay at academy`
-                       : `₹${trialFee.toLocaleString('en-IN')}`)
-                    : `₹${trialFee.toLocaleString('en-IN')} — pay at academy`}
+                    ? (paymentStatus === 'paid' ? `₹${totalDue.toLocaleString('en-IN')} paid online ✓`
+                       : paymentStatus === 'failed' ? `₹${totalDue.toLocaleString('en-IN')} — pay at academy`
+                       : `₹${totalDue.toLocaleString('en-IN')}`)
+                    : `₹${totalDue.toLocaleString('en-IN')} — pay at academy`}
                 </span>
               </div>
             </div>
             {feeMode === 'online' && paymentStatus === 'failed' && (
               <div style={{ fontSize: 12.5, color: '#B45309', fontWeight: 500, marginTop: 10, maxWidth: 280 }}>
-                Online payment didn't go through — no problem, you can pay ₹{trialFee.toLocaleString('en-IN')} in cash at the academy instead.
+                Online payment didn't go through — no problem, you can pay ₹{totalDue.toLocaleString('en-IN')} in cash at the academy instead.
               </div>
             )}
             <div style={{ width: '100%', marginTop: 24 }}>

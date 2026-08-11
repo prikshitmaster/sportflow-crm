@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
 
   const { data: branch } = await supabase
     .from('sport_branches')
-    .select('id, academy_id, sport_name, branch_name, trial_fee')
+    .select('id, academy_id, sport_name, branch_name, trial_fee, kit_fee')
     .eq('id', branchId)
     .maybeSingle()
   if (!branch || branch.academy_id !== academy.id) {
@@ -112,7 +112,9 @@ Deno.serve(async (req) => {
   if (!keySecret) return json({ error: 'gateway misconfigured' }, 500)
 
   // Server-authoritative amount — the client never dictates what gets charged.
-  const amount = Number(branch.trial_fee ?? 590)
+  // Trial fee + kit fee (if the branch has one configured), same total the
+  // frontend shows in the TRIAL FEE section before "Pay Online Now".
+  const amount = Number(branch.trial_fee ?? 590) + Number(branch.kit_fee ?? 0)
   const amountPaise = Math.round(amount * 100)
 
   const orderBody: any = {
