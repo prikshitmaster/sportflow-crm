@@ -314,6 +314,13 @@ export function AppProvider({ children }) {
       }
       setStudents(s); setBatches(b); setStaff(st)
 
+      // Everything the first paint needs has landed — drop the skeleton NOW.
+      // The `finally` below still clears this on the error path; calling it
+      // twice is harmless. Without this, Dashboard sat on a skeleton until
+      // the auto-suspend writes and the attendance query (both deferred
+      // further down) finished, long after the roster was ready.
+      setDataLoading(false)
+
       // ── Non-critical fetches: fire in background, no blocking ──
       // Each page that consumes these (Payments, Trials, Events, etc.) will
       // briefly render with an empty array before its data lands ~200-500ms
@@ -334,6 +341,15 @@ export function AppProvider({ children }) {
       db.fetchAgeGroups(academyId).then(setAgeGroups).catch(() => {})
       db.fetchDrillCategories(academyId).then(setDrillCategories).catch(() => {})
 
+      // ── Deferred: none of this is needed to paint the dashboard ───────
+      // Auto-suspend can issue N writes and the attendance query is another
+      // round-trip. Awaiting them inline used to keep `dataLoading` true —
+      // and Dashboard on a skeleton — long after the roster had arrived.
+      // Declared here but run unawaited (see the call after this block), so
+      // it settles in the background exactly like the fetches above.
+      // Body intentionally left at this indent level, matching the existing
+      // `} else {` / `// end throttle else` style already used below.
+      const deferred = async () => {
       // Auto-suspend overdue students after configurable grace period.
       // Throttled to once per hour per browser so re-mounting AppProvider (sport switch,
       // logout/login, manual refresh) doesn't re-run the whole loop and spam the audit log.
@@ -391,6 +407,12 @@ export function AppProvider({ children }) {
       const today = `${now.getFullYear()}-${pad2(now.getMonth()+1)}-${pad2(now.getDate())}`
       const att = await db.fetchAttendanceForDate(today)
       setAttendanceData({ [today]: att })
+      }  // end deferred
+      // Unawaited on purpose — first paint must not wait on this. Failures
+      // are non-fatal: attendance %/"Marked" badges just stay empty until the
+      // next load, same as any other background fetch above.
+      deferred().catch(err =>
+        logger.warn?.('deferred post-load failed', err) ?? console.warn('deferred post-load failed', err))
     } catch (err) {
       logger.error('loadAll failed', err, { role, academyId: user?.academyId })
       if (!isRetry) {

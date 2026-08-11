@@ -78,86 +78,116 @@ export default function Dashboard() {
   const currentMonth = toLocalMonthStr(now)
   const firstOfMonth = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1))
   const todayStr     = toLocalDateStr(now)
-  const todayAtt     = attendanceData[todayStr] || {}
-
   const hour = now.getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
-  const collectedAmt = payments
-    .filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth)
-    .reduce((s, p) => s + (p.amount ?? 0), 0)
-
-  // Split collected into "for this month" vs "advance (future months)".
-  // Uses the real coverageStart/monthsCovered fields, not p.month text —
-  // that label collapses a multi-month span to "Aug–Oct 2026", and reading
-  // only the first word made a quarterly/yearly payment starting this month
-  // count its FULL amount (incl. 2-3 future months) as "this month".
-  // Each payment's amount is prorated evenly across the months it covers;
-  // only the current month's share lands in "this month", the rest in "advance".
-  const thisMonthShare = (p) => {
-    const months = Math.max(1, p.monthsCovered || 1)
-    const start  = p.coverageStart?.slice(0, 7) || p.date?.slice(0, 7) || null
-    if (!start) return p.amount ?? 0 // legacy row with no coverage data — assume current month
-    const [sy, sm] = start.split('-').map(Number)
-    for (let i = 0; i < months; i++) {
-      const y = sy + Math.floor((sm - 1 + i) / 12)
-      const m = ((sm - 1 + i) % 12) + 1
-      if (`${y}-${String(m).padStart(2, '0')}` === currentMonth) return (p.amount ?? 0) / months
+  // Every memo below keys off the primitive date STRINGS (currentMonth,
+  // firstOfMonth, todayStr, todayDayShort) — never `now`, which is a fresh
+  // Date on every render and would silently defeat all of them.
+  const { collectedAmt, thisMonthCollected, advanceCollected } = useMemo(() => {
+    // Split collected into "for this month" vs "advance (future months)".
+    // Uses the real coverageStart/monthsCovered fields, not p.month text —
+    // that label collapses a multi-month span to "Aug–Oct 2026", and reading
+    // only the first word made a quarterly/yearly payment starting this month
+    // count its FULL amount (incl. 2-3 future months) as "this month".
+    // Each payment's amount is prorated evenly across the months it covers;
+    // only the current month's share lands in "this month", the rest in "advance".
+    const thisMonthShare = (p) => {
+      const months = Math.max(1, p.monthsCovered || 1)
+      const start  = p.coverageStart?.slice(0, 7) || p.date?.slice(0, 7) || null
+      if (!start) return p.amount ?? 0 // legacy row with no coverage data — assume current month
+      const [sy, sm] = start.split('-').map(Number)
+      for (let i = 0; i < months; i++) {
+        const y = sy + Math.floor((sm - 1 + i) / 12)
+        const m = ((sm - 1 + i) % 12) + 1
+        if (`${y}-${String(m).padStart(2, '0')}` === currentMonth) return (p.amount ?? 0) / months
+      }
+      return 0
     }
-    return 0
-  }
-  const paidThisCalMonth = payments.filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth)
-  const thisMonthCollected = paidThisCalMonth.reduce((s, p) => s + thisMonthShare(p), 0)
-  const advanceCollected   = paidThisCalMonth.reduce((s, p) => s + ((p.amount ?? 0) - thisMonthShare(p)), 0)
+    // Same predicate the old standalone `collectedAmt` used — computed once
+    // and shared, so the three totals stay derived from one identical list.
+    const paidThisCalMonth = payments.filter(p => p.status === 'Paid' && p.date?.slice(0, 7) === currentMonth)
+    return {
+      collectedAmt:       paidThisCalMonth.reduce((s, p) => s + (p.amount ?? 0), 0),
+      thisMonthCollected: paidThisCalMonth.reduce((s, p) => s + thisMonthShare(p), 0),
+      advanceCollected:   paidThisCalMonth.reduce((s, p) => s + ((p.amount ?? 0) - thisMonthShare(p)), 0),
+    }
+  }, [payments, currentMonth])
 
-  const studentsWithRecord = new Set(
-    payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => String(p.studentId))
+  const { overdueList, pendingList, overdueAmt, pendingAmt } = useMemo(() => {
+    const studentsWithRecord = new Set(
+      payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => String(p.studentId))
+    )
+    const virtualOverdue = students
+      .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithRecord.has(String(s.id)))
+      .map(s => ({
+        id: `DUE-${s.id}`, studentId: s.id, student: s.name,
+        amount: s.fees || 0,
+        // A never-paid student now counts as outstanding (studentRules.paidUpTo
+        // ages them from their join date) — they have no paidTill to print.
+        month: s.paidTill
+          ? `Paid till ${new Date(s.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`
+          : 'Never paid',
+        status: 'Overdue', isVirtual: true,
+      }))
+
+    const oList = [...payments.filter(p => p.status === 'Overdue'), ...virtualOverdue]
+    const pList = payments.filter(p => p.status === 'Pending')
+    return {
+      overdueList: oList,
+      pendingList: pList,
+      overdueAmt:  oList.reduce((s, p) => s + (p.amount ?? 0), 0),
+      pendingAmt:  pList.reduce((s, p) => s + (p.amount ?? 0), 0),
+    }
+  }, [payments, students, firstOfMonth])
+
+  const expectedAmt  = useMemo(
+    () => activeStudents.reduce((s, st) => s + (st.fees || 0), 0),
+    [activeStudents]
   )
-  const virtualOverdue = students
-    .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithRecord.has(String(s.id)))
-    .map(s => ({
-      id: `DUE-${s.id}`, studentId: s.id, student: s.name,
-      amount: s.fees || 0,
-      // A never-paid student now counts as outstanding (studentRules.paidUpTo
-      // ages them from their join date) — they have no paidTill to print.
-      month: s.paidTill
-        ? `Paid till ${new Date(s.paidTill + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}`
-        : 'Never paid',
-      status: 'Overdue', isVirtual: true,
-    }))
-
-  const overdueList  = [...payments.filter(p => p.status === 'Overdue'), ...virtualOverdue]
-  const pendingList  = payments.filter(p => p.status === 'Pending')
-  const overdueAmt   = overdueList.reduce((s, p) => s + (p.amount ?? 0), 0)
-  const pendingAmt   = pendingList.reduce((s, p) => s + (p.amount ?? 0), 0)
-  const expectedAmt  = activeStudents.reduce((s, st) => s + (st.fees || 0), 0)
   const collectPct   = expectedAmt > 0 ? Math.round((collectedAmt / expectedAmt) * 100) : 0
   const thisMoPct    = expectedAmt > 0 ? Math.round((thisMonthCollected / expectedAmt) * 100) : 0
 
   const todayDayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()]
 
-  const batchStats = (b) => {
-    const mbIds   = allEnrolments[b.id] || new Set()
-    // All students (active + suspended) — matches Attendance page badge count
-    const allBs   = students.filter(s => s.batchId === b.id || s.batch === b.name || mbIds.has(s.id))
-    // Active only — used for attendance % denominator (same as Attendance page)
-    const activeBs = allBs.filter(s => s.status === 'Active')
-    const present = activeBs.filter(s => todayAtt[s.id] === 'Present' || todayAtt[s.id] === true).length
-    // Per-batch, not academy-wide — todayAtt spans every batch, so checking
-    // "any entry exists" flagged every other batch "Marked" the moment ONE
-    // batch's attendance was taken.
-    const marked  = activeBs.some(s => todayAtt[s.id] !== undefined)
-    const pct = activeBs.length ? Math.round((present / activeBs.length) * 100) : 0
-    // A batch trains today if it has no day schedule (trains every day) or today is in its days list
-    const trainsToday = b.days?.length > 0 ? b.days.includes(todayDayShort) : true
-    return { count: allBs.length, activeCount: activeBs.length, present, pct, marked, trainsToday }
-  }
+  // Per-batch stats for every batch, computed once per data change instead of
+  // once per render — this used to run from inside the JSX, re-scanning the
+  // whole roster for each batch on every single render.
+  // `todayAtt` is derived INSIDE the memo on purpose: at the top level its
+  // `|| {}` fallback minted a new object identity each render, which would
+  // invalidate this memo every time.
+  const { todayBatches, otherBatches } = useMemo(() => {
+    const todayAtt = attendanceData[todayStr] || {}
+    const withStats = batches.map(b => {
+      const mbIds   = allEnrolments[b.id] || new Set()
+      // All students (active + suspended) — matches Attendance page badge count
+      const allBs   = students.filter(s => s.batchId === b.id || s.batch === b.name || mbIds.has(s.id))
+      // Active only — used for attendance % denominator (same as Attendance page)
+      const activeBs = allBs.filter(s => s.status === 'Active')
+      const present = activeBs.filter(s => todayAtt[s.id] === 'Present' || todayAtt[s.id] === true).length
+      // Per-batch, not academy-wide — todayAtt spans every batch, so checking
+      // "any entry exists" flagged every other batch "Marked" the moment ONE
+      // batch's attendance was taken.
+      const marked  = activeBs.some(s => todayAtt[s.id] !== undefined)
+      const pct = activeBs.length ? Math.round((present / activeBs.length) * 100) : 0
+      // A batch trains today if it has no day schedule (trains every day) or today is in its days list
+      const trainsToday = b.days?.length > 0 ? b.days.includes(todayDayShort) : true
+      return { b, stats: { count: allBs.length, activeCount: activeBs.length, present, pct, marked, trainsToday } }
+    })
+    return {
+      todayBatches: withStats.filter(({ stats }) => stats.trainsToday),
+      otherBatches: withStats.filter(({ stats }) => !stats.trainsToday),
+    }
+  }, [batches, students, allEnrolments, attendanceData, todayStr, todayDayShort])
 
-  const pendingLeaves   = (leaveRequests || []).filter(r => r.status === 'Pending')
-  const trialFollowUps  = trials.filter(t => {
+  const pendingLeaves   = useMemo(
+    () => (leaveRequests || []).filter(r => r.status === 'Pending'),
+    [leaveRequests]
+  )
+  const trialFollowUps  = useMemo(() => trials.filter(t => {
     if (t.converted || !t.followUp) return false
     return t.followUp <= todayStr
-  })
+  }), [trials, todayStr])
 
   if (dataLoading) {
     return (
@@ -372,9 +402,6 @@ export default function Dashboard() {
 
           {/* Today's batches */}
           {batches.length > 0 && (() => {
-            const withStats = batches.map(b => ({ b, stats: batchStats(b) }))
-            const todayBatches = withStats.filter(({ stats }) => stats.trainsToday)
-            const otherBatches = withStats.filter(({ stats }) => !stats.trainsToday)
             return (
               <div>
                 <div className="flex items-center justify-between mb-3">

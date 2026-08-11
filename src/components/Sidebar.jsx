@@ -40,6 +40,43 @@ const nav = [
   { to: '/backups',    label: 'Backups',    icon: ShieldCheck,     feature: 'backups',    permission: 'settings.manage' },
 ]
 
+// Route → lazy chunk loader, mirroring the lazy() calls in App.jsx. Vite
+// resolves these specifiers to the SAME chunks, so warming one on hover means
+// the real navigation finds the module already cached instead of waiting on a
+// network round-trip mid-click. Purely additive — if a prefetch never fires or
+// fails, App.jsx's <Suspense> still loads the page exactly as before.
+const PREFETCH = {
+  '/dashboard':   () => import('../pages/Dashboard'),
+  '/students':    () => import('../pages/Students'),
+  '/parents':     () => import('../pages/Parents'),
+  '/attendance':  () => import('../pages/Attendance'),
+  '/payments':    () => import('../pages/Payments'),
+  '/trials':      () => import('../pages/Trials'),
+  '/batches':     () => import('../pages/Batches'),
+  '/gate-qr':     () => import('../pages/AdminQR'),
+  '/staff-qr':    () => import('../pages/StaffAttendanceQR'),
+  '/events':      () => import('../pages/Events'),
+  '/sessions':    () => import('../pages/Sessions'),
+  '/drills':      () => import('../pages/Drills'),
+  '/performance': () => import('../pages/StudentPerformance'),
+  '/coaches':     () => import('../pages/Staff'),
+  '/reports':     () => import('../pages/Reports'),
+  '/inventory':   () => import('../pages/Inventory'),
+  '/turf':        () => import('../pages/TurfBooking'),
+  '/community':   () => import('../pages/Community'),
+  '/settings':    () => import('../pages/Settings'),
+  '/backups':     () => import('../pages/Backups'),
+}
+// Module-level so it survives re-renders — each chunk is only ever requested
+// once per page load. On failure the entry is released so a later hover (or
+// the click itself) can retry.
+const _prefetched = new Set()
+const prefetchRoute = (to) => {
+  if (_prefetched.has(to) || !PREFETCH[to]) return
+  _prefetched.add(to)
+  PREFETCH[to]().catch(() => _prefetched.delete(to))
+}
+
 const GROUP_META = {
   qr:       { label: 'QR Codes',  icon: QrCode },
   training: { label: 'Training',  icon: CalendarDays },
@@ -201,6 +238,8 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                 to={to}
                 className={({ isActive }) => navLinkCls(isActive)}
                 title={collapsed ? label : undefined}
+                onMouseEnter={() => prefetchRoute(to)}
+                onFocus={() => prefetchRoute(to)}
               >
                 <div className="relative flex-shrink-0">
                   <Icon size={18} />
@@ -277,6 +316,8 @@ export default function Sidebar({ collapsed, setCollapsed }) {
                           isActive ? 'bg-brand-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                         }`
                       }
+                      onMouseEnter={() => prefetchRoute(to)}
+                      onFocus={() => prefetchRoute(to)}
                     >
                       <Icon size={16} className="flex-shrink-0" />
                       <span>{label}</span>
