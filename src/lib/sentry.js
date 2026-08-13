@@ -15,9 +15,15 @@
 let Sentry = null
 let initialized = false
 let starting = null
-const pending = []   // captures raised before the SDK finished loading
+const pending = []          // captures raised before the SDK finished loading
+let pendingUser = undefined // undefined = nothing to apply, null = explicit logout
 
 function flushPending() {
+  if (pendingUser !== undefined) {
+    const user = pendingUser
+    pendingUser = undefined
+    try { setSentryUser(user) } catch { /* never let reporting break the app */ }
+  }
   while (pending.length) {
     const [kind, args] = pending.shift()
     try { Sentry[kind](...args) } catch { /* never let reporting break the app */ }
@@ -83,8 +89,12 @@ export function initSentry() {
 
 // Identify the current user so errors are tied to who hit them.
 // Call after login; pass null on logout.
+//
+// Remembered rather than dropped when the SDK isn't up yet: a restored
+// session identifies its user within milliseconds of boot, long before the
+// idle init fires, and losing that would leave every early error anonymous.
 export function setSentryUser(user) {
-  if (!initialized) return
+  if (!initialized) { pendingUser = user; return }
   if (!user) { Sentry.setUser(null); return }
   Sentry.setUser({
     id:       String(user.id ?? ''),

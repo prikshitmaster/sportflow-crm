@@ -52,7 +52,16 @@ function tryAutoReload(nukeCaches) {
 // still pointing at a previous deploy's now-deleted chunk hashes. Nuke the
 // SW + caches (not just reload) so the next load fetches the real, current
 // index.html instead of repeating the same 404 against the same stale cache.
-window.addEventListener('vite:preloadError', () => tryAutoReload(true))
+//
+// Unless we're offline. Since the big rarely-used chunks are no longer
+// precached (vite.config.js globIgnores), "chunk failed" offline means the
+// NETWORK is missing, not the deploy — and wiping the caches would destroy
+// the precache that is the only reason the app works offline at all, turning
+// one unavailable screen into a dead app.
+window.addEventListener('vite:preloadError', () => {
+  if (navigator.onLine === false) return
+  tryAutoReload(true)
+})
 
 // Apply a new deploy on the FIRST launch instead of the second.
 // The service worker (registerType: 'autoUpdate' + skipWaiting/clients.claim)

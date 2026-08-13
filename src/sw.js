@@ -1,6 +1,7 @@
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
 import { CacheFirst } from 'workbox-strategies'
+import { ExpirationPlugin } from 'workbox-expiration'
 
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)
@@ -11,9 +12,15 @@ precacheAndRoute(self.__WB_MANIFEST)
 // so they work offline afterwards. CacheFirst is safe because every chunk
 // filename carries a content hash: a changed file is a different URL, and the
 // stale one is swept by cleanupOutdatedCaches on the next SW activation.
+// The expiration plugin matters here: cleanupOutdatedCaches() only sweeps
+// workbox's own precaches, so without a cap this cache would keep every
+// hashed chunk from every deploy forever.
 registerRoute(
   ({ url, request }) => request.destination === 'script' && url.origin === self.location.origin && url.pathname.startsWith('/assets/'),
-  new CacheFirst({ cacheName: 'lazy-chunks' })
+  new CacheFirst({
+    cacheName: 'lazy-chunks',
+    plugins: [new ExpirationPlugin({ maxEntries: 40, maxAgeSeconds: 30 * 24 * 60 * 60, purgeOnQuotaError: true })],
+  })
 )
 
 // Take control of all clients immediately on install/activate

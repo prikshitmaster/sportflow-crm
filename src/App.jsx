@@ -118,7 +118,12 @@ class ErrorBoundary extends Component {
     // separately below (auto-reload) but still get reported the first time.
     logger.error('React ErrorBoundary caught', err, { componentStack: info?.componentStack })
 
-    const isChunkError = err?.message?.includes('dynamically imported module') || err?.message?.includes('Failed to fetch')
+    // Offline is deliberately excluded: with the heavy route chunks no longer
+    // precached, a failed chunk offline means the network is gone, not the
+    // deploy — and the cache nuke below would take the precache with it. Show
+    // the error screen instead and let the user retry when they're back.
+    const isChunkError = (err?.message?.includes('dynamically imported module') || err?.message?.includes('Failed to fetch'))
+      && navigator.onLine !== false
     if (isChunkError) {
       const reloads = Number(sessionStorage.getItem('_eb_reloads') || 0)
       if (reloads < 2) {
