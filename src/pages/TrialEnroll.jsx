@@ -217,9 +217,31 @@ const inputStyle = {
   boxSizing: 'border-box', fontFamily: FONT,
 }
 
-function LabeledInput(props) {
-  return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} />
+// `invalid` paints the field itself red and captions it, so a missed required
+// field is visible where the user is actually looking. Applied last so it
+// always wins over a per-instance style override.
+const invalidStyle = { border: '1.5px solid #E5484D', background: '#FFF5F5' }
+
+function LabeledInput({ invalid, ...props }) {
+  const field = <input {...props} style={{ ...inputStyle, ...(props.style || {}), ...(invalid ? invalidStyle : {}) }} />
+  if (!invalid) return field
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: props.style?.flex }}>
+      {field}
+      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42318', paddingLeft: 2 }}>Required</span>
+    </div>
+  )
 }
+
+// The only fields the server also insists on (secure_submit_public_trial_v2
+// rejects a blank name/parent) — everything else on this form is optional by
+// design, and stays that way.
+const REQUIRED_FIELDS = [
+  { key: 'name' },
+  { key: 'parentName' },
+  { key: 'emergencyContactName' },
+  { key: 'emergencyContactPhone' },
+]
 
 // Short day names, same vocabulary batches.days uses (Batches.jsx ALL_DAYS)
 // and what secure_submit_public_trial_v2 whitelists against — staff can then
@@ -340,6 +362,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     address: '', occupation: '', alternateContactPhone: '', email: '',
     preferredDays: [],   // ['Mon','Wed'] — same vocabulary as batches.days
   })
+  const [invalid, setInvalid] = useState({})   // { fieldKey: true } after a failed Register tap
   const [documentFile, setDocumentFile] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null)
@@ -550,6 +573,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     setOtpSent(false); setOtp(''); setError('')
     setBatches([]); setBatchId(null)
     setForm(f => ({ ...f, name: '', dob: '', age: '', gender: '', medicalNotes: '', preferredDays: [] }))
+    setInvalid({})
     setDocumentFile(null); setResult(null)
     setFeeMode('walkin'); setPaymentStatus('idle')
     setRelationship(''); setRelationshipCustom(''); setSiblingOfId('')
@@ -570,7 +594,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     } finally { setLoading(false) }
   }
 
-  const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
+  // Typing into a flagged field clears its red state immediately — the mark
+  // is feedback on the last submit attempt, not a permanent verdict.
+  const set = (field, value) => {
+    setForm(f => ({ ...f, [field]: value }))
+    setInvalid(v => (v[field] ? { ...v, [field]: false } : v))
+  }
 
   // Stored in week order however the chips are tapped, so the academy always
   // reads "Mon, Wed, Fri" and never "Fri, Mon, Wed".
@@ -593,10 +622,19 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   }
 
   // ── submit ───────────────────────────────────────────────────
+  // Missing required fields go red in place instead of as a banner at the top
+  // of a form that's taller than the screen — the old message was routinely
+  // scrolled out of view, so a tap on Register just looked like nothing
+  // happened. Nothing typed is ever cleared by a failed check.
   const startSubmit = () => {
     setError('')
-    if (!form.name.trim() || !form.parentName.trim()) { setError('Student name and parent name are required'); return }
-    if (!form.emergencyContactName.trim() || !form.emergencyContactPhone.trim()) { setError('Emergency contact is required'); return }
+    const missing = REQUIRED_FIELDS.filter(f => !form[f.key].trim())
+    if (missing.length) {
+      setInvalid(Object.fromEntries(missing.map(f => [f.key, true])))
+      document.getElementById(`jf-${missing[0].key}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
+    setInvalid({})
     if (isAuthed) { doSubmit() }
     else { setOtp(''); setOtpSent(false); setShowGate(true) }
   }
@@ -1186,7 +1224,8 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 <ErrorBox msg={error} />
 
                 <SectionCard index="01" title="STUDENT DETAILS">
-                  <LabeledInput placeholder="Full name" value={form.name} onChange={e => set('name', e.target.value)} />
+                  <LabeledInput id="jf-name" placeholder="Full name" value={form.name}
+                    onChange={e => set('name', e.target.value)} invalid={invalid.name} />
                   <div style={{ display: 'flex', gap: 12 }}>
                     <LabeledInput type="date" value={form.dob}
                       onChange={e => { const dob = e.target.value; setForm(f => ({ ...f, dob, age: ageFromDob(dob) })) }}
@@ -1267,14 +1306,17 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 </SectionCard>
 
                 <SectionCard index="03" title="CONTACT">
-                  <LabeledInput placeholder="Father's / guardian's name" value={form.parentName} onChange={e => set('parentName', e.target.value)} />
+                  <LabeledInput id="jf-parentName" placeholder="Father's / guardian's name" value={form.parentName}
+                    onChange={e => set('parentName', e.target.value)} invalid={invalid.parentName} />
                   <LabeledInput placeholder="Mother's name (optional)" value={form.motherName} onChange={e => set('motherName', e.target.value)} />
                   <LabeledInput type="email" inputMode="email" placeholder="Email (optional)" value={form.email} onChange={e => set('email', e.target.value)} />
                   <LabeledInput type="tel" inputMode="tel" placeholder="Alternate contact number (optional)" value={form.alternateContactPhone} onChange={e => set('alternateContactPhone', e.target.value)} />
                   <LabeledInput placeholder="Occupation (optional)" value={form.occupation} onChange={e => set('occupation', e.target.value)} />
                   <LabeledInput placeholder="Address (optional)" value={form.address} onChange={e => set('address', e.target.value)} />
-                  <LabeledInput placeholder="Emergency contact name" value={form.emergencyContactName} onChange={e => set('emergencyContactName', e.target.value)} />
-                  <LabeledInput type="tel" inputMode="tel" placeholder="Emergency contact number" value={form.emergencyContactPhone} onChange={e => set('emergencyContactPhone', e.target.value)} />
+                  <LabeledInput id="jf-emergencyContactName" placeholder="Emergency contact name" value={form.emergencyContactName}
+                    onChange={e => set('emergencyContactName', e.target.value)} invalid={invalid.emergencyContactName} />
+                  <LabeledInput id="jf-emergencyContactPhone" type="tel" inputMode="tel" placeholder="Emergency contact number" value={form.emergencyContactPhone}
+                    onChange={e => set('emergencyContactPhone', e.target.value)} invalid={invalid.emergencyContactPhone} />
                 </SectionCard>
 
                 <SectionCard index="04" title="HEALTH">
