@@ -38,24 +38,25 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api/],
-        skipWaiting: true,
-        clientsClaim: true,
-        runtimeCaching: [
-          {
-            urlPattern: ({ request }) => request.mode === 'navigate',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'pages-cache',
-              networkTimeoutSeconds: 3,
-            },
-          },
+        // Precaching downloads EVERYTHING listed here in the background right
+        // after the first page load — for a parent who opened /join on mobile
+        // data, that meant ~2.9 MB of owner-only export/report tooling they
+        // will never open. These six are excluded and fetched on demand
+        // instead; src/sw.js runtime-caches them the first time they're
+        // actually used, so offline still works from the second use on.
+        globIgnores: [
+          '**/exceljs.min-*.js',            // Excel export  (~939 KB)
+          '**/exportImport-*.js',           // backup/import (~895 KB)
+          '**/sessionPDF-*.js',             // PDF reports   (~606 KB)
+          '**/index.es-*.js',               // PDF toolchain (~151 KB)
+          '**/generateCategoricalChart-*.js', // recharts    (~351 KB)
+          '**/jsQR-*.js',                   // QR scanner    (~130 KB)
         ],
       },
+      // NOTE: no `workbox` block here on purpose. With strategies:'injectManifest'
+      // vite-plugin-pwa ignores it entirely — the runtimeCaching/navigateFallback
+      // that used to sit here never ran. Both live in src/sw.js, which is the
+      // file that actually ships.
     }),
   ],
   build: {

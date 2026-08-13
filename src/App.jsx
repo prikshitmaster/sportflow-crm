@@ -20,23 +20,30 @@ import { Capacitor } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import { AppProvider, useApp } from './context/AppContext'
 import { logger } from './lib/logger'
-import Layout from './components/Layout'
-import StaffLayout from './components/StaffLayout'
-import StudentLayout from './components/StudentLayout'
-import ParentLayout from './components/ParentLayout'
+
+// EVERY route component below is lazy, with no exceptions — that's the rule
+// this file follows, and the reason is the public funnel. A parent opening
+// /join on mobile data should not be made to download four role layouts, six
+// login screens and the ops monitor first. Suspense already wraps the whole
+// route tree, so the cost of a lazy page is one small chunk fetch, and the
+// service worker has it cached from the second visit on.
+const Layout        = lazy(() => import('./components/Layout'))
+const StaffLayout   = lazy(() => import('./components/StaffLayout'))
+const StudentLayout = lazy(() => import('./components/StudentLayout'))
+const ParentLayout  = lazy(() => import('./components/ParentLayout'))
 
 // Ops monitoring — secret URL, PIN-gated, no nav link
-import OpsActivity from './pages/OpsActivity'
+const OpsActivity   = lazy(() => import('./pages/OpsActivity'))
 
-// Auth pages — kept eager (tiny, needed on first render)
-import Login from './pages/Login'
-import Signup from './pages/Signup'
-import StaffLogin from './pages/StaffLogin'
-import StaffActivate from './pages/StaffActivate'
-import StudentLogin from './pages/StudentLogin'
-import ParentLogin from './pages/ParentLogin'
-import Activate from './pages/Activate'
-import Invite from './pages/Invite'
+// Auth pages
+const Login         = lazy(() => import('./pages/Login'))
+const Signup        = lazy(() => import('./pages/Signup'))
+const StaffLogin    = lazy(() => import('./pages/StaffLogin'))
+const StaffActivate = lazy(() => import('./pages/StaffActivate'))
+const StudentLogin  = lazy(() => import('./pages/StudentLogin'))
+const ParentLogin   = lazy(() => import('./pages/ParentLogin'))
+const Activate      = lazy(() => import('./pages/Activate'))
+const Invite        = lazy(() => import('./pages/Invite'))
 
 // Marketing homepage — lazy loaded (large page, only needed by logged-out visitors)
 const Landing          = lazy(() => import('./pages/Landing'))

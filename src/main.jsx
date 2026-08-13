@@ -12,9 +12,16 @@ import App from './App.jsx'
 import './index.css'                    // Tailwind + shared classes (btn-primary, card…)
 import { initSentry } from './lib/sentry'
 
-// Initialize crash + error reporting before anything else runs.
+// Crash + error reporting. Deliberately started AFTER first paint, once the
+// browser is idle: the SDK is a dynamic import now (see lib/sentry.js), and
+// fetching it eagerly would put it back on the critical path it was moved off.
+// Errors raised in the gap are queued by lib/sentry.js and sent on arrival.
 // No-ops if VITE_SENTRY_DSN is not configured.
-initSentry()
+if (typeof window !== 'undefined') {
+  const start = () => initSentry()
+  if ('requestIdleCallback' in window) window.requestIdleCallback(start, { timeout: 4000 })
+  else setTimeout(start, 1500)
+}
 
 // Shared budget for every auto-reload path below. A `let reloading` flag (the
 // old guard here) resets to false on every fresh page load — so if WHATEVER

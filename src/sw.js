@@ -1,8 +1,20 @@
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
+import { CacheFirst } from 'workbox-strategies'
 
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)
+
+// The heavy, rarely-opened route chunks (Excel export, PDF reports, charts,
+// QR scanner) are deliberately left OUT of the precache — see globIgnores in
+// vite.config.js. This catches them the first time they're actually requested
+// so they work offline afterwards. CacheFirst is safe because every chunk
+// filename carries a content hash: a changed file is a different URL, and the
+// stale one is swept by cleanupOutdatedCaches on the next SW activation.
+registerRoute(
+  ({ url, request }) => request.destination === 'script' && url.origin === self.location.origin && url.pathname.startsWith('/assets/'),
+  new CacheFirst({ cacheName: 'lazy-chunks' })
+)
 
 // Take control of all clients immediately on install/activate
 self.addEventListener('install', () => self.skipWaiting())
