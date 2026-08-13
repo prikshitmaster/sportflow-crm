@@ -621,6 +621,7 @@ function FeaturesTab() {
     { key: 'backups',    label: 'Backups',             desc: 'Data backup and restore' },
     { key: 'student_code_login', label: 'Student Direct Login', desc: 'Students log in with their own Student ID + Join Code' },
     { key: 'family_login',       label: 'Family (Parent) Login', desc: 'Parents log in with just their phone number and pick a child — supports siblings under one number' },
+    { key: 'join_batch_choice',  label: 'Batch Choice on Registration', desc: 'Public /join form lets the student pick a batch — turn off to skip that step and assign batches yourself' },
   ]
 
   return (

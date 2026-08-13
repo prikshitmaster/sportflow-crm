@@ -145,6 +145,7 @@ export function fillPublicRegistration() {
     alternateContactPhone: fakePhone(),
     email:                 `parent.${Date.now().toString().slice(-6)}@test.local`,
     relationship:          pick(['Son', 'Daughter', 'Ward']),
+    preferredDays:         pick([['Mon', 'Wed', 'Fri'], ['Tue', 'Thu'], ['Sat', 'Sun'], ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']]),
   }
 }
 

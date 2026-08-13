@@ -1397,6 +1397,13 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
           </span>
         )}
         {batch && <span className="text-gray-400 text-[11px]">{batch.name}</span>}
+        {/* Days the prospect asked for on /join — the main signal for placing
+            them when the public form's batch step is turned off */}
+        {trial.preferredDays?.length > 0 && (
+          <span className="text-[11px] text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5">
+            Prefers {trial.preferredDays.join(', ')}
+          </span>
+        )}
       </div>
 
       {/* Sessions */}

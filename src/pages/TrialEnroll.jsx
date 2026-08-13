@@ -221,6 +221,11 @@ function LabeledInput(props) {
   return <input {...props} style={{ ...inputStyle, ...(props.style || {}) }} />
 }
 
+// Short day names, same vocabulary batches.days uses (Batches.jsx ALL_DAYS)
+// and what secure_submit_public_trial_v2 whitelists against — staff can then
+// eyeball a preference against a batch's days without translating.
+const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
 // White rounded-bottom header with a round back button — branch/batch/form screens.
 function TopBar({ title, subtitle, onBack, C, children }) {
   return (
@@ -259,7 +264,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // the RIGHT academy immediately, never a flash of wrong/default branding.
   const [brandingStatus, setBrandingStatus] = useState('loading') // 'loading' | 'not-found' | 'ready'
   const [branding, setBranding] = useState(null)
-  const [academyFeatures, setAcademyFeatures] = useState({ studentCodeLogin: true, familyLogin: true })
+  const [academyFeatures, setAcademyFeatures] = useState({ studentCodeLogin: true, familyLogin: true, joinBatchChoice: true })
 
   useEffect(() => {
     let cancelled = false
@@ -278,6 +283,11 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   }, [slug])
 
   const C = useMemo(() => deriveShades(branding?.brandColor), [branding])
+
+  // Settings → Features → "Batch Choice on Registration". Off = branch goes
+  // straight to the form and the academy assigns the batch later, which is
+  // what the "let the academy pick" escape hatch already did anyway.
+  const batchChoice = academyFeatures.joinBatchChoice !== false
 
   const [step, setStep] = useState('login')  // login | home | branch | batch | form | confirm
   const [authMode, setAuthMode] = useState('login') // cosmetic Login/Register tabs
@@ -328,6 +338,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     name: '', parentName: '', motherName: '', emergencyContactName: '', emergencyContactPhone: '',
     dob: '', age: '', gender: '', medicalNotes: '',
     address: '', occupation: '', alternateContactPhone: '', email: '',
+    preferredDays: [],   // ['Mon','Wed'] — same vocabulary as batches.days
   })
   const [documentFile, setDocumentFile] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -405,6 +416,13 @@ export default function TrialEnroll({ academySlug: slugProp }) {
       }))
     } catch {}
   }, [slug, step, chosenSport, chosenRow, batchId, form, relationship, relationshipCustom, siblingOfId, feeMode])
+
+  // The flags arrive a tick after mount, so a restored draft (or a very fast
+  // tap) can land on the batch step before we know it's turned off — bounce
+  // it forward to the form instead of showing a screen that shouldn't exist.
+  useEffect(() => {
+    if (!batchChoice && step === 'batch') { setBatchId(null); setStep('form') }
+  }, [batchChoice, step])
 
   // Profile tab shows this phone's own registered students — fetch whenever
   // it's opened while verified. Also the source for the "Sibling of" picker
@@ -531,7 +549,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     setStep('home'); setHomeTab('home'); setChosenSport(''); setChosenRow(null)
     setOtpSent(false); setOtp(''); setError('')
     setBatches([]); setBatchId(null)
-    setForm(f => ({ ...f, name: '', dob: '', age: '', gender: '', medicalNotes: '' }))
+    setForm(f => ({ ...f, name: '', dob: '', age: '', gender: '', medicalNotes: '', preferredDays: [] }))
     setDocumentFile(null); setResult(null)
     setFeeMode('walkin'); setPaymentStatus('idle')
     setRelationship(''); setRelationshipCustom(''); setSiblingOfId('')
@@ -539,7 +557,11 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const chooseSport = (name) => { setError(''); setChosenSport(name); setStep('branch') }
 
   async function chooseBranch(row) {
-    setChosenRow(row); setLoading(true); setError('')
+    setChosenRow(row); setError('')
+    // Batch step disabled → skip it entirely (no batch fetch at all) and let
+    // the academy assign one, exactly as batchId = null already meant.
+    if (!batchChoice) { setBatches([]); setBatchId(null); setStep('form'); return }
+    setLoading(true)
     try {
       const list = await db.fetchPublicTrialBatches(slug, row.id)
       setBatches(list); setBatchId(null); setStep('batch')
@@ -549,6 +571,15 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   }
 
   const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
+
+  // Stored in week order however the chips are tapped, so the academy always
+  // reads "Mon, Wed, Fri" and never "Fri, Mon, Wed".
+  const toggleDay = (day) => setForm(f => ({
+    ...f,
+    preferredDays: f.preferredDays.includes(day)
+      ? f.preferredDays.filter(d => d !== day)
+      : DAY_OPTIONS.filter(d => d === day || f.preferredDays.includes(d)),
+  }))
 
   // DevFillButton shows in local dev AND on the live site once ?demo=1 has
   // been visited (see DevFillButton.jsx) — this only fills form FIELDS with
@@ -599,6 +630,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
         occupation: form.occupation.trim() || null,
         alternateContactPhone: form.alternateContactPhone.trim() || null,
         email: form.email.trim() || null,
+        preferredDays: form.preferredDays,
         documentPath,
         // Always 'Not collected' at submission — true either way (walk-in
         // hasn't been paid yet; online hasn't succeeded yet). The verify
@@ -1145,7 +1177,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
         {step === 'form' && (
           <div style={{ minHeight: '100vh', position: 'relative' }}>
             <div style={{ minHeight: '100vh', overflowY: 'auto', paddingBottom: 100 }}>
-              <TopBar title="Student Registration" subtitle={`${chosenSport} · ${chosenRow?.branchName}`} onBack={() => setStep('batch')} C={C} />
+              <TopBar title="Student Registration" subtitle={`${chosenSport} · ${chosenRow?.branchName}`} onBack={() => setStep(batchChoice ? 'batch' : 'branch')} C={C} />
 
               <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -1157,12 +1189,15 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <LabeledInput placeholder="Full name" value={form.name} onChange={e => set('name', e.target.value)} />
                   <div style={{ display: 'flex', gap: 12 }}>
                     <LabeledInput type="date" value={form.dob}
-                      onChange={e => { const dob = e.target.value; setForm(f => ({ ...f, dob, age: dob ? ageFromDob(dob) : f.age })) }}
+                      onChange={e => { const dob = e.target.value; setForm(f => ({ ...f, dob, age: ageFromDob(dob) })) }}
                       style={{ flex: 1 }} />
-                    <LabeledInput type="number" min="1" max="99" placeholder="Age" value={form.age}
-                      onChange={e => set('age', e.target.value)}
-                      readOnly={!!form.dob} title={form.dob ? 'Calculated from date of birth' : ''}
-                      style={{ width: 96, ...(form.dob ? { color: N.muted, cursor: 'not-allowed' } : {}) }} />
+                    {/* Age is derived, never typed — the date picker is the only
+                        input, so DOB and age can't disagree with each other. */}
+                    <div title="Calculated from date of birth"
+                      style={{ ...inputStyle, width: 96, flexShrink: 0, display: 'flex', alignItems: 'center',
+                               justifyContent: 'center', color: form.age ? N.text : N.faint }}>
+                      {form.age ? `${form.age} yrs` : 'Age'}
+                    </div>
                   </div>
 
                   <select value={form.gender} onChange={e => set('gender', e.target.value)}
@@ -1208,7 +1243,30 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   )}
                 </SectionCard>
 
-                <SectionCard index="02" title="CONTACT">
+                <SectionCard index="02" title="PREFERRED DAYS">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: N.muted }}>
+                      Which days would you like to play? {batchChoice ? '(optional)' : '(helps us place you in the right batch)'}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {DAY_OPTIONS.map(day => {
+                        const active = form.preferredDays.includes(day)
+                        return (
+                          <div key={day} onClick={() => toggleDay(day)} role="button" tabIndex={0}
+                            style={{
+                              padding: '9px 14px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                              background: active ? C.main : N.input, color: active ? '#fff' : N.muted,
+                              border: active ? `1.5px solid ${C.main}` : `1.5px solid ${N.line}`,
+                            }}>
+                            {day}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </SectionCard>
+
+                <SectionCard index="03" title="CONTACT">
                   <LabeledInput placeholder="Father's / guardian's name" value={form.parentName} onChange={e => set('parentName', e.target.value)} />
                   <LabeledInput placeholder="Mother's name (optional)" value={form.motherName} onChange={e => set('motherName', e.target.value)} />
                   <LabeledInput type="email" inputMode="email" placeholder="Email (optional)" value={form.email} onChange={e => set('email', e.target.value)} />
@@ -1219,13 +1277,13 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <LabeledInput type="tel" inputMode="tel" placeholder="Emergency contact number" value={form.emergencyContactPhone} onChange={e => set('emergencyContactPhone', e.target.value)} />
                 </SectionCard>
 
-                <SectionCard index="03" title="HEALTH">
+                <SectionCard index="04" title="HEALTH">
                   <textarea placeholder="Any medical condition or allergy? (leave blank if none)" value={form.medicalNotes}
                     onChange={e => set('medicalNotes', e.target.value)}
                     style={{ ...inputStyle, resize: 'none', minHeight: 74, lineHeight: 1.45 }} />
                 </SectionCard>
 
-                <SectionCard index="04" title="DOCUMENT">
+                <SectionCard index="05" title="DOCUMENT">
                   {!documentFile ? (
                     <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', fontSize: 14, fontWeight: 600, color: N.muted, border: `2px dashed ${N.line}`, borderRadius: 18, cursor: 'pointer' }}>
                       <Camera size={16} /> Upload ID / medical document
@@ -1240,7 +1298,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   )}
                 </SectionCard>
 
-                <SectionCard index="05" title="TRIAL FEE">
+                <SectionCard index="06" title="TRIAL FEE">
                   {kitFee > 0 && (
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1307,13 +1365,17 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Application ID</span>
                 <span style={{ fontSize: 12.5, color: N.text, fontWeight: 800 }}>{shortCode}-{new Date().getFullYear()}-{result?.id ?? '—'}</span>
               </div>
-              <div style={{ height: 1, background: N.line }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Batch</span>
-                <span style={{ fontSize: 12.5, color: N.text, fontWeight: 800 }}>
-                  {batchId ? (batches.find(b => b.id === batchId)?.name || '—') : 'To be assigned'}
-                </span>
-              </div>
+              {batchChoice && (
+                <>
+                  <div style={{ height: 1, background: N.line }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Batch</span>
+                    <span style={{ fontSize: 12.5, color: N.text, fontWeight: 800 }}>
+                      {batchId ? (batches.find(b => b.id === batchId)?.name || '—') : 'To be assigned'}
+                    </span>
+                  </div>
+                </>
+              )}
               <div style={{ height: 1, background: N.line }} />
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>{kitFee > 0 ? 'Trial + kit fee' : 'Trial fee'}</span>

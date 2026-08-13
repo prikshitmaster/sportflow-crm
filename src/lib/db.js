@@ -633,6 +633,7 @@ export async function fetchTrials(academyId) {
     followUp:       row.follow_up,
     createdAt:      row.created_at,
     branchId:       row.branch_id     || null,
+    preferredDays:  row.preferred_days || [],
   }))
 }
 
@@ -3385,9 +3386,9 @@ const _mapAcademyBranding = (row) => row ? ({
   brandColor:      row.brand_color || '',
 }) : null
 
-// Just the two login-related flags, pre-auth-safe — see migration 0145 for
-// why this can't just reuse AppContext's isFeatureOn (the /join funnel never
-// loads AppContext at all).
+// Just the handful of funnel-relevant flags, pre-auth-safe — see migrations
+// 0145/0148 for why this can't just reuse AppContext's isFeatureOn (the /join
+// funnel never loads AppContext at all).
 export async function fetchPublicAcademyFeatures(slug) {
   const { data, error } = await supabase.rpc('secure_public_academy_features', { p_slug: slug })
   if (error) throw error
@@ -3395,6 +3396,7 @@ export async function fetchPublicAcademyFeatures(slug) {
   return {
     studentCodeLogin: row?.student_code_login !== false,
     familyLogin:      row?.family_login !== false,
+    joinBatchChoice:  row?.join_batch_choice !== false,
   }
 }
 
@@ -3514,6 +3516,7 @@ export async function submitPublicTrial(slug, payload) {
     p_occupation:              payload.occupation              || null,
     p_alternate_contact_phone: payload.alternateContactPhone  || null,
     p_email:                   payload.email                   || null,
+    p_preferred_days:          payload.preferredDays?.length ? payload.preferredDays : null,
   })
   if (error) throw error
   return typeof data === 'string' ? JSON.parse(data) : data
