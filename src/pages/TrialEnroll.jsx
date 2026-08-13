@@ -106,6 +106,59 @@ const LIME = '#C9F04D'
 const LIME_TEXT = '#123A1F'
 const FONT = "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
 
+// ── Design tokens ────────────────────────────────────────────
+// One ramp for type, radius and elevation, drawn from by every screen. The
+// funnel is styled inline (no Tailwind here by design), and without a shared
+// scale that turned into ~15 font sizes and 11 radii doing the same jobs —
+// the specific thing that reads as "unfinished" rather than any one screen.
+const R = { chip: 12, control: 14, card: 20, tile: 26, sheet: 28, pill: 999 }
+
+const E = {
+  rest:   '0 2px 10px rgba(11,50,26,0.05)',
+  raised: '0 8px 22px rgba(11,50,26,0.08)',
+  lifted: '0 14px 30px rgba(11,50,26,0.14)',
+}
+
+// Sport apps are read at a glance and half of what they show is numbers, so
+// the ramp is short, heavy at the top, and tabular wherever digits line up.
+const T = {
+  hero:    { fontSize: 30,   fontWeight: 800, letterSpacing: -0.9, lineHeight: 1.1 },
+  h1:      { fontSize: 24,   fontWeight: 800, letterSpacing: -0.6, lineHeight: 1.15 },
+  h2:      { fontSize: 19,   fontWeight: 800, letterSpacing: -0.4 },
+  h3:      { fontSize: 16,   fontWeight: 800, letterSpacing: -0.2 },
+  body:    { fontSize: 14,   fontWeight: 500, lineHeight: 1.5 },
+  strong:  { fontSize: 14,   fontWeight: 700 },
+  label:   { fontSize: 12.5, fontWeight: 600 },
+  micro:   { fontSize: 11.5, fontWeight: 600 },
+  eyebrow: { fontSize: 10.5, fontWeight: 800, letterSpacing: 0.9, textTransform: 'uppercase' },
+}
+const NUM = { fontVariantNumeric: 'tabular-nums' }
+
+// Injected once at the funnel root. Everything here is either a state the
+// browser owns and inline styles can't reach (:active, :focus-visible,
+// ::placeholder, reduced motion) or an animation — never layout, which stays
+// inline next to the markup it belongs to. --jf-accent carries the academy's
+// own brand colour into those states.
+const JOIN_CSS = `
+@keyframes jfRise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+@keyframes jfShimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+.jf-screen { animation: jfRise .34s cubic-bezier(.22,.61,.36,1) both }
+.jf-stagger > * { animation: jfRise .40s cubic-bezier(.22,.61,.36,1) both }
+.jf-tap { -webkit-tap-highlight-color: transparent; transition: transform .14s cubic-bezier(.22,.61,.36,1), box-shadow .14s ease, background .14s ease }
+.jf-tap:active { transform: scale(.978) }
+.jf-tap:focus-visible, .jf-focus:focus-visible { outline: 2.5px solid var(--jf-accent); outline-offset: 3px }
+/* !important because the fields carry their border inline, which otherwise
+   wins over this rule and leaves focus showing only the outer glow. */
+.jf-field:focus { border-color: var(--jf-accent) !important; box-shadow: 0 0 0 3.5px var(--jf-accent-soft) }
+.jf-field::placeholder { color: #9AAC9F; font-weight: 500 }
+.jf-skel { background: linear-gradient(90deg, #E9F2EB 25%, #F6FAF6 50%, #E9F2EB 75%); background-size: 200% 100%; animation: jfShimmer 1.5s linear infinite }
+@media (prefers-reduced-motion: reduce) {
+  .jf-screen, .jf-stagger > *, .jf-skel { animation: none !important }
+  .jf-tap { transition: none }
+  .jf-tap:active { transform: none }
+}
+`
+
 // One stored hex per academy -> {main, dark, tint} — dark for gradients,
 // tint for soft brand-colored fills (badges, pills). Structural chrome
 // (page/input/border) stays in the fixed neutral palette above.
@@ -153,6 +206,55 @@ function loadRazorpayScript() {
   })
 }
 
+// Every tappable surface on this funnel is a div (cards wrap photos and rich
+// layout), which cost them keyboard operation and any sense of touch response.
+// This gives all of them the same press physics, Enter/Space activation and a
+// brand-coloured focus ring, in one place.
+function Tappable({ onClick, children, style, disabled, label, pressed, as: Tag = 'div' }) {
+  return (
+    <Tag
+      className="jf-tap"
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-label={label}
+      aria-pressed={pressed}
+      aria-disabled={disabled || undefined}
+      onClick={disabled ? undefined : onClick}
+      onKeyDown={e => {
+        if (disabled) return
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(e) }
+      }}
+      style={{ cursor: disabled ? 'default' : 'pointer', ...style }}
+    >
+      {children}
+    </Tag>
+  )
+}
+
+// Relationship, preferred days and fee mode were three hand-rolled copies of
+// the same selected/unselected chip, already drifting apart in padding and
+// weight. One component keeps them identical and correctly announced.
+function Chip({ active, onClick, children, C, style }) {
+  return (
+    <Tappable onClick={onClick} pressed={active}
+      style={{
+        padding: '10px 15px', borderRadius: R.chip, ...T.label, fontWeight: 700, textAlign: 'center',
+        background: active ? C.main : N.input, color: active ? '#fff' : N.muted,
+        border: `1.5px solid ${active ? C.main : N.line}`,
+        boxShadow: active ? `0 4px 12px ${C.main}33` : 'none',
+        ...style,
+      }}>
+      {children}
+    </Tappable>
+  )
+}
+
+// Shown while a list is genuinely in flight, so a slow connection sees the
+// shape of what's coming instead of an empty screen that looks broken.
+function Skeleton({ height, radius = R.card, style }) {
+  return <div className="jf-skel" style={{ height, borderRadius: radius, ...style }} />
+}
+
 function Spinner({ size = 16, color = '#fff' }) {
   return (
     <svg className="animate-spin" width={size} height={size} viewBox="0 0 24 24" fill="none" style={{ color }}>
@@ -165,7 +267,7 @@ function Spinner({ size = 16, color = '#fff' }) {
 function ErrorBox({ msg }) {
   if (!msg) return null
   return (
-    <div style={{ background: '#FEECEC', border: '1px solid #F6C9C9', color: '#B42318', fontSize: 13, padding: '11px 14px', borderRadius: 14, marginBottom: 14 }}>
+    <div role="alert" style={{ background: '#FEECEC', border: '1px solid #F6C9C9', color: '#B42318', fontSize: 13, fontWeight: 600, padding: '12px 14px', borderRadius: R.control, marginBottom: 14, lineHeight: 1.45 }}>
       {msg}
     </div>
   )
@@ -176,18 +278,17 @@ function Cta({ children, onClick, loading, disabled, C, type = 'button' }) {
   return (
     <button
       type={type}
+      className="jf-tap"
       onClick={onClick}
       disabled={loading || disabled}
       style={{
         width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         background: C.main, color: '#fff', fontSize: 15.5, fontWeight: 800, border: 'none',
-        borderRadius: 18, padding: '17px 0', cursor: 'pointer', letterSpacing: -0.1,
-        boxShadow: `0 10px 22px ${C.main}4D`, opacity: (loading || disabled) ? 0.6 : 1,
-        transition: 'transform .12s ease', fontFamily: FONT,
+        borderRadius: R.card, padding: '17px 0', letterSpacing: -0.1, minHeight: 56,
+        cursor: (loading || disabled) ? 'default' : 'pointer',
+        boxShadow: (loading || disabled) ? 'none' : `0 10px 22px ${C.main}4D`,
+        opacity: (loading || disabled) ? 0.55 : 1, fontFamily: FONT,
       }}
-      onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.98)')}
-      onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
-      onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
     >
       {loading ? <Spinner /> : children}
     </button>
@@ -200,12 +301,18 @@ function Cta({ children, onClick, loading, disabled, C, type = 'button' }) {
 // (a topically-tagged placeholder built by tagPhoto()).
 function Photo({ src, fallback, radius = 0, C, alt = '' }) {
   const [failed, setFailed] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const url = src || fallback
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: radius, overflow: 'hidden', background: `linear-gradient(135deg, ${C.main}, ${C.dark})` }}>
       {!failed && (
-        <img src={url} alt={alt} loading="lazy" onError={() => setFailed(true)}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        // Cross-fading over the brand gradient turns a hard photo pop-in — the
+        // loudest thing on a photo-led screen over a slow connection — into
+        // the picture simply arriving.
+        <img src={url} alt={alt} loading="lazy"
+          onError={() => setFailed(true)} onLoad={() => setLoaded(true)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+                   opacity: loaded ? 1 : 0, transition: 'opacity .45s ease' }} />
       )}
     </div>
   )
@@ -213,8 +320,8 @@ function Photo({ src, fallback, radius = 0, C, alt = '' }) {
 
 const inputStyle = {
   border: `1.5px solid ${N.line}`, outline: 'none', fontSize: 15, fontWeight: 600, color: N.text,
-  background: N.input, borderRadius: 14, padding: '14px 15px', width: '100%',
-  boxSizing: 'border-box', fontFamily: FONT,
+  background: N.input, borderRadius: R.control, padding: '15px 16px', width: '100%',
+  boxSizing: 'border-box', fontFamily: FONT, transition: 'border-color .15s ease, box-shadow .15s ease',
 }
 
 // `invalid` paints the field itself red and captions it, so a missed required
@@ -223,7 +330,7 @@ const inputStyle = {
 const invalidStyle = { border: '1.5px solid #E5484D', background: '#FFF5F5' }
 
 function LabeledInput({ invalid, ...props }) {
-  const field = <input {...props} style={{ ...inputStyle, ...(props.style || {}), ...(invalid ? invalidStyle : {}) }} />
+  const field = <input {...props} className="jf-field" style={{ ...inputStyle, ...(props.style || {}), ...(invalid ? invalidStyle : {}) }} />
   if (!invalid) return field
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: props.style?.flex }}>
@@ -251,17 +358,17 @@ const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 // White rounded-bottom header with a round back button — branch/batch/form screens.
 function TopBar({ title, subtitle, onBack, C, children }) {
   return (
-    <div style={{ background: '#fff', padding: '56px 22px 18px', borderRadius: '0 0 28px 28px', boxShadow: '0 4px 16px rgba(11,50,26,0.05)' }}>
+    <div style={{ background: '#fff', padding: '56px 22px 20px', borderRadius: `0 0 ${R.sheet}px ${R.sheet}px`, boxShadow: E.rest }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {onBack && (
-          <div onClick={onBack} role="button" tabIndex={0}
-            style={{ width: 38, height: 38, borderRadius: 999, background: C.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <Tappable onClick={onBack} label="Go back"
+            style={{ width: 42, height: 42, borderRadius: R.pill, background: C.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <ArrowLeft size={17} color={C.main} />
-          </div>
+          </Tappable>
         )}
         <div>
-          <div style={{ fontSize: 19, fontWeight: 800, color: N.text, letterSpacing: -0.4 }}>{title}</div>
-          {subtitle && <div style={{ fontSize: 12.5, fontWeight: 600, color: N.muted, marginTop: 1 }}>{subtitle}</div>}
+          <div style={{ ...T.h2, color: N.text }}>{title}</div>
+          {subtitle && <div style={{ ...T.label, color: N.muted, marginTop: 2 }}>{subtitle}</div>}
         </div>
       </div>
       {children}
@@ -269,10 +376,19 @@ function TopBar({ title, subtitle, onBack, C, children }) {
   )
 }
 
-function SectionCard({ index, title, children }) {
+// The form genuinely is a sequence, so the numbers carry real information —
+// they get a chip of their own instead of being punctuation in the title, and
+// the rule to the edge shows how far the card's content reaches. The eyebrow
+// was hardcoded green before, which broke on any academy whose brand colour
+// isn't the default.
+function SectionCard({ index, title, children, C }) {
   return (
-    <div style={{ background: '#fff', borderRadius: 24, padding: 18, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 6px 18px rgba(11,50,26,0.07)' }}>
-      <div style={{ fontSize: 11.5, fontWeight: 800, color: '#17853F', letterSpacing: 0.8 }}>{index} · {title}</div>
+    <div style={{ background: '#fff', borderRadius: R.card, padding: 18, display: 'flex', flexDirection: 'column', gap: 14, boxShadow: E.raised }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ ...T.eyebrow, ...NUM, letterSpacing: 0.2, color: C.dark, background: C.tint, borderRadius: 8, padding: '4px 7px', lineHeight: 1 }}>{index}</span>
+        <span style={{ ...T.eyebrow, color: N.muted }}>{title}</span>
+        <span style={{ flex: 1, height: 1, background: N.line }} />
+      </div>
       {children}
     </div>
   )
@@ -343,10 +459,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const [otpSent, setOtpSent] = useState(false)
 
   const [branchRows, setBranchRows] = useState([])   // flat [{id, sportName, branchName, photoUrl}]
+  const [branchesLoading, setBranchesLoading] = useState(true)
   const [chosenSport, setChosenSport] = useState('')
   const [chosenRow, setChosenRow] = useState(null)   // the {id, sportName, branchName} row carried forward
 
   const [batches, setBatches] = useState([])
+  const [batchesLoading, setBatchesLoading] = useState(false)
   const [batchId, setBatchId] = useState(null)
 
   const [myTrials, setMyTrials] = useState([])          // this phone's own registered students at this academy
@@ -378,6 +496,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     db.fetchPublicTrialBranches(slug)
       .then(rows => { if (!cancelled) setBranchRows(rows) })
       .catch(() => { /* non-fatal; Home shows an empty state */ })
+      .finally(() => { if (!cancelled) setBranchesLoading(false) })
     return () => { cancelled = true }
   }, [brandingStatus, slug])
 
@@ -418,10 +537,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
       // 'batch' and 'form' need a real batches list — re-fetch it for the
       // restored branch rather than trusting a stale saved array.
       if ((draft.step === 'batch' || draft.step === 'form') && draft.chosenRow?.id) {
+        if (!cancelled) setBatchesLoading(true)
         try {
           const list = await db.fetchPublicTrialBatches(slug, draft.chosenRow.id)
           if (!cancelled) setBatches(list)
         } catch { /* non-fatal; batch step just shows empty */ }
+        finally { if (!cancelled) setBatchesLoading(false) }
       }
       if (!cancelled) setStep(draft.step)
     })()
@@ -585,13 +706,13 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     // Batch step disabled → skip it entirely (no batch fetch at all) and let
     // the academy assign one, exactly as batchId = null already meant.
     if (!batchChoice) { setBatches([]); setBatchId(null); setStep('form'); return }
-    setLoading(true)
+    setLoading(true); setBatchesLoading(true)
     try {
       const list = await db.fetchPublicTrialBatches(slug, row.id)
       setBatches(list); setBatchId(null); setStep('batch')
     } catch (err) {
       setError(err?.message || 'Could not load batches')
-    } finally { setLoading(false) }
+    } finally { setLoading(false); setBatchesLoading(false) }
   }
 
   // Typing into a flagged field clears its red state immediately — the mark
@@ -795,12 +916,14 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     : 'Register in under 2 minutes.'
 
   return (
-    <div style={{ minHeight: '100vh', background: N.page, fontFamily: FONT }}>
+    <div style={{ minHeight: '100vh', background: N.page, fontFamily: FONT,
+                  '--jf-accent': C.main, '--jf-accent-soft': `${C.main}2E` }}>
+      <style>{JOIN_CSS}</style>
       <div style={{ margin: '0 auto', width: '100%', maxWidth: 440, minHeight: '100vh', position: 'relative', overflow: 'hidden', background: N.page }}>
 
         {/* ── LOGIN ─────────────────────────────────────────── */}
         {step === 'login' && (
-          <div style={{ minHeight: '100vh', position: 'relative', overflow: 'hidden', background: '#0B1F12' }}>
+          <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative', overflow: 'hidden', background: '#0B1F12' }}>
             <div style={{ position: 'absolute', inset: 0 }}>
               <Photo fallback={heroFallback} C={C} alt={displayName} />
             </div>
@@ -814,23 +937,24 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <Trophy size={26} color="#fff" />
                 </div>
               )}
-              <div style={{ color: '#fff', fontSize: 28, fontWeight: 800, lineHeight: 1.12, letterSpacing: -0.7 }}>
+              <div style={{ ...T.hero, color: '#fff' }}>
                 Train with<br />{displayName}.
               </div>
-              <div style={{ color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: 500 }}>{heroSubtitle}</div>
+              <div style={{ ...T.body, color: 'rgba(255,255,255,0.74)' }}>{heroSubtitle}</div>
             </div>
 
-            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, background: '#fff', borderRadius: '34px 34px 0 0', padding: '22px 24px 30px', boxShadow: '0 -18px 40px rgba(0,0,0,0.25)' }}>
+            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, background: '#fff', borderRadius: `${R.sheet}px ${R.sheet}px 0 0`, padding: '22px 24px 30px', boxShadow: '0 -18px 40px rgba(0,0,0,0.25)' }}>
               <div style={{ display: 'flex', background: '#F1F7F1', borderRadius: 16, padding: 4, gap: 4, marginBottom: 18 }}>
                 {['login', 'register'].map(m => (
-                  <div key={m} onClick={() => { setAuthMode(m); setOtpSent(false); setOtp(''); setError('') }}
+                  <Tappable key={m} pressed={authMode === m}
+                    onClick={() => { setAuthMode(m); setOtpSent(false); setOtp(''); setError('') }}
                     style={{
-                      flex: 1, textAlign: 'center', padding: '12px 0', borderRadius: 13, fontSize: 14.5, fontWeight: 800, cursor: 'pointer',
+                      flex: 1, textAlign: 'center', padding: '13px 0', borderRadius: R.chip, fontSize: 14.5, fontWeight: 800,
                       background: authMode === m ? '#fff' : 'transparent', color: authMode === m ? '#10462A' : '#8AA091',
-                      boxShadow: authMode === m ? '0 2px 8px rgba(11,50,26,0.1)' : 'none', transition: 'all .15s',
+                      boxShadow: authMode === m ? '0 2px 8px rgba(11,50,26,0.1)' : 'none',
                     }}>
                     {m === 'login' ? 'Login' : 'Register'}
-                  </div>
+                  </Tappable>
                 ))}
               </div>
 
@@ -860,24 +984,24 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     Code sent to <b style={{ color: N.text }}>+91 {phone}</b> ·{' '}
                     <span onClick={() => { setOtpSent(false); setOtp('') }} style={{ color: C.main, fontWeight: 800, cursor: 'pointer' }}>Change</span>
                   </div>
-                  <input type="tel" inputMode="numeric" maxLength={8} placeholder="- - - -" value={otp} autoFocus
+                  <input className="jf-field" type="tel" inputMode="numeric" maxLength={8} placeholder="- - - -" value={otp} autoFocus
                     onChange={e => setOtp(e.target.value.replace(/\D/g, ''))} autoComplete="one-time-code"
                     style={{ border: `1.5px solid ${N.line}`, outline: 'none', fontSize: 24, fontWeight: 700, letterSpacing: 14, color: N.text, background: N.input, borderRadius: 16, padding: '15px 16px', fontFamily: FONT, textAlign: 'center', width: '100%', boxSizing: 'border-box', marginBottom: 16 }} />
                   <Cta onClick={verifyCode} loading={loading} C={C}>Verify &amp; Continue</Cta>
                 </>
               )}
 
-              <div onClick={skipLogin} role="button" tabIndex={0}
-                style={{ textAlign: 'center', fontSize: 14, fontWeight: 700, color: N.muted, padding: '16px 0 0', cursor: 'pointer' }}>
+              <Tappable onClick={skipLogin}
+                style={{ textAlign: 'center', ...T.strong, color: N.muted, padding: '16px 0 4px', borderRadius: R.chip }}>
                 Skip for now →
-              </div>
+              </Tappable>
             </div>
           </div>
         )}
 
         {/* ── HOME ──────────────────────────────────────────── */}
         {step === 'home' && (
-          <div style={{ minHeight: '100vh', position: 'relative' }}>
+          <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative' }}>
             <div style={{ minHeight: '100vh', overflowY: 'auto' }}>
               <div style={{ background: `linear-gradient(160deg, ${C.main} 0%, ${C.dark} 100%)`, padding: '56px 22px 28px', borderRadius: '0 0 32px 32px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -890,8 +1014,8 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       </div>
                     )}
                     <div>
-                      <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: 600, letterSpacing: 0.4 }}>{greetingWord()}</div>
-                      <div style={{ color: '#fff', fontSize: 15, fontWeight: 800, letterSpacing: -0.2 }}>{displayName}</div>
+                      <div style={{ ...T.eyebrow, color: 'rgba(255,255,255,0.72)' }}>{greetingWord()}</div>
+                      <div style={{ ...T.h3, color: '#fff', marginTop: 2 }}>{displayName}</div>
                     </div>
                   </div>
                   <div style={{ width: 38, height: 38, borderRadius: 999, background: 'rgba(255,255,255,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -910,44 +1034,61 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               {homeTab === 'home' ? (
                 <>
                   <div style={{ padding: '18px 22px 0' }}>
-                    <div style={{ position: 'relative', borderRadius: 26, overflow: 'hidden', boxShadow: '0 12px 26px rgba(11,50,26,0.16)', height: 140 }}>
+                    <div style={{ position: 'relative', borderRadius: R.tile, overflow: 'hidden', boxShadow: E.lifted, height: 140 }}>
                       <Photo fallback={promoFallback} C={C} alt="Promotion" />
                       <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,24,13,0.82) 8%, rgba(6,24,13,0.15) 78%)', pointerEvents: 'none' }} />
                       <div style={{ position: 'absolute', left: 20, top: 0, bottom: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 6, pointerEvents: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignSelf: 'flex-start', background: LIME, color: LIME_TEXT, fontSize: 10, fontWeight: 800, letterSpacing: 0.6, borderRadius: 999, padding: '4px 10px' }}>ADMISSIONS OPEN</div>
-                        <div style={{ color: '#fff', fontSize: 19, fontWeight: 800, lineHeight: 1.15, letterSpacing: -0.3 }}>Book your<br />free trial</div>
+                        <div style={{ display: 'inline-flex', alignSelf: 'flex-start', background: LIME, color: LIME_TEXT, ...T.eyebrow, borderRadius: R.pill, padding: '4px 10px' }}>ADMISSIONS OPEN</div>
+                        <div style={{ ...T.h2, color: '#fff', lineHeight: 1.15 }}>Book your<br />free trial</div>
                       </div>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', padding: '16px 22px 12px' }}>
-                    <div style={{ fontSize: 19, fontWeight: 800, color: N.text, letterSpacing: -0.4 }}>Our Sports</div>
-                    <div style={{ fontSize: 12.5, fontWeight: 700, color: C.main }}>
+                    <div style={{ ...T.h2, color: N.text }}>Our Sports</div>
+                    <div style={{ ...T.label, ...NUM, fontWeight: 700, color: C.main }}>
                       {sportsView.length} program{sportsView.length === 1 ? '' : 's'}
                     </div>
                   </div>
 
-                  <div style={{ padding: '0 22px 120px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    {filteredSportsView.length === 0 && (
-                      <div style={{ textAlign: 'center', color: N.muted, fontSize: 14, padding: '30px 0' }}>
-                        {sportsView.length === 0 ? 'No sports available yet.' : 'No matches — try a different search.'}
+                  <div className="jf-stagger" style={{ padding: '0 22px 120px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {branchesLoading && branchRows.length === 0 &&
+                      [0, 1, 2].map(i => <Skeleton key={i} height={148} radius={R.sheet} />)}
+
+                    {!branchesLoading && filteredSportsView.length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '34px 10px' }}>
+                        <div style={{ ...T.h3, color: N.text, marginBottom: 6 }}>
+                          {sportsView.length === 0 ? 'No sports listed yet' : `Nothing matches "${homeSearch.trim()}"`}
+                        </div>
+                        <div style={{ ...T.body, color: N.muted }}>
+                          {sportsView.length === 0
+                            ? 'The academy is still setting up its programs — check back shortly.'
+                            : 'Try a different sport or branch name.'}
+                        </div>
+                        {sportsView.length > 0 && (
+                          <Tappable onClick={() => setHomeSearch('')}
+                            style={{ display: 'inline-block', marginTop: 14, ...T.strong, color: C.dark, background: C.tint, padding: '9px 16px', borderRadius: R.pill }}>
+                            Clear search
+                          </Tappable>
+                        )}
                       </div>
                     )}
-                    {filteredSportsView.map(sp => (
-                      <div key={sp.name} onClick={() => chooseSport(sp.name)}
-                        style={{ position: 'relative', width: '100%', height: 148, borderRadius: 28, overflow: 'hidden', cursor: 'pointer', boxShadow: '0 10px 24px rgba(11,50,26,0.14)' }}>
-                        <Photo src={sp.photo} fallback={sportFallback(sp.name, 700, 420)} radius={28} C={C} alt={sp.name} />
+
+                    {filteredSportsView.map((sp, i) => (
+                      <Tappable key={sp.name} onClick={() => chooseSport(sp.name)} label={`${sp.name}, ${sp.count} location${sp.count === 1 ? '' : 's'}`}
+                        style={{ position: 'relative', width: '100%', height: 148, borderRadius: R.sheet, overflow: 'hidden', boxShadow: E.lifted, animationDelay: `${Math.min(i, 6) * 55}ms` }}>
+                        <Photo src={sp.photo} fallback={sportFallback(sp.name, 700, 420)} radius={R.sheet} C={C} alt={sp.name} />
                         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(6,24,13,0.05) 30%, rgba(6,24,13,0.85) 100%)', pointerEvents: 'none' }} />
-                        <div style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(255,255,255,0.92)', color: '#10462A', fontSize: 10.5, fontWeight: 800, letterSpacing: 0.3, borderRadius: 999, padding: '5px 10px', pointerEvents: 'none' }}>
+                        <div style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(255,255,255,0.92)', color: '#10462A', ...T.eyebrow, ...NUM, letterSpacing: 0.4, borderRadius: R.pill, padding: '5px 10px', pointerEvents: 'none' }}>
                           {sp.count} location{sp.count === 1 ? '' : 's'}
                         </div>
                         <div style={{ position: 'absolute', left: 18, right: 18, bottom: 14, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', pointerEvents: 'none' }}>
-                          <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: -0.3 }}>{sp.name}</div>
-                          <div style={{ width: 34, height: 34, borderRadius: 999, background: LIME, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <div style={{ ...T.h1, fontSize: 21, color: '#fff' }}>{sp.name}</div>
+                          <div style={{ width: 34, height: 34, borderRadius: R.pill, background: LIME, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <ArrowRight size={15} color={LIME_TEXT} />
                           </div>
                         </div>
-                      </div>
+                      </Tappable>
                     ))}
                   </div>
                 </>
@@ -984,7 +1125,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                         OTP sent to <b>+91 {phone}</b>.{' '}
                         <span onClick={() => { setOtpSent(false); setOtp('') }} style={{ color: C.main, fontWeight: 700, cursor: 'pointer' }}>Change</span>
                       </div>
-                      <input type="tel" inputMode="numeric" maxLength={8} placeholder="- - - -" value={otp} autoFocus
+                      <input className="jf-field" type="tel" inputMode="numeric" maxLength={8} placeholder="- - - -" value={otp} autoFocus
                         onChange={e => setOtp(e.target.value.replace(/\D/g, ''))} autoComplete="one-time-code"
                         style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${N.line}`, outline: 'none', fontSize: 22, fontWeight: 700, letterSpacing: 10, color: N.text, background: N.input, borderRadius: 16, padding: '14px 16px', fontFamily: FONT, textAlign: 'center', marginBottom: 16 }} />
                       <Cta onClick={profileVerifyOtp} loading={loading} C={C}>Verify</Cta>
@@ -997,37 +1138,43 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <div style={{ fontSize: 16, fontWeight: 800, color: N.text, marginBottom: 2 }}>Your registrations</div>
                   <div style={{ fontSize: 12.5, color: N.muted, marginBottom: 16 }}>+91 {phone}</div>
                   {profileLoading ? (
-                    <div style={{ textAlign: 'center', padding: '30px 0' }}><Spinner size={22} color={C.main} /></div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {[0, 1].map(i => <Skeleton key={i} height={104} />)}
+                    </div>
                   ) : myTrials.length === 0 ? (
-                    <div style={{ textAlign: 'center', color: N.muted, fontSize: 14, padding: '30px 0' }}>No registrations yet.</div>
+                    <div style={{ textAlign: 'center', padding: '30px 10px' }}>
+                      <div style={{ ...T.h3, color: N.text, marginBottom: 6 }}>Nothing registered yet</div>
+                      <div style={{ ...T.body, color: N.muted }}>Register a student and it will show up here with its status.</div>
+                    </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       {myTrials.map(t => {
                         const expanded = expandedTrialId === t.id
                         return (
-                          <div key={t.id} style={{ background: '#fff', borderRadius: 18, padding: 14, boxShadow: '0 4px 14px rgba(11,50,26,0.06)' }}>
-                            <div onClick={() => setExpandedTrialId(expanded ? null : t.id)} role="button" tabIndex={0}
-                              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                          <div key={t.id} style={{ background: '#fff', borderRadius: R.card, padding: 14, boxShadow: E.rest }}>
+                            <Tappable onClick={() => setExpandedTrialId(expanded ? null : t.id)}
+                              label={`${t.name} — ${expanded ? 'hide' : 'show'} details`}
+                              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                               <div>
-                                <div style={{ fontSize: 15, fontWeight: 800, color: N.text }}>{t.name}</div>
-                                <div style={{ fontSize: 12, color: N.muted, marginTop: 2 }}>{t.sport}{t.branchName ? ` · ${t.branchName}` : ''}</div>
-                                {t.relationship && <div style={{ fontSize: 11.5, color: C.main, fontWeight: 700, marginTop: 4 }}>{t.relationship}</div>}
+                                <div style={{ ...T.h3, fontSize: 15, color: N.text }}>{t.name}</div>
+                                <div style={{ ...T.micro, color: N.muted, marginTop: 2 }}>{t.sport}{t.branchName ? ` · ${t.branchName}` : ''}</div>
+                                {t.relationship && <div style={{ ...T.micro, color: C.main, fontWeight: 700, marginTop: 4 }}>{t.relationship}</div>}
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                                 <span style={{
-                                  fontSize: 10.5, fontWeight: 800, padding: '5px 9px', borderRadius: 999, whiteSpace: 'nowrap',
+                                  ...T.eyebrow, letterSpacing: 0.3, padding: '5px 9px', borderRadius: R.pill, whiteSpace: 'nowrap',
                                   background: STAGE_STRONG.has(t.stage) ? C.main : C.tint,
                                   color:      STAGE_STRONG.has(t.stage) ? '#fff' : C.dark,
                                 }}>
                                   {STAGE_LABEL[t.stage] || t.stage}
                                 </span>
-                                <ChevronDown size={16} color={N.faint} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+                                <ChevronDown size={16} color={N.faint} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .2s ease' }} />
                               </div>
-                            </div>
+                            </Tappable>
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: `1px solid ${N.line}` }}>
-                              <span style={{ fontSize: 11.5, color: N.muted }}>Trial fee</span>
-                              <span style={{ fontSize: 11.5, fontWeight: 700, color: t.trialFeeMode === 'Not collected' ? '#B45309' : C.main }}>
+                              <span style={{ ...T.micro, color: N.muted }}>Trial fee</span>
+                              <span style={{ ...T.micro, ...NUM, fontWeight: 700, color: t.trialFeeMode === 'Not collected' ? '#B45309' : C.main }}>
                                 {t.trialFeeMode === 'Not collected' ? `₹${t.trialFeePaid} due` : `₹${t.trialFeePaid} paid (${t.trialFeeMode})`}
                               </span>
                             </div>
@@ -1115,11 +1262,11 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               ].map(({ key, label, Icon }) => {
                 const active = homeTab === key
                 return (
-                  <div key={key} onClick={() => setHomeTab(key)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: active ? '10px 16px' : '10px 14px', borderRadius: 999, background: active ? C.main : 'transparent', cursor: 'pointer' }}>
+                  <Tappable key={key} onClick={() => setHomeTab(key)} label={label}
+                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: active ? '10px 16px' : '10px 14px', borderRadius: R.pill, background: active ? C.main : 'transparent' }}>
                     <Icon size={active ? 15 : 17} color={active ? '#fff' : N.faint} />
-                    {active && <div style={{ fontSize: 12.5, fontWeight: 800, color: '#fff' }}>{label}</div>}
-                  </div>
+                    {active && <div style={{ ...T.label, fontWeight: 800, color: '#fff' }}>{label}</div>}
+                  </Tappable>
                 )
               })}
             </div>
@@ -1128,49 +1275,52 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
         {/* ── BRANCH ────────────────────────────────────────── */}
         {step === 'branch' && (
-          <div style={{ minHeight: '100vh' }}>
+          <div className="jf-screen" style={{ minHeight: '100vh' }}>
             <div style={{ position: 'relative', height: 210 }}>
               <Photo fallback={sportFallback(chosenSport, 900, 500)} C={C} alt={chosenSport} />
               <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(6,24,13,0.6) 0%, rgba(6,24,13,0.15) 45%, rgba(6,24,13,0.88) 100%)', pointerEvents: 'none' }} />
-              <div onClick={goHome} role="button" tabIndex={0}
-                style={{ position: 'absolute', top: 58, left: 20, width: 38, height: 38, borderRadius: 999, background: 'rgba(255,255,255,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <Tappable onClick={goHome} label="Back to sports"
+                style={{ position: 'absolute', top: 58, left: 20, width: 42, height: 42, borderRadius: R.pill, background: 'rgba(255,255,255,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <ArrowLeft size={17} color="#10462A" />
-              </div>
+              </Tappable>
               <div style={{ position: 'absolute', left: 22, right: 22, bottom: 18, pointerEvents: 'none' }}>
-                <div style={{ display: 'inline-flex', background: 'rgba(201,240,77,0.95)', color: LIME_TEXT, fontSize: 10, fontWeight: 800, letterSpacing: 0.6, borderRadius: 999, padding: '4px 10px' }}>SPORT</div>
-                <div style={{ color: '#fff', fontSize: 27, fontWeight: 800, letterSpacing: -0.6, marginTop: 8 }}>{chosenSport}</div>
-                <div style={{ color: 'rgba(255,255,255,0.78)', fontSize: 13, fontWeight: 600, marginTop: 2 }}>
+                <div style={{ display: 'inline-flex', background: 'rgba(201,240,77,0.95)', color: LIME_TEXT, ...T.eyebrow, borderRadius: R.pill, padding: '4px 10px' }}>SPORT</div>
+                <div style={{ ...T.hero, fontSize: 27, color: '#fff', marginTop: 8 }}>{chosenSport}</div>
+                <div style={{ ...T.label, ...NUM, color: 'rgba(255,255,255,0.78)', marginTop: 3 }}>
                   {branchesForSport.length} branch{branchesForSport.length === 1 ? '' : 'es'}
                 </div>
               </div>
             </div>
 
-            <div style={{ padding: '20px 22px 8px', fontSize: 17, fontWeight: 800, color: N.text, letterSpacing: -0.3 }}>Choose a branch</div>
-            <div style={{ padding: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {branchesForSport.map(row => (
-                <div key={row.id} onClick={() => chooseBranch(row)}
-                  style={{ background: '#fff', borderRadius: 26, padding: 14, cursor: 'pointer', boxShadow: '0 6px 18px rgba(11,50,26,0.08)', opacity: loading ? 0.6 : 1 }}>
+            <div style={{ padding: '20px 22px 10px', ...T.h2, color: N.text }}>Choose a branch</div>
+            <div className="jf-stagger" style={{ padding: '0 22px 40px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {branchesForSport.map((row, i) => (
+                <Tappable key={row.id} onClick={() => chooseBranch(row)} disabled={loading} label={`${row.branchName} — register here`}
+                  style={{ background: '#fff', borderRadius: R.tile, padding: 14, boxShadow: E.raised, opacity: loading ? 0.6 : 1, animationDelay: `${Math.min(i, 6) * 55}ms` }}>
                   <div style={{ display: 'flex', gap: 14 }}>
                     <div style={{ width: 88, height: 88, flexShrink: 0 }}>
-                      <Photo src={row.photoUrl} fallback={branchFallback(row, 320, 320)} radius={20} C={C} alt={row.branchName} />
+                      <Photo src={row.photoUrl} fallback={branchFallback(row, 320, 320)} radius={R.card} C={C} alt={row.branchName} />
                     </div>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: N.text, letterSpacing: -0.2 }}>{row.branchName}</div>
+                      <div style={{ ...T.h3, color: N.text }}>{row.branchName}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <MapPin size={12} color={N.faint} />
-                        <span style={{ fontSize: 12.5, color: '#5E7566', fontWeight: 600 }}>{row.address || chosenSport}</span>
+                        <MapPin size={12} color={N.faint} style={{ flexShrink: 0 }} />
+                        <span style={{ ...T.label, color: '#5E7566' }}>{row.address || chosenSport}</span>
                       </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', borderTop: `1px solid ${N.line}`, marginTop: 12, paddingTop: 11 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.main, fontSize: 13, fontWeight: 800 }}>
-                      Register <ArrowRight size={13} />
+                      {loading ? 'Opening…' : 'Register'} <ArrowRight size={13} />
                     </div>
                   </div>
-                </div>
+                </Tappable>
               ))}
               {branchesForSport.length === 0 && (
-                <div style={{ textAlign: 'center', color: N.muted, fontSize: 14, padding: '20px 0' }}>No branches for this sport yet.</div>
+                <div style={{ textAlign: 'center', padding: '26px 10px' }}>
+                  <div style={{ ...T.h3, color: N.text, marginBottom: 6 }}>No branches for {chosenSport} yet</div>
+                  <div style={{ ...T.body, color: N.muted }}>Pick another sport, or contact the academy to ask when this one opens.</div>
+                </div>
               )}
             </div>
           </div>
@@ -1178,43 +1328,64 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
         {/* ── BATCH ─────────────────────────────────────────── */}
         {step === 'batch' && (
-          <div style={{ minHeight: '100vh' }}>
+          <div className="jf-screen" style={{ minHeight: '100vh' }}>
             <TopBar title="Choose a Batch" onBack={() => setStep('branch')} C={C}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: C.tint, color: C.dark, borderRadius: 10, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, marginTop: 12 }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: C.tint, color: C.dark, borderRadius: R.chip, padding: '7px 12px', ...T.label, fontWeight: 700, marginTop: 12 }}>
                 {chosenSport} • {chosenRow?.branchName}
               </div>
             </TopBar>
-            <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {batches.map(b => (
-                <div key={b.id} onClick={() => { setBatchId(b.id); setStep('form') }}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#fff', borderRadius: 18, padding: '14px 16px', cursor: 'pointer', boxShadow: '0 4px 14px rgba(11,50,26,0.06)' }}>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: N.text }}>{b.name}</div>
-                    <div style={{ fontSize: 12.5, color: N.faint, marginTop: 2 }}>
-                      {(b.days || []).join(', ')}{b.startTime ? ` · ${b.startTime}–${b.endTime}` : ''}
+            <div className="jf-stagger" style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {batches.map((b, i) => {
+                // Seats are the one number a parent actually weighs here, so
+                // they get a meter as well as a count — filled from the real
+                // capacity, and simply absent when the academy left it unset.
+                const taken = b.capacity ? Math.max(0, b.capacity - Math.max(0, b.seatsLeft)) : 0
+                const pct = b.capacity ? Math.min(100, Math.round((taken / b.capacity) * 100)) : null
+                const open = b.seatsLeft > 0
+                return (
+                  <Tappable key={b.id} onClick={() => { setBatchId(b.id); setStep('form') }}
+                    label={`${b.name}, ${open ? `${b.seatsLeft} seats left` : 'waitlist'}`}
+                    style={{ background: '#fff', borderRadius: R.card, padding: '14px 16px', boxShadow: E.rest, animationDelay: `${Math.min(i, 6) * 45}ms` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ ...T.h3, fontSize: 15, color: N.text }}>{b.name}</div>
+                        <div style={{ ...T.label, ...NUM, color: N.faint, marginTop: 3 }}>
+                          {(b.days || []).join(', ')}{b.startTime ? ` · ${b.startTime}–${b.endTime}` : ''}
+                        </div>
+                      </div>
+                      <span style={{ ...T.eyebrow, ...NUM, letterSpacing: 0.3, padding: '6px 10px', borderRadius: R.pill, flexShrink: 0, whiteSpace: 'nowrap',
+                        background: open ? C.tint : '#FEF3C7', color: open ? C.dark : '#92400E' }}>
+                        {open ? `${b.seatsLeft} seats left` : 'Waitlist'}
+                      </span>
                     </div>
-                  </div>
-                  <span style={{ fontSize: 11.5, fontWeight: 800, padding: '5px 10px', borderRadius: 999,
-                    background: b.seatsLeft > 0 ? C.tint : '#FEF3C7', color: b.seatsLeft > 0 ? C.dark : '#92400E' }}>
-                    {b.seatsLeft > 0 ? `${b.seatsLeft} seats left` : 'Waitlist'}
-                  </span>
+                    {pct !== null && (
+                      <div style={{ marginTop: 11, height: 4, borderRadius: R.pill, background: N.line, overflow: 'hidden' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', borderRadius: R.pill, background: open ? C.main : '#F59E0B', transition: 'width .4s ease' }} />
+                      </div>
+                    )}
+                  </Tappable>
+                )
+              })}
+              {batchesLoading && batches.length === 0 &&
+                [0, 1, 2].map(i => <Skeleton key={i} height={74} />)}
+              {!batchesLoading && batches.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '20px 10px' }}>
+                  <div style={{ ...T.h3, color: N.text, marginBottom: 6 }}>No batches listed yet</div>
+                  <div style={{ ...T.body, color: N.muted }}>Carry on with your registration — the academy will place you in one.</div>
                 </div>
-              ))}
-              {batches.length === 0 && (
-                <div style={{ textAlign: 'center', color: N.muted, fontSize: 14, padding: '10px 0' }}>No batches listed — the academy will place you.</div>
               )}
-              <div onClick={() => { setBatchId(null); setStep('form') }} role="button" tabIndex={0}
-                style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: N.muted, padding: '10px 0', cursor: 'pointer', textDecoration: 'underline' }}>
+              <Tappable onClick={() => { setBatchId(null); setStep('form') }}
+                style={{ textAlign: 'center', ...T.strong, fontSize: 13, color: N.muted, padding: '12px 0', marginTop: 2, borderRadius: R.chip, textDecoration: 'underline' }}>
                 Not sure yet — let the academy pick
-              </div>
+              </Tappable>
             </div>
           </div>
         )}
 
         {/* ── FORM ──────────────────────────────────────────── */}
         {step === 'form' && (
-          <div style={{ minHeight: '100vh', position: 'relative' }}>
-            <div style={{ minHeight: '100vh', overflowY: 'auto', paddingBottom: 100 }}>
+          <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative' }}>
+            <div style={{ minHeight: '100vh', overflowY: 'auto', paddingBottom: 116 }}>
               <TopBar title="Student Registration" subtitle={`${chosenSport} · ${chosenRow?.branchName}`} onBack={() => setStep(batchChoice ? 'batch' : 'branch')} C={C} />
 
               <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1223,7 +1394,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 </div>
                 <ErrorBox msg={error} />
 
-                <SectionCard index="01" title="STUDENT DETAILS">
+                <SectionCard index="01" title="STUDENT DETAILS" C={C}>
                   <LabeledInput id="jf-name" placeholder="Full name" value={form.name}
                     onChange={e => set('name', e.target.value)} invalid={invalid.name} />
                   <div style={{ display: 'flex', gap: 12 }}>
@@ -1239,7 +1410,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     </div>
                   </div>
 
-                  <select value={form.gender} onChange={e => set('gender', e.target.value)}
+                  <select className="jf-field" value={form.gender} onChange={e => set('gender', e.target.value)}
                     style={{ ...inputStyle, cursor: 'pointer', color: form.gender ? N.text : N.faint }}>
                     <option value="">Gender (optional)</option>
                     <option value="Male">Male</option>
@@ -1250,19 +1421,11 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: N.muted }}>Relationship to parent</div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {['Son', 'Daughter', 'Ward', 'Other'].map(opt => {
-                        const active = relationship === opt
-                        return (
-                          <div key={opt} onClick={() => setRelationship(opt)} role="button" tabIndex={0}
-                            style={{
-                              padding: '9px 14px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                              background: active ? C.main : N.input, color: active ? '#fff' : N.muted,
-                              border: active ? `1.5px solid ${C.main}` : `1.5px solid ${N.line}`,
-                            }}>
-                            {opt}
-                          </div>
-                        )
-                      })}
+                      {['Son', 'Daughter', 'Ward', 'Other'].map(opt => (
+                        <Chip key={opt} active={relationship === opt} onClick={() => setRelationship(opt)} C={C}>
+                          {opt}
+                        </Chip>
+                      ))}
                     </div>
                     {relationship === 'Other' && (
                       <LabeledInput placeholder="Describe the relationship" value={relationshipCustom}
@@ -1273,7 +1436,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   {myTrials.length > 0 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: N.muted }}>Sibling of (optional)</div>
-                      <select value={siblingOfId} onChange={e => setSiblingOfId(e.target.value)}
+                      <select className="jf-field" value={siblingOfId} onChange={e => setSiblingOfId(e.target.value)}
                         style={{ ...inputStyle, cursor: 'pointer' }}>
                         <option value="">— Not linked to another registration —</option>
                         {myTrials.map(t => <option key={t.id} value={t.id}>{t.name} ({t.sport})</option>)}
@@ -1282,30 +1445,23 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   )}
                 </SectionCard>
 
-                <SectionCard index="02" title="PREFERRED DAYS">
+                <SectionCard index="02" title="PREFERRED DAYS" C={C}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: N.muted }}>
                       Which days would you like to play? {batchChoice ? '(optional)' : '(helps us place you in the right batch)'}
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {DAY_OPTIONS.map(day => {
-                        const active = form.preferredDays.includes(day)
-                        return (
-                          <div key={day} onClick={() => toggleDay(day)} role="button" tabIndex={0}
-                            style={{
-                              padding: '9px 14px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                              background: active ? C.main : N.input, color: active ? '#fff' : N.muted,
-                              border: active ? `1.5px solid ${C.main}` : `1.5px solid ${N.line}`,
-                            }}>
-                            {day}
-                          </div>
-                        )
-                      })}
+                      {DAY_OPTIONS.map(day => (
+                        <Chip key={day} active={form.preferredDays.includes(day)} onClick={() => toggleDay(day)} C={C}
+                          style={{ minWidth: 58 }}>
+                          {day}
+                        </Chip>
+                      ))}
                     </div>
                   </div>
                 </SectionCard>
 
-                <SectionCard index="03" title="CONTACT">
+                <SectionCard index="03" title="CONTACT" C={C}>
                   <LabeledInput id="jf-parentName" placeholder="Father's / guardian's name" value={form.parentName}
                     onChange={e => set('parentName', e.target.value)} invalid={invalid.parentName} />
                   <LabeledInput placeholder="Mother's name (optional)" value={form.motherName} onChange={e => set('motherName', e.target.value)} />
@@ -1319,13 +1475,13 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     onChange={e => set('emergencyContactPhone', e.target.value)} invalid={invalid.emergencyContactPhone} />
                 </SectionCard>
 
-                <SectionCard index="04" title="HEALTH">
-                  <textarea placeholder="Any medical condition or allergy? (leave blank if none)" value={form.medicalNotes}
+                <SectionCard index="04" title="HEALTH" C={C}>
+                  <textarea className="jf-field" placeholder="Any medical condition or allergy? (leave blank if none)" value={form.medicalNotes}
                     onChange={e => set('medicalNotes', e.target.value)}
                     style={{ ...inputStyle, resize: 'none', minHeight: 74, lineHeight: 1.45 }} />
                 </SectionCard>
 
-                <SectionCard index="05" title="DOCUMENT">
+                <SectionCard index="05" title="DOCUMENT" C={C}>
                   {!documentFile ? (
                     <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', fontSize: 14, fontWeight: 600, color: N.muted, border: `2px dashed ${N.line}`, borderRadius: 18, cursor: 'pointer' }}>
                       <Camera size={16} /> Upload ID / medical document
@@ -1340,7 +1496,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   )}
                 </SectionCard>
 
-                <SectionCard index="06" title="TRIAL FEE">
+                <SectionCard index="06" title="TRIAL FEE" C={C}>
                   {kitFee > 0 && (
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1360,22 +1516,14 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   </div>
                   <div style={{ display: 'flex', gap: 10 }}>
                     {[
-                      { key: 'walkin', label: 'Pay at the Academy' },
-                      { key: 'online', label: 'Pay Online Now' },
-                    ].map(opt => {
-                      const active = feeMode === opt.key
-                      return (
-                        <div key={opt.key} onClick={() => setFeeMode(opt.key)} role="button" tabIndex={0}
-                          style={{
-                            flex: 1, textAlign: 'center', padding: '13px 10px', borderRadius: 14, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                            background: active ? C.main : N.input,
-                            color: active ? '#fff' : N.muted,
-                            border: active ? `1.5px solid ${C.main}` : `1.5px solid ${N.line}`,
-                          }}>
-                          {opt.label}
-                        </div>
-                      )
-                    })}
+                      { key: 'walkin', label: 'Pay at the academy' },
+                      { key: 'online', label: 'Pay online now' },
+                    ].map(opt => (
+                      <Chip key={opt.key} active={feeMode === opt.key} onClick={() => setFeeMode(opt.key)} C={C}
+                        style={{ flex: 1, padding: '14px 10px', borderRadius: R.control, fontSize: 13 }}>
+                        {opt.label}
+                      </Chip>
+                    ))}
                   </div>
                   <div style={{ fontSize: 12, color: N.muted, lineHeight: 1.4 }}>
                     {feeMode === 'walkin'
@@ -1386,7 +1534,18 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               </div>
             </div>
 
-            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '16px 22px 26px', background: `linear-gradient(180deg, rgba(244,248,244,0) 0%, ${N.page} 45%)` }}>
+            {/* A checkout bar, not a floating button: the total travels with the
+                CTA so what you're agreeing to is on screen at the moment you
+                tap, however far down the form you are. */}
+            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '13px 22px 24px',
+                          background: 'rgba(244,248,244,0.88)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+                          borderTop: `1px solid ${N.line}` }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+                <span style={{ ...T.micro, color: N.muted }}>
+                  Amount due · {feeMode === 'online' ? 'paying online' : 'pay at the academy'}
+                </span>
+                <span style={{ ...T.h3, ...NUM, color: N.text }}>₹{totalDue.toLocaleString('en-IN')}</span>
+              </div>
               <Cta onClick={startSubmit} loading={submitting} C={C}>Submit Registration</Cta>
             </div>
           </div>
@@ -1394,18 +1553,18 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
         {/* ── CONFIRM ───────────────────────────────────────── */}
         {step === 'confirm' && (
-          <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '40px 30px', textAlign: 'center' }}>
-            <div style={{ width: 88, height: 88, borderRadius: 999, background: C.main, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 14px 30px ${C.main}52`, marginBottom: 10 }}>
+          <div className="jf-screen" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '40px 30px', textAlign: 'center' }}>
+            <div style={{ width: 88, height: 88, borderRadius: R.pill, background: C.main, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 14px 30px ${C.main}52`, marginBottom: 10 }}>
               <CheckCircle2 size={38} color="#fff" strokeWidth={2.2} />
             </div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: N.text, letterSpacing: -0.5 }}>You're in!</div>
-            <div style={{ fontSize: 14, color: '#5E7566', fontWeight: 500, lineHeight: 1.55, maxWidth: 280 }}>
+            <div style={{ ...T.h1, color: N.text }}>You're in!</div>
+            <div style={{ ...T.body, color: '#5E7566', lineHeight: 1.55, maxWidth: 280 }}>
               Registration received for <b style={{ color: N.text }}>{chosenSport}</b> at <b style={{ color: N.text }}>{chosenRow?.branchName}</b>. Our coach will call within 24 hours.
             </div>
-            <div style={{ background: '#fff', borderRadius: 22, padding: '16px 18px', marginTop: 20, width: '100%', boxShadow: '0 6px 18px rgba(11,50,26,0.08)', display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left' }}>
+            <div style={{ background: '#fff', borderRadius: R.card, padding: '16px 18px', marginTop: 20, width: '100%', boxShadow: E.raised, display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Application ID</span>
-                <span style={{ fontSize: 12.5, color: N.text, fontWeight: 800 }}>{shortCode}-{new Date().getFullYear()}-{result?.id ?? '—'}</span>
+                <span style={{ ...T.label, color: N.muted }}>Application ID</span>
+                <span style={{ ...T.label, ...NUM, fontWeight: 800, color: N.text, letterSpacing: 0.3 }}>{shortCode}-{new Date().getFullYear()}-{result?.id ?? '—'}</span>
               </div>
               {batchChoice && (
                 <>
@@ -1420,8 +1579,8 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               )}
               <div style={{ height: 1, background: N.line }} />
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>{kitFee > 0 ? 'Trial + kit fee' : 'Trial fee'}</span>
-                <span style={{ fontSize: 12.5, fontWeight: 800, color: paymentStatus === 'paid' ? C.main : paymentStatus === 'failed' ? '#B45309' : N.text }}>
+                <span style={{ ...T.label, color: N.muted }}>{kitFee > 0 ? 'Trial + kit fee' : 'Trial fee'}</span>
+                <span style={{ ...T.label, ...NUM, fontWeight: 800, color: paymentStatus === 'paid' ? C.main : paymentStatus === 'failed' ? '#B45309' : N.text }}>
                   {feeMode === 'online'
                     ? (paymentStatus === 'paid' ? `₹${totalDue.toLocaleString('en-IN')} paid online ✓`
                        : paymentStatus === 'failed' ? `₹${totalDue.toLocaleString('en-IN')} — pay at academy`
@@ -1449,7 +1608,8 @@ export default function TrialEnroll({ academySlug: slugProp }) {
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(6,26,13,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}
             onClick={() => { if (!loading) { setShowGate(false); setError('') } }}>
             <div onClick={e => e.stopPropagation()}
-              style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: '28px 28px 0 0', padding: '22px 24px 30px', boxSizing: 'border-box' }}>
+              className="jf-screen"
+              style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: `${R.sheet}px ${R.sheet}px 0 0`, padding: '22px 24px 30px', boxSizing: 'border-box' }}>
               <div style={{ width: 40, height: 4, borderRadius: 999, background: N.line, margin: '0 auto 18px' }} />
               <div style={{ fontSize: 18, fontWeight: 800, color: N.text, marginBottom: 4 }}>Verify your number</div>
               <div style={{ fontSize: 13.5, color: N.muted, marginBottom: 18 }}>One quick step so the academy can confirm your registration.</div>
@@ -1478,7 +1638,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     OTP sent to <b>+91 {phone}</b>.{' '}
                     <span onClick={() => { setOtpSent(false); setOtp('') }} style={{ color: C.main, fontWeight: 700, cursor: 'pointer' }}>Change</span>
                   </div>
-                  <input type="tel" inputMode="numeric" maxLength={8} placeholder="- - - -" value={otp} autoFocus
+                  <input className="jf-field" type="tel" inputMode="numeric" maxLength={8} placeholder="- - - -" value={otp} autoFocus
                     onChange={e => setOtp(e.target.value.replace(/\D/g, ''))} autoComplete="one-time-code"
                     style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${N.line}`, outline: 'none', fontSize: 22, fontWeight: 700, letterSpacing: 10, color: N.text, background: N.input, borderRadius: 16, padding: '14px 16px', fontFamily: FONT, textAlign: 'center', marginBottom: 16 }} />
                   <Cta onClick={gateVerify} loading={loading || submitting} C={C}>Verify &amp; Submit</Cta>
