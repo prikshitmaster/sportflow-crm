@@ -3354,27 +3354,6 @@ export async function getCurrentAuthPhone() {
   return data?.session?.user?.phone || null
 }
 
-// DEV ONLY — bypass phone OTP. Mirrors parentTestLogin exactly, but calls a
-// dedicated edge function since there's no pre-existing row to claim here
-// (a trial doesn't exist yet — it's created fresh at submit time). Gated
-// server-side behind ENABLE_TRIAL_TEST_LOGIN.
-export async function trialTestLogin(phone) {
-  const phone10 = String(phone || '').replace(/\D/g, '').slice(-10)
-  const resp = await fetch(`${_functionsBase()}/trial-test-login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey':       import.meta.env.VITE_SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({ phone: phone10 }),
-  })
-  const json = await resp.json().catch(() => ({}))
-  if (!resp.ok) throw new Error(json?.error || 'Test login failed')
-  const { error } = await supabase.auth.signInWithPassword({ email: json.email, password: json.password })
-  if (error) throw error
-}
-
 // Academy branding for the /join/:academySlug funnel — pre-auth, public
 // (name/logo/color, shown before the OTP screen even renders). Returns
 // null for an unresolved slug rather than throwing, since "unknown slug"

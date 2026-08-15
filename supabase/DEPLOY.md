@@ -56,14 +56,72 @@ DROP FUNCTION IF EXISTS current_user_academy_id();
 
 ---
 
-## 2. Configure Supabase Auth for parent phone OTP
+## 2. Configure Supabase Auth for phone OTP
 
-In **Supabase Dashboard → Authentication → Providers**:
-- Enable **Phone**
-- Provider: MSG91 / Twilio / Vonage (MSG91 is cheapest for India ~₹0.15/SMS)
-- Add credentials per your provider's docs
+One setting covers **both** phone-OTP surfaces — parent login (`/parent-login`)
+and the public student registration funnel (`/join`). They call the same
+primitive: `supabase.auth.signInWithOtp` / `verifyOtp` in `src/lib/db.js`.
+Supabase generates, stores, and verifies the code itself; the SMS provider
+only carries the message. There is no app code to change when the provider
+changes.
 
-Test from Auth → Users → "Add user" → phone → send OTP.
+In **Supabase Dashboard → Authentication → Providers → Phone**: enable it.
+
+### 2a. Testing — no SMS provider, no cost (current setup)
+
+Map fixed codes to fixed numbers in the **Test OTP** field. When a number
+matches, the provider call is skipped entirely — nothing is sent, nothing is
+billed, and no Twilio/MSG91 account is needed:
+
+```
+9999999999:123456
+9888888888:654321
+```
+
+Enter `9999999999` on `/join` or `/parent-login`, type `123456`, you're in.
+
+This is enforced server-side and works in production builds, which is why the
+old client-side "⚡ Skip OTP (dev only)" buttons were removed — they were a
+bypass shipped in the bundle, this isn't.
+
+Set **`SMS_TEST_OTP_VALID_UNTIL`** (ISO 8601) so the test numbers expire on
+their own instead of quietly outliving the testing window.
+
+> Test numbers are reported to misbehave under **Twilio Verify** specifically,
+> since Verify owns the code lifecycle rather than Supabase. Another reason to
+> prefer plain Messaging over Verify — see 2b.
+
+### 2b. Going live — picking a provider
+
+Deferred on purpose: DLT registration is provider-specific, so committing
+early locks in the paperwork.
+
+Supabase natively supports **Twilio, Twilio Verify, MessageBird, Vonage,
+TextLocal** — and *not* MSG91. Indian providers require the
+[Send SMS Hook](https://supabase.com/docs/guides/auth/auth-hooks/send-sms-hook):
+Supabase still generates and verifies the OTP, but hands it to an edge function
+that forwards it to the provider.
+
+| Provider | ~Cost/SMS | Integration | India DLT |
+|---|---|---|---|
+| **MSG91** | ₹0.12–0.15 | Send SMS Hook (edge function) | MSG91 walks Indian businesses through it |
+| Twilio Messaging | ₹0.30+ | Native, config only | You register entity/header/template, submit to Twilio onboarding |
+| Twilio Verify | ₹0.45 | Native, config only | Same as above — Verify grants no exemption |
+
+**India DLT is mandatory for all commercial SMS including OTP** — roughly
+₹5,900 + GST one-time and 3–7 working days. Unregistered SMS is dropped at the
+operator level, so budget that lead time before any real-user launch.
+
+For Twilio Messaging, the registered DLT template must match the Supabase SMS
+message body **exactly**, or carriers silently drop the message.
+
+### 2c. Before real users: rate limits + CAPTCHA
+
+`/join` is public and unauthenticated, so "Send OTP" is an open SMS-pumping
+target once a paid provider is live. Not urgent while on test OTP (no send =
+no spend), but required at launch: tighten **Auth → Rate Limits** and enable
+CAPTCHA, which needs a `captchaToken` passed into `signInWithOtp` from
+`TrialEnroll.jsx` and `ParentLogin.jsx`.
 
 ---
 
@@ -154,8 +212,14 @@ have affected these paths, but verify.
   ```sql
   SELECT secure_create_parent('Test Parent', '+919999999999', 'test@example.com', <a_real_student_id>, 'father', NULL);
   ```
-- [ ] Visit `/parent-login` → enter `9999999999` → receive OTP via Supabase
+- [ ] Visit `/parent-login` → enter `9999999999` → enter the Test OTP code
+      configured in step 2a (no SMS is sent)
 - [ ] Verify OTP → land on `/parent/home` → see the test student card
+
+### Student registration flow (`/join`)
+- [ ] Visit `/join/<academy-slug>` → enter `9999999999` → Send OTP
+- [ ] Enter the Test OTP code → funnel proceeds without an SMS provider
+- [ ] Confirm no "Skip OTP" button appears in any build
 
 ### New Razorpay flow (test mode)
 - [ ] On `/payments` page, click "Send Pay Link"

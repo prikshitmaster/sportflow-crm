@@ -639,18 +639,6 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     } finally { setLoading(false) }
   }
 
-  // DEV ONLY — bypass SMS. Mirrors ParentLogin devSkipOtp / trialTestLogin.
-  const devSkip = async (thenSubmit) => {
-    setLoading(true); setError('')
-    try {
-      await db.trialTestLogin(phone)
-      setIsAuthed(true)
-      if (thenSubmit) { setShowGate(false); await doSubmit() } else { goHome() }
-    } catch (err) {
-      setError(err?.message || 'Test login failed (is ENABLE_TRIAL_TEST_LOGIN set?)')
-    } finally { setLoading(false) }
-  }
-
   const skipLogin = () => { setError(''); goHome() }
 
   // Profile-tab verify — same OTP mechanics as login, but deliberately does
@@ -673,12 +661,6 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     } catch (err) {
       setError(err?.message || 'Invalid OTP')
     } finally { setLoading(false) }
-  }
-  const profileDevSkip = async () => {
-    setLoading(true); setError('')
-    try { await db.trialTestLogin(phone); setIsAuthed(true) }
-    catch (err) { setError(err?.message || 'Test login failed (is ENABLE_TRIAL_TEST_LOGIN set?)') }
-    finally { setLoading(false) }
   }
 
   // ── navigation ───────────────────────────────────────────────
@@ -971,12 +953,6 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       style={{ border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: N.text, flex: 1, background: 'transparent', fontFamily: FONT }} />
                   </div>
                   <Cta onClick={sendCode} loading={loading} C={C}>{authMode === 'login' ? 'Send OTP' : 'Create Account'}</Cta>
-                  {import.meta.env.DEV && (
-                    <button type="button" onClick={() => devSkip(false)} disabled={loading}
-                      style={{ width: '100%', marginTop: 10, padding: '10px 0', fontSize: 13, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, cursor: 'pointer', fontFamily: FONT }}>
-                      ⚡ Skip OTP (dev only)
-                    </button>
-                  )}
                 </>
               ) : (
                 <>
@@ -1112,12 +1088,6 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                           style={{ border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: N.text, flex: 1, background: 'transparent', fontFamily: FONT }} />
                       </div>
                       <Cta onClick={profileSendOtp} loading={loading} C={C}>Send OTP</Cta>
-                      {import.meta.env.DEV && (
-                        <button type="button" onClick={profileDevSkip} disabled={loading}
-                          style={{ width: '100%', marginTop: 10, padding: '10px 0', fontSize: 13, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, cursor: 'pointer', fontFamily: FONT }}>
-                          ⚡ Skip OTP (dev only)
-                        </button>
-                      )}
                     </>
                   ) : (
                     <>
@@ -1625,12 +1595,6 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       style={{ border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: N.text, flex: 1, background: 'transparent', fontFamily: FONT }} />
                   </div>
                   <Cta onClick={gateSend} loading={loading} C={C}>Send OTP</Cta>
-                  {import.meta.env.DEV && (
-                    <button type="button" onClick={() => devSkip(true)} disabled={loading}
-                      style={{ width: '100%', marginTop: 10, padding: '10px 0', fontSize: 13, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, cursor: 'pointer', fontFamily: FONT }}>
-                      ⚡ Skip OTP & submit (dev only)
-                    </button>
-                  )}
                 </>
               ) : (
                 <>
