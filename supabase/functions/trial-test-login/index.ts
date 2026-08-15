@@ -1,5 +1,5 @@
 // ============================================================
-// trial-test-login — DEV ONLY shortcut to skip phone OTP
+// trial-test-login — TESTING ONLY shortcut to skip phone OTP
 // ============================================================
 // Takes a 10-digit phone, creates (or reuses) a synthetic auth user with
 // BOTH a deterministic email+password (for signInWithPassword) AND the
@@ -13,7 +13,14 @@
 // a bare auth user keyed by phone.
 //
 // HARD-GATED behind ENABLE_TRIAL_TEST_LOGIN env var. If unset, returns 404.
-// DO NOT set this var in production.
+//
+// It IS set on the live project on purpose right now, to test the /join funnel
+// end to end without SMS delivery. Understand what that means while it is on:
+// this endpoint is unauthenticated apart from the anon key (which ships in the
+// bundle), so anyone who finds it can mint a phone-verified session for ANY
+// number and submit trials as that person. Unset it the moment testing ends —
+// `supabase secrets unset ENABLE_TRIAL_TEST_LOGIN` — and rebuild the client
+// without VITE_ALLOW_OTP_SKIP.
 //
 // Env vars (Supabase Functions dashboard):
 //   SUPABASE_URL                — auto

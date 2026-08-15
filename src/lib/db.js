@@ -3354,6 +3354,41 @@ export async function getCurrentAuthPhone() {
   return data?.session?.user?.phone || null
 }
 
+// Ends the phone-OTP session the /join funnel is holding. Must be paired with
+// clearing the caller's own state — getCurrentAuthPhone() above re-authenticates
+// from localStorage on the next mount, so a UI-only "logout" survives a reload.
+export async function signOutTrial() {
+  const { error } = await supabase.auth.signOut()
+  if (error) throw error
+}
+
+// TESTING ONLY — bypass phone OTP. Mirrors parentTestLogin exactly, but calls a
+// dedicated edge function since there's no pre-existing row to claim here
+// (a trial doesn't exist yet — it's created fresh at submit time).
+//
+// Two independent gates must BOTH be on for this to do anything:
+//   • client — VITE_ALLOW_OTP_SKIP=true at build time (renders the buttons)
+//   • server — ENABLE_TRIAL_TEST_LOGIN=true on the edge function (404s otherwise)
+// The server gate is the real control; the build flag only hides the UI. Turn
+// ENABLE_TRIAL_TEST_LOGIN off the moment live testing is done — while it is on,
+// anyone who finds the endpoint can mint a verified session for any phone number.
+export async function trialTestLogin(phone) {
+  const phone10 = String(phone || '').replace(/\D/g, '').slice(-10)
+  const resp = await fetch(`${_functionsBase()}/trial-test-login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey':       import.meta.env.VITE_SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ phone: phone10 }),
+  })
+  const json = await resp.json().catch(() => ({}))
+  if (!resp.ok) throw new Error(json?.error || 'Test login failed')
+  const { error } = await supabase.auth.signInWithPassword({ email: json.email, password: json.password })
+  if (error) throw error
+}
+
 // Academy branding for the /join/:academySlug funnel — pre-auth, public
 // (name/logo/color, shown before the OTP screen even renders). Returns
 // null for an unresolved slug rather than throwing, since "unknown slug"

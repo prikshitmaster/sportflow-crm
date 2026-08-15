@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Phone, ArrowLeft, ArrowRight, MapPin, Trophy, CheckCircle2,
-  Camera, X, User, Home as HomeIcon, CalendarDays, Search, Bell, ChevronDown,
+  Camera, X, User, Home as HomeIcon, CalendarDays, Search, Bell, ChevronDown, LogOut,
 } from 'lucide-react'
 import * as db from '../lib/db'
 import DevFillButton from '../components/DevFillButton'
@@ -33,6 +33,13 @@ import { fillPublicRegistration } from '../lib/devFill'
 //
 // Deliberately does NOT use AppContext (one-shot anonymous submission, not
 // an ongoing role) — talks to db.js directly, same convention as PayPublic.jsx.
+
+// Renders the "Skip OTP" test buttons. Deliberately NOT gated on
+// import.meta.env.DEV — the point is to exercise the funnel against the live
+// deployment, where DEV is false. Set VITE_ALLOW_OTP_SKIP=true on the build
+// that needs it and unset it afterwards; the button is inert unless the
+// trial-test-login function also has ENABLE_TRIAL_TEST_LOGIN=true.
+const OTP_SKIP = import.meta.env.VITE_ALLOW_OTP_SKIP === 'true'
 
 // India-default E.164 normalisation (mirrors ParentLogin.jsx), duplicated
 // locally since this page intentionally stays free of AppContext-tied imports.
@@ -639,6 +646,20 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     } finally { setLoading(false) }
   }
 
+  // TESTING ONLY — bypass SMS. Mirrors ParentLogin devSkipOtp / trialTestLogin.
+  // thenSubmit distinguishes the submit-time gate (verify, then post the trial)
+  // from the login screen (verify, then land on Home).
+  const devSkip = async (thenSubmit) => {
+    setLoading(true); setError('')
+    try {
+      await db.trialTestLogin(phone)
+      setIsAuthed(true)
+      if (thenSubmit) { setShowGate(false); await doSubmit() } else { goHome() }
+    } catch (err) {
+      setError(err?.message || 'Test login failed (is ENABLE_TRIAL_TEST_LOGIN set?)')
+    } finally { setLoading(false) }
+  }
+
   const skipLogin = () => { setError(''); goHome() }
 
   // Profile-tab verify — same OTP mechanics as login, but deliberately does
@@ -660,6 +681,30 @@ export default function TrialEnroll({ academySlug: slugProp }) {
       setIsAuthed(true); setOtpSent(false); setOtp('')
     } catch (err) {
       setError(err?.message || 'Invalid OTP')
+    } finally { setLoading(false) }
+  }
+
+  const profileDevSkip = async () => {
+    setLoading(true); setError('')
+    try { await db.trialTestLogin(phone); setIsAuthed(true) }
+    catch (err) { setError(err?.message || 'Test login failed (is ENABLE_TRIAL_TEST_LOGIN set?)') }
+    finally { setLoading(false) }
+  }
+
+  // Ends the Supabase session AND wipes every identity-derived bit of state.
+  // Both halves are required: the mount effect above restores the session from
+  // localStorage, so clearing state alone logs you back in on reload — and
+  // signing out alone leaves the previous person's registrations on screen.
+  const logout = async () => {
+    setLoading(true); setError('')
+    try {
+      await db.signOutTrial()
+      setIsAuthed(false)
+      setPhone(''); setOtp(''); setOtpSent(false)
+      setMyTrials([]); setExpandedTrialId(null)
+      setHomeTab('home'); setStep('login')
+    } catch (err) {
+      setError(err?.message || 'Could not log out')
     } finally { setLoading(false) }
   }
 
@@ -953,6 +998,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       style={{ border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: N.text, flex: 1, background: 'transparent', fontFamily: FONT }} />
                   </div>
                   <Cta onClick={sendCode} loading={loading} C={C}>{authMode === 'login' ? 'Send OTP' : 'Create Account'}</Cta>
+                  {OTP_SKIP && (
+                    <button type="button" onClick={() => devSkip(false)} disabled={loading}
+                      style={{ width: '100%', marginTop: 10, padding: '10px 0', fontSize: 13, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, cursor: 'pointer', fontFamily: FONT }}>
+                      ⚡ Skip OTP (testing only)
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
@@ -1088,6 +1139,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                           style={{ border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: N.text, flex: 1, background: 'transparent', fontFamily: FONT }} />
                       </div>
                       <Cta onClick={profileSendOtp} loading={loading} C={C}>Send OTP</Cta>
+                      {OTP_SKIP && (
+                        <button type="button" onClick={profileDevSkip} disabled={loading}
+                          style={{ width: '100%', marginTop: 10, padding: '10px 0', fontSize: 13, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, cursor: 'pointer', fontFamily: FONT }}>
+                          ⚡ Skip OTP (testing only)
+                        </button>
+                      )}
                     </>
                   ) : (
                     <>
@@ -1106,7 +1163,14 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 /* ── PROFILE, verified — the actual registrations list ── */
                 <div style={{ padding: '20px 22px 120px' }}>
                   <div style={{ fontSize: 16, fontWeight: 800, color: N.text, marginBottom: 2 }}>Your registrations</div>
-                  <div style={{ fontSize: 12.5, color: N.muted, marginBottom: 16 }}>+91 {phone}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 16 }}>
+                    <div style={{ fontSize: 12.5, color: N.muted }}>+91 {phone}</div>
+                    <Tappable onClick={logout} label="Log out"
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 11px', borderRadius: R.pill, border: `1px solid ${N.line}`, background: '#fff', flexShrink: 0 }}>
+                      <LogOut size={13} color={N.muted} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: N.muted }}>Log out</span>
+                    </Tappable>
+                  </div>
                   {profileLoading ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                       {[0, 1].map(i => <Skeleton key={i} height={104} />)}
@@ -1595,6 +1659,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       style={{ border: 'none', outline: 'none', fontSize: 16, fontWeight: 600, color: N.text, flex: 1, background: 'transparent', fontFamily: FONT }} />
                   </div>
                   <Cta onClick={gateSend} loading={loading} C={C}>Send OTP</Cta>
+                  {OTP_SKIP && (
+                    <button type="button" onClick={() => devSkip(true)} disabled={loading}
+                      style={{ width: '100%', marginTop: 10, padding: '10px 0', fontSize: 13, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, cursor: 'pointer', fontFamily: FONT }}>
+                      ⚡ Skip OTP &amp; submit (testing only)
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
