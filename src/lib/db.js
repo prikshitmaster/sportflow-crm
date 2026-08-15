@@ -3452,6 +3452,63 @@ export async function updateAcademyBranding(academyId, { slug, brandColor, appDi
   if (error) throw error
 }
 
+// Owner-only read of the Settings → Academy Profile fields (migration 0152).
+// Separate from fetchOwnAcademyBranding above because branding is the /join
+// funnel's identity (slug/colour/display name) while this is the academy's
+// contact record — different screens, different save buttons.
+export async function fetchAcademyProfile(academyId) {
+  const { data, error } = await supabase
+    .from('academies')
+    .select('name, contact_phone, contact_email, address, city, state, gstin')
+    .eq('id', academyId)
+    .single()
+  if (error) throw error
+  return {
+    name:         data.name          || '',
+    contactPhone: data.contact_phone || '',
+    contactEmail: data.contact_email || '',
+    address:      data.address       || '',
+    city:         data.city          || '',
+    state:        data.state         || '',
+    gstin:        data.gstin         || '',
+  }
+}
+
+// Owner-only — same plain-update pattern as updateAcademyBranding. RLS
+// (academies_owner_update, 0121) scopes this to owner_id = auth.uid().
+//
+// Empty strings are normalised to NULL rather than stored: the gstin CHECK
+// added in 0152 only permits NULL or a well-formed 15-char GSTIN, so writing
+// '' from a cleared input would fail the constraint.
+export async function updateAcademyProfile(academyId, f) {
+  const nz = (v) => { const s = String(v ?? '').trim(); return s === '' ? null : s }
+  const name = nz(f.name)
+  if (!name) throw new Error('Academy name cannot be empty')
+  const { error } = await supabase.from('academies').update({
+    name,
+    contact_phone: nz(f.contactPhone),
+    contact_email: nz(f.contactEmail),
+    address:       nz(f.address),
+    city:          nz(f.city),
+    state:         nz(f.state),
+    gstin:         nz(f.gstin) ? nz(f.gstin).toUpperCase() : null,
+  }).eq('id', academyId)
+  if (error) throw error
+}
+
+// The owner's display name lives on profiles, not academies — the Academy
+// Profile form edits both, so this is its other half. RLS profiles_self_update
+// scopes it to the caller's own row.
+export async function updateOwnProfileName(name) {
+  const clean = String(name ?? '').trim()
+  if (!clean) throw new Error('Your name cannot be empty')
+  const { data: auth } = await supabase.auth.getUser()
+  const uid = auth?.user?.id
+  if (!uid) throw new Error('Not signed in')
+  const { error } = await supabase.from('profiles').update({ name: clean }).eq('id', uid)
+  if (error) throw error
+}
+
 const _mapPublicTrialBranch = (row) => ({
   id:         row.id,
   sportName:  row.sport_name,

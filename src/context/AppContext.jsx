@@ -2127,6 +2127,27 @@ export function AppProvider({ children }) {
     showToast('Registration link settings saved')
   }
 
+  // Settings → Academy Profile. Read on demand (nothing outside Settings needs
+  // the contact fields), but the write splices `academy` and the owner's `name`
+  // straight back into `user` — those two ARE read all over the app (Sidebar,
+  // every portal header, printed receipts), so without this the page would
+  // save correctly and still show the old name until a reload.
+  const fetchAcademyProfile = async () => db.fetchAcademyProfile(user.academyId)
+
+  const saveAcademyProfile = async (fields) => {
+    await db.updateAcademyProfile(user.academyId, fields)
+    // Owner display name lives on profiles, not academies — only write it when
+    // it actually changed, so a contact-detail edit doesn't touch the profile row.
+    const ownerName = String(fields.owner ?? '').trim()
+    if (ownerName && ownerName !== user?.name) await db.updateOwnProfileName(ownerName)
+    setUser(prev => ({
+      ...prev,
+      academy: fields.name.trim(),
+      ...(ownerName ? { name: ownerName } : {}),
+    }))
+    showToast('Academy profile saved')
+  }
+
   const editStaffMember = async (id, { name, phone, photoFile, photoUrl: existingUrl, age }) => {
     const old = staff.find(s => s.id === id)
     let photoUrl = existingUrl
@@ -2612,6 +2633,7 @@ export function AppProvider({ children }) {
       permissions, hasPermission,
       // owner auth
       saveAcademyLogo, fetchOwnAcademyBranding, saveAcademyBranding,
+    fetchAcademyProfile, saveAcademyProfile,
       academyLogo: user?.academyLogo || academyLogo,
       signupOwner, loginOwner, logoutOwner, logoutAdmin,
       // staff auth

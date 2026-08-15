@@ -53,7 +53,7 @@ export default function Settings() {
 
         {/* Content panel */}
         <div className="flex-1 card p-6">
-          {activeTab === 'academy'       && <AcademyTab user={user} onSave={handleSave} saved={saved} />}
+          {activeTab === 'academy'       && <AcademyTab user={user} />}
           {activeTab === 'features'      && <FeaturesTab />}
           {activeTab === 'fees'          && <FeePlansTab onSave={handleSave} saved={saved} />}
           {activeTab === 'notifications' && <NotificationsTab onSave={handleSave} saved={saved} />}
@@ -75,32 +75,77 @@ function SectionHeader({ title, desc }) {
   )
 }
 
-function SaveButton({ onSave, saved }) {
+function SaveButton({ onSave, saved, busy }) {
   return (
     <div className="mt-6 pt-5 border-t border-gray-100 flex justify-end">
-      <button className="btn-primary" onClick={onSave}>
-        {saved ? <><Check size={15} /> Saved!</> : 'Save Changes'}
+      <button className="btn-primary disabled:opacity-60" onClick={onSave} disabled={busy}>
+        {busy ? <><Loader2 size={15} className="animate-spin" /> Saving…</>
+              : saved ? <><Check size={15} /> Saved!</>
+              : 'Save Changes'}
       </button>
     </div>
   )
 }
 
-function AcademyTab({ user, onSave, saved }) {
-  const { saveAcademyLogo } = useApp()
+function AcademyTab({ user }) {
+  const { saveAcademyLogo, fetchAcademyProfile, saveAcademyProfile, showToast } = useApp()
+  // Seeded from the session (name/owner/email are already in `user`), then
+  // overwritten by the real row once it loads. Everything else starts blank —
+  // this form used to ship hardcoded demo values ('Plot 14, Sector 7,
+  // Kharghar…', a fake GSTIN) that read as though they were the academy's own.
   const [form, setForm] = useState({
-    name: user?.academy || 'Champions Sports Academy',
-    owner: user?.name || 'Vikram Mehta',
-    phone: '9876543210',
-    email: user?.email || 'admin@championsacademy.in',
-    address: 'Plot 14, Sector 7, Kharghar, Navi Mumbai – 410210',
-    city: 'Navi Mumbai',
-    state: 'Maharashtra',
-    gstin: '27AADCC1234A1ZV',
+    name:  user?.academy || '',
+    owner: user?.name    || '',
+    email: user?.email   || '',
+    phone: '', address: '', city: '', state: '', gstin: '',
   })
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
+  const [saved,   setSaved]   = useState(false)
   const [logoPreview, setLogoPreview] = useState(user?.academyLogo || null)
   const [logoUploading, setLogoUploading] = useState(false)
   const logoRef = useRef(null)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  useEffect(() => {
+    let alive = true
+    fetchAcademyProfile()
+      .then(p => {
+        if (!alive) return
+        setForm(f => ({
+          ...f,
+          name:  p.name || f.name,
+          phone: p.contactPhone,
+          // Falls back to the owner's login address so receipts have something
+          // to print before anyone sets a dedicated contact address.
+          email: p.contactEmail || f.email,
+          address: p.address, city: p.city, state: p.state, gstin: p.gstin,
+        }))
+      })
+      .catch(err => showToast(err?.message || 'Could not load academy profile', 'error'))
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await saveAcademyProfile({
+        name: form.name, owner: form.owner,
+        contactPhone: form.phone, contactEmail: form.email,
+        address: form.address, city: form.city, state: form.state, gstin: form.gstin,
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      // The GSTIN CHECK from 0152 is the one a typo realistically trips, and
+      // Postgres reports it by constraint name — translate before showing it.
+      const msg = /academies_gstin_format/.test(err?.message || '')
+        ? 'That GSTIN is not valid. It should be 15 characters, like 27AADCC1234A1ZV.'
+        : (err?.message || 'Could not save academy profile')
+      showToast(msg, 'error')
+    } finally { setSaving(false) }
+  }
 
   const handleLogoChange = async (e) => {
     const file = e.target.files?.[0]
@@ -153,8 +198,9 @@ function AcademyTab({ user, onSave, saved }) {
           <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} />
         </div>
         <div className="col-span-2">
-          <label className="label">Email Address</label>
+          <label className="label">Contact Email</label>
           <input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
+          <p className="text-xs text-gray-400 mt-1">Shown on receipts. Separate from your login email, which stays {user?.email}.</p>
         </div>
         <div className="col-span-2">
           <label className="label">Address</label>
@@ -173,7 +219,7 @@ function AcademyTab({ user, onSave, saved }) {
           <input className="input" placeholder="For invoices" value={form.gstin} onChange={e => set('gstin', e.target.value)} />
         </div>
       </div>
-      <SaveButton onSave={onSave} saved={saved} />
+      <SaveButton onSave={handleSave} saved={saved} busy={saving || loading} />
 
       <PublicRegistrationLinkSection />
     </div>
