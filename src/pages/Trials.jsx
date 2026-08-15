@@ -1596,6 +1596,20 @@ export default function Trials() {
         trainingType: form.trainingType || 'Daily',
         paidTill:     form.paidTill    || null,
         fromTrial:    true,
+        // Answered on the /join form and stored on the trial row — carry the
+        // whole set onto the student so converting doesn't quietly drop a
+        // declared medical condition or the emergency contact. `students` has
+        // matching columns since migrations 0152/0153.
+        medicalNotes:          trial.medicalNotes          || '',
+        relationship:          trial.relationship          || '',
+        gender:                trial.gender                || '',
+        motherName:            trial.motherName            || '',
+        email:                 trial.email                 || '',
+        alternateContactPhone: trial.alternateContactPhone || '',
+        occupation:            trial.occupation            || '',
+        address:               trial.address               || '',
+        emergencyContactName:  trial.emergencyContactName  || '',
+        emergencyContactPhone: trial.emergencyContactPhone || '',
         // trialFeePaid always defaults to 590 on every trial row regardless
         // of whether it was collected — trialFeeMode is the real signal.
         // Without this check, converting a "Not collected" trial still

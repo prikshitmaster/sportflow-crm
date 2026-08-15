@@ -69,6 +69,18 @@ export function fillStudent({ sportOptions = [], batches = [] } = {}) {
     fees:          String(pick([800, 1000, 1200, 1500, 2000])),
     feePlan:       'monthly',
     joiningFee:    '',
+    // The Add Student modal now asks the same set as the public /join form
+    // (minus relationship, which stays a /join-only question).
+    gender:                pick(['Male', 'Female']),
+    motherName:            fakeName(),
+    email:                 `parent.${Date.now().toString().slice(-6)}@test.local`,
+    alternateContactPhone: fakePhone(),
+    occupation:            pick(OCCUPATIONS),
+    address:               `Plot ${rand(1, 90)}, Sector ${rand(1, 20)}, ${pick(AREA_NAMES)}, ${pick(AREA_CITIES)}`,
+    emergencyContactName:  fakeName(),
+    emergencyContactPhone: fakePhone(),
+    hasMedical:            'no',
+    medicalNotes:          '',
   }
 }
 
@@ -139,12 +151,15 @@ export function fillPublicRegistration() {
     dob:                   randomDob(age, age),
     age:                   String(age),
     gender:                pick(['Male', 'Female']),
+    // The health question is required now, so fill it in — otherwise a
+    // dev-filled form still fails validation on Register.
+    hasMedical:            'no',
     medicalNotes:          '',
     address:               `Plot ${rand(1, 90)}, Sector ${rand(1, 20)}, ${area}, ${pick(AREA_CITIES)}`,
     occupation:            pick(OCCUPATIONS),
     alternateContactPhone: fakePhone(),
     email:                 `parent.${Date.now().toString().slice(-6)}@test.local`,
-    relationship:          pick(['Son', 'Daughter', 'Ward']),
+    relationship:          pick(['Myself', 'Sibling', 'Daughter', 'Son']),
     preferredDays:         pick([['Mon', 'Wed', 'Fri'], ['Tue', 'Thu'], ['Sat', 'Sun'], ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']]),
   }
 }

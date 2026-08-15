@@ -1050,6 +1050,37 @@ export function AppProvider({ children }) {
         branchId: addBranchId,
       })
 
+      // Registration-form fields create_student_with_payment doesn't take
+      // (migration 0152/0153 columns). Only send the ones the caller actually
+      // supplied, so a screen that doesn't ask for them can't blank them.
+      // Non-fatal on failure — the student exists either way — but it toasts
+      // rather than warns to console, because silently losing a declared
+      // medical condition is exactly the kind of thing nobody notices.
+      const intake = {}
+      for (const k of db.INTAKE_KEYS) if (s[k] !== undefined) intake[k] = s[k]
+      if (Object.keys(intake).length) {
+        try {
+          await db.updateStudentIntake(newId, intake)
+        } catch (err) {
+          showToast('Student created, but the registration details did not save', 'error')
+          console.warn('student intake details failed:', err.message)
+        }
+      }
+
+      // Medical document goes into the student's document vault (migration
+      // 0103) rather than a column, so it lands in the same place as every
+      // other uploaded document and inherits its RLS.
+      if (s.medicalFile) {
+        try {
+          await db.uploadStudentDocument(s.medicalFile, {
+            studentId: newId, docType: 'medical', title: 'Medical Certificate',
+          })
+        } catch (err) {
+          showToast('Student created, but the medical document upload failed', 'error')
+          console.warn('medical document upload failed:', err.message)
+        }
+      }
+
       // Mark from_trial on student record (fire-and-forget, column added via migration 0013)
       if (s.fromTrial) {
         ;(async () => {
@@ -1113,6 +1144,16 @@ export function AppProvider({ children }) {
         trainingType:   s.trainingType || 'Daily',
         feePlan:        s.feePlan || 'monthly',
         fromTrial:      s.fromTrial   || false,
+        medicalNotes:          s.medicalNotes          || '',
+        relationship:          s.relationship          || '',
+        gender:                s.gender                || '',
+        motherName:            s.motherName            || '',
+        email:                 s.email                 || '',
+        alternateContactPhone: s.alternateContactPhone || '',
+        occupation:            s.occupation            || '',
+        address:               s.address               || '',
+        emergencyContactName:  s.emergencyContactName  || '',
+        emergencyContactPhone: s.emergencyContactPhone || '',
         trialDeduct:    trialDeduct,
         branchId:       role === 'staff' ? (user?.branchId || null) : (selectedBranch || null),
       }

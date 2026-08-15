@@ -20,6 +20,7 @@ import useBodyScrollLock from '../hooks/useBodyScrollLock'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment, isLowAttendanceUnpaid as ruleIsLowAttendanceUnpaid } from '../lib/studentRules'
 import { toLocalDateStr } from '../lib/dates'
+import { MEDICAL_OPTIONS } from '../lib/studentIntake'
 
 const accountBadge = {
   pending: 'badge-yellow',
@@ -844,11 +845,26 @@ function AddStudentModal({ onClose, onSave }) {
   const [form, setForm] = useState({
     name: '', parent: '', phone: '', parentPhone: '', dob: '', sport: defaultSport,
     joinDate: '', paidTill: '', batchId: '', batchName: '', trainingType: '', fees: '', feePlan: 'monthly', joiningFee: '',
+    // Everything below is the public /join registration form's field set, so a
+    // walk-in typed in here and an online sign-up produce the same record.
+    // Relationship is deliberately NOT asked here — see lib/studentIntake.js.
+    gender: '', motherName: '', email: '', alternateContactPhone: '',
+    occupation: '', address: '', emergencyContactName: '', emergencyContactPhone: '',
+    hasMedical: '', medicalNotes: '',
   })
+  const [medicalFile, setMedicalFile] = useState(null)
   const [additionalBatchIds, setAdditionalBatchIds] = useState([])
   const [errors,  setErrors]  = useState({})
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Answering "No" clears anything already typed or attached, so a change of
+  // mind can't leave a stray condition on a student who has none.
+  const chooseHasMedical = (value) => {
+    setForm(f => ({ ...f, hasMedical: value, medicalNotes: value === 'yes' ? f.medicalNotes : '' }))
+    if (value !== 'yes') setMedicalFile(null)
+    setErrors(e => ({ ...e, hasMedical: undefined, medicalNotes: undefined }))
+  }
 
   const handleFeePlan = (plan) => {
     setForm(f => ({
@@ -889,6 +905,17 @@ function AddStudentModal({ onClose, onSave }) {
     if (!form.trainingType)             e.trainingType = 'Select a training type'
     if (!form.fees || Number(form.fees) <= 0) e.fees   = 'Enter fee amount'
     if (!form.paidTill)                 e.paidTill     = 'Required'
+    // The /join form insists on both halves of the emergency contact, so this
+    // form does too — otherwise the same student is a complete record when
+    // they sign up online and an incomplete one when the office types them in.
+    if (!form.emergencyContactName.trim())  e.emergencyContactName  = 'Required'
+    if (!form.emergencyContactPhone.trim()) e.emergencyContactPhone = 'Required'
+    if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) e.email = 'Enter a valid email'
+    // Mirrors the /join form: an unanswered yes/no is not the same as "no",
+    // and a Yes with no description tells the coaching staff nothing.
+    if (!form.hasMedical)               e.hasMedical   = 'Answer yes or no'
+    else if (form.hasMedical === 'yes' && !form.medicalNotes.trim())
+                                        e.medicalNotes = 'Describe the condition'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -896,7 +923,17 @@ function AddStudentModal({ onClose, onSave }) {
   const handleSave = async () => {
     if (!validate()) return
     setLoading(true)
-    try { await onSave({ ...form, age: calcAge(form.dob), additionalBatchIds }) } finally { setLoading(false) }
+    try {
+      await onSave({
+        ...form,
+        age: calcAge(form.dob),
+        additionalBatchIds,
+        // Blank once the answer is No — see lib/studentIntake.js on why there
+        // is no separate boolean column for the answer itself.
+        medicalNotes: form.hasMedical === 'yes' ? form.medicalNotes.trim() : '',
+        medicalFile:  form.hasMedical === 'yes' ? medicalFile : null,
+      })
+    } finally { setLoading(false) }
   }
 
   const handleDevFill = () => {
@@ -933,6 +970,13 @@ function AddStudentModal({ onClose, onSave }) {
           {errors.parent && <p className="text-[11px] text-red-500 mt-1">{errors.parent}</p>}
         </div>
 
+        {/* Mother's Name */}
+        <div>
+          <label className="label">Mother's Name <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input className="input" placeholder="Full name" value={form.motherName}
+            onChange={e => set('motherName', e.target.value)} />
+        </div>
+
         {/* Date of Birth */}
         <div>
           <label className="label">Date of Birth *</label>
@@ -945,6 +989,17 @@ function AddStudentModal({ onClose, onSave }) {
             )}
           </div>
           {errors.dob && <p className="text-[11px] text-red-500 mt-1">{errors.dob}</p>}
+        </div>
+
+        {/* Gender */}
+        <div>
+          <label className="label">Gender <span className="text-gray-400 font-normal">(optional)</span></label>
+          <select className="input" value={form.gender} onChange={e => set('gender', e.target.value)}>
+            <option value="">— Select —</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
         </div>
 
         {/* Student Phone */}
@@ -978,6 +1033,55 @@ function AddStudentModal({ onClose, onSave }) {
               onChange={e => set('parentPhone', e.target.value.replace(/\D/g, '').slice(0, 10))}
             />
           </div>
+        </div>
+
+        {/* Email */}
+        <div>
+          <label className="label">Email <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input className={`input ${errors.email ? 'border-red-400' : ''}`} type="email" inputMode="email"
+            placeholder="parent@example.com" value={form.email}
+            onChange={e => set('email', e.target.value)} />
+          {errors.email && <p className="text-[11px] text-red-500 mt-1">{errors.email}</p>}
+        </div>
+
+        {/* Alternate Contact — free text, not the +91 widget: a converted
+            trial can carry a landline, and this field is the fallback number. */}
+        <div>
+          <label className="label">Alternate Contact <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input className="input" type="tel" inputMode="tel" placeholder="Another reachable number"
+            value={form.alternateContactPhone}
+            onChange={e => set('alternateContactPhone', e.target.value)} />
+        </div>
+
+        {/* Occupation */}
+        <div>
+          <label className="label">Occupation <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input className="input" placeholder="Parent's occupation" value={form.occupation}
+            onChange={e => set('occupation', e.target.value)} />
+        </div>
+
+        {/* Address */}
+        <div>
+          <label className="label">Address <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input className="input" placeholder="Home address" value={form.address}
+            onChange={e => set('address', e.target.value)} />
+        </div>
+
+        {/* Emergency Contact — required on the /join form, so required here too */}
+        <div>
+          <label className="label">Emergency Contact Name *</label>
+          <input className={`input ${errors.emergencyContactName ? 'border-red-400' : ''}`}
+            placeholder="Who to call in an emergency" value={form.emergencyContactName}
+            onChange={e => set('emergencyContactName', e.target.value)} />
+          {errors.emergencyContactName && <p className="text-[11px] text-red-500 mt-1">{errors.emergencyContactName}</p>}
+        </div>
+
+        <div>
+          <label className="label">Emergency Contact Number *</label>
+          <input className={`input ${errors.emergencyContactPhone ? 'border-red-400' : ''}`} type="tel" inputMode="tel"
+            placeholder="Reachable number" value={form.emergencyContactPhone}
+            onChange={e => set('emergencyContactPhone', e.target.value)} />
+          {errors.emergencyContactPhone && <p className="text-[11px] text-red-500 mt-1">{errors.emergencyContactPhone}</p>}
         </div>
 
         {/* Sport */}
@@ -1111,6 +1215,51 @@ function AddStudentModal({ onClose, onSave }) {
             <p className="text-[11px] text-amber-600 mt-1">Past date — student will show as Overdue</p>
           )}
         </div>
+
+        {/* Health — yes/no first, details only behind Yes. Same shape as the
+            public /join form so a walk-in and an online registration produce
+            the same record. The document lands in the student's document
+            vault as a 'medical' entry once the student row exists. */}
+        <div className="sm:col-span-2">
+          <label className="label">Any Medical Condition or Allergy? *</label>
+          <div className="flex gap-2">
+            {MEDICAL_OPTIONS.map(opt => (
+              <button key={opt.value} type="button"
+                onClick={() => chooseHasMedical(opt.value)}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition active:scale-95 ${form.hasMedical === opt.value ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {errors.hasMedical && <p className="text-[11px] text-red-500 mt-1">{errors.hasMedical}</p>}
+
+          {form.hasMedical === 'yes' && (
+            <div className="mt-3 space-y-2">
+              <textarea
+                className={`input min-h-[76px] resize-none ${errors.medicalNotes ? 'border-red-400' : ''}`}
+                placeholder="Describe the condition or allergy, and anything a coach should know"
+                value={form.medicalNotes}
+                onChange={e => set('medicalNotes', e.target.value)} />
+              {errors.medicalNotes && <p className="text-[11px] text-red-500 -mt-1">{errors.medicalNotes}</p>}
+
+              {!medicalFile ? (
+                <label className="flex items-center justify-center gap-2 py-4 border-2 border-dashed border-gray-200 rounded-lg text-xs font-semibold text-gray-500 cursor-pointer hover:bg-gray-50 transition">
+                  <FileText size={14} /> Upload medical document (optional)
+                  <input type="file" accept="image/*,.pdf" className="hidden"
+                    onChange={e => { setMedicalFile(e.target.files?.[0] || null); e.target.value = '' }} />
+                </label>
+              ) : (
+                <div className="flex items-center justify-between gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                  <span className="text-xs text-gray-700 truncate">{medicalFile.name}</span>
+                  <button type="button" onClick={() => setMedicalFile(null)}
+                    className="p-1 text-gray-400 hover:text-red-500 transition flex-shrink-0">
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6">
@@ -1236,11 +1385,39 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
           <div className="bg-white rounded-2xl border border-gray-100 p-4">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Personal Info</p>
             {infoRow('Parent', s.parent)}
+            {s.motherName && infoRow('Mother', s.motherName)}
+            {/* Only ever set by the public /join form — the Add Student modal
+                deliberately doesn't ask, so it's blank for walk-ins. */}
+            {s.relationship && infoRow('Relationship', s.relationship)}
+            {s.gender && infoRow('Gender', s.gender)}
             {infoRow('Student Phone', s.phone)}
             {infoRow('Parent Phone', s.parentPhone)}
+            {s.alternateContactPhone && infoRow('Alternate Contact', s.alternateContactPhone)}
+            {s.email && infoRow('Email', s.email)}
+            {s.occupation && infoRow('Occupation', s.occupation)}
+            {s.address && infoRow('Address', s.address)}
             {infoRow('Join Date', s.joinDate ? new Date(s.joinDate).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
             {infoRow('Paid Till', s.paidTill ? new Date(s.paidTill).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : null)}
           </div>
+
+          {/* Emergency contact — its own card so it's findable in a hurry
+              rather than being the tenth row of Personal Info. */}
+          {(s.emergencyContactName || s.emergencyContactPhone) && (
+            <div className="bg-white rounded-2xl border border-gray-100 p-4">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Emergency Contact</p>
+              {infoRow('Name', s.emergencyContactName)}
+              {infoRow('Number', s.emergencyContactPhone)}
+            </div>
+          )}
+
+          {/* Health — shown whenever something was declared. Coaches need this
+              in front of them, not buried in the document vault. */}
+          {s.medicalNotes && (
+            <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4">
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Medical Condition / Allergy</p>
+              <p className="text-xs text-amber-900 leading-relaxed whitespace-pre-wrap">{s.medicalNotes}</p>
+            </div>
+          )}
 
           {/* Account Info */}
           <div className="bg-white rounded-2xl border border-gray-100 p-4">

@@ -69,6 +69,18 @@ export async function fetchStudents(academyId) {
     position:       row.position || null,
     photoUrl:       row.photo_url || null,
     fromTrial:      row.from_trial  || false,
+    // Registration-form fields — the same set the public /join funnel asks
+    // for (migrations 0152/0153). Blank medicalNotes means "nothing declared".
+    medicalNotes:   row.medical_notes || '',
+    relationship:   row.relationship  || '',
+    gender:                 row.gender                  || '',
+    motherName:             row.mother_name             || '',
+    email:                  row.email                   || '',
+    alternateContactPhone:  row.alternate_contact_phone || '',
+    occupation:             row.occupation              || '',
+    address:                row.address                 || '',
+    emergencyContactName:   row.emergency_contact_name  || '',
+    emergencyContactPhone:  row.emergency_contact_phone || '',
     branchId:       row.branch_id || null,
     academy_id:     row.academy_id || null,
   }))
@@ -134,6 +146,18 @@ export async function fetchStudentsPaginated(academyId, {
     position:       row.position || null,
     photoUrl:       row.photo_url || null,
     fromTrial:      row.from_trial  || false,
+    // Registration-form fields — the same set the public /join funnel asks
+    // for (migrations 0152/0153). Blank medicalNotes means "nothing declared".
+    medicalNotes:   row.medical_notes || '',
+    relationship:   row.relationship  || '',
+    gender:                 row.gender                  || '',
+    motherName:             row.mother_name             || '',
+    email:                  row.email                   || '',
+    alternateContactPhone:  row.alternate_contact_phone || '',
+    occupation:             row.occupation              || '',
+    address:                row.address                 || '',
+    emergencyContactName:   row.emergency_contact_name  || '',
+    emergencyContactPhone:  row.emergency_contact_phone || '',
     branchId:       row.branch_id || null,
     academy_id:     row.academy_id || null,
   }))
@@ -228,6 +252,32 @@ export async function updateStudent(id, s) {
   if (error) throw error
   return data
 }
+
+// The registration-form fields create_student_with_payment doesn't take.
+// Sent as their own payload straight after the insert — secure_update_student's
+// `CASE WHEN p_payload ? 'key'` leaves every other column untouched, so this
+// can't clobber anything the create RPC just wrote. Migrations 0152/0153 added
+// the columns and taught the RPC these keys.
+const INTAKE_KEYS = [
+  'relationship', 'medicalNotes', 'gender', 'motherName', 'email',
+  'alternateContactPhone', 'occupation', 'address',
+  'emergencyContactName', 'emergencyContactPhone',
+]
+export async function updateStudentIntake(studentId, fields = {}) {
+  const payload = {}
+  for (const k of INTAKE_KEYS) {
+    // `undefined` means "caller isn't touching this"; '' means "clear it".
+    if (fields[k] !== undefined) payload[k] = fields[k] || ''
+  }
+  if (!Object.keys(payload).length) return
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: studentId,
+    p_payload:    payload,
+    p_token:      _sessionToken(),
+  })
+  if (error) throw error
+}
+export { INTAKE_KEYS }
 
 // Move a student's PRIMARY batch only. Minimal payload so secure_update_student
 // touches just batch_id + batch (its CASE WHEN p_payload ? 'key' leaves every
@@ -634,6 +684,18 @@ export async function fetchTrials(academyId) {
     createdAt:      row.created_at,
     branchId:       row.branch_id     || null,
     preferredDays:  row.preferred_days || [],
+    // All carried onto the student row on conversion (Trials.jsx
+    // handleConvert) — students has matching columns since 0152/0153.
+    medicalNotes:   row.medical_notes || '',
+    relationship:   row.relationship  || '',
+    gender:                 row.gender                  || '',
+    motherName:             row.mother_name             || '',
+    email:                  row.email                   || '',
+    alternateContactPhone:  row.alternate_contact_phone || '',
+    occupation:             row.occupation              || '',
+    address:                row.address                 || '',
+    emergencyContactName:   row.emergency_contact_name  || '',
+    emergencyContactPhone:  row.emergency_contact_phone || '',
   }))
 }
 

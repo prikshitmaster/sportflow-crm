@@ -7,6 +7,7 @@ import {
 import * as db from '../lib/db'
 import DevFillButton from '../components/DevFillButton'
 import { fillPublicRegistration } from '../lib/devFill'
+import { RELATIONSHIP_OPTIONS, MEDICAL_OPTIONS } from '../lib/studentIntake'
 
 // Public, no-auth-to-browse, multi-tenant student self-registration funnel.
 // Served at /join (hardcoded slug "ara" — the bare route is kept permanently
@@ -477,13 +478,16 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const [myTrials, setMyTrials] = useState([])          // this phone's own registered students at this academy
   const [profileLoading, setProfileLoading] = useState(false)
   const [expandedTrialId, setExpandedTrialId] = useState(null)
-  const [relationship, setRelationship] = useState('')       // 'Son' | 'Daughter' | 'Ward' | 'Other'
+  const [relationship, setRelationship] = useState('')       // one of RELATIONSHIP_OPTIONS, or free text when 'Other'
   const [relationshipCustom, setRelationshipCustom] = useState('')
   const [siblingOfId, setSiblingOfId] = useState('')
 
   const [form, setForm] = useState({
     name: '', parentName: '', motherName: '', emergencyContactName: '', emergencyContactPhone: '',
-    dob: '', age: '', gender: '', medicalNotes: '',
+    // hasMedical is the explicit yes/no answer ('' until tapped). A blank
+    // medicalNotes used to be ambiguous — "nothing to declare" and "didn't
+    // bother filling it in" looked identical to the academy.
+    dob: '', age: '', gender: '', hasMedical: '', medicalNotes: '',
     address: '', occupation: '', alternateContactPhone: '', email: '',
     preferredDays: [],   // ['Mon','Wed'] — same vocabulary as batches.days
   })
@@ -720,7 +724,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     setStep('home'); setHomeTab('home'); setChosenSport(''); setChosenRow(null)
     setOtpSent(false); setOtp(''); setError('')
     setBatches([]); setBatchId(null)
-    setForm(f => ({ ...f, name: '', dob: '', age: '', gender: '', medicalNotes: '', preferredDays: [] }))
+    setForm(f => ({ ...f, name: '', dob: '', age: '', gender: '', hasMedical: '', medicalNotes: '', preferredDays: [] }))
     setInvalid({})
     setDocumentFile(null); setResult(null)
     setFeeMode('walkin'); setPaymentStatus('idle')
@@ -747,6 +751,15 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const set = (field, value) => {
     setForm(f => ({ ...f, [field]: value }))
     setInvalid(v => (v[field] ? { ...v, [field]: false } : v))
+  }
+
+  // Answering "No" clears anything already typed or attached — otherwise
+  // someone who ticks Yes, describes a condition, then changes their mind
+  // leaves a stray note (and file) on a student who has nothing to declare.
+  const chooseHasMedical = (value) => {
+    setForm(f => ({ ...f, hasMedical: value, medicalNotes: value === 'yes' ? f.medicalNotes : '' }))
+    if (value !== 'yes') setDocumentFile(null)
+    setInvalid(v => (v.hasMedical || v.medicalNotes) ? { ...v, hasMedical: false, medicalNotes: false } : v)
   }
 
   // Stored in week order however the chips are tapped, so the academy always
@@ -777,6 +790,10 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const startSubmit = () => {
     setError('')
     const missing = REQUIRED_FIELDS.filter(f => !form[f.key].trim())
+    // The health question is required on its own — an unanswered yes/no is
+    // not the same as "no", and a Yes with no description tells staff nothing.
+    if (!form.hasMedical) missing.push({ key: 'hasMedical' })
+    else if (form.hasMedical === 'yes' && !form.medicalNotes.trim()) missing.push({ key: 'medicalNotes' })
     if (missing.length) {
       setInvalid(Object.fromEntries(missing.map(f => [f.key, true])))
       document.getElementById(`jf-${missing[0].key}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -810,7 +827,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
         dob: form.dob || null,
         age: form.age ? Number(form.age) : null,
         gender: form.gender || null,
-        medicalNotes: form.medicalNotes.trim() || null,
+        // Now that the yes/no is required, a NULL here means "answered No"
+        // rather than "skipped the question" — no separate flag column needed.
+        medicalNotes: form.hasMedical === 'yes' ? (form.medicalNotes.trim() || null) : null,
         motherName: form.motherName.trim() || null,
         address: form.address.trim() || null,
         occupation: form.occupation.trim() || null,
@@ -1455,7 +1474,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: N.muted }}>Relationship to parent</div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      {['Son', 'Daughter', 'Ward', 'Other'].map(opt => (
+                      {RELATIONSHIP_OPTIONS.map(opt => (
                         <Chip key={opt} active={relationship === opt} onClick={() => setRelationship(opt)} C={C}>
                           {opt}
                         </Chip>
@@ -1509,28 +1528,58 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     onChange={e => set('emergencyContactPhone', e.target.value)} invalid={invalid.emergencyContactPhone} />
                 </SectionCard>
 
+                {/* Yes/No first, details only behind Yes — a free-text box on
+                    its own was routinely left blank by people who DID have
+                    something to declare, and blank read as "nothing". */}
                 <SectionCard index="04" title="HEALTH" C={C}>
-                  <textarea className="jf-field" placeholder="Any medical condition or allergy? (leave blank if none)" value={form.medicalNotes}
-                    onChange={e => set('medicalNotes', e.target.value)}
-                    style={{ ...inputStyle, resize: 'none', minHeight: 74, lineHeight: 1.45 }} />
-                </SectionCard>
-
-                <SectionCard index="05" title="DOCUMENT" C={C}>
-                  {!documentFile ? (
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', fontSize: 14, fontWeight: 600, color: N.muted, border: `2px dashed ${N.line}`, borderRadius: 18, cursor: 'pointer' }}>
-                      <Camera size={16} /> Upload ID / medical document
-                      <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-                        onChange={e => setDocumentFile(e.target.files?.[0] || null)} />
-                    </label>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '13px 14px', background: N.input, border: `1.5px solid ${N.line}`, borderRadius: 14 }}>
-                      <span style={{ fontSize: 14, color: N.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{documentFile.name}</span>
-                      <X size={18} color={N.faint} style={{ cursor: 'pointer', flexShrink: 0 }} onClick={() => setDocumentFile(null)} />
+                  <div id="jf-hasMedical" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: invalid.hasMedical ? '#B42318' : N.muted }}>
+                      Any medical condition or allergy?
                     </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {MEDICAL_OPTIONS.map(opt => (
+                        <Chip key={opt.value} active={form.hasMedical === opt.value}
+                          onClick={() => chooseHasMedical(opt.value)} C={C}
+                          style={{ flex: 1, padding: '13px 10px' }}>
+                          {opt.label}
+                        </Chip>
+                      ))}
+                    </div>
+                    {invalid.hasMedical && (
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42318', paddingLeft: 2 }}>Required</span>
+                    )}
+                  </div>
+
+                  {form.hasMedical === 'yes' && (
+                    <>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        <textarea id="jf-medicalNotes" className="jf-field"
+                          placeholder="Describe the condition or allergy, and anything a coach should know"
+                          value={form.medicalNotes} onChange={e => set('medicalNotes', e.target.value)}
+                          style={{ ...inputStyle, resize: 'none', minHeight: 74, lineHeight: 1.45,
+                                   ...(invalid.medicalNotes ? invalidStyle : {}) }} />
+                        {invalid.medicalNotes && (
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42318', paddingLeft: 2 }}>Required</span>
+                        )}
+                      </div>
+
+                      {!documentFile ? (
+                        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0', fontSize: 14, fontWeight: 600, color: N.muted, border: `2px dashed ${N.line}`, borderRadius: 18, cursor: 'pointer' }}>
+                          <Camera size={16} /> Upload medical document (optional)
+                          <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                            onChange={e => setDocumentFile(e.target.files?.[0] || null)} />
+                        </label>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '13px 14px', background: N.input, border: `1.5px solid ${N.line}`, borderRadius: 14 }}>
+                          <span style={{ fontSize: 14, color: N.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{documentFile.name}</span>
+                          <X size={18} color={N.faint} style={{ cursor: 'pointer', flexShrink: 0 }} onClick={() => setDocumentFile(null)} />
+                        </div>
+                      )}
+                    </>
                   )}
                 </SectionCard>
 
-                <SectionCard index="06" title="TRIAL FEE" C={C}>
+                <SectionCard index="05" title="TRIAL FEE" C={C}>
                   {kitFee > 0 && (
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
