@@ -645,6 +645,17 @@ export async function updatePaymentDate(id, date, month) {
 }
 
 // ── Trials ────────────────────────────────────────────────
+
+// secure_update_trial (0159) returns void, not the updated row, so a caller
+// that just booked a trial-fee receipt has no way to learn its number
+// without this. RLS already scopes trials reads by academy, same as
+// fetchTrials below.
+export async function fetchTrialReceiptNo(trialId) {
+  const { data, error } = await supabase.from('trials').select('receipt_no').eq('id', trialId).maybeSingle()
+  if (error) throw error
+  return data?.receipt_no || null
+}
+
 export async function fetchTrials(academyId) {
   let query = supabase.from('trials').select('*').order('trial_date', { ascending: false })
   if (academyId) query = query.eq('academy_id', academyId)

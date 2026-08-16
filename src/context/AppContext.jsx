@@ -1178,9 +1178,12 @@ export function AppProvider({ children }) {
           ? { ...b, enrolled: (b.enrolled || 0) + 1 } : b))
       }
 
-      // Optimistic payment row (RPC already inserted it in DB)
+      // Optimistic payment row (RPC already inserted it in DB). Kept in a
+      // variable (not just inlined into setPayments) so the registration
+      // receipt slip below can reuse the exact same row.
+      let paymentRow = null
       if (payment) {
-        setPayments(prev => [{
+        paymentRow = {
           id:             payment.invoiceId,
           studentId:      newId,
           student:        s.name,
@@ -1199,7 +1202,8 @@ export function AppProvider({ children }) {
           monthsCovered:  payment.monthsCovered,
           academyId:      user?.academyId,
           notes:          [trialDeduct > 0 ? `Trial fee deducted: −₹${trialDeduct} (see separate trial receipt)` : '', joiningFee > 0 ? `Joining fee included: +₹${joiningFee}` : ''].filter(Boolean).join(' · '),
-        }, ...prev])
+        }
+        setPayments(prev => [paymentRow, ...prev])
       }
 
       // Optimistically attach the already-booked trial row to this student
@@ -1229,7 +1233,10 @@ export function AppProvider({ children }) {
 
       showToast(`Student created — Code: ${studentCode} · Join: ${joinCode}`, 'success')
       logAuditSport({ actor: user, action: ACTIONS.STUDENT_ADD, entityType: 'student', entityId: mapped.id, entityName: mapped.name, changes: { batch: mapped.batch || '—', sport: mapped.sport, fees: String(mapped.fees) }, academyId: user?.academyId, sport: mapped.sport ?? null, branchId: mapped.branchId ?? null })
-      return mapped
+      // `payment` (null if no fee was collected at registration) is only
+      // ADDED here — every existing caller that reads mapped.id/mapped.name/…
+      // off this return value is unaffected.
+      return { ...mapped, payment: paymentRow }
     } catch (err) {
       showToast(err.message || 'Failed to add student', 'error')
       throw err
@@ -1799,6 +1806,11 @@ export function AppProvider({ children }) {
       logAuditSport({ actor: user, action: ACTIONS.TRIAL_DELETE, entityType: 'trial', entityId: id, entityName: t?.name, changes: { sport: t?.sport || '—', stage: t?.stage || '—' }, academyId: user?.academyId })
     } catch (err) { showToast(err.message || 'Delete failed', 'error') }
   }
+
+  // secure_update_trial returns void, so a caller that just booked a
+  // trial-fee receipt (Trials.jsx's CollectFeeModal) has no other way to
+  // learn its number for the receipt slip.
+  const fetchTrialReceiptNo = (id) => db.fetchTrialReceiptNo(id)
 
   const addTrialSource = async (label) => {
     try {
@@ -2736,7 +2748,7 @@ export function AppProvider({ children }) {
       // data — auto-filtered by selectedSport
       students: staffScopedStudents, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, refreshStudents,
       payments: staffScopedPayments, addPayment, markPaymentPaid, removePayment, updatePaymentDate,
-      trials: staffScopedTrials, addTrial, updateTrialStatus, deleteTrial,
+      trials: staffScopedTrials, addTrial, updateTrialStatus, deleteTrial, fetchTrialReceiptNo,
       trialSources, addTrialSource, removeTrialSource,
       ageGroups, addAgeGroup, removeAgeGroup,
       drillCategories, addDrillCategory, removeDrillCategory,

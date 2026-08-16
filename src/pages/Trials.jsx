@@ -12,6 +12,8 @@ import { toLocalDateStr } from '../lib/dates'
 import { normTrainingType, trainingTypeLabel } from '../lib/studentRules'
 import { MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 import { resolveBranchTax, computeTax, taxRowLabel } from '../lib/tax'
+import { buildTrialReceiptHTML } from '../lib/trialReceipt'
+import ReceiptActions from '../components/ReceiptActions'
 import useBodyScrollLock from '../hooks/useBodyScrollLock'
 
 // ── Stage config ─────────────────────────────────────────────
@@ -918,9 +920,9 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
 // ── Collect Fee Modal (mark trial fee paid, without opening the full
 //    edit form) ──────────────────────────────────────────────
 
-function CollectFeeModal({ trial, onClose, onSave }) {
+function CollectFeeModal({ trial, batches, onClose, onSave }) {
   useBodyScrollLock()
-  const { showToast, sportBranches } = useApp()
+  const { showToast, sportBranches, user, fetchTrialReceiptNo } = useApp()
   const feeBranch   = sportBranches.find(b => b.id === trial.branchId)
   const trialTaxPct = resolveBranchTax(feeBranch, 'trial')
   // /join already computes and stores the tax-inclusive TOTAL at registration
@@ -937,9 +939,11 @@ function CollectFeeModal({ trial, onClose, onSave }) {
   const [amount, setAmount] = useState(suggestedCalc.total)
   const [mode,   setMode]   = useState('Cash')
   const [saving, setSaving] = useState(false)
+  const [receipt, setReceipt] = useState(null) // set once saved — switches this modal to the receipt view
 
   async function handleSave() {
     setSaving(true)
+    const finalAmount = amount === '' || amount == null ? 0 : (Number(amount) || 0)
     try {
       // Payload carries ONLY these two keys. secure_update_trial's CASE WHEN
       // pattern (0159) means every other column on the trial — name, batch,
@@ -949,12 +953,63 @@ function CollectFeeModal({ trial, onClose, onSave }) {
       // is the exact same logic the full Edit form's Fee Collected control
       // already exercises — this is a narrower door onto the same system,
       // not a separate one.
-      await onSave(trial.id, {
-        trialFeePaid: amount === '' || amount == null ? 0 : (Number(amount) || 0),
-        trialFeeMode: mode,
-      })
-      onClose()
+      await onSave(trial.id, { trialFeePaid: finalAmount, trialFeeMode: mode })
+      // secure_update_trial returns void, so the receipt number it just
+      // generated (next_trial_receipt_id) has to be re-fetched — this is
+      // read-only and can't affect what was just booked either way.
+      let receiptNo = null
+      try { receiptNo = await fetchTrialReceiptNo(trial.id) } catch { /* non-fatal — receipt still shows without it */ }
+      setReceipt({ receiptNo, amount: finalAmount, mode, paidOn: new Date() })
     } catch (e) { showToast(e.message || 'Failed to record payment', 'error') } finally { setSaving(false) }
+  }
+
+  if (receipt) {
+    const batch = batches?.find(b => b.id === trial.batchId)
+    const html = buildTrialReceiptHTML({
+      academyName: user?.academy,
+      logoUrl:     user?.academyLogo,
+      receiptNo:   receipt.receiptNo || `Trial-${trial.id}`,
+      paymentRef:  null,
+      paidOn:      receipt.paidOn,
+      studentName: trial.name,
+      parentName:  trial.parent,
+      phone:       trial.phone,
+      sport:       trial.sport,
+      branchName:  feeBranch?.branchName,
+      batchName:   batch?.name || null,
+      fee: { trialFee: receipt.amount, kitFee: 0, taxPct: 0, taxAmount: 0, total: receipt.amount },
+      method: receipt.mode,
+    })
+    const filename = `Receipt-${(receipt.receiptNo || trial.id).toString().replace(/[^A-Za-z0-9-]/g, '')}.html`
+    return (
+      <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
+          <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100">
+            <h2 className="text-base font-black text-gray-900">Fee Collected</h2>
+            <button onClick={onClose} className="p-1.5 rounded-xl bg-gray-100 text-gray-500"><X size={15} /></button>
+          </div>
+          <div className="px-5 py-4 space-y-4">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+              <p className="text-sm font-bold text-emerald-800">₹{receipt.amount.toLocaleString('en-IN')} · {receipt.mode}</p>
+              <p className="text-[11px] text-emerald-600 mt-0.5">{trial.name} · {receipt.receiptNo || `Trial #${trial.id}`}</p>
+            </div>
+            <ReceiptActions
+              html={html} filename={filename}
+              whatsappPhone={trial.phone}
+              whatsappText={`Hi ${trial.parent || ''},\n\nReceipt for ${trial.name}'s trial fee — ₹${receipt.amount.toLocaleString('en-IN')} (${receipt.mode}).\n\n— ${user?.academy || 'Academy'}`}
+              emailTo={trial.email}
+              emailSubject={`Trial Fee Receipt — ${trial.name}`}
+              emailBody={`Receipt attached for ${trial.name}'s trial fee: ₹${receipt.amount.toLocaleString('en-IN')} (${receipt.mode}).`}
+            />
+          </div>
+          <div className="px-5 pb-5">
+            <button onClick={onClose} className="w-full text-xs text-gray-500 hover:text-gray-700 underline">
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -2027,7 +2082,7 @@ export default function Trials() {
       )}
       {modal === 'collectFee' && active && (
         <CollectFeeModal
-          trial={active}
+          trial={active} batches={batches}
           onClose={() => { setModal(null); setActive(null) }}
           onSave={updateTrialStatus}
         />

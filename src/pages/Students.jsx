@@ -19,6 +19,8 @@ import StudentAvatar from '../components/StudentAvatar'
 import useBodyScrollLock from '../hooks/useBodyScrollLock'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment, isLowAttendanceUnpaid as ruleIsLowAttendanceUnpaid } from '../lib/studentRules'
+import { buildReceiptHTML } from '../lib/paymentReceipt'
+import ReceiptActions from '../components/ReceiptActions'
 import { toLocalDateStr } from '../lib/dates'
 import { MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 
@@ -83,6 +85,8 @@ export default function Students() {
   const [allMbRows,       setAllMbRows]       = useState([])
   const [accFilter,       setAccFilter]       = useState('All')
   const [showModal,       setShowModal]       = useState(false)
+  // Set once a just-registered student's payment needs a receipt slip shown.
+  const [regReceipt,      setRegReceipt]      = useState(null)
   const [showPayModal,    setShowPayModal]    = useState(false)
   const [payStudent,      setPayStudent]      = useState(null)
   const [openMenu,        setOpenMenu]        = useState(null)
@@ -676,7 +680,17 @@ export default function Students() {
               }
             }
             setShowModal(false)
+            // A fee was collected right at registration — show its slip.
+            // Nothing shows when there was no payment (fees left blank).
+            if (newStudent?.payment) setRegReceipt({ student: newStudent, payment: newStudent.payment })
           }}
+        />
+      )}
+      {regReceipt && (
+        <RegistrationReceiptModal
+          student={regReceipt.student}
+          payment={regReceipt.payment}
+          onClose={() => setRegReceipt(null)}
         />
       )}
       {deleteTarget && (
@@ -816,6 +830,50 @@ const FEE_PLAN_OPTIONS = [
   { key: 'custom',    label: 'Custom',    sub: 'pick dates' },
 ]
 const FEE_LABEL = { monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (₹) *', yearly: 'Yearly Fee (₹) *', custom: 'Plan Fee (₹) *' }
+
+// Shown right after Add Student when a fee was collected as part of
+// registration — the "slip" that was previously nowhere: the payment
+// existed in Payments.jsx, but nothing surfaced it at the moment it
+// actually happened. Reuses the exact same receipt template Payments.jsx
+// prints from (lib/paymentReceipt.js), so it's not a second, different-
+// looking receipt design — same paper trail either way.
+function RegistrationReceiptModal({ student, payment, onClose }) {
+  useBodyScrollLock()
+  const { user } = useApp()
+  const html = buildReceiptHTML(payment, student, user?.academy, user?.academyLogo)
+  const filename = `Receipt-${String(payment.id || student.id).replace(/[^A-Za-z0-9-]/g, '')}.html`
+  const amount = Number(payment.amount) || 0
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100">
+          <h2 className="text-base font-black text-gray-900">Registration Receipt</h2>
+          <button onClick={onClose} className="p-1.5 rounded-xl bg-gray-100 text-gray-500"><X size={15} /></button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5">
+            <p className="text-sm font-bold text-emerald-800">₹{amount.toLocaleString('en-IN')} · {payment.mode || 'Cash'}</p>
+            <p className="text-[11px] text-emerald-600 mt-0.5">{student.name} · {payment.id}</p>
+          </div>
+          <ReceiptActions
+            html={html} filename={filename}
+            whatsappPhone={student.parentPhone || student.phone}
+            whatsappText={`Hi ${student.parent || 'Parent'},\n\nReceipt for ${student.name}'s registration payment — ₹${amount.toLocaleString('en-IN')} (${payment.mode || 'Cash'}).\n\n— ${user?.academy || 'Academy'}`}
+            emailTo={student.email}
+            emailSubject={`Payment Receipt — ${student.name}`}
+            emailBody={`Receipt attached for ${student.name}'s registration payment: ₹${amount.toLocaleString('en-IN')} (${payment.mode || 'Cash'}).`}
+          />
+        </div>
+        <div className="px-5 pb-5">
+          <button onClick={onClose} className="w-full text-xs text-gray-500 hover:text-gray-700 underline">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function AddStudentModal({ onClose, onSave }) {
   const { batches, selectedSport, selectedBranch, sportBranches, branches, user, allStudents } = useApp()
