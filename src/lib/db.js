@@ -3651,6 +3651,10 @@ const _mapPublicTrialBranch = (row) => ({
   taxPercent: row.tax_percent != null ? Number(row.tax_percent) : null,
   taxOnTrial: !!row.tax_on_trial,
   taxOnKit:   !!row.tax_on_kit,
+  // How many batches exist for this branch+sport (0164) — the "Choose a
+  // Branch" card had nothing but a photo, name and address before this;
+  // this and trialFee above are what fill that space.
+  batchCount: row.batch_count || 0,
 })
 
 export async function fetchPublicTrialBranches(slug) {
