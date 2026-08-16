@@ -35,7 +35,9 @@ const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`
  * @param r.branchName    branch name
  * @param r.batchName     batch name, or null when unassigned
  * @param r.fee           the computeTrialTotal() result
- * @param r.method        'UPI' | 'Card' | … whatever Razorpay reported
+ * @param r.method        'UPI' | 'Cash' | 'Card' | … however it was actually paid
+ * @param r.paidOnline    true for a Razorpay /join payment, false for cash/UPI
+ *                        collected in person — changes the total row's caption
  */
 export function buildTrialReceiptHTML(r) {
   const f = r.fee || {}
@@ -137,7 +139,7 @@ export function buildTrialReceiptHTML(r) {
         <td class="r amt">${inr(row.amt)}</td>
       </tr>`).join('')}
       <tr class="total">
-        <td>Total paid${r.method ? ` <span class="sub">Paid online · ${esc(r.method)}</span>` : ''}</td>
+        <td>Total paid${r.method ? ` <span class="sub">${r.paidOnline ? 'Paid online' : 'Collected at academy'} · ${esc(r.method)}</span>` : ''}</td>
         <td class="r">${inr(f.total)}</td>
       </tr>
     </tbody>

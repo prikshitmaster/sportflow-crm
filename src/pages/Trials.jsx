@@ -965,6 +965,16 @@ function CollectFeeModal({ trial, batches, onClose, onSave }) {
 
   if (receipt) {
     const batch = batches?.find(b => b.id === trial.batchId)
+    // Reverse-derive the breakdown from the branch's CURRENT trial-fee tax
+    // rate rather than trusting whatever base was on-screen before saving —
+    // staff may have overridden the suggested amount, which would otherwise
+    // desync base+tax from the final total. total = base × (1 + pct/100),
+    // so base = total ÷ (1 + pct/100); this round-trips exactly with
+    // computeTax() for the untouched case (verified: 590 @ 12% → 661 → back
+    // to 590/71) and stays self-consistent (base+tax=total) either way.
+    const receiptTaxPct  = trialTaxPct
+    const receiptBase    = receiptTaxPct > 0 ? Math.round(receipt.amount / (1 + receiptTaxPct / 100)) : receipt.amount
+    const receiptTaxAmt  = receipt.amount - receiptBase
     const html = buildTrialReceiptHTML({
       academyName: user?.academy,
       logoUrl:     user?.academyLogo,
@@ -977,8 +987,9 @@ function CollectFeeModal({ trial, batches, onClose, onSave }) {
       sport:       trial.sport,
       branchName:  feeBranch?.branchName,
       batchName:   batch?.name || null,
-      fee: { trialFee: receipt.amount, kitFee: 0, taxPct: 0, taxAmount: 0, total: receipt.amount },
+      fee: { trialFee: receiptBase, kitFee: 0, taxPct: receiptTaxAmt > 0 ? receiptTaxPct : 0, taxAmount: receiptTaxAmt, total: receipt.amount },
       method: receipt.mode,
+      paidOnline: false, // collected in person via this popup, never through Razorpay
     })
     const filename = `Receipt-${(receipt.receiptNo || trial.id).toString().replace(/[^A-Za-z0-9-]/g, '')}.html`
     return (
