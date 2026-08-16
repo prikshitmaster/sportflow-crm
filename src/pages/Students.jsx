@@ -1120,6 +1120,15 @@ function AddStudentModal({ onClose, onSave }) {
             {devBatches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
           {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
+          {form.batchId && (() => {
+            const b = devBatches.find(x => x.id === Number(form.batchId))
+            return b ? (
+              <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
+                <UserCheck size={12} className="text-gray-400" />
+                Coach: <span className="font-semibold text-gray-700">{b.coach || 'Unassigned'}</span>
+              </p>
+            ) : null
+          })()}
         </div>
 
         {/* Training Type */}

@@ -10,6 +10,7 @@ import DevFillButton from '../components/DevFillButton'
 import { fillTrial } from '../lib/devFill'
 import { toLocalDateStr } from '../lib/dates'
 import { normTrainingType, trainingTypeLabel } from '../lib/studentRules'
+import { MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 import useBodyScrollLock from '../hooks/useBodyScrollLock'
 
 // ── Stage config ─────────────────────────────────────────────
@@ -444,12 +445,20 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
     sport: selectedSport || '',
     trialDate: todayStr(), quotedFee: '', notes: '',
     sessionStart: '', sessionEnd: '',
+    // Same contact/personal fields the /join funnel asks — kept optional
+    // here since a quick walk-in add doesn't always have every answer yet.
+    gender: '', motherName: '', email: '', alternateContactPhone: '',
+    occupation: '', address: '', emergencyContactName: '', emergencyContactPhone: '',
+    medicalNotes: '',
     ...initial,
     trialSessions: initial.trialSessions || 1,
     trialFeePaid:  initial.trialFeePaid  ?? 590,
     trialFeeMode:  initial.trialFeeMode  || 'Cash',
     batchId:       initial.batchId ? String(initial.batchId) : '',
     phone:         initial.phone   ? initial.phone.replace(/^\+91\s?/, '') : '',
+    // medicalNotes is the only part actually persisted — hasMedical is a
+    // UI-only yes/no derived from whether it's set, same as Students.jsx.
+    hasMedical:    initial.medicalNotes ? 'yes' : '',
   })
   const [saving, setSaving] = useState(false)
 
@@ -487,6 +496,17 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
         dob:           form.dob          || null,
         ageGroup:      form.ageGroup     || null,
         programType:   form.programType  || 'academy',
+        gender:                 form.gender                 || null,
+        motherName:             form.motherName?.trim()     || null,
+        email:                  form.email?.trim()          || null,
+        alternateContactPhone:  form.alternateContactPhone  || null,
+        occupation:             form.occupation?.trim()     || null,
+        address:                form.address?.trim()        || null,
+        emergencyContactName:   form.emergencyContactName?.trim()  || null,
+        emergencyContactPhone:  form.emergencyContactPhone         || null,
+        // Same "no separate boolean" convention as /join: a blank note on
+        // an explicit 'no' means answered-no, not never-asked.
+        medicalNotes:  form.hasMedical === 'yes' ? (form.medicalNotes?.trim() || null) : null,
       })
       onClose()
     } catch (e) {
@@ -698,6 +718,100 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
                 ))}
               </div>
             </Field>
+          </div>
+
+          {/* ── Additional Info — same contact/personal fields the /join
+              funnel collects (studentIntake.js), so a walk-in lead entered
+              by staff carries as much onto conversion as a self-registered
+              one does. All optional: a quick add doesn't always have every
+              answer yet. ── */}
+          <div className="space-y-3 pt-1">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Additional Info</p>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <Field label="Gender">
+                <div className="flex gap-1.5">
+                  {GENDER_OPTIONS.map(g => (
+                    <button key={g} type="button" onClick={() => set('gender', g)}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                        form.gender === g
+                          ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                          : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                      }`}>
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <Field label="Mother's Name">
+                <input value={form.motherName} onChange={e => set('motherName', e.target.value)}
+                  placeholder="Mother's name" className={fieldCls} />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <Field label="Email">
+                <input value={form.email} onChange={e => set('email', e.target.value)}
+                  type="email" placeholder="parent@email.com" className={fieldCls} />
+              </Field>
+              <Field label="Alternate Contact">
+                <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-brand-500/30 focus-within:border-brand-400 focus-within:bg-white transition">
+                  <span className="flex items-center px-3 text-sm font-semibold text-gray-500 bg-gray-100 border-r border-gray-200 shrink-0 select-none">+91</span>
+                  <input value={form.alternateContactPhone}
+                    onChange={e => set('alternateContactPhone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="98765 43210" inputMode="tel" maxLength={10}
+                    className="flex-1 px-3 py-2.5 text-sm text-gray-900 bg-transparent focus:outline-none placeholder-gray-400" />
+                </div>
+              </Field>
+            </div>
+
+            <Field label="Occupation">
+              <input value={form.occupation} onChange={e => set('occupation', e.target.value)}
+                placeholder="Parent's occupation" className={fieldCls} />
+            </Field>
+
+            <Field label="Address">
+              <input value={form.address} onChange={e => set('address', e.target.value)}
+                placeholder="Home address" className={fieldCls} />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <Field label="Emergency Contact Name">
+                <input value={form.emergencyContactName} onChange={e => set('emergencyContactName', e.target.value)}
+                  placeholder="Contact name" className={fieldCls} />
+              </Field>
+              <Field label="Emergency Contact Phone">
+                <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-brand-500/30 focus-within:border-brand-400 focus-within:bg-white transition">
+                  <span className="flex items-center px-3 text-sm font-semibold text-gray-500 bg-gray-100 border-r border-gray-200 shrink-0 select-none">+91</span>
+                  <input value={form.emergencyContactPhone}
+                    onChange={e => set('emergencyContactPhone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="98765 43210" inputMode="tel" maxLength={10}
+                    className="flex-1 px-3 py-2.5 text-sm text-gray-900 bg-transparent focus:outline-none placeholder-gray-400" />
+                </div>
+              </Field>
+            </div>
+
+            <Field label="Any Medical Condition?">
+              <div className="flex gap-2">
+                {MEDICAL_OPTIONS.map(opt => (
+                  <button key={opt.value} type="button" onClick={() => set('hasMedical', opt.value)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                      form.hasMedical === opt.value
+                        ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                        : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                    }`}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            {form.hasMedical === 'yes' && (
+              <Field label="Medical Notes">
+                <textarea value={form.medicalNotes ?? ''} onChange={e => set('medicalNotes', e.target.value)}
+                  rows={2} placeholder="Allergies, conditions, medication…"
+                  className={fieldCls + ' resize-none'} />
+              </Field>
+            )}
           </div>
 
           {/* ── Notes ── */}

@@ -79,6 +79,13 @@ function AttendSheet({ trial, onClose, onSave }) {
 
 function TrialCard({ trial, batches, onMark, onRecommend }) {
   const batch     = batches.find(b => b.id === trial.batchId)
+  // trialFeePaid defaults to 590 on every row regardless of whether it was
+  // actually collected — trialFeeMode is the real signal (same rule Trials.jsx
+  // uses). Stays 'Not collected' for a walk-in until the office collects the
+  // cash and marks it paid, so a coach never sees "paid" for money that
+  // hasn't actually come in yet — only real online payments or an office
+  // paid-confirmation flip this.
+  const feeCollected = trial.trialFeeMode !== 'Not collected'
   const today     = todayStr()
   const isToday   = trial.trialDate === today
   const isPast    = trial.trialDate && trial.trialDate < today
@@ -106,6 +113,12 @@ function TrialCard({ trial, batches, onMark, onRecommend }) {
           {trial.phone && (
             <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
               <Phone size={9} />{trial.phone}
+            </p>
+          )}
+          {feeCollected && (
+            <p className="text-[11px] font-black text-emerald-600 flex items-center gap-1 mt-1">
+              <CheckCircle2 size={11} />
+              Trial fee paid · ₹{(trial.trialFeePaid ?? 590).toLocaleString('en-IN')}
             </p>
           )}
         </div>

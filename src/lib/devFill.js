@@ -118,6 +118,7 @@ export function fillTrial({ sports = [], batches = [] } = {}) {
   const batch    = matched.length ? pick(matched) : null
   const ageGroup = pick(AGE_GROUPS)
   const age      = rand(8, 20)
+  const area     = pick(AREA_NAMES)
   return {
     name:         fakeName(),
     parent:       fakeName(),
@@ -135,6 +136,18 @@ export function fillTrial({ sports = [], batches = [] } = {}) {
     notes:        '',
     sessionStart: '',
     sessionEnd:   '',
+    // Same additional-info fields the office "New Trial Lead" form now asks
+    // (mirrors /join's contact fields).
+    gender:                 pick(['Male', 'Female']),
+    motherName:             fakeName(),
+    email:                  `parent.${Date.now().toString().slice(-6)}@test.local`,
+    alternateContactPhone:  fakePhone(),
+    occupation:             pick(OCCUPATIONS),
+    address:                `Plot ${rand(1, 90)}, Sector ${rand(1, 20)}, ${area}, ${pick(AREA_CITIES)}`,
+    emergencyContactName:   fakeName(),
+    emergencyContactPhone:  fakePhone(),
+    hasMedical:             'no',
+    medicalNotes:           '',
   }
 }
 

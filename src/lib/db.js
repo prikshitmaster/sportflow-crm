@@ -722,6 +722,18 @@ export async function insertTrial(t) {
       trialFeePaid:  String(t.trialFeePaid ?? 590),
       trialFeeMode:  t.trialFeeMode   || 'Cash',
       branchId:      t.branchId      || null,
+      // Same contact/personal fields the /join funnel collects (0146) — the
+      // office form asks them too now, so a walk-in lead carries as much
+      // onto conversion as a self-registered one does.
+      gender:                 t.gender                 || null,
+      motherName:             t.motherName             || null,
+      email:                  t.email                  || null,
+      alternateContactPhone:  t.alternateContactPhone  || null,
+      occupation:             t.occupation              || null,
+      address:                t.address                 || null,
+      emergencyContactName:   t.emergencyContactName   || null,
+      emergencyContactPhone:  t.emergencyContactPhone  || null,
+      medicalNotes:           t.medicalNotes            || null,
     },
     p_token: _sessionToken(),
   })
