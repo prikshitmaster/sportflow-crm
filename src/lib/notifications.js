@@ -43,9 +43,16 @@ export async function markRead(id) {
   return data
 }
 
+// Same reasoning as markRead above: a DELETE that RLS refuses, or that matched
+// nothing because the session token expired, comes back error-free with zero
+// rows. Without the row count the bell removed the row locally and it
+// reappeared on the next load, which reads as "clear doesn't work".
 export async function deleteNotification(id) {
-  const { error } = await supabase.from('notifications').delete().eq('id', id)
+  const { data, error } = await supabase
+    .from('notifications').delete().eq('id', id).select('id')
   if (error) throw error
+  if (!data?.length) throw new Error('Could not delete — your session may have expired')
+  return data
 }
 
 // Housekeeping: drop notifications this user has already read and that are
