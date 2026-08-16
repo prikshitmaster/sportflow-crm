@@ -811,6 +811,10 @@ function FeaturesTab() {
     { key: 'student_code_login', label: 'Student Direct Login', desc: 'Students log in with their own Student ID + Join Code' },
     { key: 'family_login',       label: 'Family (Parent) Login', desc: 'Parents log in with just their phone number and pick a child — supports siblings under one number' },
     { key: 'join_batch_choice',  label: 'Batch Choice on Registration', desc: 'Public /join form lets the student pick a batch — turn off to skip that step and assign batches yourself' },
+    // Opt-in, unlike everything above — new behaviour that silently assigns
+    // a batch for the family rather than something already true until you
+    // turn it off. Only takes effect while Batch Choice above is off.
+    { key: 'auto_assign_batch_by_age', label: 'Auto-Assign Batch by Age', desc: 'Only applies when Batch Choice on Registration is off — places the student in a matching Development batch by age as soon as they enter date of birth, and shows the assigned coach', defaultOff: true },
   ]
 
   return (
@@ -838,25 +842,32 @@ function FeaturesTab() {
       )}
 
       <div className="space-y-1">
-        {FEATURE_LIST.map(({ key, label, desc }) => (
-          <div key={key} className="flex items-center justify-between py-3.5 border-b border-gray-50 last:border-0">
-            <div>
-              <p className="text-sm font-semibold text-gray-700">{label}</p>
-              <p className="text-xs text-gray-400">{desc}</p>
+        {FEATURE_LIST.map(({ key, label, desc, defaultOff }) => {
+          // Every flag but the opt-in ones defaults ON (unset = enabled) —
+          // defaultOff flips that so an academy that's never touched it
+          // reads as off both here and in what actually happens (0162's
+          // RPC already treats it the same way).
+          const isOn = defaultOff ? features[key] === true : features[key] !== false
+          return (
+            <div key={key} className="flex items-center justify-between py-3.5 border-b border-gray-50 last:border-0">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">{label}</p>
+                <p className="text-xs text-gray-400">{desc}</p>
+              </div>
+              {/* Toggle — calls DB immediately on click */}
+              <button
+                onClick={() => toggleFeature(key, !isOn)}
+                className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                  isOn ? 'bg-brand-600' : 'bg-gray-200'
+                }`}
+              >
+                <span className={`inline-block w-4 h-4 bg-white rounded-full shadow transition-transform mt-1 ${
+                  isOn ? 'translate-x-6' : 'translate-x-1'
+                }`} />
+              </button>
             </div>
-            {/* Toggle — calls DB immediately on click */}
-            <button
-              onClick={() => toggleFeature(key, features[key] === false ? true : false)}
-              className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-                features[key] !== false ? 'bg-brand-600' : 'bg-gray-200'
-              }`}
-            >
-              <span className={`inline-block w-4 h-4 bg-white rounded-full shadow transition-transform mt-1 ${
-                features[key] !== false ? 'translate-x-6' : 'translate-x-1'
-              }`} />
-            </button>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

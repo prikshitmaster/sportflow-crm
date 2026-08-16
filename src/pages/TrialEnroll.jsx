@@ -203,6 +203,32 @@ function ageFromDob(dobStr) {
   return age >= 0 ? String(age) : ''
 }
 
+// Best-fit batch for a given age (Auto-Assign Batch by Age, 0162).
+// Development batches only — Advance squads are earned via Edit Student,
+// never handed out automatically at registration (same rule Students.jsx's
+// Add Student already enforces). Among batches whose range fits: prefers
+// the tightest age range (most specific match), then one with open seats
+// over a full one, then whichever has the most room.
+function matchBatchByAge(batches, age) {
+  if (age == null || age === '') return null
+  const n = Number(age)
+  if (!Number.isFinite(n)) return null
+  const candidates = (batches || []).filter(b =>
+    (b.batchType || 'development') !== 'advance' &&
+    n >= (b.ageMin ?? 0) && n <= (b.ageMax ?? 99)
+  )
+  if (candidates.length === 0) return null
+  return candidates.slice().sort((a, b) => {
+    const rangeA = (a.ageMax ?? 99) - (a.ageMin ?? 0)
+    const rangeB = (b.ageMax ?? 99) - (b.ageMin ?? 0)
+    if (rangeA !== rangeB) return rangeA - rangeB
+    const openA = (a.seatsLeft ?? 0) > 0 ? 1 : 0
+    const openB = (b.seatsLeft ?? 0) > 0 ? 1 : 0
+    if (openA !== openB) return openB - openA
+    return (b.seatsLeft ?? 0) - (a.seatsLeft ?? 0)
+  })[0]
+}
+
 function greetingWord() {
   const h = new Date().getHours()
   if (h < 12) return 'GOOD MORNING'
@@ -422,7 +448,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // the RIGHT academy immediately, never a flash of wrong/default branding.
   const [brandingStatus, setBrandingStatus] = useState('loading') // 'loading' | 'not-found' | 'ready'
   const [branding, setBranding] = useState(null)
-  const [academyFeatures, setAcademyFeatures] = useState({ studentCodeLogin: true, familyLogin: true, joinBatchChoice: true })
+  const [academyFeatures, setAcademyFeatures] = useState({ studentCodeLogin: true, familyLogin: true, joinBatchChoice: true, autoAssignBatchByAge: false })
 
   useEffect(() => {
     let cancelled = false
@@ -446,6 +472,11 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // straight to the form and the academy assigns the batch later, which is
   // what the "let the academy pick" escape hatch already did anyway.
   const batchChoice = academyFeatures.joinBatchChoice !== false
+  // Settings → Features → "Auto-Assign Batch by Age" (0162). Only meaningful
+  // when batchChoice is OFF — it's what fills the gap that leaves instead of
+  // the plain "academy assigns it later" fallback: match a batch by age as
+  // soon as DOB is known, and show its coach right there.
+  const autoAssignByAge = !batchChoice && academyFeatures.autoAssignBatchByAge === true
 
   const [step, setStep] = useState('login')  // login | home | branch | batch | form | pay | confirm
   const [authMode, setAuthMode] = useState('login') // cosmetic Login/Register tabs
@@ -486,6 +517,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const [batches, setBatches] = useState([])
   const [batchesLoading, setBatchesLoading] = useState(false)
   const [batchId, setBatchId] = useState(null)
+  // Full matched batch (not just its id) so the confirmation card can show
+  // its coach without a second lookup — auto-assign mode only.
+  const [autoMatchedBatch, setAutoMatchedBatch] = useState(null)
 
   const [myTrials, setMyTrials] = useState([])          // this phone's own registered students at this academy
   const [profileLoading, setProfileLoading] = useState(false)
@@ -760,17 +794,31 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
   async function chooseBranch(row) {
     setChosenRow(row); setError('')
-    // Batch step disabled → skip it entirely (no batch fetch at all) and let
-    // the academy assign one, exactly as batchId = null already meant.
-    if (!batchChoice) { setBatches([]); setBatchId(null); setStep('form'); return }
+    // Batch step disabled and no auto-assign → skip the fetch entirely and
+    // let the academy assign one, exactly as batchId = null already meant.
+    if (!batchChoice && !autoAssignByAge) { setBatches([]); setBatchId(null); setStep('form'); return }
     setLoading(true); setBatchesLoading(true)
     try {
       const list = await db.fetchPublicTrialBatches(slug, row.id)
-      setBatches(list); setBatchId(null); setStep('batch')
+      setBatches(list); setBatchId(null)
+      // Auto-assign still needs the list (to match by age once DOB is known)
+      // but never shows the picker screen itself — straight to the form,
+      // same as the disabled-with-no-auto-assign path above.
+      setStep(batchChoice ? 'batch' : 'form')
     } catch (err) {
       setError(err?.message || 'Could not load batches')
     } finally { setLoading(false); setBatchesLoading(false) }
   }
+
+  // Re-match live as DOB changes. No match (age doesn't fit anything, or the
+  // list hasn't loaded yet) just falls through to exactly today's behaviour
+  // — batchId stays null, Preferred Days still collects a hint for staff.
+  useEffect(() => {
+    if (!autoAssignByAge) { setAutoMatchedBatch(null); return }
+    const match = matchBatchByAge(batches, form.age)
+    setAutoMatchedBatch(match)
+    setBatchId(match ? match.id : null)
+  }, [autoAssignByAge, batches, form.age])
 
   // Typing into a flagged field clears its red state immediately — the mark
   // is feedback on the last submit attempt, not a permanent verdict.
@@ -1523,6 +1571,37 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       {form.age ? `${form.age} yrs` : 'Age'}
                     </div>
                   </div>
+
+                  {/* Auto-Assign Batch by Age (0162) — only ever shows when the
+                      manual "Choose a Batch" step is off and this is turned on.
+                      Development only (matchBatchByAge excludes Advance) and
+                      silent when nothing fits — Preferred Days below still
+                      covers that case exactly as it always has. */}
+                  {autoAssignByAge && autoMatchedBatch && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px',
+                                  background: C.tint, borderRadius: R.control, border: `1px solid ${C.main}2E` }}>
+                      {autoMatchedBatch.coachPhotoUrl ? (
+                        <img src={autoMatchedBatch.coachPhotoUrl} alt={autoMatchedBatch.coach || ''}
+                          style={{ width: 38, height: 38, borderRadius: R.pill, objectFit: 'cover', flexShrink: 0,
+                                   border: '2px solid #fff', boxShadow: E.rest }} />
+                      ) : (
+                        <div style={{ width: 38, height: 38, borderRadius: R.pill, flexShrink: 0, display: 'flex',
+                                      alignItems: 'center', justifyContent: 'center', background: C.main, color: '#fff',
+                                      fontWeight: 800, fontSize: 14 }}>
+                          {(autoMatchedBatch.coach || 'C').trim().charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ ...T.strong, color: C.dark }}>
+                          {autoMatchedBatch.coach ? `You'll train with ${autoMatchedBatch.coach}` : "You're placed!"}
+                        </div>
+                        <div style={{ ...T.micro, ...NUM, color: N.muted, marginTop: 1 }}>
+                          {capFirst(autoMatchedBatch.code || autoMatchedBatch.name)}
+                          {autoMatchedBatch.startTime ? ` · ${autoMatchedBatch.startTime}–${autoMatchedBatch.endTime}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                     <select id="jf-gender" className="jf-field" value={form.gender} onChange={e => set('gender', e.target.value)}

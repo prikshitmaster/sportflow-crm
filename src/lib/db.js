@@ -3535,6 +3535,10 @@ export async function fetchPublicAcademyFeatures(slug) {
     studentCodeLogin: row?.student_code_login !== false,
     familyLogin:      row?.family_login !== false,
     joinBatchChoice:  row?.join_batch_choice !== false,
+    // Opt-in (0162) — unlike the three above, this defaults OFF: it's new
+    // behaviour that silently picks a batch for the family, not something
+    // already true unless disabled.
+    autoAssignBatchByAge: row?.auto_assign_batch_by_age === true,
   }
 }
 
@@ -3657,15 +3661,22 @@ export async function fetchPublicTrialBranches(slug) {
 }
 
 const _mapPublicTrialBatch = (row) => ({
-  id:        row.id,
-  name:      row.name,
-  code:      row.code || null,
-  days:      row.days || [],
-  startTime: row.start_time,
-  endTime:   row.end_time,
-  capacity:  row.capacity,
-  waitlist:  row.waitlist,
-  seatsLeft: row.seats_left,
+  id:            row.id,
+  name:          row.name,
+  code:          row.code || null,
+  days:          row.days || [],
+  startTime:     row.start_time,
+  endTime:       row.end_time,
+  capacity:      row.capacity,
+  waitlist:      row.waitlist,
+  seatsLeft:     row.seats_left,
+  // Added for age-based auto-assign (0162) — batchType so matching can stay
+  // Development-only, same rule Add Student already enforces at registration.
+  ageMin:        row.age_min,
+  ageMax:        row.age_max,
+  batchType:     row.batch_type || 'development',
+  coach:         row.coach || null,
+  coachPhotoUrl: row.coach_photo_url || null,
 })
 
 export async function fetchPublicTrialBatches(slug, branchId) {
