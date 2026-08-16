@@ -1417,8 +1417,11 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               )}
             </div>
 
-            {/* Floating glass bottom nav — home screen only */}
-            <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 18,
+            {/* Floating glass bottom nav — home screen only. Fixed (not
+                absolute) so it stays pinned to the viewport while the
+                content behind it scrolls, instead of sitting once at the
+                very bottom of the full page height. */}
+            <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 18, zIndex: 20,
               background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)',
               borderRadius: 999, boxShadow: '0 12px 28px rgba(11,50,26,0.22)', display: 'flex', gap: 2, padding: 6, border: '1px solid rgba(255,255,255,0.7)' }}>
               {[
