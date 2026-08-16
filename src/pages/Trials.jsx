@@ -1565,20 +1565,38 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
           )}
 
           {trial.stage === 'scheduled' && (
-            <>
-              <button onClick={() => onAction('session', trial)}
-                className="flex-1 bg-amber-500 text-white rounded-xl py-2 text-xs font-bold">
-                + Mark Session
-              </button>
-              <button onClick={() => onAction('attend', trial)}
-                className="flex-1 bg-emerald-600 text-white rounded-xl py-2 text-xs font-bold">
-                → Attended
-              </button>
-              <button onClick={() => onAction('noshow', trial)}
-                className="px-3 bg-red-50 text-red-500 rounded-xl py-2 text-xs font-bold border border-red-100">
-                No Show
-              </button>
-            </>
+            trial.trialFeeMode === 'Not collected' ? (
+              // Same gate as 'new': a scheduled-but-unpaid trial (pre-dates
+              // this rule, or was scheduled before the fee was collected)
+              // can't be progressed to Attended/session-marked either. No
+              // Show stays open regardless — closing out a lead who never
+              // showed up has nothing to do with whether they paid.
+              <>
+                <button onClick={() => onAction('edit', trial)}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-red-500 text-white rounded-xl py-2 text-xs font-bold">
+                  <IndianRupee size={13} /> Collect Trial Fee First
+                </button>
+                <button onClick={() => onAction('noshow', trial)}
+                  className="px-3 bg-red-50 text-red-500 rounded-xl py-2 text-xs font-bold border border-red-100">
+                  No Show
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => onAction('session', trial)}
+                  className="flex-1 bg-amber-500 text-white rounded-xl py-2 text-xs font-bold">
+                  + Mark Session
+                </button>
+                <button onClick={() => onAction('attend', trial)}
+                  className="flex-1 bg-emerald-600 text-white rounded-xl py-2 text-xs font-bold">
+                  → Attended
+                </button>
+                <button onClick={() => onAction('noshow', trial)}
+                  className="px-3 bg-red-50 text-red-500 rounded-xl py-2 text-xs font-bold border border-red-100">
+                  No Show
+                </button>
+              </>
+            )
           )}
 
           {trial.stage === 'attended' && (
