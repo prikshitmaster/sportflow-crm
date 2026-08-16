@@ -878,9 +878,10 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
   const batchOpts = trial.sport ? batches.filter(b => (b.sports || []).includes(trial.sport)) : batches
 
   async function handleSave() {
+    if (!batchId) return
     setSaving(true)
     try {
-      await onSave(trial.id, { stage: 'scheduled', trialDate: date, batchId: batchId ? Number(batchId) : null })
+      await onSave(trial.id, { stage: 'scheduled', trialDate: date, batchId: Number(batchId) })
       onClose()
     } catch (e) { showToast(e.message || 'Failed to schedule trial', 'error') } finally { setSaving(false) }
   }
@@ -899,15 +900,21 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
             <input value={date} onChange={e => setDate(e.target.value)} type="date" className="input-field" />
           </div>
           <div>
-            <label className="label-xs">Assign Batch</label>
+            <label className="label-xs">Assign Batch *</label>
             <select value={batchId} onChange={e => setBatchId(e.target.value)} className="input-field">
-              <option value="">Unassigned</option>
+              <option value="">Select a batch…</option>
               {batchOpts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
+            {/* A coach only ever sees trials tied to one of their own batches
+                (StaffTrials.jsx) — leaving this Unassigned means no coach can
+                ever pick this trial up, paid or not. Required from here on. */}
+            <p className="mt-1 text-[11px] text-gray-400">
+              Required — your coach only sees trials assigned to their batch.
+            </p>
           </div>
         </div>
         <div className="px-5 pb-5">
-          <button onClick={handleSave} disabled={!date || saving}
+          <button onClick={handleSave} disabled={!date || !batchId || saving}
             className="w-full bg-brand-600 text-white rounded-xl py-3 font-bold text-sm disabled:opacity-40">
             {saving ? 'Saving…' : 'Schedule'}
           </button>
