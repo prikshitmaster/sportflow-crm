@@ -885,7 +885,9 @@ function AddStudentModal({ onClose, onSave }) {
   // it's the short unique label batches are now required to carry (0160).
   // Falls back to the name only for batches created before that, which
   // may still have no code.
-  const batchLabel = (b) => b.code || b.name
+  // First letter capitalized for display only — codes are stored lowercase
+  // (uniqueness is case-insensitive, 0160), e.g. "u15-tts" shows as "U15-tts".
+  const batchLabel = (b) => { const s = b.code || b.name; return s ? s.charAt(0).toUpperCase() + s.slice(1) : s }
   // Combine sports from both tables: old academy_branches + new sport_branches.
   // Cricket (and any sport added via sport_branches) was missing from the dropdown
   // because it only existed in sport_branches, not academy_branches.

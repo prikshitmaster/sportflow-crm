@@ -58,6 +58,12 @@ function slugify(s) {
   return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'x'
 }
 
+// Batch codes are stored lowercase (uniqueness is case-insensitive, 0160) —
+// this only dresses up how one displays, e.g. "u15-tts" -> "U15-tts".
+function capFirst(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
+
 // Deterministic hash so the same seedKey always locks to the same photo
 // (stable across reloads) without needing real randomness.
 function hashSeed(str) {
@@ -1450,7 +1456,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 // to carry (0160) — same one Add Student's batch picker
                 // shows internally. Falls back to the full name only for a
                 // batch that somehow still has none.
-                const label = b.code || b.name
+                const label = capFirst(b.code || b.name)
                 return (
                   <Tappable key={b.id} onClick={() => { setBatchId(b.id); setStep('form') }}
                     label={`${label}, ${open ? `${seatsLeft} seats left` : 'waitlist'}`}
@@ -1458,9 +1464,13 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ ...T.h3, fontSize: 15, color: N.text }}>{label}</div>
-                        <div style={{ ...T.label, ...NUM, color: N.faint, marginTop: 3 }}>
-                          {(b.days || []).join(', ')}{b.startTime ? ` · ${b.startTime}–${b.endTime}` : ''}
-                        </div>
+                        {/* Days dropped — a code like u15-tts already spells out
+                            Tue/Thu/Sat, so the day list was just repeating it. */}
+                        {b.startTime && (
+                          <div style={{ ...T.label, ...NUM, color: N.faint, marginTop: 3 }}>
+                            {b.startTime}–{b.endTime}
+                          </div>
+                        )}
                       </div>
                       <span style={{ ...T.eyebrow, ...NUM, letterSpacing: 0.3, padding: '6px 10px', borderRadius: R.pill, flexShrink: 0, whiteSpace: 'nowrap',
                         background: warm ? '#FEF3C7' : C.tint, color: warm ? '#92400E' : C.dark }}>
@@ -1663,7 +1673,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <span style={{ fontSize: 15, fontWeight: 700, color: N.text }}>{form.name.trim() || 'Student'}</span>
                   <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>
                     {chosenSport} · {chosenRow?.branchName}
-                    {batchId ? ` · ${(() => { const b = batches.find(x => x.id === batchId); return b ? (b.code || b.name) : '' })()}` : ''}
+                    {batchId ? ` · ${(() => { const b = batches.find(x => x.id === batchId); return b ? capFirst(b.code || b.name) : '' })()}` : ''}
                   </span>
                 </div>
 
@@ -1763,7 +1773,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Batch</span>
                     <span style={{ fontSize: 12.5, color: N.text, fontWeight: 800 }}>
                       {batchId
-                        ? (() => { const b = batches.find(x => x.id === batchId); return b ? (b.code || b.name) : '—' })()
+                        ? (() => { const b = batches.find(x => x.id === batchId); return b ? capFirst(b.code || b.name) : '—' })()
                         : 'To be assigned'}
                     </span>
                   </div>
