@@ -209,16 +209,12 @@ function TrialCard({ trial, batches, onMark, onRecommend }) {
         </p>
       )}
 
-      {/* Accept / Follow-up / Decline — appears once all sessions are marked present */}
+      {/* Accept / Decline — appears once all sessions are marked present */}
       {needsCall && (
         <div className="mt-3 flex gap-1.5">
           <button onClick={() => onRecommend(trial, 'accept')}
             className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black">
             Accept ✓
-          </button>
-          <button onClick={() => onRecommend(trial, 'followup')}
-            className="flex-1 py-2.5 bg-orange-500 text-white rounded-xl text-xs font-black">
-            Follow-up ↺
           </button>
           <button onClick={() => onRecommend(trial, 'decline')}
             className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-xs font-black">
