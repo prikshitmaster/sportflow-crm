@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   Building, Bell, MessageCircle, Shield, CreditCard, Check, ToggleLeft, Key,
@@ -11,7 +11,7 @@ import { fillFeePlan } from '../lib/devFill'
 const tabs = [
   { id: 'academy',       label: 'Academy Profile', icon: Building },
   { id: 'features',      label: 'Features',        icon: ToggleLeft },
-  { id: 'fees',          label: 'Fee Plans',        icon: CreditCard },
+  { id: 'fees',          label: 'Fees & Tax',       icon: CreditCard },
   { id: 'notifications', label: 'Notifications',    icon: Bell },
   { id: 'whatsapp',      label: 'WhatsApp',         icon: MessageCircle },
   { id: 'security',      label: 'Security',         icon: Shield },
@@ -350,6 +350,147 @@ const TT_LABEL = { daily: 'Daily', alternate: 'Alternate Day' }
 
 const BLANK_PLAN = { name: '', trainingType: 'daily', monthlyFee: 0, quarterlyFee: 0, yearlyFee: 0 }
 
+// Branch trial fee / kit fee / tax — the same settings the owner gets behind the
+// pencil on /sport-select, surfaced here because a branch manager can't reach
+// that page at all (SportSelectRoute redirects non-owners). An owner sees every
+// branch; a manager sees only the branch they manage, and the RPC enforces that
+// independently — hiding the card is convenience, not the control.
+function BranchFeesSection() {
+  const { user, role, selectedBranch, sportBranches, refreshSportBranches, showToast } = useApp()
+
+  // Branch isolation, same rule as AppContext's effectiveBranch (line ~2465):
+  // staff are pinned to user.branchId and never to selectedBranch; owners see
+  // the branch they've switched to. You set the rate for the branch you are
+  // currently in — never a list of every branch in the academy.
+  const currentBranchId = role === 'staff' ? (user?.branchId || null) : selectedBranch
+
+  const editable = useMemo(() => {
+    if (!currentBranchId) return []
+    const b = (sportBranches || []).find(x => String(x.id) === String(currentBranchId))
+    if (!b) return []
+    // Staff must also actually MANAGE it, not merely be assigned to it — the
+    // same distinction secure_update_branch_fees enforces server-side.
+    if (role !== 'owner' && !(b.managerId != null && String(b.managerId) === String(user?.id))) return []
+    return [b]
+  }, [sportBranches, role, user?.id, user?.branchId, currentBranchId])
+
+  const [drafts, setDrafts] = useState({})   // branchId → form state
+  const [busyId, setBusyId] = useState(null)
+
+  // A branch's saved values, as form strings. Only copied into `drafts` once the
+  // user actually edits, so an untouched card always reflects the server.
+  const seed = (b) => ({
+    trialFee:   b.trialFee   != null ? String(b.trialFee) : '',
+    kitFee:     b.kitFee     != null ? String(b.kitFee)   : '',
+    taxPercent: b.taxPercent != null ? String(b.taxPercent) : '',
+    taxOnFees:  !!b.taxOnFees, taxOnTrial: !!b.taxOnTrial, taxOnKit: !!b.taxOnKit,
+  })
+  const draftFor = (b) => drafts[b.id] ?? seed(b)
+  const setField = (b, k, v) =>
+    setDrafts(prev => ({ ...prev, [b.id]: { ...(prev[b.id] ?? seed(b)), [k]: v } }))
+
+  const save = async (b) => {
+    const d = draftFor(b)
+    setBusyId(b.id)
+    try {
+      const db = await import('../lib/db')
+      await db.updateBranchFees(b.id, {
+        trialFee: d.trialFee, kitFee: d.kitFee, taxPercent: d.taxPercent,
+        taxOnFees: d.taxOnFees, taxOnTrial: d.taxOnTrial, taxOnKit: d.taxOnKit,
+      })
+      await refreshSportBranches()
+      setDrafts(prev => { const n = { ...prev }; delete n[b.id]; return n })
+      showToast('Branch fees saved', 'success')
+    } catch (e) {
+      showToast(e?.message?.includes('forbidden') ? "You can only edit the branch you manage" : 'Could not save branch fees', 'error')
+    } finally { setBusyId(null) }
+  }
+
+  // An owner viewing "all branches" has no single branch to price, so say so
+  // rather than silently vanishing — the setting exists, it just needs a scope.
+  if (editable.length === 0) {
+    if (role === 'owner' && !currentBranchId) {
+      return (
+        <div className="mb-8">
+          <SectionHeader title="Branch Fees & Tax" desc="Trial and kit fees charged at online registration, and the tax this branch adds." />
+          <p className="text-sm text-gray-400 mb-2">
+            Pick a branch from the sidebar switcher to set its fees and tax. Each branch keeps its own rate.
+          </p>
+        </div>
+      )
+    }
+    return null
+  }
+
+  return (
+    <div className="mb-8">
+      <SectionHeader
+        title="Branch Fees & Tax"
+        desc="Trial and kit fees charged at online registration, and the tax this branch adds. Applies to this branch only." />
+
+      <div className="space-y-4 mb-2">
+        {editable.map(b => {
+          const d = draftFor(b)
+          const dirty = !!drafts[b.id]
+          return (
+            <div key={b.id} className="border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="font-bold text-gray-900 text-sm">{b.branchName}</p>
+                  <p className="text-[11px] text-gray-400">{b.sportName}</p>
+                </div>
+                {dirty && (
+                  <button onClick={() => save(b)} disabled={busyId === b.id}
+                    className="btn-primary text-xs py-1.5 px-3">
+                    {busyId === b.id ? 'Saving…' : 'Save'}
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Trial fee (₹)</label>
+                  <input className="input" type="number" min="0" placeholder="590"
+                    value={d.trialFee} onChange={e => setField(b, 'trialFee', e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Kit fee (₹)</label>
+                  <input className="input" type="number" min="0" placeholder="0"
+                    value={d.kitFee} onChange={e => setField(b, 'kitFee', e.target.value)} />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Tax rate (%) <span className="text-gray-400 font-normal">(leave blank for no tax)</span></label>
+                  <input className="input" type="number" min="0" max="100" step="0.01" placeholder="18"
+                    value={d.taxPercent} onChange={e => setField(b, 'taxPercent', e.target.value)} />
+                </div>
+                <div className="col-span-2">
+                  <p className="label mb-1.5">Apply this tax to</p>
+                  <div className="flex flex-wrap gap-x-5 gap-y-2">
+                    {[
+                      { k: 'taxOnFees',  label: 'Monthly fees' },
+                      { k: 'taxOnTrial', label: 'Trial fee' },
+                      { k: 'taxOnKit',   label: 'Kit fee' },
+                    ].map(t => (
+                      <label key={t.k} className={`flex items-center gap-2 text-sm font-medium cursor-pointer ${String(d.taxPercent).trim() === '' ? 'text-gray-400' : 'text-gray-700'}`}>
+                        <input type="checkbox" className="w-4 h-4 rounded accent-brand-600"
+                          checked={!!d[t.k]} onChange={e => setField(b, t.k, e.target.checked)} />
+                        {t.label}
+                      </label>
+                    ))}
+                  </div>
+                  {String(d.taxPercent).trim() === '' && (d.taxOnFees || d.taxOnTrial || d.taxOnKit) && (
+                    <p className="text-[11px] text-amber-600 mt-1.5 font-semibold">Set a tax rate above, or nothing will be taxed.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function FeePlansTab({ onSave, saved }) {
   // Use `batches` (scope-filtered by current sport + branch) instead of allBatches
   // so the Fee Plans tab only shows batches — and therefore plans — in the
@@ -379,6 +520,8 @@ function FeePlansTab({ onSave, saved }) {
 
   return (
     <div>
+      <BranchFeesSection />
+
       <SectionHeader title="Fee Plans" desc="Create plans per batch — each plan has Daily or Alternate training with monthly, quarterly and yearly rates." />
 
       {allBatches.length === 0 ? (

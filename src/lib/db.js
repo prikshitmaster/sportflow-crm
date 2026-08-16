@@ -2127,7 +2127,7 @@ export async function fetchSportBranches(academyId) {
   // Try with address first; if the column doesn't exist (42703), retry without it
   let { data, error } = await supabase
     .from('sport_branches')
-    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee`)
+    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee, tax_percent, tax_on_fees, tax_on_trial, tax_on_kit`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
@@ -2164,11 +2164,15 @@ export async function fetchSportBranches(academyId) {
     photoUrl:   r.photo_url || '',
     trialFee:   r.trial_fee != null ? Number(r.trial_fee) : null,
     kitFee:     r.kit_fee   != null ? Number(r.kit_fee)   : null,
+    taxPercent: r.tax_percent != null ? Number(r.tax_percent) : null,
+    taxOnFees:  !!r.tax_on_fees,
+    taxOnTrial: !!r.tax_on_trial,
+    taxOnKit:   !!r.tax_on_kit,
     createdAt:  r.created_at,
   }))
 }
 
-export async function insertSportBranch(_academyId, sportName, branchName, address = '', photoUrl = '', trialFee = null, kitFee = null) {
+export async function insertSportBranch(_academyId, sportName, branchName, address = '', photoUrl = '', trialFee = null, kitFee = null, tax = {}) {
   const { data, error } = await supabase.rpc('secure_insert_sport_branch', {
     p_sport_name:  sportName,
     p_branch_name: branchName,
@@ -2177,6 +2181,10 @@ export async function insertSportBranch(_academyId, sportName, branchName, addre
     p_trial_fee:   trialFee !== null && trialFee !== '' ? Number(trialFee) : null,
     p_kit_fee:     kitFee   !== null && kitFee   !== '' ? Number(kitFee)   : null,
     p_token:       _sessionToken(),
+    p_tax_percent:  tax.taxPercent !== undefined && tax.taxPercent !== null && tax.taxPercent !== '' ? Number(tax.taxPercent) : null,
+    p_tax_on_fees:  !!tax.taxOnFees,
+    p_tax_on_trial: !!tax.taxOnTrial,
+    p_tax_on_kit:   !!tax.taxOnKit,
   })
   if (error) throw error
   return {
@@ -2187,11 +2195,15 @@ export async function insertSportBranch(_academyId, sportName, branchName, addre
     photoUrl:   data.photo_url || '',
     trialFee:   data.trial_fee != null ? Number(data.trial_fee) : null,
     kitFee:     data.kit_fee   != null ? Number(data.kit_fee)   : null,
+    taxPercent: data.tax_percent != null ? Number(data.tax_percent) : null,
+    taxOnFees:  !!data.tax_on_fees,
+    taxOnTrial: !!data.tax_on_trial,
+    taxOnKit:   !!data.tax_on_kit,
     createdAt:  data.created_at,
   }
 }
 
-export async function updateSportBranch(branchId, { branchName, address, managerId, photoUrl, trialFee, kitFee }) {
+export async function updateSportBranch(branchId, { branchName, address, managerId, photoUrl, trialFee, kitFee, taxPercent, taxOnFees, taxOnTrial, taxOnKit }) {
   // Coerce managerId to integer — select option values are strings; staff.id is bigint
   let mid = null
   if (managerId !== undefined && managerId !== null && managerId !== '') {
@@ -2210,6 +2222,30 @@ export async function updateSportBranch(branchId, { branchName, address, manager
     p_trial_fee:   trialFee !== undefined && trialFee !== null && trialFee !== '' ? Number(trialFee) : null,
     p_kit_fee:     kitFee   !== undefined && kitFee   !== null && kitFee   !== '' ? Number(kitFee)   : null,
     p_token:       _sessionToken(),
+    p_tax_percent:  taxPercent !== undefined && taxPercent !== null && taxPercent !== '' ? Number(taxPercent) : null,
+    p_tax_on_fees:  !!taxOnFees,
+    p_tax_on_trial: !!taxOnTrial,
+    p_tax_on_kit:   !!taxOnKit,
+  })
+  if (error) throw error
+}
+
+// Fees & tax only. Deliberately NOT updateSportBranch: that one is owner-only
+// and can rewrite manager_id, so handing it to a branch manager would let them
+// reassign their own branch. secure_update_branch_fees (migration 0155) can
+// touch six columns and nothing else, and allows the owner OR the staff member
+// who is this branch's manager — enforced in the RPC, not here.
+export async function updateBranchFees(branchId, { trialFee, kitFee, taxPercent, taxOnFees, taxOnTrial, taxOnKit }) {
+  const num = (v) => (v !== undefined && v !== null && v !== '' ? Number(v) : null)
+  const { error } = await supabase.rpc('secure_update_branch_fees', {
+    p_branch_id:    branchId,
+    p_trial_fee:    num(trialFee),
+    p_kit_fee:      num(kitFee),
+    p_tax_percent:  num(taxPercent),
+    p_tax_on_fees:  !!taxOnFees,
+    p_tax_on_trial: !!taxOnTrial,
+    p_tax_on_kit:   !!taxOnKit,
+    p_token:        _sessionToken(),
   })
   if (error) throw error
 }
@@ -3579,6 +3615,12 @@ const _mapPublicTrialBranch = (row) => ({
   address:    row.address || '',
   trialFee:   row.trial_fee != null ? Number(row.trial_fee) : 590,
   kitFee:     row.kit_fee  != null ? Number(row.kit_fee)  : 0,
+  // Tax config so /join can show the breakdown before the parent commits.
+  // The authoritative charge is still computed in razorpay-create-trial-order —
+  // this is display only, and the two must agree (migration 0154).
+  taxPercent: row.tax_percent != null ? Number(row.tax_percent) : null,
+  taxOnTrial: !!row.tax_on_trial,
+  taxOnKit:   !!row.tax_on_kit,
 })
 
 export async function fetchPublicTrialBranches(slug) {

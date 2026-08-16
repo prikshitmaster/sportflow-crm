@@ -202,6 +202,12 @@ export default function SportSelect() {
         photoUrl:   fields.photoUrl ?? editingBranch.photoUrl ?? '',
         trialFee:   fields.trialFee ?? null,
         kitFee:     fields.kitFee   ?? null,
+        // secure_update_sport_branch writes these unconditionally, so they must
+        // be sent on every save or editing a branch name would wipe its tax.
+        taxPercent: fields.taxPercent ?? null,
+        taxOnFees:  !!fields.taxOnFees,
+        taxOnTrial: !!fields.taxOnTrial,
+        taxOnKit:   !!fields.taxOnKit,
       })
 
       // 2. Manager change → call the dedicated assign/unassign RPCs which
@@ -369,7 +375,7 @@ export default function SportSelect() {
             onCancelAdd={() => { setAddingBranch(false); setNewBranch(''); setNewBranchAddress('') }}
             onConfirmAdd={handleAddBranch}
             editingBranch={editingBranch}
-            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '', managerId: b.managerId || null, photoUrl: b.photoUrl || '', trialFee: b.trialFee ?? null, kitFee: b.kitFee ?? null })}
+            onStartEdit={(b) => setEditingBranch({ id: b.id, branchName: b.branchName, address: b.address || '', managerId: b.managerId || null, photoUrl: b.photoUrl || '', trialFee: b.trialFee ?? null, kitFee: b.kitFee ?? null, taxPercent: b.taxPercent ?? null, taxOnFees: !!b.taxOnFees, taxOnTrial: !!b.taxOnTrial, taxOnKit: !!b.taxOnKit })}
             onCancelEdit={() => setEditingBranch(null)}
             onSaveEdit={handleSaveEditBranch}
             deletingBranch={deletingBranch}
@@ -764,18 +770,22 @@ function BranchView({
         const c = counts[b.id] || {}
         return (
           <div key={b.id} className="group relative bg-white border border-gray-100 hover:border-brand-200 hover:shadow-md rounded-2xl p-5 transition">
-            {/* Action buttons — shown on hover */}
-            <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+            {/* Edit is always visible: it was hover-only, which made the trial
+                fee, kit fee and tax settings behind the pencil effectively
+                undiscoverable — nothing on screen suggested a branch could be
+                edited at all. Delete stays hover-only on purpose; a destructive
+                action doesn't need to be easier to hit. */}
+            <div className="absolute top-3 right-3 flex gap-1">
               <button
                 onClick={(e) => { e.stopPropagation(); onStartEdit(b) }}
                 className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition"
-                title="Edit branch"
+                title="Edit branch — fees & tax"
               >
                 <Pencil size={13} />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onStartDelete(b) }}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition"
                 title="Delete branch"
               >
                 <Trash2 size={13} />
@@ -817,6 +827,13 @@ function BranchView({
               <p className="text-[11px] text-gray-400 mb-2">
                 Trial fee: <span className="font-semibold text-gray-600">₹{(b.trialFee ?? 590).toLocaleString('en-IN')}</span>
                 {b.kitFee > 0 && <> · Kit fee: <span className="font-semibold text-gray-600">₹{b.kitFee.toLocaleString('en-IN')}</span></>}
+                {/* Naming what's taxed matters more than the rate: "18%" alone
+                    doesn't say whether this branch taxes trials, fees or both. */}
+                {b.taxPercent > 0 && (b.taxOnFees || b.taxOnTrial || b.taxOnKit) && (
+                  <> · Tax: <span className="font-semibold text-gray-600">
+                    {b.taxPercent}% on {[b.taxOnFees && 'fees', b.taxOnTrial && 'trial', b.taxOnKit && 'kit'].filter(Boolean).join(', ')}
+                  </span></>
+                )}
               </p>
               <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
                 <div>
@@ -914,6 +931,10 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
   const [managerId,   setManagerId]   = useState(initial.managerId  || '')
   const [trialFee,    setTrialFee]    = useState(initial.trialFee != null ? String(initial.trialFee) : '')
   const [kitFee,      setKitFee]      = useState(initial.kitFee   != null ? String(initial.kitFee)   : '')
+  const [taxPercent,  setTaxPercent]  = useState(initial.taxPercent != null ? String(initial.taxPercent) : '')
+  const [taxOnFees,   setTaxOnFees]   = useState(!!initial.taxOnFees)
+  const [taxOnTrial,  setTaxOnTrial]  = useState(!!initial.taxOnTrial)
+  const [taxOnKit,    setTaxOnKit]    = useState(!!initial.taxOnKit)
   const [photoFile,   setPhotoFile]   = useState(null)   // newly picked File, not yet uploaded
   const [photoPreview, setPhotoPreview] = useState(initial.photoUrl || '')
   const [saving,      setSaving]      = useState(false)
@@ -940,6 +961,8 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
         branchName: name, address, managerId: managerId || null, photoUrl,
         trialFee: trialFee.trim() === '' ? null : Number(trialFee),
         kitFee:   kitFee.trim()   === '' ? null : Number(kitFee),
+        taxPercent: taxPercent.trim() === '' ? null : Number(taxPercent),
+        taxOnFees, taxOnTrial, taxOnKit,
       })
     } finally { setSaving(false) }
   }
@@ -989,6 +1012,40 @@ function EditBranchModal({ initial, staffList = [], onCancel, onSave }) {
               Kit fee (₹) <span className="text-gray-400 font-normal">(optional — added on top of the trial fee at online registration)</span>
             </label>
             <input className="input" type="number" min="0" value={kitFee} onChange={e => setKitFee(e.target.value)} placeholder="0" />
+          </div>
+
+          {/* Tax — this branch's own rate, applied only to the fee types it
+              ticks. Blank rate means this branch charges no tax at all, which
+              is the default for every existing branch. */}
+          <div className="rounded-xl border border-gray-200 p-3 space-y-2.5">
+            <div>
+              <label className="label">
+                Tax rate (%) <span className="text-gray-400 font-normal">(optional — leave blank if this branch doesn't charge tax)</span>
+              </label>
+              <input className="input" type="number" min="0" max="100" step="0.01"
+                value={taxPercent} onChange={e => setTaxPercent(e.target.value)} placeholder="18" />
+            </div>
+            <div>
+              <p className="label mb-1.5">Apply this tax to</p>
+              <div className="space-y-1.5">
+                {[
+                  { label: 'Monthly fees', checked: taxOnFees,  set: setTaxOnFees },
+                  { label: 'Trial fee',    checked: taxOnTrial, set: setTaxOnTrial },
+                  { label: 'Kit fee',      checked: taxOnKit,   set: setTaxOnKit },
+                ].map(t => (
+                  <label key={t.label} className={`flex items-center gap-2.5 text-sm font-medium cursor-pointer ${taxPercent.trim() === '' ? 'text-gray-400' : 'text-gray-700'}`}>
+                    <input type="checkbox" className="w-4 h-4 rounded accent-brand-600"
+                      checked={t.checked} onChange={e => t.set(e.target.checked)} />
+                    {t.label}
+                  </label>
+                ))}
+              </div>
+              {taxPercent.trim() === '' && (taxOnFees || taxOnTrial || taxOnKit) && (
+                <p className="text-[11px] text-amber-600 mt-1.5 font-semibold">
+                  Set a tax rate above, or nothing will be taxed.
+                </p>
+              )}
+            </div>
           </div>
           <div>
             <label className="label">

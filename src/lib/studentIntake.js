@@ -25,3 +25,10 @@ export const MEDICAL_OPTIONS = [
   { value: 'yes', label: 'Yes' },
   { value: 'no',  label: 'No'  },
 ]
+
+// Required on both forms. Batches are routinely gendered ("Football Girls
+// Squad"), so a blank gender means staff can't place the student without
+// phoning the family back — the same reason the emergency contact is required.
+// 'Other' is offered rather than forcing a binary answer; nothing downstream
+// assumes only Male/Female.
+export const GENDER_OPTIONS = ['Male', 'Female', 'Other']

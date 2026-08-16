@@ -20,7 +20,7 @@ import useBodyScrollLock from '../hooks/useBodyScrollLock'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment, isLowAttendanceUnpaid as ruleIsLowAttendanceUnpaid } from '../lib/studentRules'
 import { toLocalDateStr } from '../lib/dates'
-import { MEDICAL_OPTIONS } from '../lib/studentIntake'
+import { MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 
 const accountBadge = {
   pending: 'badge-yellow',
@@ -910,6 +910,8 @@ function AddStudentModal({ onClose, onSave }) {
     // they sign up online and an incomplete one when the office types them in.
     if (!form.emergencyContactName.trim())  e.emergencyContactName  = 'Required'
     if (!form.emergencyContactPhone.trim()) e.emergencyContactPhone = 'Required'
+    // Same reasoning for gender — /join requires it for batch placement.
+    if (!form.gender)                   e.gender       = 'Required'
     if (form.email.trim() && !/^\S+@\S+\.\S+$/.test(form.email.trim())) e.email = 'Enter a valid email'
     // Mirrors the /join form: an unanswered yes/no is not the same as "no",
     // and a Yes with no description tells the coaching staff nothing.
@@ -993,13 +995,13 @@ function AddStudentModal({ onClose, onSave }) {
 
         {/* Gender */}
         <div>
-          <label className="label">Gender <span className="text-gray-400 font-normal">(optional)</span></label>
-          <select className="input" value={form.gender} onChange={e => set('gender', e.target.value)}>
+          <label className="label">Gender *</label>
+          <select className={`input ${errors.gender ? 'border-red-400' : ''}`}
+            value={form.gender} onChange={e => set('gender', e.target.value)}>
             <option value="">— Select —</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Other">Other</option>
+            {GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
+          {errors.gender && <p className="text-[11px] text-red-500 mt-1">{errors.gender}</p>}
         </div>
 
         {/* Student Phone */}

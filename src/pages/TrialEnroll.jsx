@@ -7,7 +7,8 @@ import {
 import * as db from '../lib/db'
 import DevFillButton from '../components/DevFillButton'
 import { fillPublicRegistration } from '../lib/devFill'
-import { RELATIONSHIP_OPTIONS, MEDICAL_OPTIONS } from '../lib/studentIntake'
+import { RELATIONSHIP_OPTIONS, MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
+import { computeTrialTotal, taxRowLabel } from '../lib/tax'
 
 // Public, no-auth-to-browse, multi-tenant student self-registration funnel.
 // Served at /join (hardcoded slug "ara" — the bare route is kept permanently
@@ -348,12 +349,15 @@ function LabeledInput({ invalid, ...props }) {
   )
 }
 
-// The only fields the server also insists on (secure_submit_public_trial_v2
-// rejects a blank name/parent) — everything else on this form is optional by
-// design, and stays that way.
+// name/parentName are also enforced server-side (secure_submit_public_trial_v2
+// rejects a blank one). The contact pair and gender are client-side rules:
+// gender is asked because batches are frequently gendered (e.g. "Football
+// Girls Squad"), so a blank one leaves staff unable to place the child without
+// phoning back. Everything not listed here is genuinely optional.
 const REQUIRED_FIELDS = [
   { key: 'name' },
   { key: 'parentName' },
+  { key: 'gender' },
   { key: 'emergencyContactName' },
   { key: 'emergencyContactPhone' },
 ]
@@ -435,7 +439,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // what the "let the academy pick" escape hatch already did anyway.
   const batchChoice = academyFeatures.joinBatchChoice !== false
 
-  const [step, setStep] = useState('login')  // login | home | branch | batch | form | confirm
+  const [step, setStep] = useState('login')  // login | home | branch | batch | form | pay | confirm
   const [authMode, setAuthMode] = useState('login') // cosmetic Login/Register tabs
   const [isAuthed, setIsAuthed] = useState(false)   // completed phone-OTP in THIS funnel
   const [authChecked, setAuthChecked] = useState(false) // has the restore-session check below finished?
@@ -511,6 +515,18 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     return () => { cancelled = true }
   }, [brandingStatus, slug])
 
+  // Re-point chosenRow at the freshly-fetched branch whenever the list loads.
+  // The draft below persists chosenRow into sessionStorage and restores it
+  // verbatim, so without this a registrant who started before the academy
+  // changed its trial fee, kit fee or tax is quoted the OLD price — while
+  // razorpay-create-trial-order, which recomputes server-side, charges the NEW
+  // one. Prices must come from the server on every load, never from a snapshot.
+  useEffect(() => {
+    if (!chosenRow?.id || branchRows.length === 0) return
+    const fresh = branchRows.find(r => r.id === chosenRow.id)
+    if (fresh && JSON.stringify(fresh) !== JSON.stringify(chosenRow)) setChosenRow(fresh)
+  }, [branchRows, chosenRow])
+
   // In-progress registration draft — a page reload otherwise wipes the sport/
   // branch/batch already chosen and everything typed into the form, which is
   // the real complaint behind "reloading logs me out" (true even for someone
@@ -520,7 +536,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // closes), expires after 2h so a very old abandoned draft can't resurrect
   // with mismatched branch/batch data.
   const DRAFT_KEY = `sf_join_draft_${slug}`
-  const DRAFT_STEPS = ['branch', 'batch', 'form']
+  const DRAFT_STEPS = ['branch', 'batch', 'form', 'pay']
   const clearDraft = () => { try { sessionStorage.removeItem(DRAFT_KEY) } catch {} }
 
   // Restore once, as soon as we know the slug — before the user can see
@@ -545,9 +561,10 @@ export default function TrialEnroll({ academySlug: slugProp }) {
       if (draft.siblingOfId) setSiblingOfId(draft.siblingOfId)
       if (draft.feeMode)     setFeeMode(draft.feeMode)
 
-      // 'batch' and 'form' need a real batches list — re-fetch it for the
-      // restored branch rather than trusting a stale saved array.
-      if ((draft.step === 'batch' || draft.step === 'form') && draft.chosenRow?.id) {
+      // 'batch', 'form' and 'pay' need a real batches list — re-fetch it for
+      // the restored branch rather than trusting a stale saved array. 'pay'
+      // especially: without chosenRow the fee renders as ₹0.
+      if (['batch', 'form', 'pay'].includes(draft.step) && draft.chosenRow?.id) {
         if (!cancelled) setBatchesLoading(true)
         try {
           const list = await db.fetchPublicTrialBatches(slug, draft.chosenRow.id)
@@ -787,7 +804,10 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // of a form that's taller than the screen — the old message was routinely
   // scrolled out of view, so a tap on Register just looked like nothing
   // happened. Nothing typed is ever cleared by a failed check.
-  const startSubmit = () => {
+  // Validation gate on the FORM page. The fee lives on its own page now, so
+  // nobody reaches payment with a half-filled form — and the red-in-place
+  // errors still land on the page the fields are actually on.
+  const goToPayment = () => {
     setError('')
     const missing = REQUIRED_FIELDS.filter(f => !form[f.key].trim())
     // The health question is required on its own — an unanswered yes/no is
@@ -800,13 +820,35 @@ export default function TrialEnroll({ academySlug: slugProp }) {
       return
     }
     setInvalid({})
+    setStep('pay')
+    window.scrollTo?.({ top: 0 })
+  }
+
+  // The pay page's CTA. Validation already passed to get here; re-running it
+  // costs nothing and means a restored draft that skipped the form page can't
+  // submit an incomplete registration.
+  const startSubmit = () => {
+    setError('')
+    const missing = REQUIRED_FIELDS.filter(f => !form[f.key].trim())
+    if (!form.hasMedical) missing.push({ key: 'hasMedical' })
+    else if (form.hasMedical === 'yes' && !form.medicalNotes.trim()) missing.push({ key: 'medicalNotes' })
+    if (missing.length) {
+      setInvalid(Object.fromEntries(missing.map(f => [f.key, true])))
+      setStep('form')
+      return
+    }
     if (isAuthed) { doSubmit() }
     else { setOtp(''); setOtpSent(false); setShowGate(true) }
   }
 
   const trialFee = chosenRow?.trialFee ?? 590
   const kitFee   = chosenRow?.kitFee   ?? 0
-  const totalDue = trialFee + kitFee
+  // Tax is per branch, per fee type (migration 0154) — this branch may tax the
+  // trial fee, the kit fee, both or neither, at its own rate. Display only: the
+  // amount actually charged is recomputed server-side in
+  // razorpay-create-trial-order, and the two must agree.
+  const fee       = computeTrialTotal(chosenRow, trialFee, kitFee)
+  const totalDue  = fee.total
 
   async function doSubmit() {
     setSubmitting(true); setError('')
@@ -1463,13 +1505,17 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     </div>
                   </div>
 
-                  <select className="jf-field" value={form.gender} onChange={e => set('gender', e.target.value)}
-                    style={{ ...inputStyle, cursor: 'pointer', color: form.gender ? N.text : N.faint }}>
-                    <option value="">Gender (optional)</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <select id="jf-gender" className="jf-field" value={form.gender} onChange={e => set('gender', e.target.value)}
+                      style={{ ...inputStyle, cursor: 'pointer', color: form.gender ? N.text : N.faint,
+                               ...(invalid.gender ? invalidStyle : {}) }}>
+                      <option value="">Gender</option>
+                      {GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                    {invalid.gender && (
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42318', paddingLeft: 2 }}>Required</span>
+                    )}
+                  </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: N.muted }}>Relationship to parent</div>
@@ -1579,17 +1625,69 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   )}
                 </SectionCard>
 
+              </div>
+            </div>
+
+            {/* Form page CTA — no amount here on purpose: the fee, and the
+                choice of how to pay it, belong to the next page. */}
+            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '13px 22px 24px',
+                          background: 'rgba(244,248,244,0.88)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+                          borderTop: `1px solid ${N.line}` }}>
+              <Cta onClick={goToPayment} C={C}>Continue</Cta>
+            </div>
+          </div>
+        )}
+
+        {/* ── PAY ───────────────────────────────────────────── */}
+        {step === 'pay' && (
+          <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative' }}>
+            <div style={{ minHeight: '100vh', overflowY: 'auto', paddingBottom: 116 }}>
+              <TopBar title="Payment" subtitle={`${chosenSport} · ${chosenRow?.branchName}`} onBack={() => setStep('form')} C={C} />
+
+              <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <ErrorBox msg={error} />
+
+                {/* What is being paid for — the form is a page back now, so the
+                    name and batch have to be visible at the moment of paying. */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, padding: '14px 16px',
+                              background: N.input, border: `1.5px solid ${N.line}`, borderRadius: R.control }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: N.text }}>{form.name.trim() || 'Student'}</span>
+                  <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>
+                    {chosenSport} · {chosenRow?.branchName}
+                    {batchId ? ` · ${batches.find(b => b.id === batchId)?.name || ''}` : ''}
+                  </span>
+                </div>
+
+                {/* Still 05: the form's sections are 01–04 and this is the same
+                    registration, just on its own page. Restarting at 01 would
+                    read as a new form. */}
                 <SectionCard index="05" title="TRIAL FEE" C={C}>
-                  {kitFee > 0 && (
+                  {/* Itemise as soon as there is more than one number to add up —
+                      a kit fee, a tax row, or both. A bare "Amount due" that
+                      doesn't match the advertised trial fee reads as a mistake. */}
+                  {(kitFee > 0 || fee.taxAmount > 0) && (
                     <>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                         <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Trial fee</span>
                         <span style={{ fontSize: 13.5, fontWeight: 700, color: N.text }}>₹{trialFee.toLocaleString('en-IN')}</span>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                        <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Kit fee</span>
-                        <span style={{ fontSize: 13.5, fontWeight: 700, color: N.text }}>₹{kitFee.toLocaleString('en-IN')}</span>
-                      </div>
+                      {kitFee > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                          <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Kit fee</span>
+                          <span style={{ fontSize: 13.5, fontWeight: 700, color: N.text }}>₹{kitFee.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                      {fee.taxAmount > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                          {/* The label names its own base when only one of the two
+                              items is taxed, so this can't be misread as tax on
+                              the whole subtotal. */}
+                          <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>
+                            {taxRowLabel(fee.taxPct, fee.taxedLabel)}
+                          </span>
+                          <span style={{ fontSize: 13.5, fontWeight: 700, color: N.text }}>₹{fee.taxAmount.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
                       <div style={{ height: 1, background: N.line, margin: '2px 0' }} />
                     </>
                   )}
@@ -1617,9 +1715,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               </div>
             </div>
 
-            {/* A checkout bar, not a floating button: the total travels with the
+            {/* A checkout bar, not a floating button: the total sits with the
                 CTA so what you're agreeing to is on screen at the moment you
-                tap, however far down the form you are. */}
+                tap, even once the card scrolls past. */}
             <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '13px 22px 24px',
                           background: 'rgba(244,248,244,0.88)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
                           borderTop: `1px solid ${N.line}` }}>

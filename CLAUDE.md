@@ -9,20 +9,15 @@ This file is verified against the actual code/migrations as of **2026-07-31**.
 May–June 2026 and have drifted — treat them as background reading, not truth;
 verify anything specific against current code/migrations before relying on it.
 
-## Before touching anything: the two-clone gotcha
+## Where the code lives
 
-**Two independent clones of this exact repo exist on this machine**, both real,
-both able to diverge in commits:
-- `C:\Users\91814\Desktop\clubcrm\sportflow-crm` — has `.env`, is what the dev
-  server (`localhost:5173`) and IDE actually run from. **Default to editing here.**
-- `C:\Users\91814\sportflow-crm` — also a legitimate clone of the same GitHub
-  remote, no `.env`.
+**One clone, one app**: `C:\Users\limet\Desktop\club crm`. It has the `.env` and
+is what the dev server (`localhost:5173`) and the IDE run from. Edit here.
 
-Before assuming either is current: `git log --oneline -3` in **both**, and
-`git fetch && git log HEAD..origin/main` to check for a silent gap. If you edit
-in the other clone for some reason, commit, push, then `git pull --ff-only`
-into the Desktop clone immediately — a fix left only in the non-dev clone is
-invisible to the user no matter how correct it is.
+(An earlier version of this file described two clones under `C:\Users\91814\...`
+— that user profile does not exist on this machine. Verified 2026-08-16: the
+only profiles under `C:\Users` are `limet` and `Public`, and the Vite process on
+port 5173 resolves to this directory. Don't go looking for a second checkout.)
 
 ## How the app is put together
 

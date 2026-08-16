@@ -64,8 +64,11 @@ export default function Layout() {
         <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
       </div>
 
-      {/* Main content */}
-      <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${collapsed ? 'lg:ml-16' : 'lg:ml-60'}`}>
+      {/* Main content. min-w-0 is load-bearing: without it this flex item
+          keeps its min-content width, so any wide child (the attendance month
+          grid, the batch tab strip) pushes the whole page — header included —
+          past the viewport instead of scrolling inside its own container. */}
+      <div className={`flex-1 min-w-0 flex flex-col min-h-screen transition-all duration-300 ${collapsed ? 'lg:ml-16' : 'lg:ml-60'}`}>
         <Header />
         <main className="flex-1 p-4 md:p-6 pb-24 lg:pb-6">
           {/* Suspense moved INSIDE the layout so sidebar + header stay
