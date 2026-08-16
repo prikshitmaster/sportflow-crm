@@ -881,6 +881,11 @@ function AddStudentModal({ onClose, onSave }) {
   // earned, so they're only reachable from Edit Student, never at registration.
   // Rows written before batch_type existed default to 'development'.
   const devBatches = batches.filter(b => (b.batchType || 'development') !== 'advance')
+  // The code (not the full name) is what staff actually scan for here —
+  // it's the short unique label batches are now required to carry (0160).
+  // Falls back to the name only for batches created before that, which
+  // may still have no code.
+  const batchLabel = (b) => b.code || b.name
   // Combine sports from both tables: old academy_branches + new sport_branches.
   // Cricket (and any sport added via sport_branches) was missing from the dropdown
   // because it only existed in sport_branches, not academy_branches.
@@ -1175,7 +1180,7 @@ function AddStudentModal({ onClose, onSave }) {
           <label className="label">Primary Batch *</label>
           <select className={`input ${errors.batchId ? 'border-red-400' : ''}`} value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— Select Batch —</option>
-            {devBatches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
+            {devBatches.map(b => <option key={b.id} value={b.id}>{batchLabel(b)}</option>)}
           </select>
           {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
           {form.batchId && (() => {
@@ -1216,7 +1221,7 @@ function AddStudentModal({ onClose, onSave }) {
                   <button key={b.id} type="button"
                     onClick={() => !disabled && toggleAdditionalBatch(b.id)}
                     className={`px-3 py-2 rounded-lg text-xs font-semibold border transition active:scale-95 ${sel ? 'bg-purple-600 text-white border-purple-600' : disabled ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                    {sel ? '✓ ' : ''}{b.name}{b.code ? ` (${b.code})` : ''}
+                    {sel ? '✓ ' : ''}{batchLabel(b)}
                   </button>
                 )
               })}

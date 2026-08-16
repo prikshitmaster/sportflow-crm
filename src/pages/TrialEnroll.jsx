@@ -1435,15 +1435,20 @@ export default function TrialEnroll({ academySlug: slugProp }) {
             </TopBar>
             <div className="jf-stagger" style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {batches.map((b, i) => {
-                // Seats are the one number a parent actually weighs here, so
-                // they get a meter as well as a count — filled from the real
-                // capacity, and simply absent when the academy left it unset.
-                const taken = b.capacity ? Math.max(0, b.capacity - Math.max(0, b.seatsLeft)) : 0
-                const pct = b.capacity ? Math.min(100, Math.round((taken / b.capacity) * 100)) : null
-                const open = b.seatsLeft > 0
+                const seatsLeft = Math.max(0, b.seatsLeft)
+                const open = seatsLeft > 0
+                // A fill meter under every card said the same thing the pill
+                // already said, just slower to read. The pill carries the
+                // real signal instead: same amber Waitlist already uses,
+                // one notch early — a handful of seats left is the same
+                // "don't wait" cue as none, just not there yet. Threshold
+                // scales with capacity (typically 15–30) rather than a flat
+                // count, so it still means something on a small batch.
+                const low = open && b.capacity && seatsLeft <= Math.max(2, Math.round(b.capacity * 0.15))
+                const warm = !open || low
                 return (
                   <Tappable key={b.id} onClick={() => { setBatchId(b.id); setStep('form') }}
-                    label={`${b.name}, ${open ? `${b.seatsLeft} seats left` : 'waitlist'}`}
+                    label={`${b.name}, ${open ? `${seatsLeft} seats left` : 'waitlist'}`}
                     style={{ background: '#fff', borderRadius: R.card, padding: '14px 16px', boxShadow: E.rest, animationDelay: `${Math.min(i, 6) * 45}ms` }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
@@ -1453,15 +1458,10 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                         </div>
                       </div>
                       <span style={{ ...T.eyebrow, ...NUM, letterSpacing: 0.3, padding: '6px 10px', borderRadius: R.pill, flexShrink: 0, whiteSpace: 'nowrap',
-                        background: open ? C.tint : '#FEF3C7', color: open ? C.dark : '#92400E' }}>
-                        {open ? `${b.seatsLeft} seats left` : 'Waitlist'}
+                        background: warm ? '#FEF3C7' : C.tint, color: warm ? '#92400E' : C.dark }}>
+                        {open ? `${seatsLeft} seats left` : 'Waitlist'}
                       </span>
                     </div>
-                    {pct !== null && (
-                      <div style={{ marginTop: 11, height: 4, borderRadius: R.pill, background: N.line, overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', borderRadius: R.pill, background: open ? C.main : '#F59E0B', transition: 'width .4s ease' }} />
-                      </div>
-                    )}
                   </Tappable>
                 )
               })}

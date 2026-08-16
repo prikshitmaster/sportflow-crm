@@ -91,9 +91,13 @@ export function fillBatch({ sportOptions = [] } = {}) {
   const ageMin     = rand(6, 14)
   const suffix     = pick(['Morning','Evening','Weekend','Elite','Foundation'])
   const days       = [...new Set([pick(DAYS), pick(DAYS), pick(DAYS)])].slice(0, rand(2, 3))
+  // Required on create (0160) and must be unique — a short random suffix
+  // keeps repeated DevFill taps from colliding with each other or with a
+  // previous demo batch.
+  const code = `${sport.slice(0, 3).toLowerCase()}${ageMin}-${suffix.slice(0, 3).toLowerCase()}${rand(10, 99)}`
   return {
     name:        `${sport} U${ageMin + rand(2, 4)} ${suffix}`,
-    code:        '',
+    code,
     startTime:   start,
     endTime:     end,
     sports:      [sport],

@@ -438,9 +438,12 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
             <input className="input" placeholder="e.g. Morning Cricket U20" value={form.name} onChange={e => set('name', e.target.value)} />
           </div>
           <div>
-            <label className="label">Batch Code <span className="text-gray-400 font-normal">(optional)</span></label>
+            <label className="label">Batch Code *</label>
             <input className="input font-mono" placeholder="e.g. u20-eve" value={form.code}
               onChange={e => set('code', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Shown to students at registration instead of the full batch name — must be unique.
+            </p>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
