@@ -891,6 +891,86 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
   )
 }
 
+// ── Collect Fee Modal (mark trial fee paid, without opening the full
+//    edit form) ──────────────────────────────────────────────
+
+function CollectFeeModal({ trial, onClose, onSave }) {
+  useBodyScrollLock()
+  const { showToast } = useApp()
+  const [amount, setAmount] = useState(trial.trialFeePaid ?? 590)
+  const [mode,   setMode]   = useState('Cash')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      // Payload carries ONLY these two keys. secure_update_trial's CASE WHEN
+      // pattern (0159) means every other column on the trial — name, batch,
+      // stage, notes, everything — is left completely untouched; nothing
+      // here can clobber a field this modal doesn't show. The RPC's payment
+      // sync (create/update the linked payments row, book/clear the receipt)
+      // is the exact same logic the full Edit form's Fee Collected control
+      // already exercises — this is a narrower door onto the same system,
+      // not a separate one.
+      await onSave(trial.id, {
+        trialFeePaid: amount === '' || amount == null ? 0 : (Number(amount) || 0),
+        trialFeeMode: mode,
+      })
+      onClose()
+    } catch (e) { showToast(e.message || 'Failed to record payment', 'error') } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100">
+          <h2 className="text-base font-black text-gray-900">Collect Trial Fee</h2>
+          <button onClick={onClose} className="p-1.5 rounded-xl bg-gray-100 text-gray-500"><X size={15} /></button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-sm font-bold text-gray-700">{trial.name} · {trial.sport}</p>
+
+          <div>
+            <label className="label-xs">Amount ₹</label>
+            <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-brand-500/30 focus-within:border-brand-400 focus-within:bg-white transition">
+              <span className="flex items-center px-3 text-sm font-semibold text-gray-500 bg-gray-100 border-r border-gray-200 shrink-0 select-none">₹</span>
+              <input value={amount} onChange={e => setAmount(e.target.value)}
+                type="number" min="0" inputMode="numeric" autoFocus
+                className="flex-1 px-3 py-2.5 text-sm text-gray-900 bg-transparent focus:outline-none" />
+            </div>
+          </div>
+
+          <div>
+            <label className="label-xs">Payment Mode</label>
+            <div className="flex gap-2 mt-1">
+              {['Cash', 'UPI'].map(m => (
+                <button key={m} type="button" onClick={() => setMode(m)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                    mode === m
+                      ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                  }`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-[11px] text-gray-400">
+            ₹{Number(amount) || 0} will be recorded as revenue with a trial receipt.
+          </p>
+        </div>
+        <div className="px-5 pb-5">
+          <button onClick={handleSave} disabled={saving}
+            className="w-full bg-brand-600 text-white rounded-xl py-3 font-bold text-sm disabled:opacity-40">
+            {saving ? 'Saving…' : 'Mark Fee Collected'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Session Modal (mark attended + optional note) ─────────────
 
 function SessionModal({ trial, onClose, onSave }) {
@@ -1548,11 +1628,10 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
           {trial.stage === 'new' && (
             trial.trialFeeMode === 'Not collected' ? (
               // Nothing gets scheduled on an unpaid trial — collect the fee
-              // (or explicitly mark it, in the edit form) first. Routes to
-              // the same Edit modal the pencil icon opens; once the fee is
-              // no longer 'Not collected' this card flips to the normal
-              // Schedule button on its own.
-              <button onClick={() => onAction('edit', trial)}
+              // first, via a focused popup rather than the full Edit form.
+              // Once the fee is no longer 'Not collected' this card flips to
+              // the normal Schedule button on its own.
+              <button onClick={() => onAction('collectFee', trial)}
                 className="flex-1 flex items-center justify-center gap-1.5 bg-red-500 text-white rounded-xl py-2 text-xs font-bold">
                 <IndianRupee size={13} /> Collect Trial Fee to Schedule
               </button>
@@ -1572,7 +1651,7 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
               // Show stays open regardless — closing out a lead who never
               // showed up has nothing to do with whether they paid.
               <>
-                <button onClick={() => onAction('edit', trial)}
+                <button onClick={() => onAction('collectFee', trial)}
                   className="flex-1 flex items-center justify-center gap-1.5 bg-red-500 text-white rounded-xl py-2 text-xs font-bold">
                   <IndianRupee size={13} /> Collect Trial Fee First
                 </button>
@@ -1697,10 +1776,11 @@ export default function Trials() {
   // Actions
   async function handleAction(type, trial) {
     setActive(trial)
-    if (type === 'edit')     { setModal('edit');     return }
-    if (type === 'schedule') { setModal('schedule'); return }
-    if (type === 'session')  { setModal('session');  return }
-    if (type === 'convert')  { setModal('convert');  return }
+    if (type === 'edit')       { setModal('edit');       return }
+    if (type === 'schedule')   { setModal('schedule');   return }
+    if (type === 'session')    { setModal('session');    return }
+    if (type === 'convert')    { setModal('convert');    return }
+    if (type === 'collectFee') { setModal('collectFee'); return }
 
     const updates = {
       attend:  { stage: 'attended'  },
@@ -1897,6 +1977,13 @@ export default function Trials() {
       )}
       {modal === 'session' && active && (
         <SessionModal
+          trial={active}
+          onClose={() => { setModal(null); setActive(null) }}
+          onSave={updateTrialStatus}
+        />
+      )}
+      {modal === 'collectFee' && active && (
+        <CollectFeeModal
           trial={active}
           onClose={() => { setModal(null); setActive(null) }}
           onSave={updateTrialStatus}
