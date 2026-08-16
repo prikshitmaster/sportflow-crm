@@ -89,7 +89,11 @@ function TrialCard({ trial, batches, onMark, onRecommend }) {
   const today     = todayStr()
   const isToday   = trial.trialDate === today
   const isPast    = trial.trialDate && trial.trialDate < today
-  const canMark   = (isToday || isPast) && trial.stage === 'scheduled' && (trial.sessionsDone || 0) < (trial.trialSessions || 1)
+  // Same fee gate Trials.jsx enforces for the office (a scheduled-but-unpaid
+  // trial can't progress to Attended there either) — without this a coach
+  // could mark an unpaid trial present, which the office UI never allows.
+  const dueToMark = (isToday || isPast) && trial.stage === 'scheduled' && (trial.sessionsDone || 0) < (trial.trialSessions || 1)
+  const canMark   = dueToMark && feeCollected
   const needsCall = trial.stage === 'attended' && !trial.coachRec
 
   const converted = trial.stage === 'converted'
@@ -198,6 +202,13 @@ function TrialCard({ trial, batches, onMark, onRecommend }) {
         </button>
       )}
 
+      {/* Due but blocked on fee — explains why Mark Present isn't here instead of just omitting it silently */}
+      {dueToMark && !feeCollected && (
+        <p className="mt-3 text-[11px] font-bold text-red-500 bg-red-50 rounded-xl px-3 py-2 text-center">
+          Trial fee not collected — office needs to collect it before this can be marked
+        </p>
+      )}
+
       {/* Accept / Follow-up / Decline — appears once all sessions are marked present */}
       {needsCall && (
         <div className="mt-3 flex gap-1.5">
@@ -226,19 +237,30 @@ export default function StaffTrials() {
 
   const isOffice = user?.accessRole && !['coach', 'staff'].includes(user.accessRole)
 
-  // Coach: only trials for their batches
+  // Coach: only trials for their batches. Mirrors StaffAttendance's fallback —
+  // a coach with zero batches assigned to their name sees everything, so a
+  // batch nobody's been assigned as coach yet doesn't strand its trials
+  // (unreachable by name-matching) invisible to every coach.
   const myBatchIds = useMemo(() => {
     if (isOffice) return null
     const mine = batches.filter(b => b.coach && user?.name && b.coach.toLowerCase() === user.name.toLowerCase())
-    return new Set(mine.map(b => b.id))
+    const pool = mine.length > 0 ? mine : batches
+    return new Set(pool.map(b => b.id))
   }, [batches, user, isOffice])
 
   const myTrials = useMemo(() => {
     // Converted trials are now real students (visible in batch rosters/attendance
     // instead) and rejected ones are dead leads — neither belongs in this list.
     let list = trials.filter(t => !['rejected', 'converted'].includes(t.stage))
-    if (!isOffice && myBatchIds) {
-      list = list.filter(t => t.batchId && myBatchIds.has(t.batchId))
+    if (!isOffice) {
+      // 'new' leads (freshly captured — walk-in or public /join, which always
+      // lands in 'new' even when a batch got auto-assigned and the fee was
+      // already paid) haven't been through the office's Schedule step yet, so
+      // TrialCard has nothing for a coach to do with them — they'd render as a
+      // dead card with a name and no button. They become visible here the
+      // moment office schedules a real date.
+      list = list.filter(t => t.stage !== 'new')
+      if (myBatchIds) list = list.filter(t => t.batchId && myBatchIds.has(t.batchId))
     }
     return list.sort((a, b) => (a.trialDate || '') < (b.trialDate || '') ? -1 : 1)
   }, [trials, isOffice, myBatchIds])
