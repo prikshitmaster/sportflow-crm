@@ -1,7 +1,16 @@
 # Production Phone OTP — Twilio SMS Delivery — Design Spec
 
 **Date:** 2026-08-15
-**Status:** Draft (pending spec review)
+**Status:** Approved — rollout started 2026-08-17. GST/PAN/incorporation
+documents confirmed available (owner, 2026-08-17), so the DLT hard-stop in
+"Rollout sequence" step 1 is cleared. DLT registration (step 2, the long
+pole) has not yet been started.
+
+> **2026-08-17 credential note:** whether the leaked Trial Auth Token from
+> 2026-08-15 (see "Credential hygiene" below) was actually rotated is
+> unconfirmed as of this update. Treat it as still-leaked until someone
+> explicitly verifies the rotation in the Twilio Console — do not assume it
+> was handled.
 
 ## Goal
 
@@ -207,8 +216,10 @@ and surfacing a raw Supabase error.
 
 ## Rollout sequence
 
-1. Confirm GST / PAN / incorporation documents exist → **gate; stop here if not**
-2. Begin DLT registration (long pole — start before anything else)
+1. ~~Confirm GST / PAN / incorporation documents exist~~ — **done 2026-08-17,
+   confirmed available. Gate cleared.**
+2. Begin DLT registration (long pole — start before anything else) — **not
+   started yet, this is the next action**
 3. Upgrade Twilio off trial
 4. DLT approved → Messaging Service + sender configured
 5. Supabase provider fields populated
