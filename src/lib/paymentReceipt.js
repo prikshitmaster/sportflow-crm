@@ -4,11 +4,26 @@
 // Payments.jsx so both can import it without creating a circular dependency
 // (Payments.jsx already imports { Modal } from Students.jsx).
 //
-// Moved verbatim from Payments.jsx's buildReceiptHTML — no behavior change.
+// Moved from Payments.jsx's buildReceiptHTML, with one addition: every
+// interpolated value is now escaped (see esc() below) — the original never
+// was, which was a latent gap even for the print-only path this came from,
+// and became a real one once RegistrationReceiptModal started handing this
+// same HTML to ReceiptActions' one-tap WhatsApp/Email share, i.e. actually
+// leaving the app for a parent to open on another device. student.name and
+// academyName are both free text a staff member types in.
+
+// Everything interpolated below can contain a student's name, an academy
+// name, or similar staff/owner-typed free text — escaped for the same
+// reason lib/trialReceipt.js's esc() exists.
+function esc(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
 
 export function buildReceiptHTML(p, student, academyName, logoUrl) {
   const logo     = logoUrl || ''
-  const initials = (academyName || 'A').charAt(0).toUpperCase()
+  const initials = esc((academyName || 'A').charAt(0).toUpperCase())
   const fmtDate  = iso => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
   const today    = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 
@@ -35,7 +50,7 @@ export function buildReceiptHTML(p, student, academyName, logoUrl) {
   const subtotal = lineItems.reduce((s, l) => s + l.total, 0)
 
   return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Receipt ${p.id || ''}</title>
+<html><head><meta charset="utf-8"><title>Receipt ${esc(p.id)}</title>
 <style>
   @page { size: A4; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -122,16 +137,16 @@ export function buildReceiptHTML(p, student, academyName, logoUrl) {
   <div class="header">
     <div class="logo-area">
       <div class="logo-wrap">
-        ${logo ? `<img src="${logo}" />` : `<span class="logo-init">${initials}</span>`}
+        ${logo ? `<img src="${esc(logo)}" />` : `<span class="logo-init">${initials}</span>`}
       </div>
       <div>
-        <div class="acad-name">${academyName || 'Academy'}</div>
+        <div class="acad-name">${esc(academyName) || 'Academy'}</div>
         <div class="acad-tag">Sports Academy · CRM</div>
       </div>
     </div>
     <div class="receipt-meta">
       <div class="receipt-title">Receipt</div>
-      <div class="receipt-no">${p.id || '—'}</div>
+      <div class="receipt-no">${esc(p.id) || '—'}</div>
       <div class="receipt-dates">
         <div class="date-row"><span class="date-lbl">Payment Date</span>${fmtDate(p.date)}</div>
         <div class="date-row"><span class="date-lbl">Print Date</span>${today}</div>
@@ -143,18 +158,18 @@ export function buildReceiptHTML(p, student, academyName, logoUrl) {
   <div class="info-section">
     <div class="bill-to">
       <div class="section-label">Bill To</div>
-      <div class="student-name">${p.student || '—'}</div>
+      <div class="student-name">${esc(p.student) || '—'}</div>
       <div class="student-sub">
-        ${student?.studentCode ? `ID: ${student.studentCode}<br>` : ''}
-        ${student?.sport ? `${student.sport}` : ''}${student?.batch ? ` · ${student.batch}` : ''}<br>
-        ${student?.trainingType || 'Regular'} Training
+        ${student?.studentCode ? `ID: ${esc(student.studentCode)}<br>` : ''}
+        ${student?.sport ? `${esc(student.sport)}` : ''}${student?.batch ? ` · ${esc(student.batch)}` : ''}<br>
+        ${esc(student?.trainingType) || 'Regular'} Training
       </div>
     </div>
     <div class="pay-info">
       <div class="section-label">Payment Info</div>
-      <div class="pi-row"><span class="pi-lbl">Status</span><span class="badge badge-${p.status === 'Paid' ? 'paid' : 'pending'}">${p.status || 'Paid'}</span></div>
-      <div class="pi-row"><span class="pi-lbl">Payment Mode</span><span class="pi-val">${p.mode || 'Cash'}</span></div>
-      <div class="pi-row"><span class="pi-lbl">Period Covered</span><span class="pi-val">${p.month || '—'}</span></div>
+      <div class="pi-row"><span class="pi-lbl">Status</span><span class="badge badge-${p.status === 'Paid' ? 'paid' : 'pending'}">${esc(p.status) || 'Paid'}</span></div>
+      <div class="pi-row"><span class="pi-lbl">Payment Mode</span><span class="pi-val">${esc(p.mode) || 'Cash'}</span></div>
+      <div class="pi-row"><span class="pi-lbl">Period Covered</span><span class="pi-val">${esc(p.month) || '—'}</span></div>
       ${months > 1 ? `<div class="pi-row"><span class="pi-lbl">Months</span><span class="pi-val">${months}</span></div>` : ''}
     </div>
   </div>
@@ -173,7 +188,7 @@ export function buildReceiptHTML(p, student, academyName, logoUrl) {
       <tbody>
         ${lineItems.map(l => `
         <tr>
-          <td><div class="item-name">${l.desc}</div>${l.sub ? `<div class="item-sub">${l.sub}</div>` : ''}</td>
+          <td><div class="item-name">${esc(l.desc)}</div>${l.sub ? `<div class="item-sub">${esc(l.sub)}</div>` : ''}</td>
           <td class="r">${l.qty !== '' ? l.qty : '—'}</td>
           <td class="r">${l.unit !== '' ? `₹${Number(l.unit).toLocaleString('en-IN')}` : '—'}</td>
           <td class="r ${l.cls === 'red' ? 'td-red' : l.cls === 'purple' ? 'td-purple' : ''}">
