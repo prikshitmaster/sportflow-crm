@@ -11,6 +11,7 @@ import { fillTrial } from '../lib/devFill'
 import { toLocalDateStr } from '../lib/dates'
 import { normTrainingType, trainingTypeLabel } from '../lib/studentRules'
 import { MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
+import { resolveBranchTax, computeTax, taxRowLabel } from '../lib/tax'
 import useBodyScrollLock from '../hooks/useBodyScrollLock'
 
 // ── Stage config ─────────────────────────────────────────────
@@ -437,8 +438,17 @@ const selectCls = fieldCls + ' appearance-none cursor-pointer'
 
 function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, selectedSport = null }) {
   useBodyScrollLock()
-  const { ageGroups, showToast } = useApp()
+  const { ageGroups, showToast, selectedBranch, sportBranches } = useApp()
   const ageGroupOptions = ageGroups.length ? ageGroups.map(g => g.label) : AGE_GROUPS
+  // Branch tax (migration 0154), same rate/toggle /join quotes a new
+  // registrant with. Only applied on CREATE — on edit, trialFeePaid already
+  // holds whatever the trial's true collectible total is (tax-inclusive if
+  // it came from /join, already-fixed-up if it came from the office form
+  // pre-0160), and re-adding tax on every save would double-tax it. Setting
+  // the rate to 0 in edit mode makes computeTax() below a no-op, so edit
+  // behaves exactly as it always has.
+  const feeBranch    = sportBranches.find(b => b.id === (initial?.branchId || selectedBranch))
+  const trialTaxPct  = !isEdit ? resolveBranchTax(feeBranch, 'trial') : 0
   const [form, setForm] = useState({
     name: '', parent: '', age: '', dob: '',
     ageGroup: '', programType: 'academy',
@@ -461,6 +471,9 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
     hasMedical:    initial.medicalNotes ? 'yes' : '',
   })
   const [saving, setSaving] = useState(false)
+  // form.trialFeePaid is the BASE fee on create (trialTaxPct > 0 only then);
+  // feeCalc.total is what actually gets booked as revenue and saved.
+  const feeCalc = computeTax(Number(form.trialFeePaid) || 0, trialTaxPct)
 
   // When a sport is scoped, only show that sport; otherwise derive from batches
   const sports    = useMemo(() => {
@@ -484,10 +497,13 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
         trialSessions: Number(form.trialSessions) || 1,
         // `|| 590` would silently turn a deliberate 0 back into 590, which
         // now books ₹590 of revenue that was never collected. Only an
-        // empty field falls back to the default.
-        trialFeePaid:  form.trialFeePaid === '' || form.trialFeePaid == null
-                         ? 590
-                         : (Number(form.trialFeePaid) || 0),
+        // empty field falls back to the default. computeTax() with
+        // trialTaxPct=0 (edit mode, or no tax configured) just returns the
+        // base back unchanged, so this is a no-op outside create-with-tax.
+        trialFeePaid: computeTax(
+          form.trialFeePaid === '' || form.trialFeePaid == null ? 590 : (Number(form.trialFeePaid) || 0),
+          trialTaxPct
+        ).total,
         trialFeeMode:  form.trialFeeMode || 'Not collected',
         quotedFee:     form.quotedFee ? Number(form.quotedFee) : null,
         notes:         form.notes?.trim() || null,
@@ -662,6 +678,14 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
                     type="number" min="0" inputMode="numeric"
                     className="flex-1 px-3 py-2.5 text-sm text-gray-900 bg-transparent focus:outline-none" />
                 </div>
+                {/* Branch tax (Settings > Fees & Tax), same as /join quotes a
+                    new registrant — only computed on create, see trialTaxPct. */}
+                {feeCalc.taxAmount > 0 && (
+                  <p className="mt-1.5 text-[11px] text-gray-500">
+                    {taxRowLabel(feeCalc.taxPct)} = ₹{feeCalc.taxAmount.toLocaleString('en-IN')}
+                    {' · '}<span className="font-bold text-gray-700">Total ₹{feeCalc.total.toLocaleString('en-IN')}</span>
+                  </p>
+                )}
               </Field>
             </div>
 
@@ -687,7 +711,7 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
               <p className="mt-1.5 text-[11px] text-gray-400">
                 {form.trialFeeMode === 'Not collected'
                   ? 'No receipt is issued and nothing is added to revenue.'
-                  : `₹${form.trialFeePaid || 0} will be recorded as revenue with a trial receipt.`}
+                  : `₹${feeCalc.total.toLocaleString('en-IN')} will be recorded as revenue with a trial receipt.`}
               </p>
             </Field>
 
@@ -896,8 +920,21 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
 
 function CollectFeeModal({ trial, onClose, onSave }) {
   useBodyScrollLock()
-  const { showToast } = useApp()
-  const [amount, setAmount] = useState(trial.trialFeePaid ?? 590)
+  const { showToast, sportBranches } = useApp()
+  const feeBranch   = sportBranches.find(b => b.id === trial.branchId)
+  const trialTaxPct = resolveBranchTax(feeBranch, 'trial')
+  // /join already computes and stores the tax-inclusive TOTAL at registration
+  // (computeTrialTotal in submitPublicTrial) — trust that number as-is, don't
+  // tax it again. Anything entered through the office "New Trial Lead" form
+  // before 0160 only ever asked for a raw base amount with no branch tax
+  // applied at all, so for those, add the branch's current trial-fee tax on
+  // top of whatever is stored, same rate /join would have quoted.
+  const alreadyTaxed = trial.source === 'App'
+  const storedFee     = trial.trialFeePaid ?? 590
+  const suggestedCalc = alreadyTaxed
+    ? { base: storedFee, taxPct: 0, taxAmount: 0, total: storedFee }
+    : computeTax(storedFee, trialTaxPct)
+  const [amount, setAmount] = useState(suggestedCalc.total)
   const [mode,   setMode]   = useState('Cash')
   const [saving, setSaving] = useState(false)
 
@@ -938,6 +975,12 @@ function CollectFeeModal({ trial, onClose, onSave }) {
                 type="number" min="0" inputMode="numeric" autoFocus
                 className="flex-1 px-3 py-2.5 text-sm text-gray-900 bg-transparent focus:outline-none" />
             </div>
+            {suggestedCalc.taxAmount > 0 && (
+              <p className="mt-1.5 text-[11px] text-gray-500">
+                ₹{storedFee.toLocaleString('en-IN')} + {taxRowLabel(suggestedCalc.taxPct)}
+                {' '}(₹{suggestedCalc.taxAmount.toLocaleString('en-IN')}) — branch tax, Settings &gt; Fees &amp; Tax
+              </p>
+            )}
           </div>
 
           <div>
