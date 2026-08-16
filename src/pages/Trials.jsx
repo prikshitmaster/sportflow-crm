@@ -231,7 +231,7 @@ function buildPrintHTML(trial, academyName, logoUrl, customLogo) {
     <div class="prog-row">
       <div class="prog-box ${isAcademy ? 'active' : ''}">
         <div class="prog-check ${isAcademy ? 'checked' : ''}">${isAcademy ? '✓' : ''}</div>
-        <span class="prog-label">Academy</span>
+        <span class="prog-label">Advance</span>
       </div>
       <div class="prog-box ${isDev ? 'active' : ''}">
         <div class="prog-check ${isDev ? 'checked' : ''}">${isDev ? '✓' : ''}</div>
@@ -371,7 +371,7 @@ function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
 
           {/* Program + Fee */}
           <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center gap-3">
-            {[['Academy', isAcademy], ['Development', isDev]].map(([lbl, active]) => (
+            {[['Advance', isAcademy], ['Development', isDev]].map(([lbl, active]) => (
               <div key={lbl} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition ${active ? 'border-gray-800 bg-gray-900 text-white' : 'border-gray-200 text-gray-400 bg-white'}`}>
                 <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[8px] ${active ? 'bg-white border-white text-gray-900 font-black' : 'border-gray-300'}`}>{active ? '✓' : ''}</span>
                 {lbl}
@@ -720,7 +720,7 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
             {/* Program type */}
             <Field label="Program">
               <div className="flex gap-2">
-                {[['academy', 'Academy'], ['development', 'Development']].map(([val, lbl]) => (
+                {[['academy', 'Advance'], ['development', 'Development']].map(([val, lbl]) => (
                   <button key={val} type="button" onClick={() => set('programType', val)}
                     className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
                       form.programType === val
@@ -1792,10 +1792,6 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
               <button onClick={() => onAction('accept', trial)}
                 className="flex-1 bg-emerald-600 text-white rounded-xl py-2 text-xs font-bold">
                 Accept ✓
-              </button>
-              <button onClick={() => onAction('followup', trial)}
-                className="flex-1 bg-orange-500 text-white rounded-xl py-2 text-xs font-bold">
-                Follow-up ↺
               </button>
               <button onClick={() => onAction('reject', trial)}
                 className="flex-1 bg-red-500 text-white rounded-xl py-2 text-xs font-bold">
