@@ -368,7 +368,15 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
   const staffSport  = role !== 'owner' && user?.sports?.length === 1 ? user.sports[0] : null
   const scopedSport = (selectedSport && selectedSport !== 'All') ? selectedSport : staffSport
   const defaultSports = initialData?.sports ?? (scopedSport ? [scopedSport] : [])
-  const sportLocked = !isEdit && Boolean(scopedSport)
+  // Locked on create whenever a sport is scoped (unchanged). Also locked on
+  // edit, but ONLY when the batch is already a clean single-sport match for
+  // the current scope — editing a genuinely multi-sport batch, or one whose
+  // sport doesn't match the active view, still needs the full picker so its
+  // real tags stay visible and editable instead of being hidden behind a
+  // chip that only shows one of them.
+  const sportLocked = Boolean(scopedSport) && (
+    !isEdit || (defaultSports.length === 1 && defaultSports[0] === scopedSport)
+  )
   const branchName = selectedBranch
     ? sportBranches.find(b => b.id === selectedBranch)?.branchName
     : null
