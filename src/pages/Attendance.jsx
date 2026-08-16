@@ -639,6 +639,29 @@ export default function Attendance() {
     return c
   }, [monthData, displayed, mobileDay, getStatus])
 
+  // Batch strip scroll state. The strip is `no-scrollbar`, so these arrows are
+  // the only affordance telling you there are more batches off-screen — and
+  // each one only renders when that direction can actually still scroll, so it
+  // never sits on top of the last tab at the end of the list.
+  const [tabScroll, setTabScroll] = useState({ left: false, right: false })
+  const syncTabScroll = useCallback(() => {
+    const el = batchTabsRef.current
+    if (!el) return
+    const max = el.scrollWidth - el.clientWidth
+    setTabScroll({ left: el.scrollLeft > 4, right: el.scrollLeft < max - 4 })
+  }, [])
+  useEffect(() => {
+    const el = batchTabsRef.current
+    if (!el) return
+    syncTabScroll()
+    el.addEventListener('scroll', syncTabScroll, { passive: true })
+    // Batches arrive async and the sidebar collapses, both of which change
+    // whether there's anything left to scroll to.
+    const ro = new ResizeObserver(syncTabScroll)
+    ro.observe(el)
+    return () => { el.removeEventListener('scroll', syncTabScroll); ro.disconnect() }
+  }, [syncTabScroll, visibleBatches.length])
+
   // ── Render ──────────────────────────────────────────────────
   return (
     <div className="space-y-3 max-w-[1400px]">
@@ -709,11 +732,23 @@ export default function Attendance() {
             )
           })}
         </div>
-        {/* Scroll hint arrows */}
-        <button className="absolute right-0 top-0 h-full px-1.5 bg-gradient-to-l from-white via-white/90 to-transparent flex items-center"
-          onClick={() => batchTabsRef.current?.scrollBy({ left: 240, behavior: 'smooth' })}>
-          <ChevronRight size={16} className="text-gray-400" />
-        </button>
+        {/* Scroll hint arrows — only on the side that can still scroll. The
+            gradient fades to the page background (canvas), not white, or it
+            shows as a pale smudge over the tab strip. */}
+        {tabScroll.left && (
+          <button aria-label="Scroll batches left"
+            className="absolute left-0 top-0 h-full px-1.5 bg-gradient-to-r from-canvas via-canvas/90 to-transparent flex items-center"
+            onClick={() => batchTabsRef.current?.scrollBy({ left: -240, behavior: 'smooth' })}>
+            <ChevronLeft size={16} className="text-gray-400" />
+          </button>
+        )}
+        {tabScroll.right && (
+          <button aria-label="Scroll batches right"
+            className="absolute right-0 top-0 h-full px-1.5 bg-gradient-to-l from-canvas via-canvas/90 to-transparent flex items-center"
+            onClick={() => batchTabsRef.current?.scrollBy({ left: 240, behavior: 'smooth' })}>
+            <ChevronRight size={16} className="text-gray-400" />
+          </button>
+        )}
       </div>
 
       {/* ── No-train-today warning ────────────────────────── */}

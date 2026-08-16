@@ -625,7 +625,7 @@ export async function exportAcademyData(academyId, { download = true, dateFrom, 
   // Build Supabase queries with optional date/sport filters
   const [studRes, payRes, batRes, triRes] = await Promise.all([
     (() => {
-      let q = supabase.from('students').select('id,name,student_code,parent,phone,parent_phone,age,sport,batch,join_date,status,fees,paid_till,training_type,fee_plan,notes').eq('academy_id', academyId)
+      let q = supabase.from('students').select('id,name,student_code,parent,phone,parent_phone,age,sport,batch,batch_id,join_date,status,fees,paid_till,training_type,fee_plan,notes').eq('academy_id', academyId)
       if (sport) q = q.eq('sport', sport)
       return q
     })(),
@@ -636,7 +636,10 @@ export async function exportAcademyData(academyId, { download = true, dateFrom, 
       return q
     })(),
     (() => {
-      let q = supabase.from('batches').select('name,code,sports,coach,capacity,enrolled,days,start_time,end_time,ground,age_min,age_max').eq('academy_id', academyId)
+      // `enrolled` deliberately NOT selected: it is a stored counter that had
+      // drifted on 20 of 45 batches, so the export was shipping numbers no
+      // screen agreed with. Counted live from the roster below instead.
+      let q = supabase.from('batches').select('id,name,code,sports,coach,capacity,days,start_time,end_time,ground,age_min,age_max').eq('academy_id', academyId)
       return q
     })(),
     (() => {
@@ -659,6 +662,25 @@ export async function exportAcademyData(academyId, { download = true, dateFrom, 
   const batches    = batRes.data    || []
   const trials     = triRes.data    || []
   const attendance = attRes.data    || []
+
+  // Multi-batch enrolment, so the Batches sheet counts the same roster the app
+  // shows. Scoped client-side to the students we actually fetched rather than
+  // trusting student_batches.academy_id, which has legacy NULL rows.
+  const sbRes = await supabase.from('student_batches').select('student_id,batch_id')
+  const studentIds = new Set(students.map(s => s.id))
+  const enrolIdsByBatch = {}
+  ;(sbRes.data || []).forEach(r => {
+    if (!studentIds.has(r.student_id)) return
+    if (!enrolIdsByBatch[r.batch_id]) enrolIdsByBatch[r.batch_id] = new Set()
+    enrolIdsByBatch[r.batch_id].add(r.student_id)
+  })
+  const activeStudents = students.filter(s => s.status === 'Active')
+  const enrolledFor = (b) => {
+    const ids = enrolIdsByBatch[b.id]
+    return activeStudents.filter(
+      s => s.batch_id === b.id || s.batch === b.name || (ids && ids.has(s.id))
+    ).length
+  }
 
   // student_id → name lookup for attendance
   const idToName = {}
@@ -734,7 +756,7 @@ export async function exportAcademyData(academyId, { download = true, dateFrom, 
     const hdrs = ['Batch Name', 'Code', 'Sport(s)', 'Coach', 'Capacity', 'Enrolled', 'Training Days', 'Start Time', 'End Time', 'Ground', 'Min Age', 'Max Age']
     const rows = batches.map(b => [
       b.name || '', b.code || '', (b.sports || []).join(', '), b.coach || '',
-      b.capacity ?? 20, b.enrolled ?? 0, (b.days || []).join(', '),
+      b.capacity ?? 20, enrolledFor(b), (b.days || []).join(', '),
       b.start_time || '', b.end_time || '', b.ground || '', b.age_min ?? 0, b.age_max ?? 99,
     ])
     XLSX.utils.book_append_sheet(wb, applySheet(hdrs, rows, [150, 80, 130, 140, 80, 80, 150, 90, 85, 130, 80, 80]), 'Batches')

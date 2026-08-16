@@ -89,6 +89,10 @@ async function _endOps() {
   await db.endActivitySession(u).catch(() => {})
 }
 
+// Shared empty Set so batchRoster() returns a stable identity for batches with
+// no multi-batch rows — a fresh `new Set()` per call would break memoisation in
+// every consumer that lists this in a dependency array.
+const EMPTY_ID_SET     = new Set()
 const SPORT_KEY        = 'sf_selected_sport'
 const BRANCH_KEY       = 'sf_selected_branch'   // sport_branches.id (uuid) or null
 const SUSPEND_KEY      = 'sf_suspend_days'
@@ -247,6 +251,12 @@ export function AppProvider({ children }) {
   const [announcements,  setAnnouncements]  = useState([])
   const [events,         setEvents]         = useState([])
   const [feePlans,       setFeePlans]       = useState([])
+  // Raw student_batches rows (multi-batch enrolment). Loaded ONCE here because
+  // Batches, Dashboard, Attendance, Reports, RecordDetail and Staff all need
+  // the same answer to "who is in this batch" — before this they each fetched
+  // the table separately (4 duplicate round-trips) and the screens that never
+  // fetched it at all silently disagreed with the ones that did.
+  const [batchEnrolments, setBatchEnrolments] = useState([])
   const [branches,       setBranches]       = useState([])
   const [leaveRequests,  setLeaveRequests]  = useState([])
   const [trialSources,   setTrialSources]   = useState([])
@@ -337,6 +347,8 @@ export function AppProvider({ children }) {
         logger.warn?.('fetchEvents background failed', err) ?? console.warn('fetchEvents background failed', err))
       db.fetchFeePlans(academyId).then(setFeePlans).catch(err =>
         logger.warn?.('fetchFeePlans background failed', err) ?? console.warn('fetchFeePlans background failed', err))
+      db.fetchAllBatchEnrolments().then(setBatchEnrolments).catch(err =>
+        logger.warn?.('fetchAllBatchEnrolments background failed', err) ?? console.warn('fetchAllBatchEnrolments background failed', err))
       db.fetchTrialSources(academyId).then(setTrialSources).catch(() => {})
       db.fetchAgeGroups(academyId).then(setAgeGroups).catch(() => {})
       db.fetchDrillCategories(academyId).then(setDrillCategories).catch(() => {})
@@ -445,6 +457,7 @@ export function AppProvider({ children }) {
       db.fetchAnnouncements(academyId).then(setAnnouncements).catch(() => {})
       db.fetchEvents(academyId).then(setEvents).catch(() => {})
       db.fetchFeePlans(academyId).then(setFeePlans).catch(() => {})
+      db.fetchAllBatchEnrolments().then(setBatchEnrolments).catch(() => {})
     } catch (err) {
       logger.warn?.('refreshAllSilent failed', err) ?? console.warn('refreshAllSilent failed', err)
     }
@@ -1843,6 +1856,7 @@ export function AppProvider({ children }) {
         endTime: created.end_time, ageMin: created.age_min, ageMax: created.age_max,
         ground: created.ground || null,
         defaultFee: created.default_fee || 0, defaultPlan: created.default_plan || 'monthly',
+        batchType: created.batch_type || 'development',
         branchId: created.branch_id || null,
       }])
       logAuditSport({ actor: user, action: ACTIONS.BATCH_ADD, entityType: 'batch', entityId: created.id, entityName: created.name, changes: { sport: (b.sports || []).join(', '), capacity: String(b.capacity), coach: b.coach || '—' }, academyId: user?.academyId, sport: (b.sports?.[0]) ?? null, branchId: created.branch_id ?? (selectedBranch || null) })
@@ -1952,6 +1966,7 @@ export function AppProvider({ children }) {
         endTime: updated.end_time, ageMin: updated.age_min, ageMax: updated.age_max,
         ground: updated.ground || null,
         defaultFee: updated.default_fee || 0, defaultPlan: updated.default_plan || 'monthly',
+        batchType: updated.batch_type || 'development',
       } : existing))
       const batchDiff = diffObjects(oldBatch, { name: b.name, coach: b.coach, capacity: b.capacity }, [
         { key: 'name' }, { key: 'coach', label: 'Coach' }, { key: 'capacity', label: 'Capacity' },
@@ -2666,6 +2681,33 @@ export function AppProvider({ children }) {
     return feePlans.filter(p => visibleBatchIds.has(p.batchId))
   }, [feePlans, filteredBatches, isAllSports, hasBranchScope])
 
+  // { batchId: Set<studentId> } from student_batches. THE shared answer to
+  // "who else is in this batch" — every screen that shows a batch roster or
+  // headcount must derive from this plus students.batchId, or two screens end
+  // up reporting different numbers for the same batch.
+  const enrolmentIdsByBatch = useMemo(() => {
+    const map = {}
+    batchEnrolments.forEach(e => {
+      if (!map[e.batch_id]) map[e.batch_id] = new Set()
+      map[e.batch_id].add(e.student_id)
+    })
+    return map
+  }, [batchEnrolments])
+
+  // The single roster rule, used everywhere. `students` is passed in so callers
+  // can hand over an already-scoped list (active only, branch-filtered, …).
+  const batchRoster = useCallback((batchId, batchName, list) => {
+    const ids = enrolmentIdsByBatch[batchId] || EMPTY_ID_SET
+    return (list || []).filter(
+      s => s.batchId === batchId || s.batch === batchName || ids.has(s.id)
+    )
+  }, [enrolmentIdsByBatch])
+
+  const refreshBatchEnrolments = useCallback(
+    () => db.fetchAllBatchEnrolments().then(setBatchEnrolments).catch(() => {}),
+    []
+  )
+
   return (
     <AppContext.Provider value={{
       // auth
@@ -2700,6 +2742,8 @@ export function AppProvider({ children }) {
       drillCategories, addDrillCategory, removeDrillCategory,
       refreshData: loadAll,
       batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, reassignPrimaryBatch, updateBatch, updateBatchFee, deleteBatch,
+      // multi-batch enrolment — one source for every batch headcount/roster
+      batchEnrolments, enrolmentIdsByBatch, batchRoster, refreshBatchEnrolments,
       feePlans: filteredFeePlans, addFeePlan, editFeePlan, removeFeePlan,
       events: staffScopedEvents, addEvent, updateEvent, updateEventStatus, removeEvent,
       staff: staffScopedStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,

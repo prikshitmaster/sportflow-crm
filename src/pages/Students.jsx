@@ -819,6 +819,10 @@ const FEE_LABEL = { monthly: 'Monthly Fee (₹) *', quarterly: 'Quarterly Fee (�
 
 function AddStudentModal({ onClose, onSave }) {
   const { batches, selectedSport, selectedBranch, sportBranches, branches, user, allStudents } = useApp()
+  // New students always start in a Development batch — Advance squads are
+  // earned, so they're only reachable from Edit Student, never at registration.
+  // Rows written before batch_type existed default to 'development'.
+  const devBatches = batches.filter(b => (b.batchType || 'development') !== 'advance')
   // Combine sports from both tables: old academy_branches + new sport_branches.
   // Cricket (and any sport added via sport_branches) was missing from the dropdown
   // because it only existed in sport_branches, not academy_branches.
@@ -939,7 +943,7 @@ function AddStudentModal({ onClose, onSave }) {
   }
 
   const handleDevFill = () => {
-    const data = fillStudent({ sportOptions, batches })
+    const data = fillStudent({ sportOptions, batches: devBatches })
     // When sport is locked to a branch, don't override it
     if (sportLocked) delete data.sport
     setForm(f => ({ ...f, ...data }))
@@ -1113,7 +1117,7 @@ function AddStudentModal({ onClose, onSave }) {
           <label className="label">Primary Batch *</label>
           <select className={`input ${errors.batchId ? 'border-red-400' : ''}`} value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— Select Batch —</option>
-            {batches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
+            {devBatches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
           {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
         </div>
@@ -1134,11 +1138,11 @@ function AddStudentModal({ onClose, onSave }) {
         </div>
 
         {/* Additional Batches — Daily only, max 1 extra */}
-        {batches.length > 1 && form.trainingType === 'Daily' && (
+        {devBatches.length > 1 && form.trainingType === 'Daily' && (
           <div className="sm:col-span-2">
             <label className="label">Additional Batch <span className="text-gray-400 font-normal">(optional, max 1)</span></label>
             <div className="flex flex-wrap gap-2 mt-1">
-              {batches.filter(b => form.batchId ? b.id !== Number(form.batchId) : true).map(b => {
+              {devBatches.filter(b => form.batchId ? b.id !== Number(form.batchId) : true).map(b => {
                 const sel = additionalBatchIds.includes(b.id)
                 const disabled = !sel && additionalBatchIds.length >= 1
                 return (

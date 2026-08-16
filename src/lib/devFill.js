@@ -105,6 +105,7 @@ export function fillBatch({ sportOptions = [] } = {}) {
     ground:      pick(GROUNDS),
     defaultFee:  pick([800, 1000, 1200, 1500, 2000]),
     defaultPlan: 'monthly',
+    batchType:   pick(['development', 'advance']),
   }
 }
 

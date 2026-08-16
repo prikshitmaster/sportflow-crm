@@ -3,12 +3,14 @@ import { useParams } from 'react-router-dom'
 import {
   Phone, ArrowLeft, ArrowRight, MapPin, Trophy, CheckCircle2,
   Camera, X, User, Home as HomeIcon, CalendarDays, Search, Bell, ChevronDown, LogOut,
+  Download,
 } from 'lucide-react'
 import * as db from '../lib/db'
 import DevFillButton from '../components/DevFillButton'
 import { fillPublicRegistration } from '../lib/devFill'
 import { RELATIONSHIP_OPTIONS, MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 import { computeTrialTotal, taxRowLabel } from '../lib/tax'
+import { downloadTrialReceipt } from '../lib/trialReceipt'
 
 // Public, no-auth-to-browse, multi-tenant student self-registration funnel.
 // Served at /join (hardcoded slug "ara" — the bare route is kept permanently
@@ -502,6 +504,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const [showGate, setShowGate] = useState(false)
   const [feeMode, setFeeMode] = useState('walkin')       // 'walkin' | 'online'
   const [paymentStatus, setPaymentStatus] = useState('idle') // idle | processing | paid | failed
+  const [paymentRef, setPaymentRef] = useState(null)     // razorpay_payment_id, once paid — for the receipt
 
   // Browse data is anon-readable (migration 0140) — fetch as soon as branding
   // resolves, before any OTP, so the Home sport grid is ready on arrival.
@@ -932,6 +935,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 paymentId: response.razorpay_payment_id,
                 signature: response.razorpay_signature,
               })
+              setPaymentRef(response.razorpay_payment_id)
               setPaymentStatus('paid')
             } catch {
               setPaymentStatus('failed')
@@ -1775,7 +1779,33 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 Online payment didn't go through — no problem, you can pay ₹{totalDue.toLocaleString('en-IN')} in cash at the academy instead.
               </div>
             )}
-            <div style={{ width: '100%', marginTop: 24 }}>
+            {feeMode === 'online' && paymentStatus === 'paid' && (
+              <Tappable
+                onClick={() => downloadTrialReceipt({
+                  academyName: displayName,
+                  logoUrl: branding?.logoUrl,
+                  receiptNo: `${shortCode}-${new Date().getFullYear()}-${result?.id ?? ''}`,
+                  paymentRef,
+                  paidOn: new Date(),
+                  studentName: form.name.trim(),
+                  parentName: form.parentName.trim(),
+                  phone,
+                  sport: chosenSport,
+                  branchName: chosenRow?.branchName,
+                  batchName: batchId ? (batches.find(b => b.id === batchId)?.name || null) : null,
+                  fee,
+                })}
+                label="Download receipt"
+                style={{
+                  width: '100%', marginTop: 20, display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', gap: 8, background: '#fff', border: `1.5px solid ${N.line}`,
+                  borderRadius: R.card, padding: '14px 0', fontSize: 14.5, fontWeight: 800,
+                  color: N.text, boxShadow: E.rest,
+                }}>
+                <Download size={16} color={C.main} /> Download Receipt
+              </Tappable>
+            )}
+            <div style={{ width: '100%', marginTop: feeMode === 'online' && paymentStatus === 'paid' ? 14 : 24 }}>
               <Cta onClick={goHome} C={C}>Register Another Student</Cta>
               <div style={{ fontSize: 12.5, color: N.muted, fontWeight: 500, marginTop: 12 }}>
                 Registering a sibling? No need to verify your number again.

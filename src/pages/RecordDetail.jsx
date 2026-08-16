@@ -299,6 +299,7 @@ function StudentView({ id, students, payments, batches, staff, goDetail }) {
 
 // ── Coach / staff ─────────────────────────────────────────────────────────
 function CoachView({ id, batches, staff, students, user, goDetail }) {
+  const { batchRoster } = useApp()
   const person = staff.find(s => String(s.id) === String(id))
   const [checkins, setCheckins] = useState(null)
   const [leaves, setLeaves] = useState(null)
@@ -320,7 +321,13 @@ function CoachView({ id, batches, staff, students, user, goDetail }) {
   if (!person) return <NotFound>Staff member not found in the current view.</NotFound>
 
   const myBatches = batches.filter(b => b.coach?.trim().toLowerCase() === person.name?.trim().toLowerCase())
-  const myStudentCount = students.filter(s => myBatches.some(b => String(b.id) === String(s.batchId) || b.name === s.batch)).length
+  // Active only, and de-duplicated: a daily student in this coach's MWF *and*
+  // TTS batch is one student, not two.
+  const activeStudents = students.filter(s => s.status === 'Active')
+  const rosterByBatch = new Map(myBatches.map(b => [b.id, batchRoster(b.id, b.name, activeStudents)]))
+  const myStudentCount = new Set(
+    [...rosterByBatch.values()].flat().map(s => s.id)
+  ).size
   const now = new Date()
   const daysCheckedIn = checkins ? new Set(checkins.map(c => c.date)).size : null
 
@@ -361,7 +368,7 @@ function CoachView({ id, batches, staff, students, user, goDetail }) {
                   <button key={b.id} onClick={() => goDetail('batch', b.id)} className="w-full flex items-center justify-between gap-3 py-2.5 text-left hover:bg-gray-50 rounded-lg px-2 -mx-2 transition">
                     <div>
                       <div className="text-sm font-bold text-gray-800">{b.name}</div>
-                      <div className="text-xs text-gray-400">{(b.days || []).join(' ')} · {b.time || '—'} · {b.enrolled ?? 0}/{b.capacity ?? '—'} enrolled</div>
+                      <div className="text-xs text-gray-400">{(b.days || []).join(' ')} · {b.time || '—'} · {(rosterByBatch.get(b.id) || []).length}/{b.capacity ?? '—'} enrolled</div>
                     </div>
                     <ChevronRight size={14} className="text-gray-300" />
                   </button>
@@ -424,13 +431,17 @@ function CoachView({ id, batches, staff, students, user, goDetail }) {
 
 // ── Batch ─────────────────────────────────────────────────────────────────
 function BatchView({ id, batches, students, staff, feePlans, goDetail }) {
+  const { batchRoster } = useApp()
   const batch = batches.find(b => String(b.id) === String(id))
   if (!batch) return <NotFound>Batch not found in the current view.</NotFound>
 
   const plans = feePlans.filter(p => String(p.batchId) === String(batch.id))
-  const roster = students.filter(s => String(s.batchId) === String(batch.id) || s.batch === batch.name)
+  // Same roster rule as the Batches page (primary assignment OR a
+  // student_batches row). This panel used to miss multi-batch students, so it
+  // could report a different headcount than the card that opened it.
+  const roster = batchRoster(batch.id, batch.name, students)
+  const activeRoster = roster.filter(s => s.status === 'Active')
   const coach = staff.find(s => s.name?.trim().toLowerCase() === batch.coach?.trim().toLowerCase())
-  const expectedMonthly = roster.filter(s => s.status === 'Active').reduce((sum, s) => sum + Number(s.fees || 0), 0)
 
   return (
     <>
@@ -448,9 +459,13 @@ function BatchView({ id, batches, students, staff, feePlans, goDetail }) {
           : batch.coach && <span className="text-sm text-gray-500 flex items-center gap-1.5"><UserCog size={14} /> {batch.coach}</span>}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile icon={Users} label="Enrolled" value={`${batch.enrolled ?? roster.length}/${batch.capacity ?? '—'}`} sub={batch.waitlist ? `${batch.waitlist} waitlisted` : 'capacity'} />
-        <Tile icon={IndianRupee} label="Expected / month" value={fmtMoney(expectedMonthly)} sub="active students × fee" />
+      {/* No per-batch revenue tile: fees belong to the STUDENT, not the batch.
+          A daily student legitimately sits in an MWF and a TTS batch on one
+          fee, so showing his full monthly amount on both batch pages counted
+          the same money twice. Revenue lives in Reports → Overview and
+          Payments, where it is academy-level and cannot double. */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Tile icon={Users} label="Enrolled" value={`${activeRoster.length}/${batch.capacity ?? '—'}`} sub={batch.waitlist ? `${batch.waitlist} waitlisted` : 'capacity'} />
         <Tile icon={CalendarDays} label="Schedule" value={(batch.days || []).join(' ') || '—'} sub={batch.time || ''} />
         <Tile icon={Award} label="Age group" value={batch.ageMin || batch.ageMax ? `${batch.ageMin ?? '?'}–${batch.ageMax ?? '?'} yrs` : '—'} />
       </div>

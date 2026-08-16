@@ -890,6 +890,7 @@ export async function fetchBatches(academyId) {
     ground:      row.ground      || null,
     defaultFee:  row.default_fee  || 0,
     defaultPlan: row.default_plan || 'monthly',
+    batchType:   row.batch_type   || 'development',
     branchId:    row.branch_id    || null,
   }))
 }
@@ -1696,6 +1697,7 @@ export async function insertBatchV2(b) {
     p_default_fee: Number(b.defaultFee) || 0,
     p_default_plan: b.defaultPlan || 'monthly',
     p_branch_id:   b.branchId    || null,
+    p_batch_type:  b.batchType   || 'development',
   })
   if (error) throw error
   return data || b
@@ -1852,6 +1854,7 @@ export async function updateBatch(batchId, b) {
       ground:      b.ground      || null,
       defaultFee:  Number(b.defaultFee) || 0,
       defaultPlan: b.defaultPlan || 'monthly',
+      batchType:   b.batchType   || 'development',
     },
     p_token: _sessionToken(),
   })

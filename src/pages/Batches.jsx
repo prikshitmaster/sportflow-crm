@@ -5,7 +5,7 @@ import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import DevFillButton from '../components/DevFillButton'
 import { fillBatch } from '../lib/devFill'
-import { fetchBatchEnrolments, fetchAllBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch, updateBatchEnrolled } from '../lib/db'
+import { fetchBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch } from '../lib/db'
 import { logAudit, ACTIONS } from '../lib/audit'
 import StudentAvatar from '../components/StudentAvatar'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
@@ -18,7 +18,8 @@ const BRAND_HEX = '#2563eb'
 const NAVY_HEX  = '#0f172a'
 
 export default function Batches() {
-  const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch, role, user, hasPermission } = useApp()
+  const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch, role, user, hasPermission,
+          batchRoster, refreshBatchEnrolments } = useApp()
   const canManageBatches  = hasPermission('batches.manage')
   const canManageStudents = hasPermission('students.manage')
   // Branch is mandatory — a branchless batch would show across every branch.
@@ -27,11 +28,6 @@ export default function Batches() {
   const [editingBatch, setEditingBatch] = useState(null)
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [activeBranch, setActiveBranch] = useState('All')
-  const [allBatchEnrolments, setAllBatchEnrolments] = useState([])
-
-  useEffect(() => {
-    fetchAllBatchEnrolments().then(setAllBatchEnrolments).catch(() => {})
-  }, [])
 
   // Reset branch tab + selected batch when scope changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -39,27 +35,28 @@ export default function Batches() {
 
   const activeStudents = useMemo(() => students.filter(s => s.status === 'Active'), [students])
 
-  const liveCountByBatch = useMemo(() => {
-    // Build { batchId: Set<studentId> } from student_batches (same as Attendance)
-    const mbByBatch = {}
-    allBatchEnrolments.forEach(e => {
-      if (!mbByBatch[e.batch_id]) mbByBatch[e.batch_id] = new Set()
-      mbByBatch[e.batch_id].add(e.student_id)
-    })
+  // Per batch: the live roster count AND the student ids behind it. The ids are
+  // what let the summary count unique PEOPLE. A daily student legitimately sits
+  // in an MWF and a TTS batch on one fee, and summing per-batch counts reported
+  // him as two students.
+  const { countByBatch, idsByBatch } = useMemo(() => {
     const counts = {}
+    const ids    = {}
     batches.forEach(b => {
-      const mbIds = mbByBatch[b.id] || new Set()
-      // Filter activeStudents exactly like Attendance does — never add raw DB IDs
-      counts[b.id] = activeStudents.filter(
-        s => s.batchId === b.id || s.batch === b.name || mbIds.has(s.id)
-      ).length
+      const roster = batchRoster(b.id, b.name, activeStudents)
+      counts[b.id] = roster.length
+      ids[b.id]    = roster.map(s => s.id)
     })
-    return counts
-  }, [batches, activeStudents, allBatchEnrolments])
+    return { countByBatch: counts, idsByBatch: ids }
+  }, [batches, activeStudents, batchRoster])
 
-  const refreshEnrolments = () => {
-    fetchAllBatchEnrolments().then(setAllBatchEnrolments).catch(() => {})
-  }
+  // Unique people across a set of batches (deduplicates multi-batch students).
+  const uniqueStudents = (list) => new Set(list.flatMap(b => idsByBatch[b.id] || [])).size
+  // Seats occupied — the sum. Correct to double-count here: two batches really
+  // do give up two seats for the same student.
+  const totalEnrolments = (list) => list.reduce((n, b) => n + (countByBatch[b.id] || 0), 0)
+
+  const refreshEnrolments = refreshBatchEnrolments
 
   // Pick a single "home" sport for grouping a batch in the UI.
   // Prefer the currently-selected sport if the batch belongs to it, else first.
@@ -148,12 +145,17 @@ export default function Batches() {
       )}
 
       {/* Summary row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Students vs Enrolments are deliberately two separate numbers. A daily
+          student in an MWF and a TTS batch is ONE student holding TWO seats;
+          collapsing them into a single "Enrolled" tile made the headcount grow
+          every time someone was added to a second batch. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           { val: visibleBatches.length, label: 'Batches', color: 'text-gray-900' },
-          { val: visibleBatches.reduce((s,b) => s + (liveCountByBatch[b.id] || 0), 0), label: 'Enrolled', color: 'text-brand-600' },
+          { val: uniqueStudents(visibleBatches), label: 'Students', color: 'text-brand-600' },
+          { val: totalEnrolments(visibleBatches), label: 'Enrolments', color: 'text-brand-500' },
           { val: visibleBatches.reduce((s,b) => s + (b.waitlist || 0), 0), label: 'Waitlist', color: 'text-amber-600' },
-          { val: visibleBatches.reduce((s,b) => s + Math.max(0, b.capacity - (liveCountByBatch[b.id] || 0)), 0), label: 'Seats Free', color: 'text-gray-400' },
+          { val: visibleBatches.reduce((s,b) => s + Math.max(0, b.capacity - (countByBatch[b.id] || 0)), 0), label: 'Seats Free', color: 'text-gray-400' },
         ].map(({ val, label, color }) => (
           <div key={label} className="card p-3 text-center">
             <p className={`text-2xl font-black ${color}`}>{val}</p>
@@ -172,12 +174,12 @@ export default function Batches() {
                 <div className="w-2 h-6 bg-brand-600 rounded-full" />
                 <h3 className="text-base font-black text-gray-900">{branch}</h3>
                 <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">
-                  {branchBatches.length} batch{branchBatches.length !== 1 ? 'es' : ''} · {branchBatches.reduce((s,b) => s + (liveCountByBatch[b.id] || 0), 0)} enrolled
+                  {branchBatches.length} batch{branchBatches.length !== 1 ? 'es' : ''} · {uniqueStudents(branchBatches)} student{uniqueStudents(branchBatches) !== 1 ? 's' : ''}
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {branchBatches.map((b) => (
-                  <BatchCard key={b.id} b={b} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
+                  <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
                 ))}
               </div>
             </div>
@@ -192,7 +194,7 @@ export default function Batches() {
         /* Single branch selected — flat grid */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {visibleBatches.map((b) => (
-            <BatchCard key={b.id} b={b} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
+            <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
           ))}
         </div>
       )}
@@ -200,7 +202,7 @@ export default function Batches() {
       {/* Fallback flat grid when no branches configured */}
       {!grouped && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {batches.map((b) => <BatchCard key={b.id} b={b} liveCount={liveCountByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />)}
+          {batches.map((b) => <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />)}
         </div>
       )}
 
@@ -315,6 +317,9 @@ function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) 
 
         {/* Status badges + age */}
         <div className="flex items-center gap-2 mb-2.5">
+          <span className={`badge text-[10px] ${b.batchType === 'advance' ? 'badge-purple' : 'badge-blue'}`}>
+            {b.batchType === 'advance' ? 'Advance' : 'Development'}
+          </span>
           {isFull && <span className="badge badge-red text-[10px]">Full</span>}
           {!isFull && b.waitlist > 0 && <span className="badge badge-yellow text-[10px]">{b.waitlist} waitlist</span>}
           {(b.ageMin > 0 || b.ageMax < 99) && (
@@ -348,6 +353,13 @@ function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) 
 
 const ALL_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 
+// Training level of a batch. Mirrors the batches.batch_type CHECK (migration 0157) —
+// keep the values in sync if that constraint ever changes.
+const BATCH_TYPES = [
+  { value: 'development', label: 'Development', hint: 'Beginners & skill building' },
+  { value: 'advance',     label: 'Advance',     hint: 'Competitive / elite squad' },
+]
+
 function AddBatchModal({ onClose, onSave, staff, initialData }) {
   const { selectedSport, selectedBranch, sportBranches, user, role } = useApp()
   const isEdit = !!initialData
@@ -374,6 +386,7 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
     ground:      initialData?.ground      || '',
     defaultFee:  initialData?.defaultFee  || 0,
     defaultPlan: initialData?.defaultPlan || 'monthly',
+    batchType:   initialData?.batchType   || 'development',
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -466,6 +479,24 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
             </div>
           )}
         </div>
+        <div>
+          <label className="label">Batch Type</label>
+          <div className="grid grid-cols-2 gap-2">
+            {BATCH_TYPES.map(t => (
+              <button key={t.value} type="button" onClick={() => set('batchType', t.value)}
+                className={`px-3 py-2 rounded-lg text-left border transition ${
+                  form.batchType === t.value
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}>
+                <span className="block text-xs font-bold">{t.label}</span>
+                <span className={`block text-[10px] ${form.batchType === t.value ? 'text-white/70' : 'text-gray-400'}`}>
+                  {t.hint}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Age Min</label>
@@ -499,7 +530,7 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
 }
 
 function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canManageStudents, onClose, onEdit, onDelete, onAssignCoach, onEnrolledChange }) {
-  const { user, reassignPrimaryBatch, batches } = useApp()
+  const { user, reassignPrimaryBatch, batches, batchEnrolments } = useApp()
   const [mbEnrolments, setMbEnrolments] = useState([])
   const [assignSearch, setAssignSearch] = useState('')
   const [assigning, setAssigning] = useState(null)
@@ -559,7 +590,25 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
   }
 
   const nameMatch = (s) => s.name.toLowerCase().includes(assignSearch.toLowerCase())
-  const isAlternateBlocked = (s) => s.trainingType === 'Alternate' && !!s.batchId
+  // Alternate-day students pay for three days a week, so holding both halves of
+  // an MWF/TTS pair would give them daily training on an alternate-day fee.
+  // (Daily students in two batches are fine — one fee, six days, as intended.)
+  // Mirrors the server guard in migration 0155; this is only the courtesy half.
+  //
+  // Two fixes over the original check:
+  //   * normalise the casing — comparing to the literal 'Alternate' silently
+  //     stops firing the day a row arrives lower-cased, the same trap
+  //     normTrainingType() exists for in src/lib/studentRules.js
+  //   * look at student_batches too, not just s.batchId — an Alternate student
+  //     whose only enrolment was a student_batches row slipped through and
+  //     could still be added to a second batch
+  const otherBatchStudentIds = useMemo(
+    () => new Set(batchEnrolments.filter(e => e.batch_id !== b.id).map(e => e.student_id)),
+    [batchEnrolments, b.id]
+  )
+  const isAlternateBlocked = (s) =>
+    (s.trainingType || '').trim().toLowerCase() === 'alternate' &&
+    (otherBatchStudentIds.has(s.id) || (!!s.batchId && s.batchId !== b.id))
 
   const searchResults = assignSearch.trim().length >= 2
     ? students

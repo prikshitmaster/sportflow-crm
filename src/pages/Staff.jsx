@@ -654,11 +654,15 @@ function dayCount(start, end) {
 }
 
 function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPermission, currentUserId, branchManagerCount, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions, onResetAccount }) {
-  const { selectedSport } = useApp()
+  const { selectedSport, students, batchRoster } = useApp()
   const isFootball = (selectedSport || '').toLowerCase() === 'football'
   const isBrokenAccount = isOwner && s.accountStatus === 'active' && !s.email
   const photoRef = useRef(null)
   const assignedBatches   = batches.filter(b => b.coach === s.name)
+  // Live count. This used to render batches.enrolled, a stored counter that had
+  // drifted on 20 of 45 batches (one read 15 against a real roster of 0).
+  const activeStudents    = students.filter(st => st.status === 'Active')
+  const countFor          = (b) => batchRoster(b.id, b.name, activeStudents).length
   const unassignedBatches = batches.filter(b => b.coach !== s.name)
   const [panelTab,      setPanelTab]      = useState('info')   // 'info' | 'edit' | 'access'
   const [assigning,     setAssigning]     = useState(false)
@@ -891,7 +895,7 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPe
                       <div key={b.id} className="flex items-center justify-between bg-brand-50 rounded-xl px-3 py-2.5">
                         <div>
                           <p className="text-sm font-bold text-brand-700">{b.name}</p>
-                          <p className="text-xs text-brand-500">{b.time} · {b.enrolled}/{b.capacity}</p>
+                          <p className="text-xs text-brand-500">{b.time} · {countFor(b)}/{b.capacity}</p>
                         </div>
                         <button onClick={() => onUnassign(b.id)} className="p-1 rounded text-gray-400 hover:text-red-500 transition"><X size={13} /></button>
                       </div>
