@@ -1446,13 +1446,18 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 // count, so it still means something on a small batch.
                 const low = open && b.capacity && seatsLeft <= Math.max(2, Math.round(b.capacity * 0.15))
                 const warm = !open || low
+                // Code is the short, unique label batches are now required
+                // to carry (0160) — same one Add Student's batch picker
+                // shows internally. Falls back to the full name only for a
+                // batch that somehow still has none.
+                const label = b.code || b.name
                 return (
                   <Tappable key={b.id} onClick={() => { setBatchId(b.id); setStep('form') }}
-                    label={`${b.name}, ${open ? `${seatsLeft} seats left` : 'waitlist'}`}
+                    label={`${label}, ${open ? `${seatsLeft} seats left` : 'waitlist'}`}
                     style={{ background: '#fff', borderRadius: R.card, padding: '14px 16px', boxShadow: E.rest, animationDelay: `${Math.min(i, 6) * 45}ms` }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ ...T.h3, fontSize: 15, color: N.text }}>{b.name}</div>
+                        <div style={{ ...T.h3, fontSize: 15, color: N.text }}>{label}</div>
                         <div style={{ ...T.label, ...NUM, color: N.faint, marginTop: 3 }}>
                           {(b.days || []).join(', ')}{b.startTime ? ` · ${b.startTime}–${b.endTime}` : ''}
                         </div>
@@ -1658,7 +1663,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <span style={{ fontSize: 15, fontWeight: 700, color: N.text }}>{form.name.trim() || 'Student'}</span>
                   <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>
                     {chosenSport} · {chosenRow?.branchName}
-                    {batchId ? ` · ${batches.find(b => b.id === batchId)?.name || ''}` : ''}
+                    {batchId ? ` · ${(() => { const b = batches.find(x => x.id === batchId); return b ? (b.code || b.name) : '' })()}` : ''}
                   </span>
                 </div>
 
@@ -1757,7 +1762,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 12.5, color: N.muted, fontWeight: 600 }}>Batch</span>
                     <span style={{ fontSize: 12.5, color: N.text, fontWeight: 800 }}>
-                      {batchId ? (batches.find(b => b.id === batchId)?.name || '—') : 'To be assigned'}
+                      {batchId
+                        ? (() => { const b = batches.find(x => x.id === batchId); return b ? (b.code || b.name) : '—' })()
+                        : 'To be assigned'}
                     </span>
                   </div>
                 </>

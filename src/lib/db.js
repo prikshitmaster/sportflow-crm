@@ -3659,6 +3659,7 @@ export async function fetchPublicTrialBranches(slug) {
 const _mapPublicTrialBatch = (row) => ({
   id:        row.id,
   name:      row.name,
+  code:      row.code || null,
   days:      row.days || [],
   startTime: row.start_time,
   endTime:   row.end_time,
