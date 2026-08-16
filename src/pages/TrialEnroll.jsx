@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import {
   Phone, ArrowLeft, ArrowRight, MapPin, Trophy, CheckCircle2,
   Camera, X, User, Home as HomeIcon, CalendarDays, Search, Bell, ChevronDown, LogOut,
-  Download, Check, IndianRupee,
+  Download, Check,
 } from 'lucide-react'
 import * as db from '../lib/db'
 import DevFillButton from '../components/DevFillButton'
@@ -1475,20 +1475,14 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       </div>
                       {/* Card used to end here — a photo-height block of empty
                           space below the address with nothing to compare
-                          branches on. batchCount (0164) and trialFee are both
-                          already fetched for this screen; this is what fills it. */}
+                          branches on. batchCount (0164) was already fetched
+                          for this screen too; this is what fills it. */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <CalendarDays size={12} color={N.faint} style={{ flexShrink: 0 }} />
                         <span style={{ ...T.label, ...NUM, color: '#5E7566' }}>
                           {row.batchCount > 0 ? `${row.batchCount} batch${row.batchCount === 1 ? '' : 'es'} open` : 'Batches opening soon'}
                         </span>
                       </div>
-                      {row.trialFee > 0 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <IndianRupee size={12} color={N.faint} style={{ flexShrink: 0 }} />
-                          <span style={{ ...T.label, ...NUM, color: '#5E7566' }}>₹{row.trialFee.toLocaleString('en-IN')} trial fee</span>
-                        </div>
-                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', borderTop: `1px solid ${N.line}`, marginTop: 12, paddingTop: 11 }}>
