@@ -361,10 +361,16 @@ function Photo({ src, fallback, radius = 0, C, alt = '' }) {
   )
 }
 
+// White, not the tinted N.input — on this screen's pale mint page background
+// a same-toned field read as washed out rather than as a distinct, tappable
+// surface. The added shadow borrows the same elevation scale SectionCard
+// already uses, so a field now reads as part of one considered system
+// instead of a flat default HTML input.
 const inputStyle = {
   border: `1.5px solid ${N.line}`, outline: 'none', fontSize: 15, fontWeight: 600, color: N.text,
-  background: N.input, borderRadius: R.control, padding: '15px 16px', width: '100%',
+  background: '#fff', borderRadius: R.control, padding: '14px 16px', width: '100%',
   boxSizing: 'border-box', fontFamily: FONT, transition: 'border-color .15s ease, box-shadow .15s ease',
+  boxShadow: E.rest,
 }
 
 // `invalid` paints the field itself red and captions it, so a missed required
@@ -372,13 +378,20 @@ const inputStyle = {
 // always wins over a per-instance style override.
 const invalidStyle = { border: '1.5px solid #E5484D', background: '#FFF5F5' }
 
-function LabeledInput({ invalid, ...props }) {
+const fieldLabelStyle = { fontSize: 11.5, fontWeight: 700, color: N.muted, letterSpacing: 0.3, textTransform: 'uppercase', paddingLeft: 1 }
+
+// A field with only a placeholder loses its own identity the moment someone
+// types into it — the placeholder-as-label habit that reads as unfinished.
+// `label` sits above the field and stays put; `placeholder` goes back to
+// being what it's actually for, a one-line example.
+function LabeledInput({ invalid, label, ...props }) {
   const field = <input {...props} className="jf-field" style={{ ...inputStyle, ...(props.style || {}), ...(invalid ? invalidStyle : {}) }} />
-  if (!invalid) return field
+  if (!label && !invalid) return field
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: props.style?.flex }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: props.style?.flex }}>
+      {label && <label htmlFor={props.id} style={fieldLabelStyle}>{label}</label>}
       {field}
-      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42318', paddingLeft: 2 }}>Required</span>
+      {invalid && <span style={{ fontSize: 11.5, fontWeight: 700, color: '#B42318', paddingLeft: 2 }}>Required</span>}
     </div>
   )
 }
@@ -1557,18 +1570,21 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 <ErrorBox msg={error} />
 
                 <SectionCard index="01" title="STUDENT DETAILS" C={C}>
-                  <LabeledInput id="jf-name" placeholder="Full name" value={form.name}
+                  <LabeledInput id="jf-name" label="Full Name" placeholder="e.g. Rahul Sharma" value={form.name}
                     onChange={e => set('name', e.target.value)} invalid={invalid.name} />
                   <div style={{ display: 'flex', gap: 12 }}>
-                    <LabeledInput type="date" value={form.dob}
+                    <LabeledInput type="date" label="Date of Birth" value={form.dob}
                       onChange={e => { const dob = e.target.value; setForm(f => ({ ...f, dob, age: ageFromDob(dob) })) }}
                       style={{ flex: 1 }} />
                     {/* Age is derived, never typed — the date picker is the only
                         input, so DOB and age can't disagree with each other. */}
-                    <div title="Calculated from date of birth"
-                      style={{ ...inputStyle, width: 96, flexShrink: 0, display: 'flex', alignItems: 'center',
-                               justifyContent: 'center', color: form.age ? N.text : N.faint }}>
-                      {form.age ? `${form.age} yrs` : 'Age'}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 84, flexShrink: 0 }}>
+                      <span style={fieldLabelStyle}>Age</span>
+                      <div title="Calculated from date of birth"
+                        style={{ ...inputStyle, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                 color: form.age ? N.text : N.faint }}>
+                        {form.age ? `${form.age}y` : '—'}
+                      </div>
                     </div>
                   </div>
 
@@ -1603,11 +1619,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     </div>
                   )}
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label htmlFor="jf-gender" style={fieldLabelStyle}>Gender</label>
                     <select id="jf-gender" className="jf-field" value={form.gender} onChange={e => set('gender', e.target.value)}
                       style={{ ...inputStyle, cursor: 'pointer', color: form.gender ? N.text : N.faint,
                                ...(invalid.gender ? invalidStyle : {}) }}>
-                      <option value="">Gender</option>
+                      <option value="">Select…</option>
                       {GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
                     </select>
                     {invalid.gender && (
@@ -1625,14 +1642,14 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       ))}
                     </div>
                     {relationship === 'Other' && (
-                      <LabeledInput placeholder="Describe the relationship" value={relationshipCustom}
+                      <LabeledInput label="Describe the Relationship" placeholder="e.g. Grandparent, Uncle" value={relationshipCustom}
                         onChange={e => setRelationshipCustom(e.target.value)} autoFocus />
                     )}
                   </div>
 
                   {myTrials.length > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: N.muted }}>Sibling of (optional)</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={fieldLabelStyle}>Sibling Of (Optional)</label>
                       <select className="jf-field" value={siblingOfId} onChange={e => setSiblingOfId(e.target.value)}
                         style={{ ...inputStyle, cursor: 'pointer' }}>
                         <option value="">— Not linked to another registration —</option>
@@ -1659,16 +1676,16 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 </SectionCard>
 
                 <SectionCard index="03" title="CONTACT" C={C}>
-                  <LabeledInput id="jf-parentName" placeholder="Father's / guardian's name" value={form.parentName}
+                  <LabeledInput id="jf-parentName" label="Father's / Guardian's Name" placeholder="e.g. Rajesh Sharma" value={form.parentName}
                     onChange={e => set('parentName', e.target.value)} invalid={invalid.parentName} />
-                  <LabeledInput placeholder="Mother's name (optional)" value={form.motherName} onChange={e => set('motherName', e.target.value)} />
-                  <LabeledInput type="email" inputMode="email" placeholder="Email (optional)" value={form.email} onChange={e => set('email', e.target.value)} />
-                  <LabeledInput type="tel" inputMode="tel" placeholder="Alternate contact number (optional)" value={form.alternateContactPhone} onChange={e => set('alternateContactPhone', e.target.value)} />
-                  <LabeledInput placeholder="Occupation (optional)" value={form.occupation} onChange={e => set('occupation', e.target.value)} />
-                  <LabeledInput placeholder="Address (optional)" value={form.address} onChange={e => set('address', e.target.value)} />
-                  <LabeledInput id="jf-emergencyContactName" placeholder="Emergency contact name" value={form.emergencyContactName}
+                  <LabeledInput label="Mother's Name (Optional)" placeholder="e.g. Priya Sharma" value={form.motherName} onChange={e => set('motherName', e.target.value)} />
+                  <LabeledInput type="email" inputMode="email" label="Email (Optional)" placeholder="e.g. name@email.com" value={form.email} onChange={e => set('email', e.target.value)} />
+                  <LabeledInput type="tel" inputMode="tel" label="Alternate Contact Number (Optional)" placeholder="10-digit number" value={form.alternateContactPhone} onChange={e => set('alternateContactPhone', e.target.value)} />
+                  <LabeledInput label="Occupation (Optional)" placeholder="e.g. Software Engineer" value={form.occupation} onChange={e => set('occupation', e.target.value)} />
+                  <LabeledInput label="Address (Optional)" placeholder="House / street, area, city" value={form.address} onChange={e => set('address', e.target.value)} />
+                  <LabeledInput id="jf-emergencyContactName" label="Emergency Contact Name" placeholder="e.g. Priya Sharma" value={form.emergencyContactName}
                     onChange={e => set('emergencyContactName', e.target.value)} invalid={invalid.emergencyContactName} />
-                  <LabeledInput id="jf-emergencyContactPhone" type="tel" inputMode="tel" placeholder="Emergency contact number" value={form.emergencyContactPhone}
+                  <LabeledInput id="jf-emergencyContactPhone" type="tel" inputMode="tel" label="Emergency Contact Number" placeholder="10-digit number" value={form.emergencyContactPhone}
                     onChange={e => set('emergencyContactPhone', e.target.value)} invalid={invalid.emergencyContactPhone} />
                 </SectionCard>
 
