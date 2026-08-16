@@ -453,7 +453,7 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
     ...initial,
     trialSessions: initial.trialSessions || 1,
     trialFeePaid:  initial.trialFeePaid  ?? 590,
-    trialFeeMode:  initial.trialFeeMode  || 'Cash',
+    trialFeeMode:  initial.trialFeeMode  || 'Not collected',
     batchId:       initial.batchId ? String(initial.batchId) : '',
     phone:         initial.phone   ? initial.phone.replace(/^\+91\s?/, '') : '',
     // medicalNotes is the only part actually persisted — hasMedical is a
@@ -488,7 +488,7 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
         trialFeePaid:  form.trialFeePaid === '' || form.trialFeePaid == null
                          ? 590
                          : (Number(form.trialFeePaid) || 0),
-        trialFeeMode:  form.trialFeeMode || 'Cash',
+        trialFeeMode:  form.trialFeeMode || 'Not collected',
         quotedFee:     form.quotedFee ? Number(form.quotedFee) : null,
         notes:         form.notes?.trim() || null,
         sessionStart:  form.sessionStart || null,
@@ -665,12 +665,15 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
               </Field>
             </div>
 
-            {/* Whether the fee was actually taken. This drives revenue —
-                a collected fee is booked as a real payment receipt, so an
-                enquiry-only lead must be marked 'Not collected'. */}
+            {/* Whether the fee was actually taken. This drives revenue — a
+                collected fee is booked as a real payment receipt, so this
+                defaults to 'Not collected' and staff must actively pick
+                Cash/UPI once money has genuinely changed hands (0159 — it
+                used to default to Cash, which silently booked revenue and
+                showed the coach a trial as "paid" that never was). */}
             <Field label="Fee Collected">
               <div className="flex gap-2">
-                {['Cash', 'UPI', 'Not collected'].map(m => (
+                {['Not collected', 'Cash', 'UPI'].map(m => (
                   <button key={m} type="button" onClick={() => set('trialFeeMode', m)}
                     className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
                       form.trialFeeMode === m

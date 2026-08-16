@@ -677,7 +677,7 @@ export async function fetchTrials(academyId) {
     ageGroup:       row.age_group      || null,
     programType:    row.program_type   || 'academy',
     trialFeePaid:   row.trial_fee_paid ?? 590,
-    trialFeeMode:   row.trial_fee_mode || 'Cash',
+    trialFeeMode:   row.trial_fee_mode || 'Not collected',
     receiptNo:      row.receipt_no     || null,
     converted:      row.converted,
     followUp:       row.follow_up,
@@ -720,7 +720,7 @@ export async function insertTrial(t) {
       ageGroup:      t.ageGroup      || null,
       programType:   t.programType   || 'academy',
       trialFeePaid:  String(t.trialFeePaid ?? 590),
-      trialFeeMode:  t.trialFeeMode   || 'Cash',
+      trialFeeMode:  t.trialFeeMode   || 'Not collected',
       branchId:      t.branchId      || null,
       // Same contact/personal fields the /join funnel collects (0146) — the
       // office form asks them too now, so a walk-in lead carries as much
