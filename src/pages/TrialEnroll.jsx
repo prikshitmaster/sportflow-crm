@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import {
   Phone, ArrowLeft, ArrowRight, MapPin, Trophy, CheckCircle2,
   Camera, X, User, Home as HomeIcon, CalendarDays, Search, Bell, ChevronDown, LogOut,
-  Download,
+  Download, Check,
 } from 'lucide-react'
 import * as db from '../lib/db'
 import DevFillButton from '../components/DevFillButton'
@@ -1594,22 +1594,35 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       silent when nothing fits — Preferred Days below still
                       covers that case exactly as it always has. */}
                   {autoAssignByAge && autoMatchedBatch && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px',
-                                  background: C.tint, borderRadius: R.control, border: `1px solid ${C.main}2E` }}>
-                      {autoMatchedBatch.coachPhotoUrl ? (
-                        <img src={autoMatchedBatch.coachPhotoUrl} alt={autoMatchedBatch.coach || ''}
-                          style={{ width: 38, height: 38, borderRadius: R.pill, objectFit: 'cover', flexShrink: 0,
-                                   border: '2px solid #fff', boxShadow: E.rest }} />
-                      ) : (
-                        <div style={{ width: 38, height: 38, borderRadius: R.pill, flexShrink: 0, display: 'flex',
-                                      alignItems: 'center', justifyContent: 'center', background: C.main, color: '#fff',
-                                      fontWeight: 800, fontSize: 14 }}>
-                          {(autoMatchedBatch.coach || 'C').trim().charAt(0).toUpperCase()}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 13, padding: '13px 14px',
+                                  background: '#fff', borderRadius: R.control, border: `1.5px solid ${C.main}3D`,
+                                  boxShadow: E.raised }}>
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
+                        {autoMatchedBatch.coachPhotoUrl ? (
+                          <img src={autoMatchedBatch.coachPhotoUrl} alt={autoMatchedBatch.coach || ''}
+                            style={{ width: 44, height: 44, borderRadius: R.pill, objectFit: 'cover',
+                                     border: `2px solid ${C.main}` }} />
+                        ) : (
+                          <div style={{ width: 44, height: 44, borderRadius: R.pill, display: 'flex',
+                                        alignItems: 'center', justifyContent: 'center',
+                                        background: `linear-gradient(135deg, ${C.main}, ${C.dark})`,
+                                        color: '#fff', fontWeight: 800, fontSize: 16 }}>
+                            {(autoMatchedBatch.coach || 'C').trim().charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        {/* Small confirmed badge rather than a solid tint fill —
+                            the "match found" signal lives on the photo, not on a
+                            pastel box around the whole row. */}
+                        <div style={{ position: 'absolute', bottom: -2, right: -2, width: 17, height: 17,
+                                      borderRadius: R.pill, background: C.main, border: '2px solid #fff',
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Check size={9} color="#fff" strokeWidth={3.5} />
                         </div>
-                      )}
+                      </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ ...T.strong, color: C.dark }}>
-                          {autoMatchedBatch.coach ? `You'll train with ${autoMatchedBatch.coach}` : "You're placed!"}
+                        <div style={{ ...T.eyebrow, color: C.main, marginBottom: 2 }}>Your Coach</div>
+                        <div style={{ ...T.strong, fontSize: 15, color: N.text }}>
+                          {autoMatchedBatch.coach || "You're placed!"}
                         </div>
                         <div style={{ ...T.micro, ...NUM, color: N.muted, marginTop: 1 }}>
                           {capFirst(autoMatchedBatch.code || autoMatchedBatch.name)}
