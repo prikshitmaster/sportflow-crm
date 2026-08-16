@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 import {
   UserPlus, Search, Plus, X, ChevronDown, CheckCircle2,
   Clock, RotateCcw, XCircle, ArrowRight, Calendar, Settings2,
-  Trash2, Phone, User, Pencil, Users,
+  Trash2, Phone, User, Pencil, Users, IndianRupee,
 } from 'lucide-react'
 import DevFillButton from '../components/DevFillButton'
 import { fillTrial } from '../lib/devFill'
@@ -1546,10 +1546,22 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
       {!isDone && (
         <div className="flex gap-2 flex-wrap pt-1">
           {trial.stage === 'new' && (
-            <button onClick={() => onAction('schedule', trial)}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-brand-600 text-white rounded-xl py-2 text-xs font-bold">
-              <Calendar size={13} /> Schedule
-            </button>
+            trial.trialFeeMode === 'Not collected' ? (
+              // Nothing gets scheduled on an unpaid trial — collect the fee
+              // (or explicitly mark it, in the edit form) first. Routes to
+              // the same Edit modal the pencil icon opens; once the fee is
+              // no longer 'Not collected' this card flips to the normal
+              // Schedule button on its own.
+              <button onClick={() => onAction('edit', trial)}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-red-500 text-white rounded-xl py-2 text-xs font-bold">
+                <IndianRupee size={13} /> Collect Trial Fee to Schedule
+              </button>
+            ) : (
+              <button onClick={() => onAction('schedule', trial)}
+                className="flex-1 flex items-center justify-center gap-1.5 bg-brand-600 text-white rounded-xl py-2 text-xs font-bold">
+                <Calendar size={13} /> Schedule
+              </button>
+            )
           )}
 
           {trial.stage === 'scheduled' && (
