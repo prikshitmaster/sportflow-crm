@@ -12,7 +12,7 @@ import DevFillButton from '../components/DevFillButton'
 import { fillPublicRegistration } from '../lib/devFill'
 import { RELATIONSHIP_OPTIONS, MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 import { computeTrialTotal, taxRowLabel } from '../lib/tax'
-import { downloadTrialReceipt, viewTrialReceipt } from '../lib/trialReceipt'
+import { downloadTrialReceipt, viewTrialReceipt, buildTrialReceiptHTML } from '../lib/trialReceipt'
 
 // Public, no-auth-to-browse, multi-tenant student self-registration funnel.
 // Served at /join (hardcoded slug "ara" — the bare route is kept permanently
@@ -506,19 +506,39 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // Supabase Auth persists the OTP session across reloads even though this
   // component's own state doesn't — without this, reloading always looked
   // like being logged out. Runs once on mount, independent of branding.
+  //
+  // If a reload lands here with a very recent registration already on file
+  // (last 15 min), open straight on the Profile tab instead of the generic
+  // sport picker — this is the recovery path for a real payment: Android can
+  // kill the app's backgrounded process while the user is away in a UPI/bank/
+  // 3DS app, which wipes the step draft (sessionStorage) but not the auth
+  // session (localStorage), so on relaunch this effect wins the race against
+  // the draft-restore effect below and used to always dump the user on plain
+  // Home with no trace of what they'd just done — even though the trial (and
+  // payment, if it succeeded) was already safely recorded server-side the
+  // whole time.
   useEffect(() => {
     let cancelled = false
     db.getCurrentAuthPhone()
-      .then(phone => {
+      .then(async phone => {
         if (cancelled || !phone) return
         setIsAuthed(true)
         setPhone(phone.slice(-10))
         setStep('home')
+        try {
+          const list = await db.fetchMyTrials(slug)
+          if (cancelled) return
+          setMyTrials(list)
+          const newest = list[0] // secure_my_trials_v1 orders by created_at DESC
+          if (newest && Date.now() - new Date(newest.createdAt).getTime() < 15 * 60 * 1000) {
+            setHomeTab('profile')
+          }
+        } catch { /* non-fatal — worst case, lands on the normal Home tab */ }
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setAuthChecked(true) })
     return () => { cancelled = true }
-  }, [])
+  }, [slug])
 
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
@@ -557,6 +577,22 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null)
   const [showGate, setShowGate] = useState(false)
+  // window.open() with a data: URL — what View/Download used to fall back to
+  // on native — is blocked by Chrome/WebView's top-level-navigation policy
+  // for data: URLs (anti-phishing hardening since Chrome ~92), so it silently
+  // did nothing there too. Rendering the receipt inline via an iframe's
+  // srcDoc has no URL scheme and nothing to navigate — it can't be blocked
+  // the same way, and it's the same fix pattern already proven for the /join
+  // itself (no new native plugin needed).
+  const [receiptHtml, setReceiptHtml] = useState(null)
+  const openReceiptView = (args) => {
+    if (Capacitor.isNativePlatform()) { setReceiptHtml(buildTrialReceiptHTML(args)); return }
+    viewTrialReceipt(args)
+  }
+  const openReceiptDownload = (args) => {
+    if (Capacitor.isNativePlatform()) { setReceiptHtml(buildTrialReceiptHTML(args)); return }
+    downloadTrialReceipt(args)
+  }
   const [feeMode, setFeeMode] = useState('walkin')       // 'walkin' | 'online'
   const [paymentStatus, setPaymentStatus] = useState('idle') // idle | processing | paid | failed
   const [paymentRef, setPaymentRef] = useState(null)     // razorpay_payment_id, once paid — for the receipt
@@ -836,10 +872,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // role's real dashboard route in App.jsx's BACK_EXIT_PATHS.
   const stepRef = useRef(step); stepRef.current = step
   const showGateRef = useRef(showGate); showGateRef.current = showGate
+  const receiptHtmlRef = useRef(receiptHtml); receiptHtmlRef.current = receiptHtml
   const batchChoiceRef = useRef(batchChoice); batchChoiceRef.current = batchChoice
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
     const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      if (receiptHtmlRef.current) { setReceiptHtml(null); return }
       if (showGateRef.current) { setShowGate(false); setError(''); return }
       switch (stepRef.current) {
         case 'login':
@@ -1425,7 +1463,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                 {t.trialFeeMode !== 'Not collected' && (
                                   <div style={{ display: 'flex', gap: 8 }}>
                                     <Tappable
-                                      onClick={() => viewTrialReceipt(trialReceiptArgs(t))}
+                                      onClick={() => openReceiptView(trialReceiptArgs(t))}
                                       label="View receipt"
                                       style={{
                                         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
@@ -1435,7 +1473,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                       <Eye size={14} color={C.main} /> View
                                     </Tappable>
                                     <Tappable
-                                      onClick={() => downloadTrialReceipt(trialReceiptArgs(t))}
+                                      onClick={() => openReceiptDownload(trialReceiptArgs(t))}
                                       label="Download receipt"
                                       style={{
                                         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
@@ -2024,7 +2062,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               return (
                 <div style={{ width: '100%', marginTop: 20, display: 'flex', gap: 10 }}>
                   <Tappable
-                    onClick={() => viewTrialReceipt(confirmReceiptArgs)}
+                    onClick={() => openReceiptView(confirmReceiptArgs)}
                     label="View receipt"
                     style={{
                       flex: 1, display: 'flex', alignItems: 'center',
@@ -2035,7 +2073,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     <Eye size={16} color={C.main} /> View
                   </Tappable>
                   <Tappable
-                    onClick={() => downloadTrialReceipt(confirmReceiptArgs)}
+                    onClick={() => openReceiptDownload(confirmReceiptArgs)}
                     label="Download receipt"
                     style={{
                       flex: 1, display: 'flex', alignItems: 'center',
@@ -2054,6 +2092,28 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 Registering a sibling? No need to verify your number again.
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── RECEIPT VIEWER (native only — see openReceiptView/Download) ── */}
+        {receiptHtml && (
+          <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 60, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: `1px solid ${N.line}`, flexShrink: 0 }}>
+              <span style={{ fontWeight: 800, fontSize: 15, color: N.text }}>Receipt</span>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Tappable
+                  onClick={() => { try { document.getElementById('sf-receipt-frame')?.contentWindow?.print() } catch {} }}
+                  label="Print or save as PDF"
+                  style={{ padding: '8px 12px', borderRadius: 8, background: N.input, fontSize: 12.5, fontWeight: 700, color: N.text }}>
+                  Print / Save PDF
+                </Tappable>
+                <Tappable onClick={() => setReceiptHtml(null)} label="Close"
+                  style={{ padding: 8, borderRadius: 8, background: N.input, display: 'flex', alignItems: 'center' }}>
+                  <X size={16} color={N.text} />
+                </Tappable>
+              </div>
+            </div>
+            <iframe id="sf-receipt-frame" srcDoc={receiptHtml} title="Receipt" style={{ flex: 1, border: 'none', width: '100%' }} />
           </div>
         )}
 
