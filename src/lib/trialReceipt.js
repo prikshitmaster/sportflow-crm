@@ -29,7 +29,9 @@ const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`
  * @param r.logoUrl        optional remote logo
  * @param r.academyAddress optional full academy/branch address line
  * @param r.academyPhone   optional academy contact phone, shown in the footer
- * @param r.academyEmail   optional academy contact email, shown in the footer
+ * @param r.academyEmail   accepted but no longer rendered — dropped from the
+ *                         footer per owner request (was showing a personal
+ *                         Gmail address on every receipt)
  * @param r.academyGstin   optional GSTIN — shown in the footer when present;
  *                         never fabricated when absent (no fake tax ID)
  * @param r.receiptNo     human receipt/application id (e.g. ARA-2026-482)
@@ -65,7 +67,7 @@ export function buildTrialReceiptHTML(r) {
     if (f.taxAmount > 0) rows.push({ desc: taxRowLabel(f.taxPct, f.taxedLabel), sub: '', amt: f.taxAmount })
   }
 
-  const bizLine = [r.academyGstin ? `GSTIN ${r.academyGstin}` : '', r.academyPhone ? `+91 ${r.academyPhone}` : '', r.academyEmail]
+  const bizLine = [r.academyGstin ? `GSTIN ${r.academyGstin}` : '', r.academyPhone ? `+91 ${r.academyPhone}` : '']
     .filter(Boolean).join('  ·  ')
 
   const meta = [
