@@ -597,7 +597,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // real Save-to-Files/Drive/WhatsApp option instead of a dead end.
   const openReceiptDownload = (args) => {
     if (Capacitor.isNativePlatform()) {
-      saveTrialReceiptNative(args).catch(() => setError('Could not save receipt — please try again'))
+      saveTrialReceiptNative(args).catch(err => setError(`Could not save receipt: ${err?.message || err}`))
       return
     }
     downloadTrialReceipt(args)
@@ -1531,6 +1531,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       })}
                     </div>
                   )}
+                  {/* View/Download receipt buttons above had no error display
+                      on this screen either — a failed native save was invisible. */}
+                  <ErrorBox msg={error} />
                   <div style={{ marginTop: 20 }}>
                     <Cta onClick={() => setHomeTab('home')} C={C}>+ Add New Student</Cta>
                   </div>
@@ -2095,6 +2098,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 </div>
               )
             })()}
+            {/* This screen had no error display at all — a failed native
+                receipt save (or any other error set here) was invisible. */}
+            <ErrorBox msg={error} />
             <div style={{ width: '100%', marginTop: feeMode === 'online' && paymentStatus === 'paid' ? 14 : 24 }}>
               <Cta onClick={goHome} C={C}>Register Another Student</Cta>
               <div style={{ fontSize: 12.5, color: N.muted, fontWeight: 500, marginTop: 12 }}>
@@ -2119,7 +2125,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                     // save used there instead of pretending print works.
                     if (Capacitor.isNativePlatform()) {
                       const blob = new Blob([receiptHtml], { type: 'text/html;charset=utf-8' })
-                      saveOrShareFile(blob, 'Receipt.html').catch(() => setError('Could not save receipt — please try again'))
+                      saveOrShareFile(blob, 'Receipt.html').catch(err => setError(`Could not save receipt: ${err?.message || err}`))
                       return
                     }
                     try { document.getElementById('sf-receipt-frame')?.contentWindow?.print() } catch {}
