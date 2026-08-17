@@ -1266,7 +1266,10 @@ export default function TrialEnroll({ academySlug: slugProp }) {
         {step === 'home' && (
           <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative' }}>
             <div style={{ minHeight: '100vh', overflowY: 'auto' }}>
-              <div style={{ background: `linear-gradient(160deg, ${C.main} 0%, ${C.dark} 100%)`, padding: '56px 22px 28px', borderRadius: '0 0 32px 32px' }}>
+              {/* Sticky — previously scrolled away with the rest of the page,
+                  so the status bar ended up sitting on top of raw content
+                  the moment you scrolled the sports list. */}
+              <div style={{ position: 'sticky', top: 0, zIndex: 15, background: `linear-gradient(160deg, ${C.main} 0%, ${C.dark} 100%)`, padding: '56px 22px 28px', borderRadius: '0 0 32px 32px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {branding?.logoUrl ? (
@@ -1544,8 +1547,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
             {/* Floating glass bottom nav — home screen only. Fixed (not
                 absolute) so it stays pinned to the viewport while the
                 content behind it scrolls, instead of sitting once at the
-                very bottom of the full page height. */}
-            <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 18, zIndex: 20,
+                very bottom of the full page height. bottom uses
+                env(safe-area-inset-bottom) (index.html has viewport-fit=cover)
+                so it clears a phone's on-screen 3-button nav bar instead of
+                crowding right up against it — gesture-nav phones report ~0
+                here and get the plain 18px. */}
+            <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', zIndex: 20,
               background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)',
               borderRadius: 999, boxShadow: '0 12px 28px rgba(11,50,26,0.22)', display: 'flex', gap: 2, padding: 6, border: '1px solid rgba(255,255,255,0.7)' }}>
               {[
