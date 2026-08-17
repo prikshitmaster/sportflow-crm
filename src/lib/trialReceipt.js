@@ -10,6 +10,7 @@
 // to PDF from there, and survives being forwarded or kept offline. No popup is
 // opened, so a blocker can't silently swallow it the way window.open can.
 
+import { Capacitor } from '@capacitor/core'
 import { taxRowLabel } from './tax'
 
 // Everything interpolated below is parent-supplied (names, phone) or academy
@@ -174,8 +175,31 @@ export function buildTrialReceiptHTML(r) {
 </body></html>`
 }
 
-/** Builds the receipt and hands it to the browser as a download. */
+// blob: URLs are scoped to the document that created them — the embedded
+// WebView the enroll-app APK runs in (no @capacitor/filesystem or
+// @capacitor/share compiled into that already-shipped build, only bare
+// @capacitor/core) can't hand one off to a real "download" the way a normal
+// browser tab does, so the <a download> click below silently did nothing.
+// A data: URL has no such scoping — Capacitor's WebView intercepts
+// target=_blank / window.open navigation and routes it to the system
+// browser via an Android intent (core Capacitor behavior, no plugin
+// needed), where the user gets real Save/Print/Share options.
+function toDataUrl(html) {
+  const bytes = new TextEncoder().encode(html)
+  let binary = ''
+  bytes.forEach(b => { binary += String.fromCharCode(b) })
+  return `data:text/html;charset=utf-8;base64,${btoa(binary)}`
+}
+
+/** Opens the receipt in a new tab (web) or the system browser (native app). */
+export function viewTrialReceipt(r) {
+  window.open(toDataUrl(buildTrialReceiptHTML(r)), '_blank')
+}
+
+/** Hands the receipt to the browser as a downloadable file. On the native
+ * enroll-app, falls back to viewTrialReceipt() — see toDataUrl() above for why. */
 export function downloadTrialReceipt(r) {
+  if (Capacitor.isNativePlatform()) { viewTrialReceipt(r); return }
   const html = buildTrialReceiptHTML(r)
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url  = URL.createObjectURL(blob)

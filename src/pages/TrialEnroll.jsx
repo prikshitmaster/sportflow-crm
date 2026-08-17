@@ -5,14 +5,14 @@ import { App as CapacitorApp } from '@capacitor/app'
 import {
   Phone, ArrowLeft, ArrowRight, MapPin, Trophy, CheckCircle2,
   Camera, X, User, Home as HomeIcon, CalendarDays, Search, Bell, ChevronDown, LogOut,
-  Download, Check,
+  Download, Check, Eye,
 } from 'lucide-react'
 import * as db from '../lib/db'
 import DevFillButton from '../components/DevFillButton'
 import { fillPublicRegistration } from '../lib/devFill'
 import { RELATIONSHIP_OPTIONS, MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 import { computeTrialTotal, taxRowLabel } from '../lib/tax'
-import { downloadTrialReceipt } from '../lib/trialReceipt'
+import { downloadTrialReceipt, viewTrialReceipt } from '../lib/trialReceipt'
 
 // Public, no-auth-to-browse, multi-tenant student self-registration funnel.
 // Served at /join (hardcoded slug "ara" — the bare route is kept permanently
@@ -1100,6 +1100,28 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // Only what the owner actually filled in under Settings > Academy Profile
   // ("Shown on receipts") — never fabricated when blank.
   const academyAddress = [branding?.address, branding?.city, branding?.state].filter(Boolean).join(', ')
+  // Shared by both the View and Download receipt buttons on a Profile-tab
+  // trial card — one place to build the args so the two stay in sync.
+  const trialReceiptArgs = (t) => ({
+    academyName: displayName,
+    logoUrl: branding?.logoUrl,
+    academyAddress,
+    academyPhone: branding?.contactPhone || '',
+    academyEmail: branding?.contactEmail || '',
+    academyGstin: branding?.gstin || '',
+    receiptNo: t.receiptNo || `${shortCode}-${new Date(t.createdAt).getFullYear()}-${t.id}`,
+    paymentRef: t.razorpayPaymentId || null,
+    paidOn: t.createdAt ? new Date(t.createdAt) : new Date(),
+    studentName: t.name,
+    parentName: t.parentName,
+    phone,
+    sport: t.sport,
+    branchName: t.branchName,
+    batchName: t.batchName || null,
+    fee: { total: t.trialFeePaid, taxAmount: t.taxAmount, taxPct: t.taxPercent },
+    method: t.trialFeeMode,
+    paidOnline: Boolean(t.razorpayPaymentId),
+  })
   const heroFallback  = tagPhoto('sports,stadium,training', `${slug}-hero`, 800, 1400)
   const promoFallback = tagPhoto('sports,team,training', `${slug}-promo`, 900, 380)
   const sportFallback = (name, w, h) => tagPhoto(`${slugify(name)},sport`, `${slug}-${slugify(name)}`, w, h)
@@ -1401,35 +1423,28 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                 )}
 
                                 {t.trialFeeMode !== 'Not collected' && (
-                                  <Tappable
-                                    onClick={() => downloadTrialReceipt({
-                                      academyName: displayName,
-                                      logoUrl: branding?.logoUrl,
-                                      academyAddress,
-                                      academyPhone: branding?.contactPhone || '',
-                                      academyEmail: branding?.contactEmail || '',
-                                      academyGstin: branding?.gstin || '',
-                                      receiptNo: t.receiptNo || `${shortCode}-${new Date(t.createdAt).getFullYear()}-${t.id}`,
-                                      paymentRef: t.razorpayPaymentId || null,
-                                      paidOn: t.createdAt ? new Date(t.createdAt) : new Date(),
-                                      studentName: t.name,
-                                      parentName: t.parentName,
-                                      phone,
-                                      sport: t.sport,
-                                      branchName: t.branchName,
-                                      batchName: t.batchName || null,
-                                      fee: { total: t.trialFeePaid, taxAmount: t.taxAmount, taxPct: t.taxPercent },
-                                      method: t.trialFeeMode,
-                                      paidOnline: Boolean(t.razorpayPaymentId),
-                                    })}
-                                    label="Download receipt"
-                                    style={{
-                                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                                      background: '#fff', border: `1.5px solid ${N.line}`, borderRadius: 10,
-                                      padding: '10px 0', fontSize: 12.5, fontWeight: 800, color: N.text,
-                                    }}>
-                                    <Download size={14} color={C.main} /> Download Receipt
-                                  </Tappable>
+                                  <div style={{ display: 'flex', gap: 8 }}>
+                                    <Tappable
+                                      onClick={() => viewTrialReceipt(trialReceiptArgs(t))}
+                                      label="View receipt"
+                                      style={{
+                                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                                        background: '#fff', border: `1.5px solid ${N.line}`, borderRadius: 10,
+                                        padding: '10px 0', fontSize: 12.5, fontWeight: 800, color: N.text,
+                                      }}>
+                                      <Eye size={14} color={C.main} /> View
+                                    </Tappable>
+                                    <Tappable
+                                      onClick={() => downloadTrialReceipt(trialReceiptArgs(t))}
+                                      label="Download receipt"
+                                      style={{
+                                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                                        background: '#fff', border: `1.5px solid ${N.line}`, borderRadius: 10,
+                                        padding: '10px 0', fontSize: 12.5, fontWeight: 800, color: N.text,
+                                      }}>
+                                      <Download size={14} color={C.main} /> Download
+                                    </Tappable>
+                                  </div>
                                 )}
 
                                 {/* Converted — a real student account exists */}
@@ -1984,36 +1999,52 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 </Tappable>
               </>
             )}
-            {feeMode === 'online' && paymentStatus === 'paid' && (
-              <Tappable
-                onClick={() => downloadTrialReceipt({
-                  academyName: displayName,
-                  logoUrl: branding?.logoUrl,
-                  academyAddress,
-                  academyPhone: branding?.contactPhone || '',
-                  academyEmail: branding?.contactEmail || '',
-                  academyGstin: branding?.gstin || '',
-                  receiptNo: `${shortCode}-${new Date().getFullYear()}-${result?.id ?? ''}`,
-                  paymentRef,
-                  paidOn: new Date(),
-                  studentName: form.name.trim(),
-                  parentName: form.parentName.trim(),
-                  phone,
-                  sport: chosenSport,
-                  branchName: chosenRow?.branchName,
-                  batchName: batchId ? (batches.find(b => b.id === batchId)?.name || null) : null,
-                  fee,
-                })}
-                label="Download receipt"
-                style={{
-                  width: '100%', marginTop: 20, display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', gap: 8, background: '#fff', border: `1.5px solid ${N.line}`,
-                  borderRadius: R.card, padding: '14px 0', fontSize: 14.5, fontWeight: 800,
-                  color: N.text, boxShadow: E.rest,
-                }}>
-                <Download size={16} color={C.main} /> Download Receipt
-              </Tappable>
-            )}
+            {feeMode === 'online' && paymentStatus === 'paid' && (() => {
+              const confirmReceiptArgs = {
+                academyName: displayName,
+                logoUrl: branding?.logoUrl,
+                academyAddress,
+                academyPhone: branding?.contactPhone || '',
+                academyEmail: branding?.contactEmail || '',
+                academyGstin: branding?.gstin || '',
+                receiptNo: `${shortCode}-${new Date().getFullYear()}-${result?.id ?? ''}`,
+                paymentRef,
+                paidOn: new Date(),
+                studentName: form.name.trim(),
+                parentName: form.parentName.trim(),
+                phone,
+                sport: chosenSport,
+                branchName: chosenRow?.branchName,
+                batchName: batchId ? (batches.find(b => b.id === batchId)?.name || null) : null,
+                fee,
+              }
+              return (
+                <div style={{ width: '100%', marginTop: 20, display: 'flex', gap: 10 }}>
+                  <Tappable
+                    onClick={() => viewTrialReceipt(confirmReceiptArgs)}
+                    label="View receipt"
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', gap: 8, background: '#fff', border: `1.5px solid ${N.line}`,
+                      borderRadius: R.card, padding: '14px 0', fontSize: 14.5, fontWeight: 800,
+                      color: N.text, boxShadow: E.rest,
+                    }}>
+                    <Eye size={16} color={C.main} /> View
+                  </Tappable>
+                  <Tappable
+                    onClick={() => downloadTrialReceipt(confirmReceiptArgs)}
+                    label="Download receipt"
+                    style={{
+                      flex: 1, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', gap: 8, background: '#fff', border: `1.5px solid ${N.line}`,
+                      borderRadius: R.card, padding: '14px 0', fontSize: 14.5, fontWeight: 800,
+                      color: N.text, boxShadow: E.rest,
+                    }}>
+                    <Download size={16} color={C.main} /> Download
+                  </Tappable>
+                </div>
+              )
+            })()}
             <div style={{ width: '100%', marginTop: feeMode === 'online' && paymentStatus === 'paid' ? 14 : 24 }}>
               <Cta onClick={goHome} C={C}>Register Another Student</Cta>
               <div style={{ fontSize: 12.5, color: N.muted, fontWeight: 500, marginTop: 12 }}>
