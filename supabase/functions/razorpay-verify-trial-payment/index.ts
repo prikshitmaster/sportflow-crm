@@ -133,7 +133,12 @@ Deno.serve(async (req) => {
     return json({ error: `order not paid (status: ${order.status})` }, 400)
   }
 
-  const amount = Number(order.amount_paid ?? order.amount) / 100
+  const amount   = Number(order.amount_paid ?? order.amount) / 100
+  // Read back the breakdown razorpay-create-trial-order stamped onto the
+  // order's notes at charge time — reflects the tax that was ACTUALLY
+  // charged, not whatever the branch's tax config happens to be right now.
+  const taxPct   = Number(order.notes?.tax_percent) || 0
+  const taxAmt   = Number(order.notes?.tax_amount) || 0
 
   // trials.trial_fee_mode has a DB check constraint limited to exactly
   // 'Cash' | 'UPI' | 'Card' | 'Not collected' (the same values the staff-side
@@ -153,6 +158,8 @@ Deno.serve(async (req) => {
       trial_fee_mode:       feeMode,
       razorpay_payment_id:  paymentId,
       razorpay_order_id:    orderId,
+      tax_percent:          taxAmt > 0 ? taxPct : null,
+      tax_amount:           taxAmt > 0 ? taxAmt : null,
     })
     .eq('id', trialId)
 

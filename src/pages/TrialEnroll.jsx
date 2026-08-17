@@ -1065,6 +1065,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
   const displayName = branding?.appDisplayName || branding?.name || 'Academy'
   const shortCode = (branding?.name || 'ARA').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'ARA'
+  // Only what the owner actually filled in under Settings > Academy Profile
+  // ("Shown on receipts") — never fabricated when blank.
+  const academyAddress = [branding?.address, branding?.city, branding?.state].filter(Boolean).join(', ')
   const heroFallback  = tagPhoto('sports,stadium,training', `${slug}-hero`, 800, 1400)
   const promoFallback = tagPhoto('sports,team,training', `${slug}-promo`, 900, 380)
   const sportFallback = (name, w, h) => tagPhoto(`${slugify(name)},sport`, `${slug}-${slugify(name)}`, w, h)
@@ -1370,6 +1373,10 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                     onClick={() => downloadTrialReceipt({
                                       academyName: displayName,
                                       logoUrl: branding?.logoUrl,
+                                      academyAddress,
+                                      academyPhone: branding?.contactPhone || '',
+                                      academyEmail: branding?.contactEmail || '',
+                                      academyGstin: branding?.gstin || '',
                                       receiptNo: t.receiptNo || `${shortCode}-${new Date(t.createdAt).getFullYear()}-${t.id}`,
                                       paymentRef: t.razorpayPaymentId || null,
                                       paidOn: t.createdAt ? new Date(t.createdAt) : new Date(),
@@ -1948,6 +1955,10 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 onClick={() => downloadTrialReceipt({
                   academyName: displayName,
                   logoUrl: branding?.logoUrl,
+                  academyAddress,
+                  academyPhone: branding?.contactPhone || '',
+                  academyEmail: branding?.contactEmail || '',
+                  academyGstin: branding?.gstin || '',
                   receiptNo: `${shortCode}-${new Date().getFullYear()}-${result?.id ?? ''}`,
                   paymentRef,
                   paidOn: new Date(),

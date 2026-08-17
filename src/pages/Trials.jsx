@@ -507,6 +507,10 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
           trialTaxPct
         ).total,
         trialFeeMode:  form.trialFeeMode || 'Not collected',
+        // Only sent on create (trialTaxPct is forced to 0 in edit mode, see
+        // above) — an edit must never overwrite a breakdown already saved
+        // at collection time with a stale zero.
+        ...(!isEdit ? { taxPercent: feeCalc.taxPct || null, taxAmount: feeCalc.taxAmount || null } : {}),
         quotedFee:     form.quotedFee ? Number(form.quotedFee) : null,
         notes:         form.notes?.trim() || null,
         sessionStart:  form.sessionStart || null,
@@ -951,27 +955,6 @@ function CollectFeeModal({ trial, batches, onClose, onSave }) {
   async function handleSave() {
     setSaving(true)
     const finalAmount = amount === '' || amount == null ? 0 : (Number(amount) || 0)
-    try {
-      // Payload carries ONLY these two keys. secure_update_trial's CASE WHEN
-      // pattern (0159) means every other column on the trial — name, batch,
-      // stage, notes, everything — is left completely untouched; nothing
-      // here can clobber a field this modal doesn't show. The RPC's payment
-      // sync (create/update the linked payments row, book/clear the receipt)
-      // is the exact same logic the full Edit form's Fee Collected control
-      // already exercises — this is a narrower door onto the same system,
-      // not a separate one.
-      await onSave(trial.id, { trialFeePaid: finalAmount, trialFeeMode: mode })
-      // secure_update_trial returns void, so the receipt number it just
-      // generated (next_trial_receipt_id) has to be re-fetched — this is
-      // read-only and can't affect what was just booked either way.
-      let receiptNo = null
-      try { receiptNo = await fetchTrialReceiptNo(trial.id) } catch { /* non-fatal — receipt still shows without it */ }
-      setReceipt({ receiptNo, amount: finalAmount, mode, paidOn: new Date() })
-    } catch (e) { showToast(e.message || 'Failed to record payment', 'error') } finally { setSaving(false) }
-  }
-
-  if (receipt) {
-    const batch = batches?.find(b => b.id === trial.batchId)
     // Reverse-derive the breakdown from the branch's CURRENT trial-fee tax
     // rate rather than trusting whatever base was on-screen before saving —
     // staff may have overridden the suggested amount, which would otherwise
@@ -979,9 +962,38 @@ function CollectFeeModal({ trial, batches, onClose, onSave }) {
     // so base = total ÷ (1 + pct/100); this round-trips exactly with
     // computeTax() for the untouched case (verified: 590 @ 12% → 661 → back
     // to 590/71) and stays self-consistent (base+tax=total) either way.
-    const receiptTaxPct  = trialTaxPct
-    const receiptBase    = receiptTaxPct > 0 ? Math.round(receipt.amount / (1 + receiptTaxPct / 100)) : receipt.amount
-    const receiptTaxAmt  = receipt.amount - receiptBase
+    // Persisted (not just shown) so a receipt rebuilt later — e.g. the
+    // /join Profile tab's Download Receipt — still has the GST line.
+    const taxPct = trialTaxPct
+    const taxBase = taxPct > 0 ? Math.round(finalAmount / (1 + taxPct / 100)) : finalAmount
+    const taxAmt  = finalAmount - taxBase
+    try {
+      // Payload mostly carries these keys. secure_update_trial's CASE WHEN
+      // pattern (0159) means every other column on the trial — name, batch,
+      // stage, notes, everything — is left completely untouched; nothing
+      // here can clobber a field this modal doesn't show. The RPC's payment
+      // sync (create/update the linked payments row, book/clear the receipt)
+      // is the exact same logic the full Edit form's Fee Collected control
+      // already exercises — this is a narrower door onto the same system,
+      // not a separate one.
+      await onSave(trial.id, {
+        trialFeePaid: finalAmount, trialFeeMode: mode,
+        taxPercent: taxAmt > 0 ? taxPct : null, taxAmount: taxAmt > 0 ? taxAmt : null,
+      })
+      // secure_update_trial returns void, so the receipt number it just
+      // generated (next_trial_receipt_id) has to be re-fetched — this is
+      // read-only and can't affect what was just booked either way.
+      let receiptNo = null
+      try { receiptNo = await fetchTrialReceiptNo(trial.id) } catch { /* non-fatal — receipt still shows without it */ }
+      setReceipt({ receiptNo, amount: finalAmount, mode, paidOn: new Date(), taxPct, taxAmt })
+    } catch (e) { showToast(e.message || 'Failed to record payment', 'error') } finally { setSaving(false) }
+  }
+
+  if (receipt) {
+    const batch = batches?.find(b => b.id === trial.batchId)
+    const receiptTaxPct  = receipt.taxPct
+    const receiptTaxAmt  = receipt.taxAmt
+    const receiptBase    = receipt.amount - receiptTaxAmt
     const html = buildTrialReceiptHTML({
       academyName: user?.academy,
       logoUrl:     user?.academyLogo,
