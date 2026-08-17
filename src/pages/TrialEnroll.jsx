@@ -1263,7 +1263,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
         )}
 
         {/* ── HOME ──────────────────────────────────────────── */}
-        {step === 'home' && (
+        {step === 'home' && (<>
           <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative' }}>
             <div style={{ minHeight: '100vh', overflowY: 'auto' }}>
               {/* Sticky — previously scrolled away with the rest of the page,
@@ -1543,35 +1543,29 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 </div>
               )}
             </div>
-
-            {/* Floating glass bottom nav — home screen only. Fixed (not
-                absolute) so it stays pinned to the viewport while the
-                content behind it scrolls, instead of sitting once at the
-                very bottom of the full page height. bottom uses
-                env(safe-area-inset-bottom) (index.html has viewport-fit=cover)
-                so it clears a phone's on-screen 3-button nav bar instead of
-                crowding right up against it — gesture-nav phones report ~0
-                here and get the plain 18px. */}
-            <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', zIndex: 20,
-              background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)',
-              borderRadius: 999, boxShadow: '0 12px 28px rgba(11,50,26,0.22)', display: 'flex', gap: 2, padding: 6, border: '1px solid rgba(255,255,255,0.7)' }}>
-              {[
-                { key: 'home', label: 'Home', Icon: HomeIcon },
-                { key: 'batches', label: 'Batches', Icon: CalendarDays },
-                { key: 'profile', label: 'Profile', Icon: User },
-              ].map(({ key, label, Icon }) => {
-                const active = homeTab === key
-                return (
-                  <Tappable key={key} onClick={() => setHomeTab(key)} label={label}
-                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: active ? '10px 16px' : '10px 14px', borderRadius: R.pill, background: active ? C.main : 'transparent' }}>
-                    <Icon size={active ? 15 : 17} color={active ? '#fff' : N.faint} />
-                    {active && <div style={{ ...T.label, fontWeight: 800, color: '#fff' }}>{label}</div>}
-                  </Tappable>
-                )
-              })}
-            </div>
           </div>
-        )}
+
+          {/* Bottom nav — outside jf-screen so the animation's transform
+              can't trap position:fixed into a local containing block. */}
+          <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', zIndex: 20,
+            background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+            borderRadius: 999, boxShadow: '0 12px 28px rgba(11,50,26,0.22)', display: 'flex', gap: 2, padding: 6, border: '1px solid rgba(255,255,255,0.7)' }}>
+            {[
+              { key: 'home', label: 'Home', Icon: HomeIcon },
+              { key: 'batches', label: 'Batches', Icon: CalendarDays },
+              { key: 'profile', label: 'Profile', Icon: User },
+            ].map(({ key, label, Icon }) => {
+              const active = homeTab === key
+              return (
+                <Tappable key={key} onClick={() => setHomeTab(key)} label={label}
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, padding: active ? '10px 16px' : '10px 14px', borderRadius: R.pill, background: active ? C.main : 'transparent' }}>
+                  <Icon size={active ? 15 : 17} color={active ? '#fff' : N.faint} />
+                  {active && <div style={{ ...T.label, fontWeight: 800, color: '#fff' }}>{label}</div>}
+                </Tappable>
+              )
+            })}
+          </div>
+        </>)}
 
         {/* ── BRANCH ────────────────────────────────────────── */}
         {step === 'branch' && (
@@ -1702,9 +1696,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
         )}
 
         {/* ── FORM ──────────────────────────────────────────── */}
-        {step === 'form' && (
-          <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative' }}>
-            <div style={{ minHeight: '100vh', overflowY: 'auto', paddingBottom: 116 }}>
+        {step === 'form' && (<>
+          <div className="jf-screen" style={{ minHeight: '100vh' }}>
+            <div style={{ minHeight: '100vh', paddingBottom: 'calc(116px + env(safe-area-inset-bottom, 0px))' }}>
               <TopBar title="Student Registration" subtitle={`${chosenSport} · ${chosenRow?.branchName}`} onBack={() => setStep(batchChoice ? 'batch' : 'branch')} C={C} />
 
               <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1900,20 +1894,21 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               </div>
             </div>
 
-            {/* Form page CTA — no amount here on purpose: the fee, and the
-                choice of how to pay it, belong to the next page. */}
-            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '13px 22px 24px',
-                          background: 'rgba(244,248,244,0.88)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
-                          borderTop: `1px solid ${N.line}` }}>
-              <Cta onClick={goToPayment} C={C}>Continue</Cta>
-            </div>
           </div>
-        )}
+
+          <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 0,
+                        width: '100%', maxWidth: 440, boxSizing: 'border-box', zIndex: 20,
+                        padding: '13px 22px calc(24px + env(safe-area-inset-bottom, 0px))',
+                        background: 'rgba(244,248,244,0.88)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+                        borderTop: `1px solid ${N.line}` }}>
+            <Cta onClick={goToPayment} C={C}>Continue</Cta>
+          </div>
+        </>)}
 
         {/* ── PAY ───────────────────────────────────────────── */}
-        {step === 'pay' && (
-          <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative' }}>
-            <div style={{ minHeight: '100vh', overflowY: 'auto', paddingBottom: 116 }}>
+        {step === 'pay' && (<>
+          <div className="jf-screen" style={{ minHeight: '100vh' }}>
+            <div style={{ minHeight: '100vh', paddingBottom: 'calc(116px + env(safe-area-inset-bottom, 0px))' }}>
               <TopBar title="Payment" subtitle={`${chosenSport} · ${chosenRow?.branchName}`} onBack={() => setStep('form')} C={C} />
 
               <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1987,22 +1982,22 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               </div>
             </div>
 
-            {/* A checkout bar, not a floating button: the total sits with the
-                CTA so what you're agreeing to is on screen at the moment you
-                tap, even once the card scrolls past. */}
-            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '13px 22px 24px',
-                          background: 'rgba(244,248,244,0.88)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
-                          borderTop: `1px solid ${N.line}` }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ ...T.micro, color: N.muted }}>
-                  Amount due · {feeMode === 'online' ? 'paying online' : 'pay at the academy'}
-                </span>
-                <span style={{ ...T.h3, ...NUM, color: N.text }}>₹{totalDue.toLocaleString('en-IN')}</span>
-              </div>
-              <Cta onClick={startSubmit} loading={submitting} C={C}>Submit Registration</Cta>
-            </div>
           </div>
-        )}
+
+          <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 0,
+                        width: '100%', maxWidth: 440, boxSizing: 'border-box', zIndex: 20,
+                        padding: '13px 22px calc(24px + env(safe-area-inset-bottom, 0px))',
+                        background: 'rgba(244,248,244,0.88)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+                        borderTop: `1px solid ${N.line}` }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{ ...T.micro, color: N.muted }}>
+                Amount due · {feeMode === 'online' ? 'paying online' : 'pay at the academy'}
+              </span>
+              <span style={{ ...T.h3, ...NUM, color: N.text }}>₹{totalDue.toLocaleString('en-IN')}</span>
+            </div>
+            <Cta onClick={startSubmit} loading={submitting} C={C}>Submit Registration</Cta>
+          </div>
+        </>)}
 
         {/* ── CONFIRM ───────────────────────────────────────── */}
         {step === 'confirm' && (
