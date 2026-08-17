@@ -5,6 +5,7 @@ import {
   Home, QrCode, CalendarCheck, CreditCard, Megaphone, LogOut, Zap, Target,
 } from 'lucide-react'
 import NotificationBell from './NotificationBell'
+import PullToRefresh from './PullToRefresh'
 
 function PageSkeleton() {
   return (
@@ -90,13 +91,13 @@ export default function StudentLayout() {
       </header>
 
       {/* Page content */}
-      <main className="flex-1 overflow-y-auto pb-20" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
+      <PullToRefresh className="flex-1 overflow-y-auto pb-20" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
         <Suspense fallback={<PageSkeleton />}>
           <div className="page-enter">
             <Outlet />
           </div>
         </Suspense>
-      </main>
+      </PullToRefresh>
 
       {/* Bottom navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-100 flex"

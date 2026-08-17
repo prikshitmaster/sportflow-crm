@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext'
 import { Home, Users, UserCircle, QrCode, Bell, CalendarCheck, Zap, LogOut, ClipboardList, UserPlus, CalendarDays } from 'lucide-react'
 import NotificationBell from './NotificationBell'
 import AiAssistant from './AiAssistant'
+import PullToRefresh from './PullToRefresh'
 
 function PageSkeleton() {
   return (
@@ -133,13 +134,13 @@ export default function StaffLayout() {
 
       {/* Bottom-bar clearance is a class, not an inline style, so it can drop
           on lg where there is no bottom bar to clear. */}
-      <main className="flex-1 overflow-y-auto pb-[calc(5rem_+_env(safe-area-inset-bottom))] lg:pb-8">
+      <PullToRefresh className="flex-1 overflow-y-auto pb-[calc(5rem_+_env(safe-area-inset-bottom))] lg:pb-8">
         <Suspense fallback={<PageSkeleton />}>
           <div className="page-enter">
             <Outlet />
           </div>
         </Suspense>
-      </main>
+      </PullToRefresh>
 
       {/* Bottom navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-gray-100 flex max-w-md mx-auto"
