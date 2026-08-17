@@ -75,9 +75,12 @@ Deno.serve(async (req) => {
   if (!jwt) return json({ error: 'unauthorized' }, 401)
 
   const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
-  // Raw, no '+' prefix — matches how the SQL RPC stores auth.users.phone
-  // directly into trials.phone (secure_submit_public_trial_v2), never adding one.
-  const callerPhone = userData?.user?.phone || null
+  // auth.users.phone is E.164 without '+' (e.g. "919979369521"). Since
+  // migration 0165, secure_submit_public_trial_v2 strips the country code
+  // before storing trials.phone as a bare 10-digit number — normalize the
+  // same way here, or the trial.phone === callerPhone check below always
+  // fails and a real, already-charged payment never gets recorded.
+  const callerPhone = (userData?.user?.phone || '').replace(/\D/g, '').slice(-10) || null
   if (userErr || !callerPhone) return json({ error: 'unauthorized' }, 401)
 
   const { data: academy } = await supabase

@@ -3749,6 +3749,7 @@ export async function fetchMyTrials(slug) {
   return (rows || []).map(r => ({
     id:               r.id,
     name:             r.name,
+    parentName:       r.parent_name || '',
     sport:            r.sport,
     branchName:       r.branch_name || '',
     status:           r.status,
@@ -3768,6 +3769,10 @@ export async function fetchMyTrials(slug) {
     studentCode:      r.student_code   || '',
     joinCode:         r.join_code      || '',
     accountStatus:    r.account_status || '',
+    razorpayPaymentId: r.razorpay_payment_id || '',
+    receiptNo:        r.receipt_no || '',
+    taxPercent:       r.tax_percent || 0,
+    taxAmount:        r.tax_amount || 0,
   }))
 }
 

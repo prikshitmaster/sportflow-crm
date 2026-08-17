@@ -1365,6 +1365,34 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                   </div>
                                 )}
 
+                                {t.trialFeeMode !== 'Not collected' && (
+                                  <Tappable
+                                    onClick={() => downloadTrialReceipt({
+                                      academyName: displayName,
+                                      logoUrl: branding?.logoUrl,
+                                      receiptNo: t.receiptNo || `${shortCode}-${new Date(t.createdAt).getFullYear()}-${t.id}`,
+                                      paymentRef: t.razorpayPaymentId || null,
+                                      paidOn: t.createdAt ? new Date(t.createdAt) : new Date(),
+                                      studentName: t.name,
+                                      parentName: t.parentName,
+                                      phone,
+                                      sport: t.sport,
+                                      branchName: t.branchName,
+                                      batchName: t.batchName || null,
+                                      fee: { total: t.trialFeePaid, taxAmount: t.taxAmount, taxPct: t.taxPercent },
+                                      method: t.trialFeeMode,
+                                      paidOnline: Boolean(t.razorpayPaymentId),
+                                    })}
+                                    label="Download receipt"
+                                    style={{
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                                      background: '#fff', border: `1.5px solid ${N.line}`, borderRadius: 10,
+                                      padding: '10px 0', fontSize: 12.5, fontWeight: 800, color: N.text,
+                                    }}>
+                                    <Download size={14} color={C.main} /> Download Receipt
+                                  </Tappable>
+                                )}
+
                                 {/* Converted — a real student account exists */}
                                 {t.stage === 'converted' && (academyFeatures.studentCodeLogin || academyFeatures.familyLogin) && (
                                   <div style={{ background: C.tint, borderRadius: 14, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
