@@ -12,7 +12,8 @@ import DevFillButton from '../components/DevFillButton'
 import { fillPublicRegistration } from '../lib/devFill'
 import { RELATIONSHIP_OPTIONS, MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 import { computeTrialTotal, taxRowLabel } from '../lib/tax'
-import { downloadTrialReceipt, viewTrialReceipt, buildTrialReceiptHTML } from '../lib/trialReceipt'
+import { downloadTrialReceipt, viewTrialReceipt, buildTrialReceiptHTML, saveTrialReceiptNative } from '../lib/trialReceipt'
+import { saveOrShareFile } from '../lib/nativeSave'
 
 // Public, no-auth-to-browse, multi-tenant student self-registration funnel.
 // Served at /join (hardcoded slug "ara" — the bare route is kept permanently
@@ -589,8 +590,16 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     if (Capacitor.isNativePlatform()) { setReceiptHtml(buildTrialReceiptHTML(args)); return }
     viewTrialReceipt(args)
   }
+  // Native "Download" used to just show the same read-only iframe as View —
+  // it never actually saved a file. Now it writes the receipt to the app's
+  // cache dir and hands it to the OS Share sheet (same pattern as every other
+  // native download in this app, see lib/nativeSave.js), so the user gets a
+  // real Save-to-Files/Drive/WhatsApp option instead of a dead end.
   const openReceiptDownload = (args) => {
-    if (Capacitor.isNativePlatform()) { setReceiptHtml(buildTrialReceiptHTML(args)); return }
+    if (Capacitor.isNativePlatform()) {
+      saveTrialReceiptNative(args).catch(() => setError('Could not save receipt — please try again'))
+      return
+    }
     downloadTrialReceipt(args)
   }
   const [feeMode, setFeeMode] = useState('walkin')       // 'walkin' | 'online'
@@ -2102,10 +2111,22 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               <span style={{ fontWeight: 800, fontSize: 15, color: N.text }}>Receipt</span>
               <div style={{ display: 'flex', gap: 8 }}>
                 <Tappable
-                  onClick={() => { try { document.getElementById('sf-receipt-frame')?.contentWindow?.print() } catch {} }}
-                  label="Print or save as PDF"
+                  onClick={() => {
+                    // window.print() isn't implemented by Android's bare
+                    // WebView (no native PrintManager wired up), so it's a
+                    // silent no-op here — same class of problem as the old
+                    // Download button. Route through the same Share-sheet
+                    // save used there instead of pretending print works.
+                    if (Capacitor.isNativePlatform()) {
+                      const blob = new Blob([receiptHtml], { type: 'text/html;charset=utf-8' })
+                      saveOrShareFile(blob, 'Receipt.html').catch(() => setError('Could not save receipt — please try again'))
+                      return
+                    }
+                    try { document.getElementById('sf-receipt-frame')?.contentWindow?.print() } catch {}
+                  }}
+                  label={Capacitor.isNativePlatform() ? 'Save or share' : 'Print or save as PDF'}
                   style={{ padding: '8px 12px', borderRadius: 8, background: N.input, fontSize: 12.5, fontWeight: 700, color: N.text }}>
-                  Print / Save PDF
+                  {Capacitor.isNativePlatform() ? 'Save / Share' : 'Print / Save PDF'}
                 </Tappable>
                 <Tappable onClick={() => setReceiptHtml(null)} label="Close"
                   style={{ padding: 8, borderRadius: 8, background: N.input, display: 'flex', alignItems: 'center' }}>

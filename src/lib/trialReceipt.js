@@ -12,6 +12,7 @@
 
 import { Capacitor } from '@capacitor/core'
 import { taxRowLabel } from './tax'
+import { saveOrShareFile } from './nativeSave'
 
 // Everything interpolated below is parent-supplied (names, phone) or academy
 // config, so it is escaped — a stray & or < would otherwise corrupt the file.
@@ -211,4 +212,19 @@ export function downloadTrialReceipt(r) {
   a.remove()
   // Revoking synchronously can cancel the download on Safari/WebKit.
   setTimeout(() => URL.revokeObjectURL(url), 10000)
+}
+
+/** Actually saves the receipt on native (enroll-app / com.khelit.app) — writes
+ * it to the app cache dir and hands it to the OS Share sheet, so the user can
+ * save to Files/Drive or send it via WhatsApp/email. This is the same proven
+ * Filesystem+Share pattern already used for every other native download in
+ * the app (see lib/nativeSave.js) — the inline iframe (setReceiptHtml in
+ * TrialEnroll.jsx) only ever let the user *view* the receipt, never actually
+ * save a file, since window.print() isn't implemented by Android's bare
+ * WebView without extra native wiring this app doesn't have. */
+export async function saveTrialReceiptNative(r) {
+  const html = buildTrialReceiptHTML(r)
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+  const filename = `Receipt-${String(r.receiptNo || 'trial').replace(/[^A-Za-z0-9-]/g, '')}.html`
+  await saveOrShareFile(blob, filename)
 }
