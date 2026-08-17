@@ -5,6 +5,7 @@ import android.view.View;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.getcapacitor.BridgeActivity;
@@ -23,11 +24,23 @@ public class MainActivity extends BridgeActivity {
         // CSS env(safe-area-inset-*) being correctly propagated through
         // Capacitor's WebView bridge — that alone wasn't enough on the
         // device this was tested on.
+        //
+        // Two things a bare OnApplyWindowInsetsListener alone was missing:
+        // 1. setDecorFitsSystemWindows(false) — the documented way to opt
+        //    the window into dispatching real WindowInsets to children at
+        //    all; without it the listener can silently receive zeroed
+        //    insets even though the window still draws edge-to-edge.
+        // 2. requestApplyInsets() — the very first insets dispatch happens
+        //    during window setup, which can fire before a listener attached
+        //    this late in onCreate is registered, so the first (and only,
+        //    until something else changes) pass gets missed entirely.
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         View webView = getBridge().getWebView();
         ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             view.setPadding(0, 0, 0, bars.bottom);
             return insets;
         });
+        ViewCompat.requestApplyInsets(webView);
     }
 }
