@@ -2005,7 +2005,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
             </div>
             <div style={{ ...T.h1, color: N.text }}>You're in!</div>
             <div style={{ ...T.body, color: '#5E7566', lineHeight: 1.55, maxWidth: 280 }}>
-              Registration received for <b style={{ color: N.text }}>{chosenSport}</b> at <b style={{ color: N.text }}>{chosenRow?.branchName}</b>. Our coach will call within 24 hours.
+              Registration received for <b style={{ color: N.text }}>{chosenSport}</b> at <b style={{ color: N.text }}>{chosenRow?.branchName}</b>.
             </div>
             <div style={{ background: '#fff', borderRadius: R.card, padding: '16px 18px', marginTop: 20, width: '100%', boxShadow: E.raised, display: 'flex', flexDirection: 'column', gap: 10, textAlign: 'left' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>

@@ -167,7 +167,6 @@ export function buildTrialReceiptHTML(r) {
   </table>
 
   <div class="foot">
-    <p>Registration received. A coach will call within 24 hours to confirm the trial session.</p>
     <p>Please retain this receipt for your records.</p>
     ${bizLine ? `<div class="biz-line">${esc(bizLine)}</div>` : ''}
     ${r.paymentRef ? `<div class="ref">Payment reference: ${esc(r.paymentRef)}</div>` : ''}
