@@ -1,5 +1,7 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import { App as CapacitorApp } from '@capacitor/app'
 import {
   Phone, ArrowLeft, ArrowRight, MapPin, Trophy, CheckCircle2,
   Camera, X, User, Home as HomeIcon, CalendarDays, Search, Bell, ChevronDown, LogOut,
@@ -823,6 +825,36 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     } finally { setLoading(false); setBatchesLoading(false) }
   }
 
+  // Android hardware/gesture back button. This whole funnel is one route
+  // (/join) with its own internal step state, not a stack of router pages —
+  // App.jsx's global back handler explicitly steps aside for this route (see
+  // useAndroidBackButton there) so this is the ONLY handler acting on a back
+  // press anywhere in here. Without this, back had nothing to navigate to
+  // and fell through to closing the whole app — the exact bug reported.
+  // Mirrors each screen's own TopBar onBack target exactly; 'login' and
+  // 'home' are the funnel's true entry points, same treatment as every other
+  // role's real dashboard route in App.jsx's BACK_EXIT_PATHS.
+  const stepRef = useRef(step); stepRef.current = step
+  const showGateRef = useRef(showGate); showGateRef.current = showGate
+  const batchChoiceRef = useRef(batchChoice); batchChoiceRef.current = batchChoice
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      if (showGateRef.current) { setShowGate(false); setError(''); return }
+      switch (stepRef.current) {
+        case 'login':
+        case 'home':    CapacitorApp.exitApp(); break
+        case 'branch':  goHome(); break
+        case 'batch':   setStep('branch'); break
+        case 'form':    setStep(batchChoiceRef.current ? 'batch' : 'branch'); break
+        case 'pay':     setStep('form'); break
+        case 'confirm': goHome(); break
+        default:        CapacitorApp.exitApp()
+      }
+    })
+    return () => { listenerPromise.then(l => l.remove()) }
+  }, [])
+
   // Re-match live as DOB changes. No match (age doesn't fit anything, or the
   // list hasn't loaded yet) just falls through to exactly today's behaviour
   // — batchId stays null, Preferred Days still collects a hint for staff.
@@ -1065,6 +1097,9 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
   const displayName = branding?.appDisplayName || branding?.name || 'Academy'
   const shortCode = (branding?.name || 'ARA').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'ARA'
+  // Only what the owner actually filled in under Settings > Academy Profile
+  // ("Shown on receipts") — never fabricated when blank.
+  const academyAddress = [branding?.address, branding?.city, branding?.state].filter(Boolean).join(', ')
   const heroFallback  = tagPhoto('sports,stadium,training', `${slug}-hero`, 800, 1400)
   const promoFallback = tagPhoto('sports,team,training', `${slug}-promo`, 900, 380)
   const sportFallback = (name, w, h) => tagPhoto(`${slugify(name)},sport`, `${slug}-${slugify(name)}`, w, h)
@@ -1365,8 +1400,40 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                   </div>
                                 )}
 
+                                {t.trialFeeMode !== 'Not collected' && (
+                                  <Tappable
+                                    onClick={() => downloadTrialReceipt({
+                                      academyName: displayName,
+                                      logoUrl: branding?.logoUrl,
+                                      academyAddress,
+                                      academyPhone: branding?.contactPhone || '',
+                                      academyEmail: branding?.contactEmail || '',
+                                      academyGstin: branding?.gstin || '',
+                                      receiptNo: t.receiptNo || `${shortCode}-${new Date(t.createdAt).getFullYear()}-${t.id}`,
+                                      paymentRef: t.razorpayPaymentId || null,
+                                      paidOn: t.createdAt ? new Date(t.createdAt) : new Date(),
+                                      studentName: t.name,
+                                      parentName: t.parentName,
+                                      phone,
+                                      sport: t.sport,
+                                      branchName: t.branchName,
+                                      batchName: t.batchName || null,
+                                      fee: { total: t.trialFeePaid, taxAmount: t.taxAmount, taxPct: t.taxPercent },
+                                      method: t.trialFeeMode,
+                                      paidOnline: Boolean(t.razorpayPaymentId),
+                                    })}
+                                    label="Download receipt"
+                                    style={{
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                                      background: '#fff', border: `1.5px solid ${N.line}`, borderRadius: 10,
+                                      padding: '10px 0', fontSize: 12.5, fontWeight: 800, color: N.text,
+                                    }}>
+                                    <Download size={14} color={C.main} /> Download Receipt
+                                  </Tappable>
+                                )}
+
                                 {/* Converted — a real student account exists */}
-                                {t.stage === 'converted' && (academyFeatures.studentCodeLogin || academyFeatures.familyLogin) && (
+                                {t.stage === 'converted' && academyFeatures.studentCodeLogin && (
                                   <div style={{ background: C.tint, borderRadius: 14, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                                     <div style={{ fontSize: 12.5, fontWeight: 800, color: C.dark }}>Access the Student App</div>
 
@@ -1392,14 +1459,6 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                           </a>
                                         </div>
                                       )
-                                    )}
-
-                                    {academyFeatures.familyLogin && (
-                                      <a href="/parent-login" style={{ textDecoration: 'none' }}>
-                                        <div style={{ textAlign: 'center', fontSize: 12, fontWeight: 700, color: C.dark, padding: '6px 0' }}>
-                                          Or log in with just your phone number →
-                                        </div>
-                                      </a>
                                     )}
                                   </div>
                                 )}
@@ -1914,15 +1973,29 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               </div>
             </div>
             {feeMode === 'online' && paymentStatus === 'failed' && (
-              <div style={{ fontSize: 12.5, color: '#B45309', fontWeight: 500, marginTop: 10, maxWidth: 280 }}>
-                Online payment didn't go through — no problem, you can pay ₹{totalDue.toLocaleString('en-IN')} in cash at the academy instead.
-              </div>
+              <>
+                <div style={{ fontSize: 12.5, color: '#B45309', fontWeight: 500, marginTop: 10, maxWidth: 280 }}>
+                  Online payment didn't go through. You can try again, or pay ₹{totalDue.toLocaleString('en-IN')} in cash at the academy instead — your registration is already saved either way.
+                </div>
+                <Tappable onClick={() => runOnlinePayment(result.id)} label="Retry payment"
+                  style={{
+                    width: '100%', marginTop: 12, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: 8, background: C.main, borderRadius: R.card,
+                    padding: '14px 0', fontSize: 14.5, fontWeight: 800, color: '#fff',
+                  }}>
+                  Retry Payment
+                </Tappable>
+              </>
             )}
             {feeMode === 'online' && paymentStatus === 'paid' && (
               <Tappable
                 onClick={() => downloadTrialReceipt({
                   academyName: displayName,
                   logoUrl: branding?.logoUrl,
+                  academyAddress,
+                  academyPhone: branding?.contactPhone || '',
+                  academyEmail: branding?.contactEmail || '',
+                  academyGstin: branding?.gstin || '',
                   receiptNo: `${shortCode}-${new Date().getFullYear()}-${result?.id ?? ''}`,
                   paymentRef,
                   paidOn: new Date(),

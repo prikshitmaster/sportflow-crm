@@ -323,6 +323,11 @@ function useAndroidBackButton() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
     const listenerPromise = CapacitorApp.addListener('backButton', () => {
+      // /join (the enroll-app's entire route — see TrialEnroll.jsx) is a
+      // single-page multi-step funnel with no per-step router history to
+      // navigate(-1) through; it registers its own backButton listener that
+      // steps through its internal state machine instead. Stay out of its way.
+      if (locationRef.current.pathname.startsWith('/join')) return
       if (BACK_EXIT_PATHS.has(locationRef.current.pathname)) {
         CapacitorApp.exitApp()
       } else {

@@ -707,6 +707,8 @@ export async function fetchTrials(academyId) {
     address:                row.address                 || '',
     emergencyContactName:   row.emergency_contact_name  || '',
     emergencyContactPhone:  row.emergency_contact_phone || '',
+    taxPercent:     row.tax_percent    || 0,
+    taxAmount:      row.tax_amount     || 0,
   }))
 }
 
@@ -745,6 +747,8 @@ export async function insertTrial(t) {
       emergencyContactName:   t.emergencyContactName   || null,
       emergencyContactPhone:  t.emergencyContactPhone  || null,
       medicalNotes:           t.medicalNotes            || null,
+      taxPercent:             t.taxPercent != null ? String(t.taxPercent) : null,
+      taxAmount:              t.taxAmount  != null ? String(t.taxAmount)  : null,
     },
     p_token: _sessionToken(),
   })
@@ -770,7 +774,7 @@ export async function updateTrial(id, updates) {
   const fields = ['name','phone','parent','age','sport','status','stage','converted',
     'followUp','batchId','trialDate','trialSessions','sessionsDone','coachNote',
     'coachRec','notes','quotedFee','sessionStart','sessionEnd','dob','ageGroup',
-    'programType','trialFeePaid','trialFeeMode']
+    'programType','trialFeePaid','trialFeeMode','taxPercent','taxAmount']
   fields.forEach(k => { if (updates[k] !== undefined) payload[k] = updates[k] })
   const { error } = await supabase.rpc('secure_update_trial', {
     p_trial_id: id,
@@ -3522,6 +3526,12 @@ const _mapAcademyBranding = (row) => row ? ({
   appDisplayName:  row.app_display_name || '',
   logoUrl:         row.logo_url || '',
   brandColor:      row.brand_color || '',
+  contactPhone:    row.contact_phone || '',
+  contactEmail:    row.contact_email || '',
+  address:         row.address || '',
+  city:            row.city || '',
+  state:           row.state || '',
+  gstin:           row.gstin || '',
 }) : null
 
 // Just the handful of funnel-relevant flags, pre-auth-safe — see migrations
@@ -3749,6 +3759,7 @@ export async function fetchMyTrials(slug) {
   return (rows || []).map(r => ({
     id:               r.id,
     name:             r.name,
+    parentName:       r.parent_name || '',
     sport:            r.sport,
     branchName:       r.branch_name || '',
     status:           r.status,
@@ -3768,6 +3779,10 @@ export async function fetchMyTrials(slug) {
     studentCode:      r.student_code   || '',
     joinCode:         r.join_code      || '',
     accountStatus:    r.account_status || '',
+    razorpayPaymentId: r.razorpay_payment_id || '',
+    receiptNo:        r.receipt_no || '',
+    taxPercent:       r.tax_percent || 0,
+    taxAmount:        r.tax_amount || 0,
   }))
 }
 

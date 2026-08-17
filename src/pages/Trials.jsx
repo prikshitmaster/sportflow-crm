@@ -231,7 +231,7 @@ function buildPrintHTML(trial, academyName, logoUrl, customLogo) {
     <div class="prog-row">
       <div class="prog-box ${isAcademy ? 'active' : ''}">
         <div class="prog-check ${isAcademy ? 'checked' : ''}">${isAcademy ? '✓' : ''}</div>
-        <span class="prog-label">Academy</span>
+        <span class="prog-label">Advance</span>
       </div>
       <div class="prog-box ${isDev ? 'active' : ''}">
         <div class="prog-check ${isDev ? 'checked' : ''}">${isDev ? '✓' : ''}</div>
@@ -371,7 +371,7 @@ function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
 
           {/* Program + Fee */}
           <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center gap-3">
-            {[['Academy', isAcademy], ['Development', isDev]].map(([lbl, active]) => (
+            {[['Advance', isAcademy], ['Development', isDev]].map(([lbl, active]) => (
               <div key={lbl} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition ${active ? 'border-gray-800 bg-gray-900 text-white' : 'border-gray-200 text-gray-400 bg-white'}`}>
                 <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-[8px] ${active ? 'bg-white border-white text-gray-900 font-black' : 'border-gray-300'}`}>{active ? '✓' : ''}</span>
                 {lbl}
@@ -507,6 +507,10 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
           trialTaxPct
         ).total,
         trialFeeMode:  form.trialFeeMode || 'Not collected',
+        // Only sent on create (trialTaxPct is forced to 0 in edit mode, see
+        // above) — an edit must never overwrite a breakdown already saved
+        // at collection time with a stale zero.
+        ...(!isEdit ? { taxPercent: feeCalc.taxPct || null, taxAmount: feeCalc.taxAmount || null } : {}),
         quotedFee:     form.quotedFee ? Number(form.quotedFee) : null,
         notes:         form.notes?.trim() || null,
         sessionStart:  form.sessionStart || null,
@@ -720,7 +724,7 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
             {/* Program type */}
             <Field label="Program">
               <div className="flex gap-2">
-                {[['academy', 'Academy'], ['development', 'Development']].map(([val, lbl]) => (
+                {[['academy', 'Advance'], ['development', 'Development']].map(([val, lbl]) => (
                   <button key={val} type="button" onClick={() => set('programType', val)}
                     className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
                       form.programType === val
@@ -878,9 +882,10 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
   const batchOpts = trial.sport ? batches.filter(b => (b.sports || []).includes(trial.sport)) : batches
 
   async function handleSave() {
+    if (!batchId) return
     setSaving(true)
     try {
-      await onSave(trial.id, { stage: 'scheduled', trialDate: date, batchId: batchId ? Number(batchId) : null })
+      await onSave(trial.id, { stage: 'scheduled', trialDate: date, batchId: Number(batchId) })
       onClose()
     } catch (e) { showToast(e.message || 'Failed to schedule trial', 'error') } finally { setSaving(false) }
   }
@@ -899,15 +904,21 @@ function ScheduleModal({ trial, batches, onClose, onSave }) {
             <input value={date} onChange={e => setDate(e.target.value)} type="date" className="input-field" />
           </div>
           <div>
-            <label className="label-xs">Assign Batch</label>
+            <label className="label-xs">Assign Batch *</label>
             <select value={batchId} onChange={e => setBatchId(e.target.value)} className="input-field">
-              <option value="">Unassigned</option>
+              <option value="">Select a batch…</option>
               {batchOpts.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
+            {/* A coach only ever sees trials tied to one of their own batches
+                (StaffTrials.jsx) — leaving this Unassigned means no coach can
+                ever pick this trial up, paid or not. Required from here on. */}
+            <p className="mt-1 text-[11px] text-gray-400">
+              Required — your coach only sees trials assigned to their batch.
+            </p>
           </div>
         </div>
         <div className="px-5 pb-5">
-          <button onClick={handleSave} disabled={!date || saving}
+          <button onClick={handleSave} disabled={!date || !batchId || saving}
             className="w-full bg-brand-600 text-white rounded-xl py-3 font-bold text-sm disabled:opacity-40">
             {saving ? 'Saving…' : 'Schedule'}
           </button>
@@ -944,27 +955,6 @@ function CollectFeeModal({ trial, batches, onClose, onSave }) {
   async function handleSave() {
     setSaving(true)
     const finalAmount = amount === '' || amount == null ? 0 : (Number(amount) || 0)
-    try {
-      // Payload carries ONLY these two keys. secure_update_trial's CASE WHEN
-      // pattern (0159) means every other column on the trial — name, batch,
-      // stage, notes, everything — is left completely untouched; nothing
-      // here can clobber a field this modal doesn't show. The RPC's payment
-      // sync (create/update the linked payments row, book/clear the receipt)
-      // is the exact same logic the full Edit form's Fee Collected control
-      // already exercises — this is a narrower door onto the same system,
-      // not a separate one.
-      await onSave(trial.id, { trialFeePaid: finalAmount, trialFeeMode: mode })
-      // secure_update_trial returns void, so the receipt number it just
-      // generated (next_trial_receipt_id) has to be re-fetched — this is
-      // read-only and can't affect what was just booked either way.
-      let receiptNo = null
-      try { receiptNo = await fetchTrialReceiptNo(trial.id) } catch { /* non-fatal — receipt still shows without it */ }
-      setReceipt({ receiptNo, amount: finalAmount, mode, paidOn: new Date() })
-    } catch (e) { showToast(e.message || 'Failed to record payment', 'error') } finally { setSaving(false) }
-  }
-
-  if (receipt) {
-    const batch = batches?.find(b => b.id === trial.batchId)
     // Reverse-derive the breakdown from the branch's CURRENT trial-fee tax
     // rate rather than trusting whatever base was on-screen before saving —
     // staff may have overridden the suggested amount, which would otherwise
@@ -972,9 +962,38 @@ function CollectFeeModal({ trial, batches, onClose, onSave }) {
     // so base = total ÷ (1 + pct/100); this round-trips exactly with
     // computeTax() for the untouched case (verified: 590 @ 12% → 661 → back
     // to 590/71) and stays self-consistent (base+tax=total) either way.
-    const receiptTaxPct  = trialTaxPct
-    const receiptBase    = receiptTaxPct > 0 ? Math.round(receipt.amount / (1 + receiptTaxPct / 100)) : receipt.amount
-    const receiptTaxAmt  = receipt.amount - receiptBase
+    // Persisted (not just shown) so a receipt rebuilt later — e.g. the
+    // /join Profile tab's Download Receipt — still has the GST line.
+    const taxPct = trialTaxPct
+    const taxBase = taxPct > 0 ? Math.round(finalAmount / (1 + taxPct / 100)) : finalAmount
+    const taxAmt  = finalAmount - taxBase
+    try {
+      // Payload mostly carries these keys. secure_update_trial's CASE WHEN
+      // pattern (0159) means every other column on the trial — name, batch,
+      // stage, notes, everything — is left completely untouched; nothing
+      // here can clobber a field this modal doesn't show. The RPC's payment
+      // sync (create/update the linked payments row, book/clear the receipt)
+      // is the exact same logic the full Edit form's Fee Collected control
+      // already exercises — this is a narrower door onto the same system,
+      // not a separate one.
+      await onSave(trial.id, {
+        trialFeePaid: finalAmount, trialFeeMode: mode,
+        taxPercent: taxAmt > 0 ? taxPct : null, taxAmount: taxAmt > 0 ? taxAmt : null,
+      })
+      // secure_update_trial returns void, so the receipt number it just
+      // generated (next_trial_receipt_id) has to be re-fetched — this is
+      // read-only and can't affect what was just booked either way.
+      let receiptNo = null
+      try { receiptNo = await fetchTrialReceiptNo(trial.id) } catch { /* non-fatal — receipt still shows without it */ }
+      setReceipt({ receiptNo, amount: finalAmount, mode, paidOn: new Date(), taxPct, taxAmt })
+    } catch (e) { showToast(e.message || 'Failed to record payment', 'error') } finally { setSaving(false) }
+  }
+
+  if (receipt) {
+    const batch = batches?.find(b => b.id === trial.batchId)
+    const receiptTaxPct  = receipt.taxPct
+    const receiptTaxAmt  = receipt.taxAmt
+    const receiptBase    = receipt.amount - receiptTaxAmt
     const html = buildTrialReceiptHTML({
       academyName: user?.academy,
       logoUrl:     user?.academyLogo,
@@ -1792,10 +1811,6 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
               <button onClick={() => onAction('accept', trial)}
                 className="flex-1 bg-emerald-600 text-white rounded-xl py-2 text-xs font-bold">
                 Accept ✓
-              </button>
-              <button onClick={() => onAction('followup', trial)}
-                className="flex-1 bg-orange-500 text-white rounded-xl py-2 text-xs font-bold">
-                Follow-up ↺
               </button>
               <button onClick={() => onAction('reject', trial)}
                 className="flex-1 bg-red-500 text-white rounded-xl py-2 text-xs font-bold">

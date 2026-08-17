@@ -23,8 +23,13 @@ function esc(v) {
 const inr = (n) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`
 
 /**
- * @param r.academyName   display name of the academy
- * @param r.logoUrl       optional remote logo
+ * @param r.academyName    display name of the academy
+ * @param r.logoUrl        optional remote logo
+ * @param r.academyAddress optional full academy/branch address line
+ * @param r.academyPhone   optional academy contact phone, shown in the footer
+ * @param r.academyEmail   optional academy contact email, shown in the footer
+ * @param r.academyGstin   optional GSTIN — shown in the footer when present;
+ *                         never fabricated when absent (no fake tax ID)
  * @param r.receiptNo     human receipt/application id (e.g. ARA-2026-482)
  * @param r.paymentRef    Razorpay payment id — the authoritative proof of payment
  * @param r.paidOn        Date the payment succeeded
@@ -49,6 +54,17 @@ export function buildTrialReceiptHTML(r) {
   if (f.trialFee > 0) rows.push({ desc: 'Trial session fee', sub: esc(r.sport || ''), amt: f.trialFee })
   if (f.kitFee > 0)   rows.push({ desc: 'Kit fee', sub: 'One-time', amt: f.kitFee })
   if (f.taxAmount > 0) rows.push({ desc: taxRowLabel(f.taxPct, f.taxedLabel), sub: '', amt: f.taxAmount })
+  // No itemized trial/kit split is available (e.g. reconstructed later from
+  // just a stored total + tax) — still show something better than a bare
+  // total row, without inventing numbers that were never actually broken out.
+  if (!rows.length && f.total > 0) {
+    const base = f.total - (f.taxAmount || 0)
+    if (base > 0) rows.push({ desc: 'Registration fee', sub: esc(r.sport || ''), amt: base })
+    if (f.taxAmount > 0) rows.push({ desc: taxRowLabel(f.taxPct, f.taxedLabel), sub: '', amt: f.taxAmount })
+  }
+
+  const bizLine = [r.academyGstin ? `GSTIN ${r.academyGstin}` : '', r.academyPhone ? `+91 ${r.academyPhone}` : '', r.academyEmail]
+    .filter(Boolean).join('  ·  ')
 
   const meta = [
     ['Student', r.studentName],
@@ -76,6 +92,8 @@ export function buildTrialReceiptHTML(r) {
   .brand img { width: 44px; height: 44px; border-radius: 999px; object-fit: cover; }
   .brand-name { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; }
   .brand-sub { font-size: 11.5px; color: #6E8677; margin-top: 2px; }
+  .brand-addr { font-size: 10.5px; color: #8AA093; margin-top: 3px; max-width: 260px; }
+  .biz-line { font-size: 10.5px; color: #6E8677; font-weight: 600; margin-top: 8px; }
   .rt { text-align: right; flex-shrink: 0; }
   .rt-title { font-size: 19px; font-weight: 900; color: #17683C;
               text-transform: uppercase; letter-spacing: 0.5px; }
@@ -117,6 +135,7 @@ export function buildTrialReceiptHTML(r) {
       <div>
         <div class="brand-name">${esc(r.academyName)}</div>
         <div class="brand-sub">${esc(r.branchName || '')}</div>
+        ${r.academyAddress ? `<div class="brand-addr">${esc(r.academyAddress)}</div>` : ''}
       </div>
     </div>
     <div class="rt">
@@ -148,6 +167,7 @@ export function buildTrialReceiptHTML(r) {
   <div class="foot">
     <p>Registration received. A coach will call within 24 hours to confirm the trial session.</p>
     <p>Please retain this receipt for your records.</p>
+    ${bizLine ? `<div class="biz-line">${esc(bizLine)}</div>` : ''}
     ${r.paymentRef ? `<div class="ref">Payment reference: ${esc(r.paymentRef)}</div>` : ''}
   </div>
 </div>
