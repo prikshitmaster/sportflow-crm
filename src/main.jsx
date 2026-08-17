@@ -11,6 +11,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'                    // Tailwind + shared classes (btn-primary, card…)
 import { initSentry } from './lib/sentry'
+import { showUpdateOverlay } from './lib/updateOverlay'
 
 // Crash + error reporting. Deliberately started AFTER first paint, once the
 // browser is idle: the SDK is a dynamic import now (see lib/sentry.js), and
@@ -39,6 +40,7 @@ function tryAutoReload(nukeCaches) {
   const n = Number(sessionStorage.getItem(AUTO_RELOAD_KEY) || 0)
   if (n >= AUTO_RELOAD_MAX) return // give up — stay on the page rather than loop forever
   sessionStorage.setItem(AUTO_RELOAD_KEY, String(n + 1))
+  showUpdateOverlay('Updating to the latest version…')
   if (!nukeCaches) { window.location.reload(); return }
   const nukes = []
   try {
@@ -87,7 +89,7 @@ document.addEventListener('visibilitychange', () => {
   } else if (document.visibilityState === 'visible' && Date.now() - _hiddenAt > 20_000) {
     setTimeout(() => {
       const root = document.getElementById('root')
-      if (root && root.children.length === 0) window.location.reload()
+      if (root && root.children.length === 0) { showUpdateOverlay('Reloading…'); window.location.reload() }
     }, 800)
   }
 })
