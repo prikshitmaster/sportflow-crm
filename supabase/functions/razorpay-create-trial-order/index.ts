@@ -59,9 +59,12 @@ Deno.serve(async (req) => {
   if (!jwt) return json({ error: 'unauthorized' }, 401)
 
   const { data: userData, error: userErr } = await supabase.auth.getUser(jwt)
-  // Raw, no '+' prefix — matches how the SQL RPC stores auth.users.phone
-  // directly into trials.phone (secure_submit_public_trial_v2), never adding one.
-  const callerPhone = userData?.user?.phone || null
+  // auth.users.phone is E.164 without '+' (e.g. "919979369521"). Since
+  // migration 0165, secure_submit_public_trial_v2 strips the country code
+  // before storing trials.phone as a bare 10-digit number — normalize the
+  // same way here, or every trial.phone comparison below fails.
+  const rawCallerPhone = userData?.user?.phone || null
+  const callerPhone = rawCallerPhone ? rawCallerPhone.replace(/\D/g, '').slice(-10) : null
   if (userErr || !callerPhone) return json({ error: 'unauthorized' }, 401)
 
   // ── Resolve academy from slug, verify branch belongs to it ───
@@ -145,17 +148,17 @@ Deno.serve(async (req) => {
   const rzpJson = await rzpResp.json().catch(() => ({}))
   if (!rzpResp.ok) return json({ error: 'razorpay order failed', details: rzpJson }, 502)
 
-  // callerPhone is Supabase Auth's raw auth.users.phone — digits only, no
-  // leading '+' (e.g. "919998887777"). Razorpay Checkout's prefill.contact
-  // expects proper E.164 (+91XXXXXXXXXX); passing the ambiguous bare-digit
-  // form risks Checkout mis-parsing it and disabling phone-linked payment
-  // methods.
+  // rawCallerPhone is Supabase Auth's raw auth.users.phone — digits only, no
+  // leading '+' but WITH the country code (e.g. "919998887777"). Razorpay
+  // Checkout's prefill.contact expects proper E.164 (+91XXXXXXXXXX); the
+  // normalized bare-10-digit callerPhone used for the trial-ownership check
+  // above has the country code stripped, so it must not be reused here.
   return json({
     ok:       true,
     orderId:  rzpJson.id,
     keyId:    cfg.razorpay_key_id,
     amount:   amountPaise,
     currency: 'INR',
-    prefill:  { name: trial.name, contact: `+${callerPhone}` },
+    prefill:  { name: trial.name, contact: `+${rawCallerPhone}` },
   })
 })
