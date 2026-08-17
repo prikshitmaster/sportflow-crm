@@ -1401,7 +1401,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                 )}
 
                                 {/* Converted — a real student account exists */}
-                                {t.stage === 'converted' && (academyFeatures.studentCodeLogin || academyFeatures.familyLogin) && (
+                                {t.stage === 'converted' && academyFeatures.studentCodeLogin && (
                                   <div style={{ background: C.tint, borderRadius: 14, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                                     <div style={{ fontSize: 12.5, fontWeight: 800, color: C.dark }}>Access the Student App</div>
 
@@ -1427,14 +1427,6 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                           </a>
                                         </div>
                                       )
-                                    )}
-
-                                    {academyFeatures.familyLogin && (
-                                      <a href="/parent-login" style={{ textDecoration: 'none' }}>
-                                        <div style={{ textAlign: 'center', fontSize: 12, fontWeight: 700, color: C.dark, padding: '6px 0' }}>
-                                          Or log in with just your phone number →
-                                        </div>
-                                      </a>
                                     )}
                                   </div>
                                 )}
