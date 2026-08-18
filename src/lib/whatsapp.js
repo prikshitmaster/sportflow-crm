@@ -66,6 +66,23 @@ export function buildFeesReminderMessage({ student, academy }) {
   ].join('\n')
 }
 
+// SPIKE — payment-receipt message for the Twilio-sandbox auto-send test
+// (AppContext.addPayment). Not the production template; the real rail sends
+// via an approved Meta template instead of free text. See
+// docs/superpowers/specs/2026-08-13-whatsapp-fee-reminders-design.md.
+export function buildPaymentReceiptMessage({ student, academy, amount, monthLabel, paidTill }) {
+  const parent = student.parent || 'Parent'
+  const name   = student.name   || 'Student'
+  return [
+    `Hi ${parent},`,
+    ``,
+    `Payment received: ${inrFmt(amount)} for ${name} (${monthLabel}).`,
+    `Fees now paid till ${paidTill}.`,
+    ``,
+    `Thank you — ${academy || 'Academy'}`,
+  ].join('\n')
+}
+
 // Generic "today's pulse" or custom message — fallback template for the
 // per-row tap when there's no specific reason.
 export function buildGenericMessage({ student, academy, body }) {

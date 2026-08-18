@@ -42,6 +42,9 @@ import { notify } from '../lib/notifications'
 import { staffMatchesAudience, studentMatchesAudience } from '../lib/announcementAudience'
 import { unregisterFcm } from '../lib/fcm'
 import { toLocalDateStr } from '../lib/dates'
+import { buildPaymentReceiptMessage, normalizePhoneForWhatsApp } from '../lib/whatsapp'
+import { buildReceiptHTML } from '../lib/paymentReceipt'
+import { generateAndUploadReceiptPDF } from '../lib/receiptPDF'
 
 // Module-level in-flight payment lock — survives across renders, isolated per tab.
 // Used to refuse rapid duplicate submissions before any network round-trip.
@@ -1539,6 +1542,27 @@ export function AppProvider({ children }) {
       const student = students.find(s => String(s.id) === String(p.studentId))
 
       logAuditSport({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId, sport: student?.sport ?? null, branchId: student?.branchId ?? null })
+
+      // SPIKE — Twilio-sandbox auto receipt send, proving the automation
+      // works end to end. Fire-and-forget: a WhatsApp failure must never
+      // block or roll back a recorded payment. Only reaches a real phone
+      // if student.parentPhone has joined the Twilio sandbox.
+      if (!isCheque && student?.parentPhone) {
+        (async () => {
+          const receiptHTML = buildReceiptHTML(
+            { ...paymentRow, id: invoiceId, date: payDate, status: insertStatus, month: monthLabel },
+            student, user?.academy, user?.academyLogo,
+          )
+          const mediaUrl = await generateAndUploadReceiptPDF(receiptHTML, invoiceId)
+          await supabase.functions.invoke('whatsapp-send-test', {
+            body: {
+              to: '+' + normalizePhoneForWhatsApp(student.parentPhone),
+              body: buildPaymentReceiptMessage({ student, academy: user?.academy, amount: p.amount, monthLabel, paidTill }),
+              mediaUrl,
+            },
+          })
+        })().catch(err => logger.warn?.('whatsapp-send-test failed', err) ?? console.warn('whatsapp-send-test failed', err))
+      }
 
       if (!isCheque && student) {
         if (student.status === 'Suspended') {
