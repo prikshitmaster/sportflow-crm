@@ -384,6 +384,7 @@ function BranchFeesSection() {
     kitFee:     b.kitFee     != null ? String(b.kitFee)   : '',
     taxPercent: b.taxPercent != null ? String(b.taxPercent) : '',
     taxOnFees:  !!b.taxOnFees, taxOnTrial: !!b.taxOnTrial, taxOnKit: !!b.taxOnKit,
+    prorationBasis: b.prorationBasis || 'calendar',
   })
   const draftFor = (b) => drafts[b.id] ?? seed(b)
   const setField = (b, k, v) =>
@@ -397,6 +398,7 @@ function BranchFeesSection() {
       await db.updateBranchFees(b.id, {
         trialFee: d.trialFee, kitFee: d.kitFee, taxPercent: d.taxPercent,
         taxOnFees: d.taxOnFees, taxOnTrial: d.taxOnTrial, taxOnKit: d.taxOnKit,
+        prorationBasis: d.prorationBasis,
       })
       await refreshSportBranches()
       setDrafts(prev => { const n = { ...prev }; delete n[b.id]; return n })
@@ -481,6 +483,25 @@ function BranchFeesSection() {
                   {String(d.taxPercent).trim() === '' && (d.taxOnFees || d.taxOnTrial || d.taxOnKit) && (
                     <p className="text-[11px] text-amber-600 mt-1.5 font-semibold">Set a tax rate above, or nothing will be taxed.</p>
                   )}
+                </div>
+                <div className="col-span-2">
+                  <p className="label mb-1.5">Partial-month billing</p>
+                  <p className="text-[11px] text-gray-400 mb-1.5">
+                    When a student joins or pays mid-month, how the leading partial period gets priced.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      { v: 'calendar', label: 'Actual calendar days', hint: '30/31/28 days per month' },
+                      { v: '30day',    label: 'Fixed 30-day month',  hint: 'same per-day rate all year' },
+                    ].map(o => (
+                      <label key={o.v}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm font-medium transition ${d.prorationBasis === o.v ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                        <input type="radio" className="w-3.5 h-3.5 accent-brand-600" name={`proration-${b.id}`}
+                          checked={d.prorationBasis === o.v} onChange={() => setField(b, 'prorationBasis', o.v)} />
+                        {o.label} <span className="text-[10px] text-gray-400 font-normal">({o.hint})</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

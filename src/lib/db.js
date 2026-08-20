@@ -317,6 +317,7 @@ export async function fetchPayments(academyId) {
     paymentType:   row.payment_type   || 'monthly',
     discountPct:   row.discount_pct   || 0,
     monthsCovered: row.months_covered || 1,
+    dueAmount:     row.due_amount     || 0,
     notes:         row.notes          || '',
     // Trial-fee rows carry their own scope because they have no student
     // to join through until conversion (migration 0124). Student-linked
@@ -350,6 +351,7 @@ export async function insertPayment(p, invoiceId) {
       coverageEnd:    p.coverageEnd   || null,
       academyId:      p.academyId    || null,
       notes:          p.notes        || null,
+      dueAmount:      p.dueAmount    || 0,
     },
     p_token: _sessionToken(),
   })
@@ -2157,7 +2159,7 @@ export async function fetchSportBranches(academyId) {
   // Try with address first; if the column doesn't exist (42703), retry without it
   let { data, error } = await supabase
     .from('sport_branches')
-    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee, tax_percent, tax_on_fees, tax_on_trial, tax_on_kit`)
+    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee, tax_percent, tax_on_fees, tax_on_trial, tax_on_kit, fee_proration_basis`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
@@ -2198,6 +2200,7 @@ export async function fetchSportBranches(academyId) {
     taxOnFees:  !!r.tax_on_fees,
     taxOnTrial: !!r.tax_on_trial,
     taxOnKit:   !!r.tax_on_kit,
+    prorationBasis: r.fee_proration_basis || 'calendar',
     createdAt:  r.created_at,
   }))
 }
@@ -2265,17 +2268,18 @@ export async function updateSportBranch(branchId, { branchName, address, manager
 // reassign their own branch. secure_update_branch_fees (migration 0155) can
 // touch six columns and nothing else, and allows the owner OR the staff member
 // who is this branch's manager — enforced in the RPC, not here.
-export async function updateBranchFees(branchId, { trialFee, kitFee, taxPercent, taxOnFees, taxOnTrial, taxOnKit }) {
+export async function updateBranchFees(branchId, { trialFee, kitFee, taxPercent, taxOnFees, taxOnTrial, taxOnKit, prorationBasis }) {
   const num = (v) => (v !== undefined && v !== null && v !== '' ? Number(v) : null)
   const { error } = await supabase.rpc('secure_update_branch_fees', {
-    p_branch_id:    branchId,
-    p_trial_fee:    num(trialFee),
-    p_kit_fee:      num(kitFee),
-    p_tax_percent:  num(taxPercent),
-    p_tax_on_fees:  !!taxOnFees,
-    p_tax_on_trial: !!taxOnTrial,
-    p_tax_on_kit:   !!taxOnKit,
-    p_token:        _sessionToken(),
+    p_branch_id:        branchId,
+    p_trial_fee:        num(trialFee),
+    p_kit_fee:          num(kitFee),
+    p_tax_percent:      num(taxPercent),
+    p_tax_on_fees:      !!taxOnFees,
+    p_tax_on_trial:     !!taxOnTrial,
+    p_tax_on_kit:       !!taxOnKit,
+    p_proration_basis:  prorationBasis || null,
+    p_token:            _sessionToken(),
   })
   if (error) throw error
 }

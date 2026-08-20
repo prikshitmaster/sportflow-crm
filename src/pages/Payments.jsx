@@ -1,9 +1,9 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
-import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer, Link as LinkIcon, MessageCircle, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react'
+import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer, Link as LinkIcon, MessageCircle, FileSpreadsheet, Download, ChevronLeft, ChevronRight, ChevronDown, SlidersHorizontal, Wallet } from 'lucide-react'
 import { Modal } from './Students'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { isOutstanding, normTrainingType, trainingTypeLabel } from '../lib/studentRules'
 import DevFillButton from '../components/DevFillButton'
 import { fillPayment } from '../lib/devFill'
@@ -12,6 +12,8 @@ import WhatsAppBulkModal from '../components/WhatsAppBulkModal'
 import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/whatsapp'
 import { todayStr, toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 import { buildReceiptHTML } from '../lib/paymentReceipt'
+import { resolveBranchTax } from '../lib/tax'
+import { fetchAttendanceForStudents } from '../lib/db'
 
 // Casing differs either side of the students ↔ fee_plans join — see
 // normTrainingType in lib/studentRules.js for the full story.
@@ -47,7 +49,7 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, feePlans, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user, hasPermission, showToast, isFeatureOn } = useApp()
+  const { payments, students, batches, feePlans, sportBranches, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user, hasPermission, showToast, isFeatureOn } = useApp()
   const canManage = hasPermission('payments.manage')
   const [editingDate,            setEditingDate]            = useState(null)
   const [markingPaid,            setMarkingPaid]            = useState(null)
@@ -77,12 +79,27 @@ export default function Payments() {
   // month until 05:30 on the 1st, so the page would open filtered to last
   // month and today's collections would look missing. See lib/dates.js.
   const [monthFilter,     setMonthFilter]     = useState(toLocalMonthStr())
+  const [modeFilter,      setModeFilter]      = useState('All')
+  const [dateFrom,        setDateFrom]        = useState('')
+  const [dateTo,          setDateTo]          = useState('')
+  const [newRenewalFilter,setNewRenewalFilter]= useState('All')
+  const [exportingCollection, setExportingCollection] = useState(false)
+  const [showActions,     setShowActions]     = useState(false)
+  const [showMoreFilters, setShowMoreFilters] = useState(false)
+  const actionsRef = useRef(null)
   const [showModal,       setShowModal]       = useState(false)
   const [showPayLink,     setShowPayLink]     = useState(false)
   const [showBulkWA,      setShowBulkWA]      = useState(false)
   const [payForStudent,   setPayForStudent]   = useState(null)
   const [detailPayment,   setDetailPayment]   = useState(null)
   const [page,            setPage]            = useState(1)
+
+  useEffect(() => {
+    if (!showActions) return
+    const h = e => { if (!actionsRef.current?.contains(e.target)) setShowActions(false) }
+    document.addEventListener('pointerdown', h)
+    return () => document.removeEventListener('pointerdown', h)
+  }, [showActions])
 
   const now          = new Date()
   const firstOfMonth = toLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1))
@@ -138,7 +155,27 @@ export default function Payments() {
 
   const allRecords = useMemo(() => [...overdueRows, ...payments], [overdueRows, payments])
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => setPage(1), [statusFilter, sportFilter, batchFilter, monthFilter])
+  useEffect(() => setPage(1), [statusFilter, sportFilter, batchFilter, monthFilter, modeFilter, dateFrom, dateTo, newRenewalFilter])
+
+  // studentId → id of that student's earliest regular (non-trial) payment —
+  // "New admission" for the collection sheet means THIS is that payment,
+  // everything after it for the same student is a renewal. Trial-fee rows
+  // are excluded since they're a different revenue stream, not a fees renewal.
+  const firstRegularPaymentIdByStudent = useMemo(() => {
+    const earliest = {}
+    // status === 'Paid' only — a linked Due-balance row (partial-payment
+    // shortfall, see addPayment) shares the same date as the real payment
+    // it's linked to and would otherwise win the earliest-date tie, making
+    // a student's actual first collection get mislabeled "Renewal" while
+    // the not-yet-collected Due row gets called "New" instead.
+    payments.filter(p => p.paymentType !== 'trial' && p.status === 'Paid').forEach(p => {
+      const cur = earliest[p.studentId]
+      if (!cur || (p.date || '') < (cur.date || '')) earliest[p.studentId] = p
+    })
+    const map = {}
+    Object.entries(earliest).forEach(([sid, p]) => { map[sid] = p.id })
+    return map
+  }, [payments])
 
   // Clear batch/sport filters when the owner switches sport or branch so stale
   // filter values don't hide all payments in the new scope
@@ -163,7 +200,11 @@ export default function Payments() {
       (p.isVirtual && isOutstanding(stu, monthFilter + '-01')) ||
       (!p.isVirtual && p.date && p.date.slice(0, 7) === monthFilter) ||
       (!p.isVirtual && !p.date && p.month === monthFilter)
-    return matchQ && matchS && matchSport && matchBatch && matchMonth
+    const matchMode = modeFilter === 'All' || p.mode === modeFilter
+    const matchDateRange = (!dateFrom || (p.date && p.date >= dateFrom)) && (!dateTo || (p.date && p.date <= dateTo))
+    const isNewPayment = firstRegularPaymentIdByStudent[p.studentId] === p.id
+    const matchNewRenewal = newRenewalFilter === 'All' || (newRenewalFilter === 'New' ? isNewPayment : !isNewPayment)
+    return matchQ && matchS && matchSport && matchBatch && matchMonth && matchMode && matchDateRange && matchNewRenewal
   })
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
@@ -186,6 +227,13 @@ export default function Payments() {
     ? new Date(monthFilter + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
     : null
 
+  const advancedFilterCount = [
+    sportFilter !== 'All', batchFilter !== 'All', modeFilter !== 'All',
+    !!dateFrom || !!dateTo, newRenewalFilter !== 'All',
+  ].filter(Boolean).length
+
+  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
   return (
     <div className="space-y-5 max-w-[1400px]">
       {/* Header */}
@@ -203,21 +251,53 @@ export default function Payments() {
               Remind ({overdueCount})
             </button>
           )}
-          {isFeatureOn('family_login') && (
-            <button className="btn-secondary" onClick={() => setShowPayLink(true)}>
-              <LinkIcon size={14} /> Send Pay Link
+          <div className="relative" ref={actionsRef}>
+            <button onClick={() => setShowActions(v => !v)} className="btn-secondary text-xs">
+              Actions <ChevronDown size={13} className={`transition-transform ${showActions ? 'rotate-180' : ''}`} />
             </button>
-          )}
-          <button
-            onClick={async () => {
-              setExportingAll(true)
-              try { await exportPaymentsToExcel({ records: filtered, studentMap, title: `PAYMENT REPORT${monthLabel ? ' — ' + monthLabel : ''}`, showToast }) }
-              finally { setExportingAll(false) }
-            }}
-            disabled={exportingAll || filtered.length === 0}
-            className="btn-secondary text-xs disabled:opacity-50">
-            <FileSpreadsheet size={14} /> {exportingAll ? 'Exporting…' : 'Export Excel'}
-          </button>
+            {showActions && (
+              <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-xl border border-gray-200 shadow-lg py-1.5 z-20">
+                {isFeatureOn('family_login') && (
+                  <button onClick={() => { setShowPayLink(true); setShowActions(false) }}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-gray-700 hover:bg-gray-50 transition text-left">
+                    <LinkIcon size={14} className="text-gray-400" /> Send Pay Link
+                  </button>
+                )}
+                <button
+                  onClick={async () => {
+                    setShowActions(false)
+                    setExportingAll(true)
+                    try { await exportPaymentsToExcel({ records: filtered, studentMap, title: `PAYMENT REPORT${monthLabel ? ' — ' + monthLabel : ''}`, showToast }) }
+                    finally { setExportingAll(false) }
+                  }}
+                  disabled={exportingAll || filtered.length === 0}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-gray-700 hover:bg-gray-50 transition text-left disabled:opacity-40">
+                  <FileSpreadsheet size={14} className="text-gray-400" /> {exportingAll ? 'Exporting…' : 'Export Excel'}
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowActions(false)
+                    setExportingCollection(true)
+                    try {
+                      await exportCollectionSheetToExcel({
+                        // status === 'Paid' only — a "collection" sheet is money actually in
+                        // hand. A linked Due-balance row (partial-payment shortfall) or an
+                        // uncleared cheque is still Pending and would otherwise inflate the
+                        // totals-by-mode figures with cash that hasn't been collected yet.
+                        records: filtered.filter(p => !p.isVirtual && p.paymentType !== 'trial' && p.status === 'Paid'),
+                        studentMap, sportBranches, firstRegularPaymentIdByStudent,
+                        title: `COLLECTION DATA${monthLabel ? ' — ' + monthLabel : ''}`,
+                        showToast,
+                      })
+                    } finally { setExportingCollection(false) }
+                  }}
+                  disabled={exportingCollection || filtered.length === 0}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-gray-700 hover:bg-gray-50 transition text-left disabled:opacity-40">
+                  <Download size={14} className="text-gray-400" /> {exportingCollection ? 'Exporting…' : 'Collection Sheet'}
+                </button>
+              </div>
+            )}
+          </div>
           {canManage && (
             <button className="btn-primary" onClick={() => setShowModal(true)}>
               <Plus size={16} /> Record Payment
@@ -238,9 +318,9 @@ export default function Payments() {
         </div>
       )}
       <div className="grid grid-cols-3 gap-3">
-        <SummaryCard label="Collected" value={fmtMoney(paid)} count={paidBase.length} color="emerald" period={monthLabel} />
-        <SummaryCard label="Pending"   value={fmtMoney(pending)} count={pendingBase.length} color="amber" period={monthLabel} />
-        <SummaryCard label="Overdue"   value={fmtMoney(overdueAmt)} count={overdueCount} color="red" period={monthLabel} />
+        <SummaryCard label="Collected" value={fmtMoney(paid)} count={paidBase.length} color="emerald" icon={CheckCircle} />
+        <SummaryCard label="Pending"   value={fmtMoney(pending)} count={pendingBase.length} color="amber" icon={Clock} />
+        <SummaryCard label="Overdue"   value={fmtMoney(overdueAmt)} count={overdueCount} color="red" icon={AlertCircle} />
       </div>
 
       {/* Revenue chart */}
@@ -252,14 +332,16 @@ export default function Payments() {
             <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`} />
             <Tooltip formatter={(v) => [`₹${v.toLocaleString('en-IN')}`, '']} contentStyle={{ borderRadius: 8, border: 'none', fontSize: 12, boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
-            <Bar dataKey="revenue" fill="#2563eb" radius={[4,4,0,0]} />
+            <Bar dataKey="revenue" radius={[4,4,0,0]}>
+              {revenueData.map((d, i) => <Cell key={i} fill={d.key === thisMonthKey ? '#1d4ed8' : '#bfdbfe'} />)}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       {/* Filters */}
       <div className="card p-4 space-y-3">
-        {/* Row 1: search + month picker + status pills */}
+        {/* Row 1: search + month picker + status pills — the 90% case, always visible */}
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 flex-1 min-w-48">
             <Search size={14} className="text-gray-400 flex-shrink-0" />
@@ -288,9 +370,18 @@ export default function Payments() {
               {s}
             </button>
           ))}
+          <button onClick={() => setShowMoreFilters(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition ml-auto ${showMoreFilters ? 'bg-brand-50 text-brand-600 border-brand-200' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
+            <SlidersHorizontal size={13} /> More filters
+            {advancedFilterCount > 0 && (
+              <span className="w-4 h-4 flex items-center justify-center rounded-full bg-brand-600 text-white text-[10px] font-bold">{advancedFilterCount}</span>
+            )}
+          </button>
         </div>
-        {/* Row 2: Sport + Batch dropdowns */}
-        <div className="flex flex-wrap gap-3 items-center">
+        {/* Row 2 (collapsed by default): Sport, Batch, Mode, date range, New/Renewal — the occasional-use filters */}
+        {showMoreFilters && (
+        <>
+        <div className="flex flex-wrap gap-3 items-center pt-3 border-t border-gray-100">
           {selectedSport === 'All' && (
             <select className="input w-auto" value={sportFilter}
               onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
@@ -310,6 +401,32 @@ export default function Payments() {
           )}
           <span className="text-xs text-gray-400 ml-auto">{filtered.length} records</span>
         </div>
+        {/* Mode + Date range + New/Renewal — the less-common collection-sheet filters */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <select className="input w-auto" value={modeFilter} onChange={e => setModeFilter(e.target.value)}>
+            <option value="All">All Modes</option>
+            {['UPI','Cash','Bank Transfer','Cheque','Card'].map(m => <option key={m}>{m}</option>)}
+          </select>
+          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+            <span>From</span>
+            <input type="date" className="input w-auto text-xs" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <span>To</span>
+            <input type="date" className="input w-auto text-xs" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(''); setDateTo('') }} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          {['All','New','Renewal'].map(s => (
+            <button key={s} onClick={() => setNewRenewalFilter(s)}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold border transition ${newRenewalFilter===s ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+        </>
+        )}
       </div>
 
       {/* Mobile card list */}
@@ -330,14 +447,21 @@ export default function Payments() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <button className="font-semibold text-gray-900 text-sm hover:text-brand-600 transition" onClick={e => { e.stopPropagation(); const s = studentMap[p.studentId]; if (s) setSelectedStudentHistory(s) }}>{p.student}</button>
-                    {p.isSuspended && <span className="text-[10px] font-bold bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full">Suspended</span>}
+                    {p.isSuspended && <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-gray-400" />Suspended</span>}
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">{p.month}{p.mode ? ` · ${p.mode}` : ''}{p.date ? ` · ${p.date}` : ''}{p.mode==='Cheque'&&p.notes?.startsWith('Cheque #') ? ` · ${p.notes.split('\n')[0]}` : ''}</p>
                   {!p.isVirtual && <p className="text-[10px] font-mono text-gray-300 mt-0.5">{p.id}</p>}
                 </div>
                 <div className="flex-shrink-0 text-right">
                   <p className="font-black text-gray-900">₹{(p.amount ?? 0).toLocaleString('en-IN')}</p>
-                  <span className={`badge text-[10px] ${sm.cls}`}>{p.status}</span>
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${sm.iconCls}`}>
+                    <sm.icon size={11} /> {p.status}
+                  </span>
+                  {p.dueAmount > 0 && (
+                    <div className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-semibold whitespace-nowrap">
+                      ₹{p.dueAmount.toLocaleString('en-IN')} due
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-3 mt-2.5" onClick={e => e.stopPropagation()}>
@@ -377,7 +501,7 @@ export default function Payments() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                {['Invoice', 'Student', 'Month', 'Amount', 'Mode', 'Date', 'Status', 'Action'].map(h => (
+                {['Invoice', 'Student', 'Month', 'Amount', 'Due', 'Mode', 'Date', 'Status', 'Action'].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -389,15 +513,20 @@ export default function Payments() {
                   <tr key={p.id} className={`group hover:bg-gray-50/60 transition cursor-pointer ${p.isVirtual ? 'bg-red-50/30' : ''}`}
                     onClick={() => !p.isVirtual && setDetailPayment({ payment: p, student: studentMap[p.studentId] })}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.isVirtual ? '—' : p.id}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.isVirtual ? <span className="text-gray-300">—</span> : p.id}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900" onClick={e => { e.stopPropagation(); const s = studentMap[p.studentId]; if (s) setSelectedStudentHistory(s) }}>
                       <span className="hover:text-brand-600 cursor-pointer transition">{p.student}</span>
-                      {p.isSuspended && <span className="ml-2 text-[10px] font-bold bg-red-100 text-red-500 px-1.5 py-0.5 rounded-full">Suspended</span>}
+                      {p.isSuspended && <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-gray-400" />Suspended</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{p.month}</td>
                     <td className="px-4 py-3 font-bold text-gray-900">₹{(p.amount ?? 0).toLocaleString('en-IN')}</td>
+                    <td className="px-4 py-3">
+                      {p.dueAmount > 0
+                        ? <span className="inline-flex items-center px-2 py-0.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-semibold whitespace-nowrap">₹{p.dueAmount.toLocaleString('en-IN')} due</span>
+                        : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">
-                      <div>{p.mode || '—'}</div>
+                      <div>{p.mode || <span className="text-gray-300">—</span>}</div>
                       {p.mode==='Cheque'&&p.notes?.startsWith('Cheque #') && <div className="text-[10px] text-gray-400 font-mono mt-0.5">{p.notes.split('\n')[0]}</div>}
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">
@@ -418,7 +547,7 @@ export default function Payments() {
                         />
                       ) : (
                         <span className="flex items-center gap-1 group/date">
-                          {p.date || '—'}
+                          {p.date || <span className="text-gray-300">—</span>}
                           {!p.isVirtual && canManage && (
                             <button
                               onClick={() => setEditingDate(p.id)}
@@ -432,20 +561,22 @@ export default function Payments() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`badge ${sm.cls}`}>{p.status}</span>
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${sm.iconCls}`}>
+                        <sm.icon size={13} /> {p.status}
+                      </span>
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       {p.isVirtual ? (
                         canManage ? (
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5">
                           <button
-                            className="text-xs text-red-600 font-semibold hover:underline"
+                            className="px-2.5 py-1 rounded-lg border border-red-200 bg-white text-red-600 text-xs font-semibold hover:bg-red-50 transition"
                             onClick={() => setPayForStudent(studentMap[p.studentId])}
                           >
                             Record
                           </button>
                           <button
-                            className="text-xs text-emerald-600 font-semibold hover:underline flex items-center gap-1"
+                            className="px-2.5 py-1 rounded-lg border border-emerald-200 bg-white text-emerald-600 text-xs font-semibold hover:bg-emerald-50 transition inline-flex items-center gap-1"
                             title="Send WhatsApp reminder"
                             onClick={() => {
                               const stu = studentMap[p.studentId]
@@ -463,7 +594,7 @@ export default function Payments() {
                       ) : p.status !== 'Paid' ? (
                         canManage ? (
                         <button
-                          className="text-xs text-brand-600 font-semibold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-2.5 py-1 rounded-lg border border-brand-200 bg-white text-brand-600 text-xs font-semibold hover:bg-brand-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                           onClick={() => handleMarkPaid(p.id)}
                           disabled={markingPaid === p.id}
                         >
@@ -471,10 +602,10 @@ export default function Payments() {
                         </button>
                         ) : <span className="text-xs text-gray-300">—</span>
                       ) : (
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => printReceipt(p, studentMap[p.studentId], user?.academy, user?.academyLogo)}
-                            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                            className="px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-500 text-xs font-semibold hover:bg-gray-50 transition inline-flex items-center gap-1">
                             <Printer size={12} /> Receipt
                           </button>
                           {/* Trial receipts are owned by the Trial record —
@@ -483,7 +614,7 @@ export default function Payments() {
                           {canManage && p.paymentType !== 'trial' && (
                           <button
                             onClick={() => { setDeleteTarget(p); setDeleteNote('') }}
-                            className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition"
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition"
                             title="Delete payment"
                           >
                             <Trash2 size={13} />
@@ -936,6 +1067,143 @@ async function exportPaymentsToExcel({ records, studentMap, title, showToast }) 
   }
 }
 
+// ── Regular-fees Collection Sheet export ───────────────────────
+// Separate from exportPaymentsToExcel above — a different shape (COURSE
+// FEE/GST split, NEW vs renewal, day of week) for a different audience
+// (daily cash-collection reconciliation, matching the academy's existing
+// hand-built sheet), not a replacement for the accounting-style export.
+async function exportCollectionSheetToExcel({ records, studentMap, sportBranches, firstRegularPaymentIdByStudent, title, showToast }) {
+  try {
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'Khelit'
+    wb.created = new Date()
+
+    const BRAND = '2563eb', DARK = '1e3a5f'
+    const hFont = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10, name: 'Calibri' }
+    const dFont = { size: 9, name: 'Calibri' }
+    const thin  = { style: 'thin', color: { argb: 'FFe5e7eb' } }
+
+    const branchById = {}
+    ;(sportBranches || []).forEach(b => { branchById[b.id] = b })
+
+    const ws = wb.addWorksheet('Collection Sheet', { views: [{ state: 'frozen', xSplit: 0, ySplit: 3 }] })
+
+    const cols = [
+      { key: 'num',     header: 'NO',         width: 5 },
+      { key: 'name',    header: 'NAME',       width: 22 },
+      { key: 'sport',   header: 'SPORT',      width: 14 },
+      { key: 'batch',   header: 'BATCH',      width: 16 },
+      { key: 'start',   header: 'START DATE', width: 13 },
+      { key: 'end',     header: 'END DATE',   width: 13 },
+      { key: 'fee',     header: 'COURSE FEE', width: 13 },
+      { key: 'gst',     header: 'GST',        width: 10 },
+      { key: 'total',   header: 'TOTAL',      width: 13 },
+      { key: 'mode',    header: 'MODE',       width: 12 },
+      { key: 'new',     header: 'NEW',        width: 10 },
+      { key: 'day',     header: 'DAY',        width: 12 },
+      { key: 'remarks', header: 'REMARKS',    width: 22 },
+    ]
+    cols.forEach((c, i) => { ws.getColumn(i + 1).width = c.width })
+
+    ws.mergeCells(1, 1, 1, cols.length)
+    const t = ws.getCell(1, 1)
+    t.value = title || 'COLLECTION DATA'
+    t.font = { bold: true, size: 13, color: { argb: 'FFFFFFFF' }, name: 'Calibri' }
+    t.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${DARK}` } }
+    t.alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getRow(1).height = 22
+
+    const totalCollected = records.reduce((s, p) => s + (p.amount || 0), 0)
+    ws.mergeCells(2, 1, 2, 4)
+    ws.getCell(2, 1).value = `Exported: ${new Date().toLocaleDateString('en-IN')}`
+    ws.mergeCells(2, 5, 2, cols.length)
+    ws.getCell(2, 5).value = `Total Records: ${records.length}   Total Collected: ₹${totalCollected.toLocaleString('en-IN')}`
+    ;[ws.getCell(2, 1), ws.getCell(2, 5)].forEach(c => {
+      c.font = { italic: true, size: 9, color: { argb: 'FF6b7280' }, name: 'Calibri' }
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFf8fafc' } }
+    })
+    ws.getRow(2).height = 15
+
+    cols.forEach((c, i) => {
+      const cell = ws.getCell(3, i + 1)
+      cell.value = c.header
+      cell.font = hFont
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${BRAND}` } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.border = { bottom: { style: 'medium', color: { argb: 'FF1d4ed8' } } }
+    })
+    ws.getRow(3).height = 18
+
+    const modeTotals = {}
+    records.forEach((p, idx) => {
+      const stu    = studentMap[p.studentId]
+      const branch = stu?.branchId ? branchById[stu.branchId] : null
+      const pct    = resolveBranchTax(branch, 'fees')
+      const total  = p.amount || 0
+      // amount is stored GROSS (lib/tax.js invariant) — split it back out
+      // rather than adding tax on top of it again.
+      const base   = pct > 0 ? Math.round(total / (1 + pct / 100)) : total
+      const gst    = total - base
+      const isNew  = firstRegularPaymentIdByStudent[p.studentId] === p.id
+      const day    = p.date ? new Date(p.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long' }) : '—'
+
+      modeTotals[p.mode || 'Other'] = (modeTotals[p.mode || 'Other'] || 0) + total
+
+      const row = ws.getRow(idx + 4)
+      const isEven = idx % 2 === 1
+      const fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEven ? 'FFf9fafb' : 'FFffffff' } }
+      const vals = [idx + 1, p.student || '—', stu?.sport || p.sport || '—', stu?.batch || '—', p.coverageStart || p.date || '—', p.coverageEnd || '—', base, gst, total, p.mode || '—', isNew ? 'New' : 'Renewal', day, p.notes || '']
+      vals.forEach((v, i) => {
+        const cell = row.getCell(i + 1)
+        cell.value = excelSafe(v)
+        cell.font = i === 10 ? { ...dFont, bold: true, color: { argb: isNew ? 'FF166534' : 'FF6b7280' } } : dFont
+        cell.fill = fill
+        if (i === 6 || i === 7 || i === 8) { cell.numFmt = '₹#,##0'; cell.alignment = { horizontal: 'right' } }
+        cell.border = { bottom: thin }
+      })
+      row.height = 16
+    })
+
+    // Totals-by-mode footer, then a grand total — same numbers the physical
+    // sheet's CASH/TOTAL row shows, generalized to every mode present.
+    let r = records.length + 5
+    ws.getCell(r, 1).value = 'TOTALS BY MODE'
+    ws.getCell(r, 1).font = { bold: true, size: 9, color: { argb: 'FF374151' }, name: 'Calibri' }
+    r++
+    Object.entries(modeTotals).forEach(([mode, amt]) => {
+      ws.getCell(r, 10).value = mode
+      ws.getCell(r, 10).font = { bold: true, size: 9, name: 'Calibri' }
+      ws.getCell(r, 9).value = amt
+      ws.getCell(r, 9).numFmt = '₹#,##0'
+      ws.getCell(r, 9).font = { bold: true, size: 9, color: { argb: 'FF166534' }, name: 'Calibri' }
+      ws.getCell(r, 9).alignment = { horizontal: 'right' }
+      r++
+    })
+    ws.getCell(r, 8).value = 'GRAND TOTAL'
+    ws.getCell(r, 9).value = totalCollected
+    ws.getCell(r, 9).numFmt = '₹#,##0'
+    ;[8, 9].forEach(i => {
+      ws.getCell(r, i).font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' }, name: 'Calibri' }
+      ws.getCell(r, i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${DARK}` } }
+    })
+    ws.getCell(r, 9).alignment = { horizontal: 'right' }
+
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${(title || 'collection_sheet').replace(/[^a-z0-9]/gi, '_')}_${todayStr()}.xlsx`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast('Collection sheet exported successfully')
+  } catch (err) {
+    console.error(err)
+    showToast('Export failed: ' + (err?.message || 'unknown'), 'error')
+  }
+}
+
 // ── Student Payment History Panel ─────────────────────────────
 function StudentPaymentPanel({ student, payments, studentMap, onClose, showToast, user }) {
   const [exporting, setExporting] = useState(false)
@@ -1157,18 +1425,27 @@ function ConfirmMarkPaidModal({ payment, studentMap, onConfirm, onClose, isLoadi
   )
 }
 
-function SummaryCard({ label, value, count, color, period }) {
-  const c = { emerald: 'text-emerald-600', amber: 'text-amber-600', red: 'text-red-600' }[color]
+function SummaryCard({ label, value, count, color, icon: Icon }) {
+  const theme = {
+    emerald: { text: 'text-emerald-600', bar: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-600' },
+    amber:   { text: 'text-amber-600',   bar: 'bg-amber-500',   chip: 'bg-amber-50 text-amber-600' },
+    red:     { text: 'text-red-600',     bar: 'bg-red-500',     chip: 'bg-red-50 text-red-600' },
+  }[color]
   return (
-    <div className="card p-3 sm:p-5">
-      <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</p>
-      <p className={`text-lg sm:text-2xl font-black ${c}`}>{value}</p>
+    <div className="relative card p-3 sm:p-5 overflow-hidden pl-4 sm:pl-6">
+      <span className={`absolute left-0 top-0 bottom-0 w-1 ${theme.bar}`} />
+      <div className="flex items-start justify-between">
+        <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</p>
+        {Icon && <span className={`hidden sm:flex w-7 h-7 rounded-lg items-center justify-center ${theme.chip}`}><Icon size={14} /></span>}
+      </div>
+      <p className={`text-lg sm:text-2xl font-black tracking-tight ${theme.text}`}>{value}</p>
       <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{count} {count === 1 ? 'record' : 'records'}</p>
     </div>
   )
 }
 
 export function RecordPaymentModal({ onClose, onSave, students, batches = [], feePlans = [], payments = [], initialStudentId }) {
+  const { sportBranches } = useApp()
   const initStudent = initialStudentId
     ? (students.find(s => s.id === initialStudentId) || {})
     : {}
@@ -1187,6 +1464,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const [studentSearch,  setStudentSearch] = useState(initStudent.name || '')
   const [showDropdown,   setShowDropdown]  = useState(false)
   const [amountOverride, setAmountOverride] = useState(null)
+  // Locked to the fee-plan total (Total field read-only) until explicitly
+  // ticked — turns editing the Total from an implicit side effect into a
+  // deliberate action, and is what actually enables shortfall/Due tracking.
+  const [isPartialPayment, setIsPartialPayment] = useState(false)
   const [paymentDate,    setPaymentDate]   = useState(toLocalDateStr())
   const [customMonths,   setCustomMonths]  = useState(2)
   // Backdating Payment Date changes fee coverage for a Suspended student (it becomes
@@ -1265,6 +1546,23 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     setInactiveMonths([])
   }, [dueKey])
 
+  // Session count per due month, for the "barely attended" hint below — same
+  // threshold/intent as studentRules.js's isLowAttendanceUnpaid, just checked
+  // per pending month here instead of only the live current month.
+  const [lowAttendance, setLowAttendance] = useState({})
+  useEffect(() => {
+    if (!selectedStudent || dueMonths.length === 0) { setLowAttendance({}); return }
+    let cancelled = false
+    Promise.all(dueMonths.map(async d => {
+      const [y, m] = d.key.split('-').map(Number)
+      const byStudent = await fetchAttendanceForStudents(y, m - 1, [selectedStudent.id])
+      const days = byStudent[selectedStudent.id] || {}
+      const count = Object.values(days).filter(st => st === 'Present' || st === 'Late').length
+      return [d.key, count]
+    })).then(entries => { if (!cancelled) setLowAttendance(Object.fromEntries(entries)) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedStudent?.id, dueKey])
+
   const billedMonths   = dueMonths.filter(d => !inactiveMonths.includes(d.key))
   const inactiveList   = dueMonths.filter(d =>  inactiveMonths.includes(d.key))
   // Nothing is being charged — mark the months inactive and write no invoice.
@@ -1279,19 +1577,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                : 1
   // How far paidTill moves — charged + inactive.
   const coverageMonths = monthPickerOn ? dueMonths.length : months
-
-  // monthly & custom: fee × months; quarterly/yearly: entered amount is the flat total
-  const subtotal    = (form.paymentType === 'monthly' || form.paymentType === 'custom')
-    ? form.baseAmount * months
-    : form.baseAmount
-  const discountAmt = Math.round(subtotal * form.discountPct / 100)
-  const lateFeeAmt  = Number(lateFee) || 0
-  const calcAmount  = subtotal - discountAmt + lateFeeAmt
-  const finalAmount = amountOverride !== null ? amountOverride : calcAmount
-
-  const filteredStudents = studentSearch
-    ? students.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()))
-    : students
 
   const getFeePlanRate = (batchId, trainingType, paymentType) => {
     // 1. Named fee plan for batch + training type.
@@ -1332,10 +1617,61 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     return null
   }
 
+  // Custom coverage starting mid-month: deduct the days BEFORE the start date
+  // (not covered) from whatever total the plan already charges, priced off
+  // the MONTHLY rate — the only rate with a meaningful per-day price —
+  // rather than computing a separate partial-month charge on top of a full
+  // quarter/year. Basis (calendar days vs fixed 30-day month) is set per
+  // branch in Settings > Branch Fees & Tax.
+  //
+  // Deliberately asks getFeePlanRate for 'monthly' specifically, regardless
+  // of form.paymentType — form.baseAmount holds whatever rate matches the
+  // SELECTED payment type (e.g. the quarterly total), and using that as a
+  // monthly-rate fallback would deduct ~3x too much for a quarterly plan.
+  // If no monthly rate can be found at all (no fee_plans row AND no batch
+  // default), skip the deduction entirely rather than guess — a missing
+  // discount is a support ticket, a wrong one is a trust problem.
+  const branchForProration    = sportBranches.find(b => String(b.id) === String(selectedStudent?.branchId))
+  const prorationBasisSetting = branchForProration?.prorationBasis || 'calendar'
+  const monthlyRateForProration = getFeePlanRate(form.batchId, selectedStudent?.trainingType, 'monthly')?.rate || 0
+  // monthly & custom: fee × months; quarterly/yearly: entered amount is the flat total
+  const preProrationAmount = (form.paymentType === 'monthly' || form.paymentType === 'custom')
+    ? form.baseAmount * months
+    : form.baseAmount
+  const prorationInfo = (() => {
+    if (!customDates || !customStart || monthlyRateForProration <= 0) return null
+    const d = new Date(customStart + 'T00:00:00')
+    const missingDays = d.getDate() - 1
+    if (missingDays <= 0) return null   // starts on the 1st — nothing to deduct
+    const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+    const basisDays   = prorationBasisSetting === '30day' ? 30 : daysInMonth
+    // Clamped to the plan's own total — an unusually low quarterly/yearly
+    // rate (a heavy promo) could otherwise deduct more than is being
+    // charged, producing a negative total instead of just "nothing due".
+    const deduction   = Math.min(Math.round(monthlyRateForProration * missingDays / basisDays), preProrationAmount)
+    return { missingDays, deduction, monthLabel: d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) }
+  })()
+  const prorationDeduction = prorationInfo?.deduction || 0
+  const subtotal = preProrationAmount - prorationDeduction
+  const discountAmt = Math.round(subtotal * form.discountPct / 100)
+  const lateFeeAmt  = Number(lateFee) || 0
+  const calcAmount  = subtotal - discountAmt + lateFeeAmt
+  const finalAmount = amountOverride !== null ? amountOverride : calcAmount
+  // Only counts as a shortfall when the "This is a partial payment" checkbox
+  // is explicitly on — otherwise the Total field is locked to calcAmount
+  // (the fee-plan amount) and can't silently drift below it.
+  const dueAmount = isPartialPayment ? Math.max(0, calcAmount - finalAmount) : 0
+  const noteRequired = dueAmount > 0 && !form.notes.trim()
+
+  const filteredStudents = studentSearch
+    ? students.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()))
+    : students
+
   const handleStudentChange = (id) => {
     const s = students.find(x => String(x.id) === String(id))
     if (!s) return
     setAmountOverride(null)
+    setIsPartialPayment(false)
     setShowBackdate(false)
     setPaymentDate(toLocalDateStr())
     const batchId = String(s.batchId || s.lastBatchId || '')
@@ -1364,6 +1700,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     if (finalAmount <= 0 && !isAllInactive) return
     if (customDates && !hasCustomRange) return
     if (hasCustomRange && customEnd < customStart) return
+    if (noteRequired) return
     setLoading(true)
     try {
       const isCheque = form.mode === 'Cheque'
@@ -1375,6 +1712,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
       await onSave({
         ...form, notes,
         amount: finalAmount,
+        dueAmount,                   // shortfall vs the locked fee-plan amount — becomes a linked Pending row
         monthsCovered: months,       // months actually charged for
         coverageMonths,              // months paidTill advances by (charged + inactive)
         inactiveCount: inactiveList.length,
@@ -1474,10 +1812,17 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // Catches typos (₹800 vs ₹8,000) and wrong-plan amounts that the soft
   // warnings above let through. Custom plan and plans without a reference
   // rate are excluded since we can't reliably compute "expected".
+  //
+  // Nets out prorationDeduction too, same as calcAmount does — otherwise a
+  // legitimate mid-month join (Custom coverage dates) compares its correctly
+  // prorated total against a NON-prorated expectation and looks like a data
+  // -entry error, forcing CONFIRM on a perfectly normal payment. Most likely
+  // to bite a Monthly plan, where the deduction is a large share of the one
+  // month being charged.
   const expectedSubtotal = (form.paymentType === 'monthly' || form.paymentType === 'custom')
     ? referenceRate * months
     : referenceRate
-  const expectedTotal = expectedSubtotal - Math.round(expectedSubtotal * form.discountPct / 100) + lateFeeAmt
+  const expectedTotal = expectedSubtotal - Math.round(expectedSubtotal * form.discountPct / 100) + lateFeeAmt - prorationDeduction
   const sanityMismatch = !!(
     form.studentId &&
     referenceRate > 0 &&
@@ -1847,8 +2192,16 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                       )}
                       className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 shrink-0"
                     />
-                    <span className={`text-sm flex-1 ${inactive ? 'text-gray-400' : 'text-gray-800'}`}>
+                    <span className={`text-sm flex-1 flex items-center gap-1.5 ${inactive ? 'text-gray-400' : 'text-gray-800'}`}>
                       {d.label}
+                      {!inactive && lowAttendance[d.key] != null && lowAttendance[d.key] < 4 && (
+                        <span
+                          className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded"
+                          title="Fewer than 4 sessions attended this month — consider marking inactive instead of charging"
+                        >
+                          ⚠ {lowAttendance[d.key]} session{lowAttendance[d.key] === 1 ? '' : 's'}
+                        </span>
+                      )}
                     </span>
                     {inactive ? (
                       <span className="text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded">
@@ -1945,11 +2298,31 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
               <span>−₹{discountAmt.toLocaleString('en-IN')}</span>
             </div>
           )}
-          <div className="flex justify-between items-center text-sm font-black text-gray-900 border-t border-gray-200 pt-2 mt-1">
-            <span>Total <span className="text-[10px] font-normal text-gray-400">(editable)</span></span>
+          {prorationInfo && (
+            <div className="flex justify-between text-xs text-emerald-600 font-medium">
+              <span>Partial month — {prorationInfo.missingDays} day{prorationInfo.missingDays === 1 ? '' : 's'} before join ({prorationInfo.monthLabel})</span>
+              <span>−₹{prorationInfo.deduction.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+          <label className="flex items-center gap-2 text-xs text-gray-600 pt-2 mt-1 border-t border-gray-200 cursor-pointer">
+            <input
+              type="checkbox"
+              className="w-3.5 h-3.5 rounded accent-amber-600"
+              checked={isPartialPayment}
+              onChange={e => { setIsPartialPayment(e.target.checked); if (!e.target.checked) setAmountOverride(null) }}
+            />
+            This is a partial payment — parent is paying less than the full amount
+          </label>
+          <div className="flex justify-between items-center text-sm font-black text-gray-900 pt-1">
+            <span>Total <span className="text-[10px] font-normal text-gray-400">{isPartialPayment ? '(editable)' : '(locked to fee plan)'}</span></span>
             <input
               type="number" min="0"
-              className="w-32 text-right font-black text-gray-900 bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-brand-400"
+              disabled={!isPartialPayment}
+              className={`w-32 text-right font-black rounded-lg px-2 py-1 text-sm focus:outline-none ${
+                isPartialPayment
+                  ? 'text-gray-900 bg-white border border-gray-200 focus:border-brand-400'
+                  : 'text-gray-500 bg-gray-100 border border-gray-200 cursor-not-allowed'
+              }`}
               value={finalAmount}
               onChange={e => setAmountOverride(Number(e.target.value))}
             />
@@ -1973,12 +2346,27 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
               </button>
             </div>
           )}
+          {dueAmount > 0 && (
+            <div className="flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 text-xs text-amber-700">
+              <span className="text-base leading-none mt-0.5 shrink-0">⚠</span>
+              <span>
+                Full fee is <strong>₹{calcAmount.toLocaleString('en-IN')}</strong> — the remaining{' '}
+                <strong>₹{dueAmount.toLocaleString('en-IN')}</strong> will be recorded as a separate <strong>Due</strong> balance
+                for this student. Add a note below explaining why.
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Notes */}
         <div>
-          <label className="label">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
-          <input className="input" placeholder="e.g. cheque #1234, partial payment, sibling discount…"
+          <label className="label">
+            Notes {dueAmount > 0
+              ? <span className="text-amber-600 font-semibold">(required — explain the partial payment)</span>
+              : <span className="text-gray-400 font-normal">(optional)</span>}
+          </label>
+          <input className={`input ${noteRequired ? 'border-amber-300 focus:border-amber-500' : ''}`}
+            placeholder="e.g. cheque #1234, partial payment, sibling discount…"
             value={form.notes}
             onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
         </div>
@@ -2078,12 +2466,13 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         <button
           className={isDuplicate || sanityMismatch ? 'px-5 py-2.5 rounded-xl font-bold text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed' : 'btn-primary'}
           onClick={handleSave}
-          disabled={loading || (finalAmount <= 0 && !isAllInactive) || !confirmOk
+          disabled={loading || (finalAmount <= 0 && !isAllInactive) || !confirmOk || noteRequired
             || (customDates && (!hasCustomRange || customEnd < customStart))}
         >
           {loading ? '…'
             : isAllInactive ? `Mark ${dueMonths.length} month${dueMonths.length !== 1 ? 's' : ''} inactive`
             : isDuplicate ? `Record Anyway · ₹${finalAmount.toLocaleString('en-IN')}`
+            : dueAmount > 0 ? `Confirm · ₹${finalAmount.toLocaleString('en-IN')} (₹${dueAmount.toLocaleString('en-IN')} due)`
             : `Confirm · ₹${finalAmount.toLocaleString('en-IN')}`}
         </button>
       </div>

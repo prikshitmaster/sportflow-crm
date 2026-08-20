@@ -1543,6 +1543,30 @@ export function AppProvider({ children }) {
 
       logAuditSport({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId, sport: student?.sport ?? null, branchId: student?.branchId ?? null })
 
+      // Partial payment → a linked Due balance for the shortfall vs the locked
+      // fee-plan amount. The main row above already advanced paidTill/coverage
+      // in full (student stays Active) — this is purely a still-owed record,
+      // so it carries no coverage dates of its own and never touches paidTill.
+      // Reuses the existing Pending status/plumbing (Pending card, filters,
+      // reminders) rather than inventing a new concept.
+      if (p.dueAmount > 0) {
+        try {
+          const dueInvoiceId = await db.fetchNextInvoiceId()
+          const dueRow = {
+            studentId: p.studentId, student: p.student, amount: p.dueAmount,
+            month: monthLabel, date: payDate, status: 'Pending', mode: null,
+            paymentType: p.paymentType, discountPct: 0, monthsCovered: months,
+            coverageStart: null, coverageEnd: null, academyId: user?.academyId,
+            notes: `Balance due from ${invoiceId} (₹${p.amount} of ₹${p.amount + p.dueAmount} paid)${p.notes ? ' — ' + p.notes : ''}`,
+          }
+          await db.insertPayment(dueRow, dueInvoiceId)
+          setPayments(prev => [{ ...dueRow, id: dueInvoiceId }, ...prev])
+        } catch (err) {
+          showToast('Payment recorded, but the Due balance entry failed — add it manually', 'error')
+          logger.warn?.('due-balance insert failed', err) ?? console.warn('due-balance insert failed', err)
+        }
+      }
+
       // SPIKE — Twilio-sandbox auto receipt send, proving the automation
       // works end to end. Fire-and-forget: a WhatsApp failure must never
       // block or roll back a recorded payment. Only reaches a real phone
@@ -1586,6 +1610,7 @@ export function AppProvider({ children }) {
       }
       showToast(
         isCheque ? 'Cheque recorded as Pending — mark Paid once cleared'
+        : p.dueAmount > 0 ? `Payment recorded · ₹${p.dueAmount} due, added to Pending`
         : p.inactiveCount ? `Payment recorded · ${p.inactiveCount} month${p.inactiveCount !== 1 ? 's' : ''} marked inactive`
         : 'Payment recorded'
       )
@@ -1675,7 +1700,13 @@ export function AppProvider({ children }) {
       // A cheque taken for a custom date range stored its exact end in
       // coverage_end — recomputing from monthsCovered would snap it back to a
       // month boundary and silently shorten the period the student paid for.
-      if (payment?.status === 'Pending') {
+      //
+      // Guarded on coverageStart/coverageEnd, not status alone — a linked Due
+      // balance (partial-payment shortfall, see addPayment) is also Pending
+      // but carries no coverage of its own: the ORIGINAL payment already
+      // advanced paidTill in full when it was recorded. Advancing again here
+      // would push paidTill a second time for a period already covered.
+      if (payment?.status === 'Pending' && (payment.coverageStart || payment.coverageEnd)) {
         const student = students.find(s => String(s.id) === String(payment.studentId))
         if (student) {
           let newPaidTill

@@ -522,7 +522,9 @@ function FinancialTab({ payments, students }) {
         const noPayment = s.paidTill == null
         const status    = noPayment ? 'No Payment' : isPaid ? 'Paid' : 'Overdue'
         const monthPays = payments.filter(p => String(p.studentId) === String(s.id) && monthKey(p.date) === period)
-        const collected = monthPays.reduce((sum, p) => sum + p.amount, 0)
+        // status === 'Paid' only — an uncleared cheque or a linked Due-balance
+        // row (partial-payment shortfall) is still Pending, not money in hand.
+        const collected = monthPays.filter(p => p.status === 'Paid').reduce((sum, p) => sum + p.amount, 0)
         return { s, isPaid, isOverdue, status, outstanding: isPaid ? 0 : (s.fees || 0), collected }
       })
       .sort((a, b) => {
