@@ -49,7 +49,7 @@ const STATUS_MAP = {
 }
 
 export default function Payments() {
-  const { payments, students, batches, feePlans, sportBranches, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user, hasPermission, showToast, isFeatureOn } = useApp()
+  const { payments, students, batches, feePlans, sportBranches, addPayment, markPaymentPaid, removePayment, updatePaymentDate, selectedSport, selectedBranch, user, hasPermission, showToast, isFeatureOn, visibleSports, showSportFilter } = useApp()
   const canManage = hasPermission('payments.manage')
   const [editingDate,            setEditingDate]            = useState(null)
   const [markingPaid,            setMarkingPaid]            = useState(null)
@@ -110,10 +110,6 @@ export default function Payments() {
     students.forEach(s => { m[s.id] = s })
     return m
   }, [students])
-
-  const sportOptions = useMemo(() =>
-    [...new Set(students.map(s => s.sport).filter(Boolean))].sort()
-  , [students])
 
   // Build last 8 months of real collected revenue from actual Paid payments
   const revenueData = useMemo(() => {
@@ -227,8 +223,9 @@ export default function Payments() {
     ? new Date(monthFilter + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
     : null
 
+  // Sport is no longer one of these — it lives in the primary filter row now.
   const advancedFilterCount = [
-    sportFilter !== 'All', batchFilter !== 'All', modeFilter !== 'All',
+    batchFilter !== 'All', modeFilter !== 'All',
     !!dateFrom || !!dateTo, newRenewalFilter !== 'All',
   ].filter(Boolean).length
 
@@ -370,6 +367,17 @@ export default function Payments() {
               {s}
             </button>
           ))}
+          {/* Sport sits in the PRIMARY row, not behind "More filters": whoever
+              runs a whole branch is looking at every sport at once, so this is
+              the filter they reach for most. Hidden when there's only one. */}
+          {showSportFilter && (
+            <select className={`input w-auto text-xs font-semibold ${sportFilter !== 'All' ? 'border-brand-400 text-brand-700' : ''}`}
+              value={sportFilter}
+              onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
+              <option value="All">All Sports</option>
+              {visibleSports.map(s => <option key={s}>{s}</option>)}
+            </select>
+          )}
           <button onClick={() => setShowMoreFilters(v => !v)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border transition ml-auto ${showMoreFilters ? 'bg-brand-50 text-brand-600 border-brand-200' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
             <SlidersHorizontal size={13} /> More filters
@@ -382,18 +390,11 @@ export default function Payments() {
         {showMoreFilters && (
         <>
         <div className="flex flex-wrap gap-3 items-center pt-3 border-t border-gray-100">
-          {selectedSport === 'All' && (
-            <select className="input w-auto" value={sportFilter}
-              onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
-              <option value="All">All Sports</option>
-              {sportOptions.map(s => <option key={s}>{s}</option>)}
-            </select>
-          )}
           <select className="input w-auto" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
             <option value="All">All Batches</option>
             {batches.map(b => <option key={b.id} value={String(b.id)}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
-          {(batchFilter !== 'All' || (selectedSport === 'All' && sportFilter !== 'All')) && (
+          {(batchFilter !== 'All' || sportFilter !== 'All') && (
             <button onClick={() => { setSportFilter('All'); setBatchFilter('All') }}
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition font-medium">
               <X size={12} /> Clear filters

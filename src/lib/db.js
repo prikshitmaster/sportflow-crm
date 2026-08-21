@@ -973,6 +973,8 @@ export async function fetchStaff(academyId) {
       age:           row.age          || null,
       licenceUrl:    row.licence_url  || null,
       branchId:      row.branch_id || null,
+      // Set = whole-branch scope, every sport at that place (0174/0177).
+      locationId:    row.location_id || null,
     }))
   }
   let query = supabase.from('staff')
@@ -1009,6 +1011,7 @@ export async function fetchStaff(academyId) {
       age:           profile?.age          || null,
       licenceUrl:    profile?.licence_url  || null,
       branchId:      row.branch_id || null,
+      locationId:    row.location_id || null,
     }
   })
 }
@@ -1172,13 +1175,20 @@ export async function deleteStaffSession(token) {
   await supabase.rpc('secure_logout_staff', { p_token: token })
 }
 
-export async function updateStaffProfile(staffId, { name, phone, photoUrl }) {
+export async function updateStaffProfile(staffId, { name, phone, photoUrl, sports, locationId }) {
   // Routed through secure_update_staff_profile (migration 0041).
   // Staff may update their own profile; owners may update any in their academy.
+  // `sports` is the exception — it widens what the staff member can SEE, so the
+  // RPC requires staff.manage + branch scope for it even on a self-edit (0173).
+  // An empty array is meaningful: it means "all sports at this branch".
   const payload = {}
   if (name     !== undefined) payload.name     = name
   if (phone    !== undefined) payload.phone    = phone
   if (photoUrl !== undefined) payload.photoUrl = photoUrl
+  if (sports   !== undefined) payload.sports   = sports || []
+  // Whole-branch scope (0177). null clears it, back to single sport-branch
+  // pinning. Like `sports`, the RPC gates this behind staff.manage.
+  if (locationId !== undefined) payload.locationId = locationId || null
   if (!Object.keys(payload).length) return
   const { error } = await supabase.rpc('secure_update_staff_profile', {
     p_staff_id: staffId,
@@ -2159,7 +2169,7 @@ export async function fetchSportBranches(academyId) {
   // Try with address first; if the column doesn't exist (42703), retry without it
   let { data, error } = await supabase
     .from('sport_branches')
-    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee, tax_percent, tax_on_fees, tax_on_trial, tax_on_kit, fee_proration_basis`)
+    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee, tax_percent, tax_on_fees, tax_on_trial, tax_on_kit, fee_proration_basis, location_id`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
@@ -2201,6 +2211,9 @@ export async function fetchSportBranches(academyId) {
     taxOnTrial: !!r.tax_on_trial,
     taxOnKit:   !!r.tax_on_kit,
     prorationBasis: r.fee_proration_basis || 'calendar',
+    // Groups every sport row at the same physical place (migration 0174).
+    // Null only on the pre-0174 fallback selects below.
+    locationId: r.location_id || null,
     createdAt:  r.created_at,
   }))
 }

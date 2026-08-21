@@ -41,8 +41,14 @@ export default function SportSelect() {
     sportBranches, refreshSportBranches, setSelectedSportAndBranch,
   } = useApp()
 
-  // view: 'sports' (default) | 'branches' (drill-in for a sport)
-  const [view, setView]               = useState('sports')
+  // A branch is a physical PLACE that runs several sports, so the page leads
+  // with places and puts sports inside them (migration 0174 groups the
+  // per-sport rows via location_id). The older sport-first views are kept
+  // intact underneath for managing sports/branches — nothing was removed.
+  //   'locations' (default) → 'location' (sports at one place)
+  //   'sports' | 'branches' → the legacy sport-first management views
+  const [view, setView]               = useState('locations')
+  const [drillLocation, setDrillLocation] = useState(null) // location id being opened
   const [drillSport, setDrillSport]   = useState(null)   // sport_name being drilled into
   const [addingBranch, setAddingBranch] = useState(false)
   const [newBranch,    setNewBranch]    = useState('')
@@ -136,6 +142,69 @@ export default function SportSelect() {
     })
     return map
   }, [sportBranches, allStudents, allBatches])
+
+  // ── Locations (physical branches) ────────────────────────────────
+  // Grouped by sport_branches.location_id (0174). Rows written before that
+  // migration, or by an older client, fall back to grouping by name so the
+  // page never silently drops a branch.
+  const locationList = useMemo(() => {
+    const map = new Map()
+    ;(sportBranches || []).forEach(sb => {
+      // A missing branch name must never take out this page — it is the owner's
+      // landing route (OwnerRoute redirects here), so a throw locks them out of
+      // the whole app. Coerce to a string and label it rather than crashing.
+      const name = (sb.branchName || '').trim()
+      const key  = sb.locationId || `name:${name}`
+      if (!map.has(key)) {
+        map.set(key, { key, id: sb.locationId || null, name: name || 'Unnamed branch', address: '', rows: [] })
+      }
+      const loc = map.get(key)
+      loc.rows.push(sb)
+      if (!loc.address && sb.address) loc.address = sb.address
+    })
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [sportBranches])
+
+  // Per-location stats, summed across every sport row at that place — this is
+  // what a branch actually is to the person standing in it.
+  const locationCounts = useMemo(() => {
+    const today = new Date()
+    const firstOfMonth = toLocalDateStr(new Date(today.getFullYear(), today.getMonth(), 1))
+    const monthKey     = toLocalMonthStr(today)
+    const map = {}
+    locationList.forEach(loc => {
+      const ids = new Set(loc.rows.map(r => r.id))
+      const students = allStudents.filter(s => ids.has(s.branchId))
+      const active   = students.filter(s => s.status === 'Active')
+      const studentIds = new Set(students.map(s => s.id))
+      map[loc.key] = {
+        students: students.length,
+        active:   active.length,
+        overdue:  active.filter(s => s.paid_till && s.paid_till < firstOfMonth).length,
+        staff:    allStaff.filter(s => ids.has(s.branchId)).length,
+        batches:  allBatches.filter(b => ids.has(b.branchId)).length,
+        sports:   new Set(loc.rows.map(r => r.sportName)).size,
+        // Mirrors the per-sport revenue rule: trial-fee rows carry no student
+        // and self-scope by branch instead.
+        monthlyRevenue: allPayments.filter(p => {
+          if (p.status !== 'Paid') return false
+          if (!p.date?.startsWith(monthKey)) return false
+          return p.studentId == null ? ids.has(p.branchId) : studentIds.has(p.studentId)
+        }).reduce((sum, p) => sum + (p.amount || 0), 0),
+      }
+    })
+    return map
+  }, [locationList, allStudents, allStaff, allBatches, allPayments])
+
+  const openLocation = (loc) => { setDrillLocation(loc.key); setView('location') }
+
+  // Picking a sport inside a place resolves to that exact (sport × place) row,
+  // which is what every downstream filter already keys on — so this level is
+  // presentation only.
+  const pickSportAtLocation = (row) => {
+    setSelectedSportAndBranch(row.sportName, row.id)
+    navigate('/dashboard')
+  }
 
   const pickSport = (sport) => {
     // "All Sports" goes straight to dashboard with no scoping
@@ -357,7 +426,27 @@ export default function SportSelect() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-10">
-        {view === 'branches' && drillSport ? (
+        {view === 'locations' ? (
+          <LocationsView
+            user={user}
+            locations={locationList}
+            counts={locationCounts}
+            totals={totalCounts}
+            dataLoading={dataLoading}
+            onOpen={openLocation}
+            onManageSports={() => setView('sports')}
+            onPickAllSports={() => { setSelectedSportAndBranch('All', null); navigate('/dashboard') }}
+          />
+        ) : view === 'location' && drillLocation ? (
+          <LocationView
+            location={locationList.find(l => l.key === drillLocation)}
+            counts={locationCounts[drillLocation] || {}}
+            branchCounts={branchCounts}
+            onBack={() => { setView('locations'); setDrillLocation(null) }}
+            onPickSport={pickSportAtLocation}
+            onManageBranches={(sportName) => { setDrillSport(sportName); setView('branches') }}
+          />
+        ) : view === 'branches' && drillSport ? (
           <BranchView
             sportName={drillSport}
             branches={branchesOf(drillSport)}
@@ -387,15 +476,17 @@ export default function SportSelect() {
         {/* Heading */}
         <div className="mb-8 flex items-end justify-between gap-6">
           <div>
-            <div className="flex items-center gap-2 text-gray-400 mb-2">
-              <Sparkles size={13} />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">Welcome back</span>
-            </div>
+            <button
+              onClick={() => setView('locations')}
+              className="flex items-center gap-1.5 text-[11px] font-bold text-gray-400 hover:text-gray-700 transition mb-2"
+            >
+              <ArrowLeft size={12} /> Back to branches
+            </button>
             <h1 className="text-[28px] font-black text-gray-900 leading-tight tracking-tight">
-              Hi {user?.name?.split(' ')[0] || 'there'}
+              Manage sports
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              Pick a sport to scope your dashboard.
+              Add or remove a sport, and manage the branches under each one.
             </p>
           </div>
           <p className="text-[11px] text-gray-400 font-medium hidden sm:block">
@@ -652,6 +743,231 @@ export default function SportSelect() {
       </main>
     </div>
   )
+}
+
+// ── Level 1: the branches (physical places) ─────────────────────────
+// A place is what the person at the counter actually works in — it runs
+// several sports at once — so it leads, and sports live inside it.
+function LocationsView({ user, locations, counts, totals, dataLoading, onOpen, onManageSports, onPickAllSports }) {
+  return (<>
+    <div className="mb-8 flex items-end justify-between gap-6">
+      <div>
+        <div className="flex items-center gap-2 text-gray-400 mb-2">
+          <Sparkles size={13} />
+          <span className="text-[10px] font-black uppercase tracking-[0.2em]">Welcome back</span>
+        </div>
+        <h1 className="text-[28px] font-black text-gray-900 leading-tight tracking-tight">
+          Hi {user?.name?.split(' ')[0] || 'there'}
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">Pick a branch to scope your dashboard.</p>
+      </div>
+      <p className="text-[11px] text-gray-400 font-medium hidden sm:block">
+        {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+      </p>
+    </div>
+
+    {/* Academy summary strip */}
+    <div className="mb-6 bg-white border border-gray-100 rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 bg-gradient-to-br from-brand-50 to-brand-100 rounded-xl flex items-center justify-center">
+          <Trophy size={18} className="text-brand-600" />
+        </div>
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-400">Academy</p>
+          <p className="text-sm font-black text-gray-900 leading-tight">{user?.academy}</p>
+        </div>
+      </div>
+      <div className="flex items-center divide-x divide-gray-100 text-xs">
+        {[['Students', totals.students], ['Staff', totals.staff], ['Batches', totals.batches]].map(([label, n], i) => (
+          <div key={label} className={`${i === 2 ? 'pl-5' : 'px-5'} text-right`}>
+            <p className="font-black text-xl text-gray-900 leading-none">{n}</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">{label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <RegistrationLinkBanner />
+
+    {dataLoading ? (
+      <div className="text-center py-16 text-gray-400 text-sm">Loading branches…</div>
+    ) : (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {locations.map(loc => {
+          const c = counts[loc.key] || {}
+          const sportNames = [...new Set(loc.rows.map(r => r.sportName))].sort()
+          return (
+            <div key={loc.key}
+              className="group relative bg-white rounded-2xl overflow-hidden transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 ring-1 ring-gray-100 hover:ring-brand-200">
+              <div className="h-1 bg-brand-600" />
+              <button onClick={() => onOpen(loc)} className="w-full text-left p-5 pb-4">
+                <div className="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center mb-4 text-brand-600 transition-transform group-hover:scale-105">
+                  <MapPin size={22} />
+                </div>
+
+                <div className="mb-3">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="text-xl font-black text-gray-900 leading-tight tracking-tight">{loc.name}</p>
+                    {c.overdue > 0 && (
+                      <span className="flex items-center gap-1 text-[10px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-full flex-shrink-0 mt-1">
+                        <AlertTriangle size={9} /> {c.overdue}
+                      </span>
+                    )}
+                  </div>
+                  {loc.address && <p className="text-[11px] text-gray-400 truncate">{loc.address}</p>}
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="font-bold text-gray-900">{c.active}</span>
+                    {c.students > c.active && <span className="text-gray-400"> / {c.students}</span>}
+                    <span className="text-gray-400"> active</span>
+                    {c.monthlyRevenue > 0 && (
+                      <span className="ml-2 inline-flex items-center gap-0.5 text-emerald-600 font-bold">
+                        <TrendingUp size={10} /> ₹{(c.monthlyRevenue / 1000).toFixed(c.monthlyRevenue >= 100000 ? 0 : 1)}k
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {/* The sports running here — the whole point of the card */}
+                <div className="flex flex-wrap items-center gap-1 mb-3 min-h-[26px]">
+                  {sportNames.map(s => {
+                    const t = getSportTheme(s)
+                    return (
+                      <span key={s} title={s}
+                        className={`w-6 h-6 rounded-lg flex items-center justify-center ${t.iconBg} ${t.iconText}`}>
+                        <SportIcon sport={s} size={13} />
+                      </span>
+                    )
+                  })}
+                </div>
+
+                <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                  <div className="flex items-center gap-1">
+                    <UserCog size={11} className="text-gray-400" />
+                    <span><span className="font-black text-gray-800">{c.staff}</span> {c.staff === 1 ? 'coach' : 'coaches'}</span>
+                  </div>
+                  <span className="w-0.5 h-0.5 rounded-full bg-gray-300" />
+                  <div className="flex items-center gap-1">
+                    <Layers size={11} className="text-gray-400" />
+                    <span><span className="font-black text-gray-800">{c.batches}</span> {c.batches === 1 ? 'batch' : 'batches'}</span>
+                  </div>
+                </div>
+              </button>
+
+              <div className="flex items-center justify-between border-t border-gray-100 bg-brand-50/30">
+                <span className="flex items-center gap-1.5 px-4 py-2.5 text-[11px] font-bold text-gray-600">
+                  <Trophy size={11} className="text-brand-600" />
+                  {c.sports} {c.sports === 1 ? 'sport' : 'sports'}
+                </span>
+                <button onClick={() => onOpen(loc)}
+                  className="px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 group-hover:text-gray-900 transition">
+                  Open →
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )}
+
+    <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+      <button onClick={onPickAllSports}
+        className="text-[11px] font-bold text-gray-500 hover:text-gray-900 transition underline underline-offset-4">
+        View everything across all branches
+      </button>
+      <span className="w-1 h-1 rounded-full bg-gray-300" />
+      <button onClick={onManageSports}
+        className="text-[11px] font-bold text-gray-500 hover:text-gray-900 transition underline underline-offset-4">
+        Manage sports &amp; branches
+      </button>
+    </div>
+
+    {locations.length === 0 && !dataLoading && (
+      <p className="text-center text-xs text-gray-400 mt-6">
+        No branches yet — open “Manage sports &amp; branches” to add your first one.
+      </p>
+    )}
+  </>)
+}
+
+// ── Level 2: the sports running at one place ────────────────────────
+function LocationView({ location, counts, branchCounts, onBack, onPickSport, onManageBranches }) {
+  // The branch can disappear under us — deleted in another tab, or renamed so its
+  // fallback key no longer matches. Render a way OUT rather than a blank page.
+  if (!location) {
+    return (
+      <div className="text-center py-16">
+        <p className="text-sm text-gray-500 mb-3">That branch is no longer available.</p>
+        <button onClick={onBack} className="btn-primary py-2 px-4 text-sm justify-center inline-flex">
+          <ArrowLeft size={14} /> Back to branches
+        </button>
+      </div>
+    )
+  }
+  const rows = [...location.rows].sort((a, b) => (a.sportName || '').localeCompare(b.sportName || ''))
+  return (<>
+    <button onClick={onBack}
+      className="flex items-center gap-1.5 text-[11px] font-bold text-gray-400 hover:text-gray-700 transition mb-3">
+      <ArrowLeft size={12} /> All branches
+    </button>
+
+    <div className="mb-8">
+      <div className="flex items-center gap-3 mb-1">
+        <div className="w-11 h-11 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600">
+          <MapPin size={20} />
+        </div>
+        <div>
+          <h1 className="text-[28px] font-black text-gray-900 leading-tight tracking-tight">{location.name}</h1>
+          {location.address && <p className="text-xs text-gray-400">{location.address}</p>}
+        </div>
+      </div>
+      <p className="text-sm text-gray-500 mt-2">
+        <span className="font-bold text-gray-900">{counts.active ?? 0}</span> active students
+        <span className="text-gray-400"> · </span>
+        <span className="font-bold text-gray-900">{counts.staff ?? 0}</span> staff
+        <span className="text-gray-400"> · </span>
+        <span className="font-bold text-gray-900">{counts.batches ?? 0}</span> batches
+        <span className="text-gray-400"> — pick a sport to scope your dashboard.</span>
+      </p>
+    </div>
+
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {rows.map(row => {
+        const t  = getSportTheme(row.sportName)
+        const bc = branchCounts[row.id] || {}
+        return (
+          <div key={row.id}
+            className={`group relative bg-white rounded-2xl overflow-hidden transition-all duration-200 shadow-sm hover:shadow-xl hover:-translate-y-0.5 ring-1 ring-gray-100 ${t.ring}`}>
+            <div className={`h-1 ${t.accent}`} />
+            <button onClick={() => onPickSport(row)} className="w-full text-left p-5 pb-4">
+              <div className={`w-12 h-12 ${t.iconBg} rounded-xl flex items-center justify-center mb-4 ${t.iconText} transition-transform group-hover:scale-105`}>
+                <SportIcon sport={row.sportName} size={24} />
+              </div>
+              <p className="text-xl font-black text-gray-900 leading-tight tracking-tight mb-1">{row.sportName}</p>
+              <p className="text-xs text-gray-500">
+                <span className="font-bold text-gray-900">{bc.active ?? 0}</span>
+                {(bc.students ?? 0) > (bc.active ?? 0) && <span className="text-gray-400"> / {bc.students}</span>}
+                <span className="text-gray-400"> active</span>
+              </p>
+              <div className="flex items-center gap-1 text-[11px] text-gray-500 mt-3">
+                <Layers size={11} className="text-gray-400" />
+                <span><span className="font-black text-gray-800">{bc.batches ?? 0}</span> {bc.batches === 1 ? 'batch' : 'batches'}</span>
+              </div>
+            </button>
+            <div className={`flex items-center justify-between border-t border-gray-100 ${t.tint}`}>
+              <button onClick={(e) => { e.stopPropagation(); onManageBranches(row.sportName) }}
+                className="flex items-center gap-1.5 px-4 py-2.5 text-[11px] font-bold text-gray-600 hover:text-gray-900 transition">
+                <Pencil size={11} className={t.iconText} /> Manage
+              </button>
+              <button onClick={() => onPickSport(row)}
+                className="px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.15em] text-gray-400 group-hover:text-gray-900 transition">
+                Open →
+              </button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  </>)
 }
 
 // ── Student registration link — share/copy the /join/:slug URL ──────

@@ -70,10 +70,17 @@ Deno.serve(async (req) => {
   let userId = parent.auth_user_id
   if (!userId) {
     // Try create; if email already exists (orphan), find by listing
+    // phone + phone_confirm are REQUIRED, not cosmetic: since migration 0179
+    // secure_claim_parent_account matches on the top-level verified `phone`
+    // claim. user_metadata is deliberately NOT trusted there (a signed-in user
+    // can rewrite their own metadata), so without a real confirmed phone this
+    // synthetic user gets 42501 on claim.
     const created = await supabase.auth.admin.createUser({
       email: syntheticEmail,
       password,
       email_confirm: true,
+      phone: `91${phone10}`,
+      phone_confirm: true,
       user_metadata: { phone: phone10, source: 'parent-test-login' },
     })
     if (created.error && !/already.*registered|already exists/i.test(created.error.message)) {
@@ -90,8 +97,15 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 3. Always reset password so client-side login is reliable
-  await supabase.auth.admin.updateUserById(userId!, { password })
+  // 3. Always reset password so client-side login is reliable.
+  //    Also (re)assert the confirmed phone — synthetic users created BEFORE
+  //    migration 0179 have no top-level phone claim and would fail the claim
+  //    check. Harmless to repeat for users that already have it.
+  await supabase.auth.admin.updateUserById(userId!, {
+    password,
+    phone: `91${phone10}`,
+    phone_confirm: true,
+  })
 
   // 4. Link parents.auth_user_id (claim happens client-side via secure_claim_parent_account too)
   if (parent.auth_user_id !== userId) {

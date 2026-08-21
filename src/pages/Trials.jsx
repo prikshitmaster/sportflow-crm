@@ -1857,9 +1857,10 @@ export default function Trials() {
   const { trials, addTrial, updateTrialStatus, deleteTrial, batches, feePlans, addStudent,
           trialSources, addTrialSource, removeTrialSource,
           ageGroups, addAgeGroup, removeAgeGroup, selectedSport, isAllSports,
-          user } = useApp()
+          showSportFilter, user } = useApp()
 
   const [stage,    setStage]    = useState('all')
+  const [sportFilter, setSportFilter] = useState('All')
   const [search,   setSearch]   = useState('')
   const [page,     setPage]     = useState(1)
   const [modal,    setModal]    = useState(null) // null | 'add' | 'edit' | 'schedule' | 'session' | 'convert' | 'sources' | 'ageGroups' | 'slip'
@@ -1873,21 +1874,28 @@ export default function Trials() {
   const converted = trials.filter(t => t.stage === 'converted').length
   const convRate  = total > 0 ? Math.round((converted / total) * 100) : 0
 
+  // Sports present among the trials actually in scope — a whole-branch staffer
+  // sees leads for every sport at their place and needs to narrow down.
+  const trialSports = useMemo(
+    () => [...new Set(trials.map(t => t.sport).filter(Boolean))].sort(),
+    [trials])
+
   // Filter
   const filtered = useMemo(() => {
     let list = trials
     if (stage === 'done')     list = list.filter(t => t.stage === 'converted' || t.stage === 'rejected')
     else if (stage === 'all') list = list.filter(t => t.stage !== 'converted' && t.stage !== 'rejected')
     else                      list = list.filter(t => t.stage === stage)
+    if (sportFilter !== 'All') list = list.filter(t => t.sport === sportFilter)
     if (search.trim())     list = list.filter(t =>
       t.name.toLowerCase().includes(search.toLowerCase()) ||
       (t.phone || '').includes(search) ||
       (t.sport || '').toLowerCase().includes(search.toLowerCase())
     )
     return list
-  }, [trials, stage, search])
+  }, [trials, stage, sportFilter, search])
 
-  useEffect(() => setPage(1), [stage, search])
+  useEffect(() => setPage(1), [stage, sportFilter, search])
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   // Stage counts
@@ -2033,13 +2041,25 @@ export default function Trials() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2">
-        <Search size={14} className="text-gray-400" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, phone, sport…"
-          className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none flex-1" />
-        {search && <button onClick={() => setSearch('')}><X size={13} className="text-gray-400" /></button>}
+      {/* Search + sport */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-1 min-w-[200px]">
+          <Search size={14} className="text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, phone, sport…"
+            className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none flex-1" />
+          {search && <button onClick={() => setSearch('')}><X size={13} className="text-gray-400" /></button>}
+        </div>
+        {/* Only earns space when more than one sport's leads are in view. */}
+        {showSportFilter && trialSports.length > 1 && (
+          <select
+            className={`input w-auto text-xs font-semibold ${sportFilter !== 'All' ? 'border-brand-400 text-brand-700' : ''}`}
+            value={sportFilter}
+            onChange={e => setSportFilter(e.target.value)}>
+            <option value="All">All Sports</option>
+            {trialSports.map(s => <option key={s}>{s}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Trial cards grid */}

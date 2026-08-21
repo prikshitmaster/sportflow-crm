@@ -443,7 +443,7 @@ function StudentAttendancePanel({ student, allMonthData, onClose, onCycle, showT
 
 // ── Main component ─────────────────────────────────────────────
 export default function Attendance() {
-  const { students, batches, showToast, selectedSport, selectedBranch: contextBranch } = useApp()
+  const { students, batches, showToast, selectedSport, selectedBranch: contextBranch, showSportFilter } = useApp()
   const now           = new Date()
   const todayDay      = now.getDate()
   const todayMonth    = now.getMonth()
@@ -677,15 +677,20 @@ export default function Attendance() {
         </button>
       </div>
 
-      {/* ── Branch pills ─────────────────────────────────── */}
-      {selectedSport === 'All' && (
+      {/* ── Sport pills ──────────────────────────────────────
+          NOTE: `branchList` / `selectedBranch` here are historically misnamed —
+          they are built from batch.sports and filter by SPORT, not branch. The
+          buttons used to be labelled "All Branches" while listing sport names.
+          Shown whenever more than one sport is in view, so a staff member
+          running a whole branch can narrow the batch strip down to one sport. */}
+      {showSportFilter && (
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {branchList.map(br => (
             <button key={br} onClick={() => { setSelectedBranch(br); setSelectedBatch(null) }}
               className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
                 selectedBranch === br ? 'bg-gray-900 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}>
-              {br === 'All' ? 'All Branches' : br}
+              {br === 'All' ? 'All Sports' : br}
             </button>
           ))}
         </div>
