@@ -98,10 +98,19 @@ const AGE_GROUPS = ['U6', 'U8', 'U10', 'U12', 'U14', 'U16', 'U18', 'Open']
 
 // ── Trial Slip Printer ────────────────────────────────────────
 
+// Calendar years, not a 365.25-day division — the old version could disagree
+// by one around a birthday with both Students.jsx's calcAge and the
+// EXTRACT(YEAR FROM age(dob)) the DB trigger uses (migration 0182), which meant
+// the screen and the stored value could show different ages for the same child.
 function calcAge(dob) {
   if (!dob) return null
-  const diff = Date.now() - new Date(dob).getTime()
-  return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000))
+  const today = new Date()
+  const birth = new Date(String(dob).slice(0, 10) + 'T00:00:00')
+  if (Number.isNaN(birth.getTime())) return null
+  let age = today.getFullYear() - birth.getFullYear()
+  const m = today.getMonth() - birth.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+  return age >= 0 ? age : null
 }
 
 // Fallback only, for trials created before migration 0124. Note it is NOT
@@ -118,7 +127,7 @@ function buildPrintHTML(trial, academyName, logoUrl, customLogo) {
   const isAcademy = trial.programType !== 'development'
   const isDev     = trial.programType === 'development'
   const feeCollected = trial.trialFeeMode !== 'Not collected'
-  const age       = trial.age || calcAge(trial.dob) || ''
+  const age       = calcAge(trial.dob) ?? trial.age ?? ''   // DOB wins — see 0182
   // Prefer the real payments row id so the printed slip and the revenue
   // record carry the same number.
   const receiptNo = trial.receiptNo || genReceiptNo(trial.name)
@@ -289,7 +298,7 @@ function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
   // Prefer the real payments row id so the printed slip and the revenue
   // record carry the same number.
   const receiptNo = trial.receiptNo || genReceiptNo(trial.name)
-  const age       = trial.age || calcAge(trial.dob) || '—'
+  const age       = calcAge(trial.dob) ?? trial.age ?? '—'   // DOB wins — see 0182
   const isAcademy = trial.programType !== 'development'
   const isDev     = trial.programType === 'development'
   const feeCollected = trial.trialFeeMode !== 'Not collected'
@@ -490,7 +499,11 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
     if (!form.name.trim() || !form.phone.trim() || !form.sport || !form.trialDate) return
     setSaving(true)
     try {
-      const age = form.age ? Number(form.age) : calcAge(form.dob) || null
+      // DOB wins. It used to be the other way round — a typed age overrode the
+      // date of birth — which is how 20 of 55 trials ended up with an age that
+      // contradicted their own DOB. Typed age is only used when there is no DOB
+      // (legacy and walk-in leads where nobody asked).
+      const age = calcAge(form.dob) ?? (form.age ? Number(form.age) : null)
       await onSave({
         ...form,
         phone:         form.phone.trim(),
@@ -597,14 +610,23 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
                 </Field>
               </div>
               <div className="col-span-2">
-                <Field label="Age">
-                  <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-brand-500/30 focus-within:border-brand-400 focus-within:bg-white transition">
+                {/* Typed only when there is no DOB. With a DOB set this shows
+                    the calculated value and stops accepting input, matching the
+                    /join form — the two can no longer drift apart. */}
+                <Field label={form.dob ? 'Age (from DOB)' : 'Age'}>
+                  <div className={`flex rounded-xl overflow-hidden border border-gray-200 transition ${
+                    form.dob ? 'bg-gray-100' : 'bg-gray-50 focus-within:ring-2 focus-within:ring-brand-500/30 focus-within:border-brand-400 focus-within:bg-white'
+                  }`}>
                     <input
-                      value={form.age ?? ''}
+                      value={form.dob ? (calcAge(form.dob) ?? '') : (form.age ?? '')}
                       onChange={e => set('age', e.target.value)}
+                      readOnly={!!form.dob}
+                      title={form.dob ? 'Calculated from date of birth' : ''}
                       placeholder="12"
                       type="number" min="3" max="60" inputMode="numeric"
-                      className="flex-1 px-3 py-2.5 text-sm text-gray-900 bg-transparent focus:outline-none placeholder-gray-400 w-full"
+                      className={`flex-1 px-3 py-2.5 text-sm bg-transparent focus:outline-none placeholder-gray-400 w-full ${
+                        form.dob ? 'text-gray-500 cursor-not-allowed' : 'text-gray-900'
+                      }`}
                     />
                     <span className="flex items-center pr-3 text-xs text-gray-400 shrink-0">yrs</span>
                   </div>
@@ -1186,7 +1208,11 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     name:        trial.name,
     parent:      trial.parent      || '',
     phone:       trial.phone       || '',
-    parentPhone: '',
+    // trial.phone IS the parent's OTP-verified number on the /join path
+    // (TrialEnroll.jsx:37) — leaving parentPhone blank here is why 490 of 569
+    // students had none, which silently disabled the automatic WhatsApp
+    // receipt and the parent-account auto-link for every one of them.
+    parentPhone: trial.phone       || '',
     dob:         trial.dob         || '',
     sport:       trial.sport,
     batchId:     trial.batchId ? String(trial.batchId) : '',
@@ -1359,9 +1385,11 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
                 value={form.dob || ''} onChange={e => set('dob', e.target.value)} />
             </div>
 
-            {/* Student Phone */}
+            {/* Contact Phone — on a /join trial this is the parent's verified
+                number, not the child's. Labelled "Student Phone" it invited
+                staff to leave Parent Phone empty. */}
             <div>
-              <label className="label">Student Phone *</label>
+              <label className="label">Contact Phone *</label>
               <div className="flex">
                 <span className="flex items-center px-3 bg-gray-100 border border-gray-200 border-r-0 rounded-l-lg text-sm font-semibold text-gray-600 whitespace-nowrap">+91</span>
                 <input className={`input rounded-l-none flex-1 ${errors.phone ? 'border-red-400' : ''}`}
@@ -1371,9 +1399,9 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
               {errors.phone && <p className="text-[11px] text-red-500 mt-1">{errors.phone}</p>}
             </div>
 
-            {/* Parent Phone */}
+            {/* Parent Phone — receipts and the parent portal key off this one */}
             <div>
-              <label className="label">Parent Phone</label>
+              <label className="label">Parent Phone <span className="normal-case font-normal text-gray-400">(gets receipts)</span></label>
               <div className="flex">
                 <span className="flex items-center px-3 bg-gray-100 border border-gray-200 border-r-0 rounded-l-lg text-sm font-semibold text-gray-600 whitespace-nowrap">+91</span>
                 <input className="input rounded-l-none flex-1"

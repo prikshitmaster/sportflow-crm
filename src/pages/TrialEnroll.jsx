@@ -562,6 +562,10 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   const [relationship, setRelationship] = useState('')       // one of RELATIONSHIP_OPTIONS, or free text when 'Other'
   const [relationshipCustom, setRelationshipCustom] = useState('')
   const [siblingOfId, setSiblingOfId] = useState('')
+  // Occupation and address are the two questions people meet before they have
+  // decided to join at all, so they start folded away. Auto-opens if a restored
+  // draft already carries either — collapsing must never hide typed answers.
+  const [showMoreContact, setShowMoreContact] = useState(false)
 
   const [form, setForm] = useState({
     name: '', parentName: '', motherName: '', emergencyContactName: '', emergencyContactPhone: '',
@@ -1816,8 +1820,42 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <LabeledInput label="Mother's Name (Optional)" placeholder="e.g. Priya Sharma" value={form.motherName} onChange={e => set('motherName', e.target.value)} />
                   <LabeledInput type="email" inputMode="email" label="Email (Optional)" placeholder="e.g. name@email.com" value={form.email} onChange={e => set('email', e.target.value)} />
                   <LabeledInput type="tel" inputMode="tel" label="Alternate Contact Number (Optional)" placeholder="10-digit number" value={form.alternateContactPhone} onChange={e => set('alternateContactPhone', e.target.value)} />
-                  <LabeledInput label="Occupation (Optional)" placeholder="e.g. Software Engineer" value={form.occupation} onChange={e => set('occupation', e.target.value)} />
-                  <LabeledInput label="Address (Optional)" placeholder="House / street, area, city" value={form.address} onChange={e => set('address', e.target.value)} />
+
+                  {/* Folded by default — see showMoreContact. */}
+                  {(showMoreContact || form.occupation || form.address) ? (
+                    <>
+                      <LabeledInput label="Occupation (Optional)" placeholder="e.g. Software Engineer" value={form.occupation} onChange={e => set('occupation', e.target.value)} />
+                      <LabeledInput label="Address (Optional)" placeholder="House / street, area, city" value={form.address} onChange={e => set('address', e.target.value)} />
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => setShowMoreContact(true)}
+                      style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: '2px 0',
+                               fontSize: 13, fontWeight: 700, color: C.main, cursor: 'pointer' }}>
+                      + Add occupation and address (optional)
+                    </button>
+                  )}
+
+                  {/* Emergency contact is two required fields, and for most
+                      families it is the mother — whose name was typed four
+                      fields above. One tap instead of retyping. */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {form.motherName?.trim() && form.emergencyContactName !== form.motherName && (
+                      <Chip active={false} onClick={() => set('emergencyContactName', form.motherName)} C={C}>
+                        Emergency contact = mother
+                      </Chip>
+                    )}
+                    {form.parentName?.trim() && form.emergencyContactName !== form.parentName && (
+                      <Chip active={false} onClick={() => set('emergencyContactName', form.parentName)} C={C}>
+                        = father / guardian
+                      </Chip>
+                    )}
+                    {form.alternateContactPhone?.trim() && form.emergencyContactPhone !== form.alternateContactPhone && (
+                      <Chip active={false} onClick={() => set('emergencyContactPhone', form.alternateContactPhone)} C={C}>
+                        Use alternate number
+                      </Chip>
+                    )}
+                  </div>
+
                   <LabeledInput id="jf-emergencyContactName" label="Emergency Contact Name" placeholder="e.g. Priya Sharma" value={form.emergencyContactName}
                     onChange={e => set('emergencyContactName', e.target.value)} invalid={invalid.emergencyContactName} />
                   <LabeledInput id="jf-emergencyContactPhone" type="tel" inputMode="tel" label="Emergency Contact Number" placeholder="10-digit number" value={form.emergencyContactPhone}

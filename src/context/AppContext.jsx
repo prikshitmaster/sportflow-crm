@@ -1583,7 +1583,12 @@ export function AppProvider({ children }) {
       // works end to end. Fire-and-forget: a WhatsApp failure must never
       // block or roll back a recorded payment. Only reaches a real phone
       // if student.parentPhone has joined the Twilio sandbox.
-      if (!isCheque && student?.parentPhone) {
+      // `|| student.phone` matches what SendPayLinkModal and WhatsAppBulkModal
+      // already do. This was the only one of the three without the fallback,
+      // and it is the automatic one — so a student with a contact number but no
+      // parent_phone silently got no receipt, which was 490 of 569 of them.
+      const receiptPhone = student?.parentPhone || student?.phone
+      if (!isCheque && receiptPhone) {
         (async () => {
           const receiptHTML = buildReceiptHTML(
             { ...paymentRow, id: invoiceId, date: payDate, status: insertStatus, month: monthLabel },
@@ -1592,7 +1597,7 @@ export function AppProvider({ children }) {
           const mediaUrl = await generateAndUploadReceiptPDF(receiptHTML, invoiceId)
           await supabase.functions.invoke('whatsapp-send-test', {
             body: {
-              to: '+' + normalizePhoneForWhatsApp(student.parentPhone),
+              to: '+' + normalizePhoneForWhatsApp(receiptPhone),
               body: buildPaymentReceiptMessage({ student, academy: user?.academy, amount: p.amount, monthLabel, paidTill }),
               mediaUrl,
             },
