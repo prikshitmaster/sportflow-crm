@@ -1767,6 +1767,13 @@ export async function fetchAnnouncements(academyId) {
     branchId: row.branch_id || null,
     audienceType: row.audience_type || 'all',
     audienceIds:  row.audience_ids  || [],
+    // Event details (0183). eventDate set = this notice is an event.
+    // `date` above stays the POST date — an event announced today can run
+    // next month, so the two are never the same field.
+    eventDate:    row.event_date     || null,
+    eventEndDate: row.event_end_date || null,
+    venue:        row.venue          || null,
+    flyerUrl:     row.flyer_url      || null,
   }))
 }
 
@@ -1781,6 +1788,10 @@ export async function insertAnnouncement(a) {
     p_branch_id: a.branchId  || null,
     p_audience_type: a.audienceType || 'all',
     p_audience_ids:  a.audienceIds  || [],
+    p_event_date:     a.eventDate    || null,
+    p_event_end_date: a.eventEndDate || null,
+    p_venue:          a.venue        || null,
+    p_flyer_url:      a.flyerUrl     || null,
   })
   if (error) throw error
   const row = typeof data === 'string' ? JSON.parse(data) : data
@@ -1789,6 +1800,13 @@ export async function insertAnnouncement(a) {
     id: row.id, date: row.date, sport: row.sport || null, branchId: row.branch_id || null,
     audienceType: row.audience_type || 'all',
     audienceIds:  row.audience_ids  || [],
+    // Read back from the row, not echoed from `a` — the server normalises
+    // empty strings to NULL, and the local copy must match what a refetch
+    // will return or the card changes shape on reload.
+    eventDate:    row.event_date     || null,
+    eventEndDate: row.event_end_date || null,
+    venue:        row.venue          || null,
+    flyerUrl:     row.flyer_url      || null,
   }
 }
 

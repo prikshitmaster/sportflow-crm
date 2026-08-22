@@ -1642,7 +1642,69 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const preProrationAmount = (form.paymentType === 'monthly' || form.paymentType === 'custom')
     ? form.baseAmount * months
     : form.baseAmount
+  // Deliberately NOT gated on customEnd >= customStart — the reversed-dates
+  // error message and the disabled Confirm button both key off that check.
+  const hasCustomRange = customDates && customStart && customEnd
+
+  // A complete custom range is priced BY THE DAY instead of being left for
+  // staff to type: every calendar month the range touches contributes
+  // (days covered ÷ days in that month) of one month's fee. A student who
+  // joins on the 14th of a 31-day month pays 18/31 of the month; a range that
+  // happens to be a whole month still costs exactly one month.
+  //
+  // The per-month rate comes from the plan total (preProrationAmount ÷ months)
+  // rather than the monthly fee plan, so a quarterly/yearly range keeps its
+  // bulk discount instead of silently re-pricing at the monthly rate.
+  const customRangeInfo = (() => {
+    if (!hasCustomRange || customEnd < customStart) return null
+    const perMonthRate = preProrationAmount / Math.max(1, months)
+    if (perMonthRate <= 0) return null
+    const start = new Date(customStart + 'T00:00:00')
+    const end   = new Date(customEnd   + 'T00:00:00')
+    const segments = []
+    let cur = new Date(start.getFullYear(), start.getMonth(), 1)
+    // 36-month ceiling: a fat-fingered year in the date picker must not spin.
+    while (cur <= end && segments.length < 36) {
+      const daysInMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate()
+      const monthEnd    = new Date(cur.getFullYear(), cur.getMonth(), daysInMonth)
+      const from = start > cur      ? start : cur
+      const to   = end   < monthEnd ? end   : monthEnd
+      const days = Math.round((to - from) / 86400000) + 1
+      const basisDays = prorationBasisSetting === '30day' ? 30 : daysInMonth
+      segments.push({
+        label: `${MO[cur.getMonth()]} ${cur.getFullYear()}`,
+        days, daysInMonth,
+        // A whole calendar month always costs exactly one month, whatever the
+        // basis — on the 30-day basis, February would otherwise bill 28/30 and
+        // a 31-day month 31/30.
+        fraction: days >= daysInMonth ? 1 : Math.min(days / basisDays, 1),
+        full: days >= daysInMonth,
+        amount: 0,
+      })
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+    }
+    const fractionalMonths = segments.reduce((s, x) => s + x.fraction, 0)
+    const amount = Math.max(0, Math.round(perMonthRate * fractionalMonths))
+    // Per-month rupees are for display only, so the last one absorbs the
+    // rounding — otherwise a range covering exactly one quarter shows three
+    // ₹4,333 lines against a ₹13,000 total and looks like a bug.
+    let acc = 0
+    segments.forEach((s, i) => {
+      s.amount = i === segments.length - 1 ? amount - acc : Math.round(perMonthRate * s.fraction)
+      acc += s.amount
+    })
+    const firstBasis = prorationBasisSetting === '30day' ? 30 : (segments[0]?.daysInMonth || 30)
+    return {
+      segments, fractionalMonths, amount,
+      totalDays:  segments.reduce((s, x) => s + x.days, 0),
+      perDayRate: Math.round(perMonthRate / firstBasis),
+    }
+  })()
+
   const prorationInfo = (() => {
+    // A complete range is day-priced above; this is the older leading-days
+    // deduction, still used while only "Covers from" has been filled in.
+    if (customRangeInfo) return null
     if (!customDates || !customStart || monthlyRateForProration <= 0) return null
     const d = new Date(customStart + 'T00:00:00')
     const missingDays = d.getDate() - 1
@@ -1656,7 +1718,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     return { missingDays, deduction, monthLabel: d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) }
   })()
   const prorationDeduction = prorationInfo?.deduction || 0
-  const subtotal = preProrationAmount - prorationDeduction
+  const subtotal = customRangeInfo ? customRangeInfo.amount : preProrationAmount - prorationDeduction
   const discountAmt = Math.round(subtotal * form.discountPct / 100)
   const lateFeeAmt  = Number(lateFee) || 0
   const calcAmount  = subtotal - discountAmt + lateFeeAmt
@@ -1823,9 +1885,14 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // -entry error, forcing CONFIRM on a perfectly normal payment. Most likely
   // to bite a Monthly plan, where the deduction is a large share of the one
   // month being charged.
-  const expectedSubtotal = (form.paymentType === 'monthly' || form.paymentType === 'custom')
+  const expectedFullSubtotal = (form.paymentType === 'monthly' || form.paymentType === 'custom')
     ? referenceRate * months
     : referenceRate
+  // A day-priced custom range has to be compared against a day-priced
+  // expectation, or every legitimate mid-month join trips the 30% typo gate.
+  const expectedSubtotal = customRangeInfo
+    ? Math.round((expectedFullSubtotal / Math.max(1, months)) * customRangeInfo.fractionalMonths)
+    : expectedFullSubtotal
   const expectedTotal = expectedSubtotal - Math.round(expectedSubtotal * form.discountPct / 100) + lateFeeAmt - prorationDeduction
   const sanityMismatch = !!(
     form.studentId &&
@@ -1835,8 +1902,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     Math.abs(finalAmount - expectedTotal) / expectedTotal > 0.30
   )
   const sanityRatio = sanityMismatch ? (finalAmount / expectedTotal) : 1
-
-  const hasCustomRange = customDates && customStart && customEnd
 
   // With the month picker on, coverage starts at the first pending month so the
   // payment clears arrears instead of pushing the student forward from today.
@@ -2059,7 +2124,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                 <p className="col-span-2 text-xs text-red-600">"Covers until" must be on or after "Covers from".</p>
               )}
               <p className="col-span-2 text-[11px] text-gray-400">
-                Set the amount for this exact period in the Total field below.
+                {customRangeInfo
+                  ? <>Charged by the day: {customRangeInfo.totalDays} day{customRangeInfo.totalDays === 1 ? '' : 's'} × ₹{customRangeInfo.perDayRate.toLocaleString('en-IN')}/day
+                      {' '}({prorationBasisSetting === '30day' ? '30-day month' : 'calendar month'} basis).
+                      {' '}Change the fee above to change the day rate.</>
+                  : 'Pick both dates — the fee is worked out by the day for exactly this period.'}
               </p>
             </div>
           )}
@@ -2279,7 +2348,9 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
           )}
           <div className="flex justify-between text-xs text-gray-500">
             {hasCustomRange
-              ? <span>Custom period · amount set below</span>
+              ? <span>{customRangeInfo
+                  ? `Custom period · ${customRangeInfo.totalDays} day${customRangeInfo.totalDays === 1 ? '' : 's'} @ ₹${customRangeInfo.perDayRate.toLocaleString('en-IN')}/day`
+                  : 'Custom period · amount set below'}</span>
               : monthPickerOn
               ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × {months} month{months !== 1 ? 's' : ''} charged</span>
               : form.paymentType === 'monthly'
@@ -2290,6 +2361,16 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             }
             <span>₹{subtotal.toLocaleString('en-IN')}</span>
           </div>
+          {customRangeInfo && (
+            <div className="space-y-0.5 pl-2 border-l-2 border-gray-200">
+              {customRangeInfo.segments.map(s => (
+                <div key={s.label} className="flex justify-between text-[11px] text-gray-400">
+                  <span>{s.label} · {s.full ? 'full month' : `${s.days} of ${s.daysInMonth} days`}</span>
+                  <span>₹{s.amount.toLocaleString('en-IN')}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {lateFeeAmt > 0 && (
             <div className="flex justify-between text-xs text-amber-600 font-medium">
               <span>Late Fee</span>

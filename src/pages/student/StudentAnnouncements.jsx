@@ -197,6 +197,26 @@ export default function StudentAnnouncements() {
                           <p className="font-bold text-gray-900 text-sm leading-snug">{a.title}</p>
                           <span className={`badge flex-shrink-0 ${typeBadge[a.type]||'badge-gray'}`}>{a.type}</span>
                         </div>
+                        {/* Event details (0183) — a notice with a date is an
+                            event. Shown above the body: when and where is what
+                            a student is looking for. */}
+                        {a.eventDate && (
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-700 bg-brand-50 px-2 py-1 rounded-lg">
+                              <Calendar size={11} />
+                              {new Date(a.eventDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                              {a.eventEndDate && a.eventEndDate !== a.eventDate &&
+                                ` – ${new Date(a.eventEndDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
+                            </span>
+                            {a.venue && (
+                              <span className="text-[11px] text-gray-500 font-medium">{a.venue}</span>
+                            )}
+                          </div>
+                        )}
+                        {a.flyerUrl && (
+                          <img src={a.flyerUrl} alt={a.title}
+                            className="w-full rounded-xl mb-2 max-h-48 object-cover" />
+                        )}
                         {a.body && <p className="text-xs text-gray-500 leading-relaxed mb-2">{a.body}</p>}
                         <div className="flex items-center gap-3 text-xs text-gray-400">
                           <span>{a.date}</span>

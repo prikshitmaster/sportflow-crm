@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as db from '../../lib/db'
-import { Bell } from 'lucide-react'
+import { Bell, Calendar } from 'lucide-react'
 
 export default function ParentNotices() {
   const [loading, setLoading] = useState(true)
@@ -65,6 +65,23 @@ export default function ParentNotices() {
               <p className="text-xs text-gray-500 mt-0.5">
                 {a.author || 'Academy'} · {a.date}
               </p>
+              {/* Event details (0183). Parents could never see events at all
+                  while they lived in their own table — this is the first
+                  surface that shows them one. */}
+              {a.eventDate && (
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-700 bg-brand-50 px-2 py-1 rounded-lg">
+                    <Calendar size={11} />
+                    {new Date(a.eventDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+                    {a.eventEndDate && a.eventEndDate !== a.eventDate &&
+                      ` – ${new Date(a.eventEndDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
+                  </span>
+                  {a.venue && <span className="text-[11px] text-gray-500 font-medium">{a.venue}</span>}
+                </div>
+              )}
+              {a.flyerUrl && (
+                <img src={a.flyerUrl} alt={a.title} className="w-full rounded-xl mt-2 max-h-48 object-cover" />
+              )}
               <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{a.body}</p>
             </div>
           </div>
