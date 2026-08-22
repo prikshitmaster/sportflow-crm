@@ -360,17 +360,21 @@ export async function insertPayment(p, invoiceId) {
 
 // Returns the most recent payment for (studentId, amount) within the given window, or null.
 // Used by addPayment to refuse duplicates from double-click or simultaneous staff submissions.
-export async function findRecentDuplicatePayment(studentId, amount, withinSeconds = 60) {
+export async function findRecentDuplicatePayment(studentId, amount, withinSeconds = 60, coverageStart = null) {
   if (!studentId || !amount) return null
   const sinceIso = new Date(Date.now() - withinSeconds * 1000).toISOString()
-  const { data, error } = await supabase
+  let q = supabase
     .from('payments')
-    .select('id, student, amount, created_at, mode')
+    .select('id, student, amount, created_at, mode, coverage_start')
     .eq('student_id', studentId)
     .eq('amount', Number(amount))
     .gte('created_at', sinceIso)
-    .order('created_at', { ascending: false })
-    .limit(1)
+  // Same student + same amount is NOT a duplicate when it covers a different
+  // period. Collecting July's ₹4,720 and then August's ₹4,720 for one student
+  // inside a minute — ordinary catch-up collection — was refused as a
+  // double-click. The billing period is what makes two rows twins.
+  if (coverageStart) q = q.eq('coverage_start', coverageStart)
+  const { data, error } = await q.order('created_at', { ascending: false }).limit(1)
   if (error) return null
   return data?.[0] || null
 }

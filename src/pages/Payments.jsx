@@ -1663,8 +1663,9 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     const end   = new Date(customEnd   + 'T00:00:00')
     const segments = []
     let cur = new Date(start.getFullYear(), start.getMonth(), 1)
-    // 36-month ceiling: a fat-fingered year in the date picker must not spin.
-    while (cur <= end && segments.length < 36) {
+    // Hard stop so a fat-fingered year can't spin the loop. Anything past 36
+    // months is rejected below rather than priced.
+    while (cur <= end && segments.length < 600) {
       const daysInMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate()
       const monthEnd    = new Date(cur.getFullYear(), cur.getMonth(), daysInMonth)
       const from = start > cur      ? start : cur
@@ -1683,6 +1684,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
       })
       cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
     }
+    // Refuse rather than silently under-charge. Capping the loop at 36 months
+    // priced a mistyped 5-year range as 36 months while still handing over the
+    // full 60 months of coverage — two free years, no warning anywhere.
+    if (segments.length > 36) return { tooLong: true, monthsSpan: segments.length }
     const fractionalMonths = segments.reduce((s, x) => s + x.fraction, 0)
     const amount = Math.max(0, Math.round(perMonthRate * fractionalMonths))
     // Per-month rupees are for display only, so the last one absorbs the
@@ -1701,6 +1706,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     }
   })()
 
+  const rangeTooLong = !!customRangeInfo?.tooLong
+  // Everything downstream prices off this — a rejected range prices off nothing.
+  const rangePricing = rangeTooLong ? null : customRangeInfo
+
   const prorationInfo = (() => {
     // A complete range is day-priced above; this is the older leading-days
     // deduction, still used while only "Covers from" has been filled in.
@@ -1718,7 +1727,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     return { missingDays, deduction, monthLabel: d.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) }
   })()
   const prorationDeduction = prorationInfo?.deduction || 0
-  const subtotal = customRangeInfo ? customRangeInfo.amount : preProrationAmount - prorationDeduction
+  const subtotal = rangePricing ? rangePricing.amount : preProrationAmount - prorationDeduction
   const discountAmt = Math.round(subtotal * form.discountPct / 100)
   const lateFeeAmt  = Number(lateFee) || 0
   const calcAmount  = subtotal - discountAmt + lateFeeAmt
@@ -1766,6 +1775,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     if (finalAmount <= 0 && !isAllInactive) return
     if (customDates && !hasCustomRange) return
     if (hasCustomRange && customEnd < customStart) return
+    if (rangeTooLong) return
     if (noteRequired) return
     setLoading(true)
     try {
@@ -1890,8 +1900,8 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     : referenceRate
   // A day-priced custom range has to be compared against a day-priced
   // expectation, or every legitimate mid-month join trips the 30% typo gate.
-  const expectedSubtotal = customRangeInfo
-    ? Math.round((expectedFullSubtotal / Math.max(1, months)) * customRangeInfo.fractionalMonths)
+  const expectedSubtotal = rangePricing
+    ? Math.round((expectedFullSubtotal / Math.max(1, months)) * rangePricing.fractionalMonths)
     : expectedFullSubtotal
   const expectedTotal = expectedSubtotal - Math.round(expectedSubtotal * form.discountPct / 100) + lateFeeAmt - prorationDeduction
   const sanityMismatch = !!(
@@ -2124,11 +2134,16 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                 <p className="col-span-2 text-xs text-red-600">"Covers until" must be on or after "Covers from".</p>
               )}
               <p className="col-span-2 text-[11px] text-gray-400">
-                {customRangeInfo
-                  ? <>Charged by the day: {customRangeInfo.totalDays} day{customRangeInfo.totalDays === 1 ? '' : 's'} × ₹{customRangeInfo.perDayRate.toLocaleString('en-IN')}/day
+                {rangeTooLong
+                  ? <span className="text-red-600 font-semibold">That range covers {customRangeInfo.monthsSpan} months. Split it into periods of 36 months or less.</span>
+                  : !rangePricing
+                  ? 'Pick both dates — the fee is worked out by the day for exactly this period.'
+                  : rangePricing.segments.length === 1
+                  ? <>Charged by the day: {rangePricing.totalDays} day{rangePricing.totalDays === 1 ? '' : 's'} × ₹{rangePricing.perDayRate.toLocaleString('en-IN')}/day
                       {' '}({prorationBasisSetting === '30day' ? '30-day month' : 'calendar month'} basis).
                       {' '}Change the fee above to change the day rate.</>
-                  : 'Pick both dates — the fee is worked out by the day for exactly this period.'}
+                  : <>Whole months at the full rate, part-months by the day
+                      {' '}({prorationBasisSetting === '30day' ? '30-day month' : 'calendar month'} basis) — see the month-by-month split below.</>}
               </p>
             </div>
           )}
@@ -2348,8 +2363,14 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
           )}
           <div className="flex justify-between text-xs text-gray-500">
             {hasCustomRange
-              ? <span>{customRangeInfo
-                  ? `Custom period · ${customRangeInfo.totalDays} day${customRangeInfo.totalDays === 1 ? '' : 's'} @ ₹${customRangeInfo.perDayRate.toLocaleString('en-IN')}/day`
+              ? <span>{rangePricing
+                  // The day rate is only quoted for a range inside ONE month.
+                  // Across months each month has its own day rate (a month's
+                  // fee ÷ its own length) and whole months are charged whole,
+                  // so "77 days × ₹144" would not multiply out to the total.
+                  ? rangePricing.segments.length === 1
+                    ? `Custom period · ${rangePricing.totalDays} day${rangePricing.totalDays === 1 ? '' : 's'} @ ₹${rangePricing.perDayRate.toLocaleString('en-IN')}/day`
+                    : `Custom period · ${rangePricing.totalDays} days · ${rangePricing.fractionalMonths.toFixed(2)} months`
                   : 'Custom period · amount set below'}</span>
               : monthPickerOn
               ? <span>₹{form.baseAmount.toLocaleString('en-IN')} × {months} month{months !== 1 ? 's' : ''} charged</span>
@@ -2361,9 +2382,9 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             }
             <span>₹{subtotal.toLocaleString('en-IN')}</span>
           </div>
-          {customRangeInfo && (
+          {rangePricing && (
             <div className="space-y-0.5 pl-2 border-l-2 border-gray-200">
-              {customRangeInfo.segments.map(s => (
+              {rangePricing.segments.map(s => (
                 <div key={s.label} className="flex justify-between text-[11px] text-gray-400">
                   <span>{s.label} · {s.full ? 'full month' : `${s.days} of ${s.daysInMonth} days`}</span>
                   <span>₹{s.amount.toLocaleString('en-IN')}</span>
@@ -2389,6 +2410,12 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
               <span>−₹{prorationInfo.deduction.toLocaleString('en-IN')}</span>
             </div>
           )}
+          {form.baseAmount <= 0 && lateFeeAmt > 0 && (
+            <div className="flex items-start gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mt-1">
+              <span className="text-sm leading-none mt-0.5">⚠</span>
+              <span>Late fee only — no months are being charged, so this does not extend coverage. {form.student || 'The student'} stays due for the same period.</span>
+            </div>
+          )}
           <label className="flex items-center gap-2 text-xs text-gray-600 pt-2 mt-1 border-t border-gray-200 cursor-pointer">
             <input
               type="checkbox"
@@ -2412,6 +2439,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
               onChange={e => setAmountOverride(Number(e.target.value))}
             />
           </div>
+          {isPartialPayment && finalAmount > calcAmount && (
+            <p className="text-[11px] text-gray-500 mt-1">
+              That is ₹{(finalAmount - calcAmount).toLocaleString('en-IN')} more than the fee — recorded as an overpayment, with no balance due.
+            </p>
+          )}
           {amountMismatch && (
             <div className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
               <div className="flex items-start gap-1.5 text-xs text-amber-700 min-w-0">
@@ -2552,6 +2584,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
           className={isDuplicate || sanityMismatch ? 'px-5 py-2.5 rounded-xl font-bold text-sm bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed' : 'btn-primary'}
           onClick={handleSave}
           disabled={loading || (finalAmount <= 0 && !isAllInactive) || !confirmOk || noteRequired
+            || rangeTooLong
             || (customDates && (!hasCustomRange || customEnd < customStart))}
         >
           {loading ? '…'

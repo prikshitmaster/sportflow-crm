@@ -1434,22 +1434,15 @@ export function AppProvider({ children }) {
   const addPayment = async (p) => {
     // Idempotency guard #1: in-memory lock against double-click / rapid resubmit
     // on the same browser session (kicks in before any network round-trip).
-    const lockKey = `${p.studentId}-${Number(p.amount)}-${p.monthsCovered || 1}`
+    // Includes the coverage period, matching the server-side check below —
+    // two different months at the same fee are not the same payment.
+    const lockKey = `${p.studentId}-${Number(p.amount)}-${p.monthsCovered || 1}-${p.advanceStart || ''}-${p.customPaidTill || ''}`
     if (_paymentInFlight.has(lockKey)) {
       showToast('Already recording this payment — please wait', 'error')
       return
     }
     _paymentInFlight.add(lockKey)
     try {
-      // Idempotency guard #2: server-side check for any payment with the same
-      // (student, amount) inserted in the last 60s — catches duplicates from
-      // a different tab/device or a network retry that bypassed the local lock.
-      const recent = await db.findRecentDuplicatePayment(p.studentId, p.amount, 60)
-      if (recent) {
-        const secsAgo = Math.max(1, Math.round((Date.now() - new Date(recent.created_at).getTime()) / 1000))
-        showToast(`Duplicate blocked — ${recent.id} for ₹${Number(recent.amount).toLocaleString('en-IN')} was just recorded ${secsAgo}s ago`, 'error')
-        return
-      }
       const collectionDate = p.paymentDate ? new Date(p.paymentDate + 'T00:00:00') : new Date()
       // For advance payments, coverage starts from the month after the student's current paidTill.
       //
@@ -1518,8 +1511,12 @@ export function AppProvider({ children }) {
         const st = students.find(s => String(s.id) === String(p.studentId))
         if (!st) { showToast('Student not found', 'error'); return }
 
-        await db.updateStudentPaidTill(st.id, paidTill, null)
-        setStudents(prev => prev.map(s => s.id === st.id ? { ...s, paidTill } : s))
+        // Same forward-only rule as a real payment — marking old months
+        // inactive must never pull a student back behind coverage they have
+        // already paid for.
+        const inactiveTill = (!st.paidTill || paidTill > st.paidTill) ? paidTill : st.paidTill
+        await db.updateStudentPaidTill(st.id, inactiveTill, null)
+        setStudents(prev => prev.map(s => s.id === st.id ? { ...s, paidTill: inactiveTill } : s))
 
         logAuditSport({
           actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student',
@@ -1529,6 +1526,22 @@ export function AppProvider({ children }) {
         })
 
         showToast(`${st.name} marked inactive for ${monthLabel} — no fee due, nothing collected`)
+        return
+      }
+
+      // Idempotency guard #2: server-side check for the same (student, amount,
+      // coverage start) inserted in the last 60s — catches duplicates from a
+      // different tab/device or a network retry that bypassed the local lock.
+      //
+      // Runs here rather than at the top of the function because it needs
+      // coverageStart: keyed on (student, amount) alone it refused a perfectly
+      // normal catch-up — collecting July's ₹4,720 and then August's ₹4,720 for
+      // the same student inside a minute — as a double-click. Same money, same
+      // student, different month is not a duplicate.
+      const recent = await db.findRecentDuplicatePayment(p.studentId, p.amount, 60, coverageStart)
+      if (recent) {
+        const secsAgo = Math.max(1, Math.round((Date.now() - new Date(recent.created_at).getTime()) / 1000))
+        showToast(`Duplicate blocked — ${recent.id} for ₹${Number(recent.amount).toLocaleString('en-IN')} covering the same period was recorded ${secsAgo}s ago`, 'error')
         return
       }
 
@@ -1579,6 +1592,37 @@ export function AppProvider({ children }) {
         }
       }
 
+      // ── What this payment does to the student's coverage and fee ─────────
+      //
+      // Coverage only ever moves FORWARD. Writing paid_till unconditionally
+      // meant a backdated payment — or a custom range ending earlier than the
+      // student was already paid up to — overwrote the later date and silently
+      // destroyed months the parent had already paid for. Concretely: paid till
+      // 31 Jul, record a forgotten payment backdated to 15 May, and paid_till
+      // became 31 May with June and July owed all over again. Correcting a
+      // wrong payment is what Delete is for; it recomputes paid_till from the
+      // rows that remain. markPaymentPaid has always had this guard.
+      //
+      // A fee-less row buys no months either: fee 0 with a late fee attached
+      // was collecting ₹500 and handing over a full month of coverage.
+      //
+      // Computed here, above the receipt, so the WhatsApp message quotes the
+      // date the student actually ends up with.
+      const buysCoverage = Number(p.baseAmount) > 0
+      const nextPaidTill = student
+        ? (buysCoverage && (!student.paidTill || paidTill > student.paidTill) ? paidTill : (student.paidTill || null))
+        : paidTill
+      const coverageHeld = !!student && !isCheque && nextPaidTill !== paidTill
+
+      // students.fees is a MONTHLY figure — the overdue amount and the revenue
+      // forecast both read it. Quarterly/yearly send their flat multi-month
+      // total as baseAmount, so writing it here stamped a ₹22,500 quarter onto
+      // the student as a ₹22,500 month. Only plans whose baseAmount really is
+      // one month's fee may update it.
+      const monthlyFee = (p.paymentType === 'monthly' || p.paymentType === 'custom')
+        ? p.baseAmount
+        : null
+
       // SPIKE — Twilio-sandbox auto receipt send, proving the automation
       // works end to end. Fire-and-forget: a WhatsApp failure must never
       // block or roll back a recorded payment. Only reaches a real phone
@@ -1598,7 +1642,7 @@ export function AppProvider({ children }) {
           await supabase.functions.invoke('whatsapp-send-test', {
             body: {
               to: '+' + normalizePhoneForWhatsApp(receiptPhone),
-              body: buildPaymentReceiptMessage({ student, academy: user?.academy, amount: p.amount, monthLabel, paidTill }),
+              body: buildPaymentReceiptMessage({ student, academy: user?.academy, amount: p.amount, monthLabel, paidTill: nextPaidTill }),
               mediaUrl,
             },
           })
@@ -1609,24 +1653,29 @@ export function AppProvider({ children }) {
         if (student.status === 'Suspended') {
           const batchId   = p.batchId   || student.batchId
           const batchName = p.batchName || student.batch
-          await db.activateStudentWithBatch(student.id, batchId, batchName, paidTill, p.baseAmount)
+          await db.activateStudentWithBatch(student.id, batchId, batchName, nextPaidTill, monthlyFee)
           if (batchId) await db.updateBatchEnrolled(batchId, 1)
           setStudents(prev => prev.map(s => s.id === student.id ? {
             ...s, status: 'Active', batchId, batch: batchName,
-            paidTill, fees: p.baseAmount || s.fees, feeAmount: p.baseAmount || s.fees,
+            paidTill: nextPaidTill,
+            fees: monthlyFee || s.fees, feeAmount: monthlyFee || s.fees,
             suspendedSince: null,
           } : s))
           showToast(`${student.name} reactivated → ${batchName || 'no batch'}`, 'success')
         } else {
-          await db.updateStudentPaidTill(student.id, paidTill, p.baseAmount)
+          await db.updateStudentPaidTill(student.id, nextPaidTill, monthlyFee)
           setStudents(prev => prev.map(s => s.id === student.id ? {
-            ...s, paidTill,
-            fees: p.baseAmount || s.fees, feeAmount: p.baseAmount || s.fees,
+            ...s, paidTill: nextPaidTill,
+            fees: monthlyFee || s.fees, feeAmount: monthlyFee || s.fees,
           } : s))
         }
       }
       showToast(
         isCheque ? 'Cheque recorded as Pending — mark Paid once cleared'
+        // Silence here would be the dangerous outcome: the payment is on the
+        // books but the student's coverage deliberately did not move, and the
+        // operator has to know that rather than discover it next month.
+        : coverageHeld ? `Payment recorded · coverage unchanged${nextPaidTill ? ` — still paid till ${nextPaidTill}` : ''}`
         : p.dueAmount > 0 ? `Payment recorded · ₹${p.dueAmount} due, added to Pending`
         : p.inactiveCount ? `Payment recorded · ${p.inactiveCount} month${p.inactiveCount !== 1 ? 's' : ''} marked inactive`
         : 'Payment recorded'
@@ -1667,7 +1716,25 @@ export function AppProvider({ children }) {
   const removePayment = async (payment, note = null) => {
     try {
       await db.deletePayment(payment.id)
-      const remaining = payments.filter(p => p.id !== payment.id)
+
+      // A partial payment writes a linked Pending "Balance due from INV-…" row.
+      // Deleting the payment left that shortfall behind, still counted in the
+      // Pending card and still chased by reminders, pointing at an invoice that
+      // no longer exists. The balance only means anything alongside its parent,
+      // so it goes with it. (The link lives in the note text — there is no FK.)
+      const orphanedDues = payments.filter(x =>
+        x.id !== payment.id &&
+        x.status === 'Pending' &&
+        String(x.studentId) === String(payment.studentId) &&
+        (x.notes || '').includes(`Balance due from ${payment.id}`)
+      )
+      for (const due of orphanedDues) {
+        try { await db.deletePayment(due.id) }
+        catch (e) { logger.warn?.('orphan due delete failed', e) ?? console.warn('orphan due delete failed', e) }
+      }
+
+      const removedIds = new Set([payment.id, ...orphanedDues.map(d => d.id)])
+      const remaining = payments.filter(p => !removedIds.has(p.id))
       setPayments(remaining)
 
       // Revert student's paid_till to their previous payment
@@ -1710,11 +1777,15 @@ export function AppProvider({ children }) {
           month:  payment.month || '—',
           mode:   payment.mode || '—',
           date:   payment.date || '—',
+          // Named in the log so the linked balance doesn't just disappear.
+          ...(orphanedDues.length ? { linkedDuesRemoved: orphanedDues.map(d => d.id).join(', ') } : {}),
         },
         note: note || null,
         academyId: user?.academyId,
       })
-      showToast('Payment deleted')
+      showToast(orphanedDues.length
+        ? `Payment deleted · ${orphanedDues.length} linked balance row${orphanedDues.length === 1 ? '' : 's'} removed`
+        : 'Payment deleted')
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
     }
@@ -1750,7 +1821,27 @@ export function AppProvider({ children }) {
             const months = payment.monthsCovered || 1
             newPaidTill  = toLocalDateStr(new Date(base.getFullYear(), base.getMonth() + months, 0))
           }
-          if (!student.paidTill || newPaidTill > student.paidTill) {
+          const shouldAdvance = !student.paidTill || newPaidTill > student.paidTill
+          const effectiveTill = shouldAdvance ? newPaidTill : student.paidTill
+
+          if (student.status === 'Suspended') {
+            // Taking a cheque from a suspended student deliberately does NOT
+            // reactivate them — the money isn't in yet. Nothing reactivated
+            // them when it cleared either, so they stayed Suspended while
+            // fully paid: absent from Active lists, batch headcount short, and
+            // no action anywhere in the app would ever fix it. Clearing the
+            // cheque is the moment the money becomes real, so it is the moment
+            // they come back.
+            const batchId   = student.batchId || student.lastBatchId   || null
+            const batchName = student.batch   || student.lastBatchName || null
+            await db.activateStudentWithBatch(student.id, batchId, batchName, effectiveTill, null)
+            if (batchId) await db.updateBatchEnrolled(batchId, 1)
+            setStudents(prev => prev.map(s => s.id === student.id ? {
+              ...s, status: 'Active', batchId, batch: batchName,
+              paidTill: effectiveTill, suspendedSince: null,
+            } : s))
+            showToast(`${student.name} reactivated — cheque cleared`, 'success')
+          } else if (shouldAdvance) {
             await db.updateStudentPaidTill(student.id, newPaidTill, null)
             setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
           }
