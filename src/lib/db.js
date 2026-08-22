@@ -3824,3 +3824,157 @@ export async function verifyTrialRazorpayPayment({ slug, trialId, orderId, payme
   if (data?.error) throw new Error(data.error)
   return data
 }
+
+// ── WhatsApp automation ───────────────────────────────────
+// Every one of these is an RPC, with no PostgREST read alongside it. The
+// whatsapp_* tables have RLS enabled and deliberately no policies (migration
+// 0180), so `.from('whatsapp_accounts').select()` returns nothing by design —
+// the table holds a permanent Meta access token and the academy's app secret,
+// and neither ever travels to a browser. secure_whatsapp_status returns
+// has_token / has_app_secret booleans instead of the values.
+
+// Connection state + caps + quiet hours. Always returns a well-formed object,
+// even before the academy has connected anything.
+export async function fetchWhatsAppStatus() {
+  const { data, error } = await supabase.rpc('secure_whatsapp_status', {
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return {
+    displayNumber:    data?.display_number || '',
+    status:           data?.status || 'disconnected',
+    dailyCap:         data?.daily_cap ?? 200,
+    quietStart:       (data?.quiet_start || '09:00:00').slice(0, 5),
+    quietEnd:         (data?.quiet_end   || '20:00:00').slice(0, 5),
+    paused:           !!data?.paused,
+    lastError:        data?.last_error || null,
+    hasToken:         !!data?.has_token,
+    hasAppSecret:     !!data?.has_app_secret,
+    phoneNumberId:    data?.phone_number_id || '',
+    wabaId:           data?.waba_id || '',
+    suspendGraceDays: data?.suspend_grace_days ?? 3,
+    sentToday:        Number(data?.sent_today ?? 0),
+  }
+}
+
+export async function connectWhatsApp({ phoneNumberId, wabaId, accessToken, appSecret, displayNumber }) {
+  const { error } = await supabase.rpc('secure_whatsapp_connect', {
+    p_phone_number_id: phoneNumberId,
+    p_waba_id:         wabaId,
+    p_access_token:    accessToken,
+    p_app_secret:      appSecret || null,
+    p_display_number:  displayNumber || null,
+    p_token:           _sessionToken(),
+  })
+  if (error) throw error
+  return fetchWhatsAppStatus()
+}
+
+export async function disconnectWhatsApp() {
+  const { error } = await supabase.rpc('secure_whatsapp_disconnect', {
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return fetchWhatsAppStatus()
+}
+
+// Any subset of the settings; nulls are left untouched server-side.
+export async function saveWhatsAppSettings({ dailyCap, quietStart, quietEnd, paused, graceDays }) {
+  const { error } = await supabase.rpc('secure_whatsapp_save_settings', {
+    p_daily_cap:   dailyCap   ?? null,
+    p_quiet_start: quietStart ?? null,
+    p_quiet_end:   quietEnd   ?? null,
+    p_paused:      paused     ?? null,
+    p_grace_days:  graceDays  ?? null,
+    p_token:       _sessionToken(),
+  })
+  if (error) throw error
+  return fetchWhatsAppStatus()
+}
+
+// Saved rows only. The caller merges these over the code catalogue in
+// src/lib/whatsappCatalogue.js — code decides which automations exist.
+export async function fetchWhatsAppAutomations() {
+  const { data, error } = await supabase.rpc('secure_whatsapp_automations', {
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return data || []
+}
+
+export async function saveWhatsAppAutomation({ kind, enabled, timing, audienceType, audienceIds }) {
+  const { data, error } = await supabase.rpc('secure_whatsapp_save_automation', {
+    p_kind:          kind,
+    p_enabled:       enabled ?? null,
+    p_timing:        timing ?? null,
+    p_audience_type: audienceType ?? null,
+    p_audience_ids:  audienceIds ?? null,
+    p_token:         _sessionToken(),
+  })
+  if (error) throw error
+  return data
+}
+
+// Saving always lands the template back in 'draft' and disarms its automation:
+// Meta does not allow editing an approved template in place, so edited text is
+// not what would go out until it is resubmitted and approved.
+export async function saveWhatsAppTemplate({
+  kind, templateName, bodyText, category, headerText, footerText, buttons, varMap, language,
+}) {
+  const { data, error } = await supabase.rpc('secure_whatsapp_save_template', {
+    p_kind:          kind ?? null,
+    p_template_name: templateName,
+    p_body_text:     bodyText,
+    p_category:      category || 'utility',
+    p_header_text:   headerText || null,
+    p_footer_text:   footerText || null,
+    p_buttons:       buttons || [],
+    p_var_map:       varMap || {},
+    p_language:      language || 'en',
+    p_token:         _sessionToken(),
+  })
+  if (error) throw error
+  return data
+}
+
+export async function fetchWhatsAppLog(limit = 100) {
+  const { data, error } = await supabase.rpc('secure_whatsapp_log', {
+    p_limit: limit,
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return (data || []).map(r => ({
+    id:             r.id,
+    kind:           r.kind,
+    toPhone:        r.to_phone,
+    status:         r.status,
+    skipReason:     r.skip_reason,
+    deliveryStatus: r.delivery_status,
+    error:          r.error,
+    attempts:       r.attempts,
+    scheduledFor:   r.scheduled_for,
+    createdAt:      r.created_at,
+    sentAt:         r.sent_at,
+    studentName:    r.student_name,
+  }))
+}
+
+export async function fetchWhatsAppOptOuts() {
+  const { data, error } = await supabase.rpc('secure_whatsapp_opt_outs', {
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return (data || []).map(r => ({
+    phone: r.phone, optedOutAt: r.opted_out_at, source: r.source,
+  }))
+}
+
+export async function setWhatsAppOptOut(phone, optedOut) {
+  const { data, error } = await supabase.rpc('secure_whatsapp_opt_out_set', {
+    p_phone:     phone,
+    p_opted_out: !!optedOut,
+    p_token:     _sessionToken(),
+  })
+  if (error) throw error
+  return data
+}
