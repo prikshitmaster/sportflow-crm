@@ -1659,7 +1659,7 @@ export function AppProvider({ children }) {
     }
   }
 
-  const removePayment = async (payment) => {
+  const removePayment = async (payment, note = null) => {
     try {
       await db.deletePayment(payment.id)
       const remaining = payments.filter(p => p.id !== payment.id)
@@ -1692,7 +1692,23 @@ export function AppProvider({ children }) {
         await db.updateStudentPaidTill(student.id, newPaidTill, null)
         setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
       }
-      logAuditSport({ actor: user, action: ACTIONS.PAYMENT_REMOVE, entityType: 'payment', entityId: payment.id, entityName: payment.student, changes: { amount: String(payment.amount), month: payment.month || '—' }, academyId: user?.academyId })
+      // Deleting a payment is the highest-risk action in the app — it is how
+      // collected cash stops existing on paper. So it records the most, not the
+      // least: mode and original date included, and the typed reason as the
+      // note. Without mode, a deleted cash payment and a deleted UPI one look
+      // identical in the log, and only one of those needs explaining.
+      logAuditSport({
+        actor: user, action: ACTIONS.PAYMENT_REMOVE, entityType: 'payment',
+        entityId: payment.id, entityName: payment.student,
+        changes: {
+          amount: String(payment.amount),
+          month:  payment.month || '—',
+          mode:   payment.mode || '—',
+          date:   payment.date || '—',
+        },
+        note: note || null,
+        academyId: user?.academyId,
+      })
       showToast('Payment deleted')
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')

@@ -732,7 +732,7 @@ export default function Payments() {
 
             {/* Reason / notes */}
             <div className="mb-5">
-              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Reason for deletion <span className="font-normal text-gray-400">(optional)</span></label>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Reason for deletion <span className="font-normal text-red-500">(required)</span></label>
               <textarea
                 value={deleteNote}
                 onChange={e => setDeleteNote(e.target.value)}
@@ -752,13 +752,16 @@ export default function Payments() {
                 Cancel
               </button>
               <button
-                disabled={deleting}
+                disabled={deleting || !deleteNote.trim()}
+                title={!deleteNote.trim() ? 'Enter a reason before deleting' : ''}
                 onClick={async () => {
                   setDeleting(true)
-                  try { await removePayment(deleteTarget) }
+                  // The reason was collected here already but never reached the
+                  // audit trail — removePayment took one argument and dropped it.
+                  try { await removePayment(deleteTarget, deleteNote.trim()) }
                   finally { setDeleting(false); setDeleteTarget(null); setDeleteNote('') }
                 }}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl transition disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deleting
                   ? <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Deleting…</>
