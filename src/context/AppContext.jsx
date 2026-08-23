@@ -256,9 +256,6 @@ export function AppProvider({ children }) {
   const [payments,       setPayments]       = useState([])
   const [trials,         setTrials]         = useState([])
   const [batches,        setBatches]        = useState([])
-  // Shared ground capacity (0184). Batches with the same slotId stand on one
-  // patch of grass and share its cap_per_day — see src/lib/batchCapacity.js.
-  const [batchSlots,     setBatchSlots]     = useState([])
   const [staff,          setStaff]          = useState([])
   const [attendanceData, setAttendanceData] = useState({})
   const [announcements,  setAnnouncements]  = useState([])
@@ -362,7 +359,6 @@ export function AppProvider({ children }) {
         logger.warn?.('fetchFeePlans background failed', err) ?? console.warn('fetchFeePlans background failed', err))
       db.fetchAllBatchEnrolments().then(setBatchEnrolments).catch(err =>
         logger.warn?.('fetchAllBatchEnrolments background failed', err) ?? console.warn('fetchAllBatchEnrolments background failed', err))
-      db.fetchBatchSlots(academyId).then(setBatchSlots).catch(() => {})
       db.fetchTrialSources(academyId).then(setTrialSources).catch(() => {})
       db.fetchAgeGroups(academyId).then(setAgeGroups).catch(() => {})
       db.fetchDrillCategories(academyId).then(setDrillCategories).catch(() => {})
@@ -472,7 +468,6 @@ export function AppProvider({ children }) {
       db.fetchEvents(academyId).then(setEvents).catch(() => {})
       db.fetchFeePlans(academyId).then(setFeePlans).catch(() => {})
       db.fetchAllBatchEnrolments().then(setBatchEnrolments).catch(() => {})
-      db.fetchBatchSlots(academyId).then(setBatchSlots).catch(() => {})
     } catch (err) {
       logger.warn?.('refreshAllSilent failed', err) ?? console.warn('refreshAllSilent failed', err)
     }
@@ -775,7 +770,7 @@ export function AppProvider({ children }) {
     await supabase.auth.signOut().catch(() => {})
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
-    setBatches([]);  setStaff([]);   setAnnouncements([]); setBatchSlots([])
+    setBatches([]);  setStaff([]);   setAnnouncements([])
     setAttendanceData({}); setEvents([]); setLeaveRequests([])
     setSelectedSport(null)
   }
@@ -853,7 +848,7 @@ export function AppProvider({ children }) {
     clearStaffSession()
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
-    setBatches([]);  setStaff([]);   setAnnouncements([]); setBatchSlots([])
+    setBatches([]);  setStaff([]);   setAnnouncements([])
     setAttendanceData({}); setEvents([]); setLeaveRequests([])
   }
 
@@ -2987,59 +2982,6 @@ export function AppProvider({ children }) {
     []
   )
 
-  // ── Batch slots: shared ground capacity (0184) ──────────────────────
-  // Grouping is a separate action from updateBatch on purpose: it rewrites
-  // several batches at once and must land as one server call, or a
-  // half-applied group would quote free seats for a ground nobody is on.
-  //
-  // These deliberately let server errors propagate. The trigger raises
-  // messages meant to be read by a human ("Ground full on Mon: …"), and
-  // swallowing them would leave the owner staring at a silently failed save.
-  const saveBatchSlot = useCallback(async ({ id = null, name, capPerDay, branchId = null }) => {
-    const saved = await db.upsertBatchSlot({ id, name, capPerDay, branchId })
-    setBatchSlots(prev => prev.some(s => s.id === saved.id)
-      ? prev.map(s => (s.id === saved.id ? saved : s))
-      : [...prev, saved])
-    logAuditSport({
-      actor: user, action: ACTIONS.SLOT_SAVE, entityType: 'batch_slot',
-      entityId: saved.id, entityName: saved.name,
-      changes: { capacityPerDay: String(saved.capPerDay) },
-      academyId: user?.academyId, sport: selectedSport ?? null,
-      branchId: saved.branchId || selectedBranch || null,
-    })
-    return saved
-  }, [user, selectedSport, selectedBranch])
-
-  const groupBatchesIntoSlot = useCallback(async (batchIds, slotId) => {
-    await db.setBatchSlot(batchIds, slotId)
-    const ids = new Set(batchIds)
-    setBatches(prev => prev.map(b => (ids.has(b.id) ? { ...b, slotId } : b)))
-    const slot = batchSlots.find(s => s.id === slotId)
-    logAuditSport({
-      actor: user, action: ACTIONS.SLOT_GROUP, entityType: 'batch_slot',
-      entityId: slotId, entityName: slot?.name || '—',
-      changes: { batches: String(batchIds.length), action: slotId ? 'grouped' : 'ungrouped' },
-      academyId: user?.academyId, sport: selectedSport ?? null,
-      branchId: slot?.branchId || selectedBranch || null,
-    })
-  }, [user, selectedSport, selectedBranch, batchSlots])
-
-  const removeBatchSlot = useCallback(async (slotId) => {
-    const slot = batchSlots.find(s => s.id === slotId)
-    await db.deleteBatchSlot(slotId)
-    setBatchSlots(prev => prev.filter(s => s.id !== slotId))
-    // The FK is ON DELETE SET NULL — mirror that locally so member batches
-    // stop pointing at a slot that no longer exists and fall back to their
-    // own capacity, which is what the server now reports too.
-    setBatches(prev => prev.map(b => (b.slotId === slotId ? { ...b, slotId: null } : b)))
-    logAuditSport({
-      actor: user, action: ACTIONS.SLOT_DELETE, entityType: 'batch_slot',
-      entityId: slotId, entityName: slot?.name || '—',
-      academyId: user?.academyId, sport: selectedSport ?? null,
-      branchId: slot?.branchId || selectedBranch || null,
-    })
-  }, [user, selectedSport, selectedBranch, batchSlots])
-
   return (
     <AppContext.Provider value={{
       // auth
@@ -3081,8 +3023,6 @@ export function AppProvider({ children }) {
       batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, reassignPrimaryBatch, updateBatch, updateBatchFee, deleteBatch,
       // multi-batch enrolment — one source for every batch headcount/roster
       batchEnrolments, enrolmentIdsByBatch, batchRoster, refreshBatchEnrolments,
-      // shared ground capacity (0184)
-      batchSlots, saveBatchSlot, groupBatchesIntoSlot, removeBatchSlot,
       feePlans: filteredFeePlans, addFeePlan, editFeePlan, removeFeePlan,
       events: staffScopedEvents, addEvent, updateEvent, updateEventStatus, removeEvent,
       staff: staffScopedStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,
