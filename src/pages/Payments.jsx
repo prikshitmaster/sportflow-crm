@@ -12,7 +12,7 @@ import WhatsAppBulkModal from '../components/WhatsAppBulkModal'
 import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/whatsapp'
 import { todayStr, toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 import { buildReceiptHTML } from '../lib/paymentReceipt'
-import { resolveBranchTax } from '../lib/tax'
+import { resolveBranchTax, computeTax, taxRowLabel } from '../lib/tax'
 import { fetchAttendanceForStudents } from '../lib/db'
 
 // Casing differs either side of the students ↔ fee_plans join — see
@@ -1735,8 +1735,15 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const prorationDeduction = prorationInfo?.deduction || 0
   const subtotal = rangePricing ? rangePricing.amount : preProrationAmount - prorationDeduction
   const discountAmt = Math.round(subtotal * form.discountPct / 100)
-  const lateFeeAmt  = Number(lateFee) || 0
-  const calcAmount  = subtotal - discountAmt + lateFeeAmt
+  const lateFeeAmt  = Math.max(0, Number(lateFee) || 0)
+  // Tax on the fee itself (Settings > Branch Fees & Tax > "Apply tax to:
+  // Monthly fees") — was configurable but silently never applied here; late
+  // fees are a penalty, not part of the service fee, so tax is computed on
+  // the discounted fee only, same base the trial-fee flow at /join taxes.
+  const taxPct = resolveBranchTax(branchForProration, 'fees')
+  const taxableBase = Math.max(0, subtotal - discountAmt)
+  const { taxAmount: taxAmt } = computeTax(taxableBase, taxPct)
+  const calcAmount  = taxableBase + taxAmt + lateFeeAmt
   const finalAmount = amountOverride !== null ? amountOverride : calcAmount
   // Only counts as a shortfall when the "This is a partial payment" checkbox
   // is explicitly on — otherwise the Total field is locked to calcAmount
@@ -1801,6 +1808,8 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         // Nothing collected → AppContext skips the invoice insert entirely.
         noChargeOnly: isAllInactive,
         lateFee: lateFeeAmt, paymentDate,
+        confirmedMismatch: confirmTyped,
+        taxPercent: taxPct, taxAmount: taxAmt,
         advanceStart: coverageStart,
         // Manual custom coverage period — see AppContext.addPayment, this
         // exact end date wins over the month-count math above when present.
@@ -1909,7 +1918,9 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const expectedSubtotal = rangePricing
     ? Math.round((expectedFullSubtotal / Math.max(1, months)) * rangePricing.fractionalMonths)
     : expectedFullSubtotal
-  const expectedTotal = expectedSubtotal - Math.round(expectedSubtotal * form.discountPct / 100) + lateFeeAmt - prorationDeduction
+  const expectedTaxableBase = Math.max(0, expectedSubtotal - Math.round(expectedSubtotal * form.discountPct / 100) - prorationDeduction)
+  const { taxAmount: expectedTaxAmt } = computeTax(expectedTaxableBase, taxPct)
+  const expectedTotal = expectedTaxableBase + expectedTaxAmt + lateFeeAmt
   const sanityMismatch = !!(
     form.studentId &&
     referenceRate > 0 &&
@@ -2234,7 +2245,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             <div className="flex-1">
               <label className="label">Late Fee (₹)</label>
               <input className="input" type="number" min="0" value={lateFee}
-                onChange={e => { setLateFee(Number(e.target.value)); setAmountOverride(null) }} />
+                onChange={e => { setLateFee(Math.max(0, Number(e.target.value))); setAmountOverride(null) }} />
             </div>
             <button type="button"
               onClick={() => { setShowLateFee(false); setLateFee(0); setAmountOverride(null) }}
@@ -2414,6 +2425,12 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             <div className="flex justify-between text-xs text-emerald-600 font-medium">
               <span>Partial month — {prorationInfo.missingDays} day{prorationInfo.missingDays === 1 ? '' : 's'} before join ({prorationInfo.monthLabel})</span>
               <span>−₹{prorationInfo.deduction.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+          {taxAmt > 0 && (
+            <div className="flex justify-between text-xs text-gray-500 font-medium">
+              <span>{taxRowLabel(taxPct)}</span>
+              <span>+₹{taxAmt.toLocaleString('en-IN')}</span>
             </div>
           )}
           {form.baseAmount <= 0 && lateFeeAmt > 0 && (
