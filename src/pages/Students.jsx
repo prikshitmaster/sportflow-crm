@@ -892,6 +892,16 @@ export const batchMatchesSport = (b, sport) => {
   return list.some(sp => sp?.toLowerCase() === sport.toLowerCase())
 }
 
+// A batch's own schedule type (migration 0186) narrows which batches make
+// sense to offer for a given training type — picking "Daily" should only
+// surface batches that actually run every day, not an MWF/TTS pattern batch.
+// No training type picked yet → show everything (nothing to narrow by).
+export const batchMatchesTrainingType = (b, trainingType) => {
+  if (!trainingType) return true
+  const want = trainingType.toLowerCase() === 'daily' ? 'daily' : 'alternate'
+  return (b.scheduleType || 'alternate') === want
+}
+
 function AddStudentModal({ onClose, onSave }) {
   const { batches, selectedSport, selectedBranch, sportBranches, branches, user, allStudents } = useApp()
   // New students always start in a Development batch — Advance squads are
@@ -1222,7 +1232,13 @@ function AddStudentModal({ onClose, onSave }) {
           <label className="label">Primary Batch *</label>
           <select className={`input ${errors.batchId ? 'border-red-400' : ''}`} value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— Select Batch —</option>
-            {devBatches.map(b => <option key={b.id} value={b.id}>{batchLabel(b)}</option>)}
+            {/* Narrowed to the chosen Training Type's schedule (0186) — a
+                Daily pick only offers batches that actually run every day.
+                The already-selected batch stays listed even if Training
+                Type changes afterward, so the field never silently blanks. */}
+            {devBatches
+              .filter(b => batchMatchesTrainingType(b, form.trainingType) || b.id === Number(form.batchId))
+              .map(b => <option key={b.id} value={b.id}>{batchLabel(b)}</option>)}
           </select>
           {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
           {form.batchId && (() => {
@@ -1815,12 +1831,15 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <label className="label">Batch</label>
           <select className="input" value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— No Batch —</option>
-            {/* Same rule as Add Student: only batches for this student's sport.
-                The student's CURRENT batch is always kept in the list, so an
-                existing cross-sport assignment stays visible and fixable rather
-                than silently blanking the field. */}
+            {/* Same rule as Add Student: only batches for this student's sport
+                AND matching their Training Type's schedule (0186) — Daily only
+                offers batches that run every day. The student's CURRENT batch
+                is always kept in the list, so an existing cross-sport or
+                cross-schedule assignment stays visible and fixable rather than
+                silently blanking the field. */}
             {batches
-              .filter(b => batchMatchesSport(b, form.sport) || String(b.id) === String(form.batchId))
+              .filter(b => (batchMatchesSport(b, form.sport) && batchMatchesTrainingType(b, form.trainingType))
+                || String(b.id) === String(form.batchId))
               .map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
         </div>
