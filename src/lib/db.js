@@ -352,6 +352,10 @@ export async function insertPayment(p, invoiceId) {
       academyId:      p.academyId    || null,
       notes:          p.notes        || null,
       dueAmount:      p.dueAmount    || 0,
+      lateFee:           p.lateFee           || 0,
+      confirmedMismatch: !!p.confirmedMismatch,
+      taxPercent:        p.taxPercent        || 0,
+      taxAmount:         p.taxAmount         || 0,
     },
     p_token: _sessionToken(),
   })
