@@ -217,9 +217,20 @@ export async function suspendStudent(id) {
 }
 
 export async function updateStudentStatus(id, status) {
+  // Defensive: no current caller passes 'Suspended' here (that goes through
+  // the dedicated suspendStudent(), which stamps this correctly) — but this
+  // function's name invites a future caller to pass any status string. Real
+  // production data already had 83 Suspended students with no suspended_since
+  // (likely pre-dating this field), silently breaking studentRules.js's
+  // effectiveAnchor() freeze and inflating their "outstanding" total every
+  // month they stayed paused. Stamping/clearing here too closes that path
+  // for good, matching what suspendStudent()/reactivateStudent() already do.
+  const payload = { status }
+  if (status === 'Suspended') payload.suspendedSince = toLocalDateStr()
+  else if (status === 'Active') payload.suspendedSince = null
   const { error } = await supabase.rpc('secure_update_student', {
     p_student_id: id,
-    p_payload:    { status },
+    p_payload:    payload,
     p_token:      _sessionToken(),
   })
   if (error) throw error
