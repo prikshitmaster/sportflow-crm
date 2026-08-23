@@ -144,6 +144,25 @@ console.log('\nslotSummary / dailyBatchRows — the live "evening" shape')
      daily[0].free, 18)
 }
 
+// ── scheduleType (0186) is authoritative — the old day-count inference is
+// only a fallback for batches somehow missing it. Both fixtures below
+// deliberately CONTRADICT what day-count would infer, to prove the explicit
+// flag wins, not the guess.
+console.log('\nscheduleType (0186) overrides the old day-count guess')
+{
+  const declaredDaily = { name: 'New Batch', scheduleType: 'daily', days: ['Mon', 'Wed', 'Fri'] }
+  eq('3-day batch explicitly marked Daily → still Daily (owner said so)',
+     isFullWeekBatch(declaredDaily, ['Mon', 'Wed', 'Fri']), true)
+
+  const declaredAlternate = { name: 'Old Batch', scheduleType: 'alternate', days: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] }
+  eq('7-day batch explicitly marked Alternate → NOT Daily (owner said so)',
+     isFullWeekBatch(declaredAlternate, ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']), false)
+
+  const noFlag = { name: 'Pre-0186 stray row', days: ['Mon','Tue','Wed','Thu','Fri','Sat'] }
+  eq('missing scheduleType still falls back to the day-count guess',
+     isFullWeekBatch(noFlag, ['Mon','Tue','Wed','Thu','Fri','Sat']), true)
+}
+
 console.log(failures === 0
   ? '\nAll checks passed — JS preview agrees with the SQL enforcer.\n'
   : `\n${failures} check(s) FAILED — the JS mirror has drifted from the SQL.\n`)

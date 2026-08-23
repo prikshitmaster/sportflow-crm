@@ -2054,6 +2054,7 @@ export function AppProvider({ children }) {
         ground: created.ground || null,
         defaultFee: created.default_fee || 0, defaultPlan: created.default_plan || 'monthly',
         batchType: created.batch_type || 'development',
+        scheduleType: created.schedule_type || 'alternate',
         branchId: created.branch_id || null,
       }])
       logAuditSport({ actor: user, action: ACTIONS.BATCH_ADD, entityType: 'batch', entityId: created.id, entityName: created.name, changes: { sport: (b.sports || []).join(', '), capacity: String(b.capacity), coach: b.coach || '—' }, academyId: user?.academyId, sport: (b.sports?.[0]) ?? null, branchId: created.branch_id ?? (selectedBranch || null) })
