@@ -664,6 +664,9 @@ function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit,
           <span className={`badge text-[10px] ${b.batchType === 'advance' ? 'badge-purple' : 'badge-blue'}`}>
             {b.batchType === 'advance' ? 'Advance' : 'Development'}
           </span>
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${SCHEDULE_BADGE[b.scheduleType] || SCHEDULE_BADGE.alternate}`}>
+            {b.scheduleType === 'daily' ? 'Daily' : 'Alternate'}
+          </span>
           {isFull && <span className="badge badge-red text-[10px]">Full</span>}
           {!isFull && b.waitlist > 0 && <span className="badge badge-yellow text-[10px]">{b.waitlist} waitlist</span>}
           {(b.ageMin > 0 || b.ageMax < 99) && (
@@ -704,6 +707,22 @@ const BATCH_TYPES = [
   { value: 'advance',     label: 'Advance',     hint: 'Competitive / elite squad' },
 ]
 
+// How often the batch itself trains — an explicit, owner-set label
+// (migration 0186), not guessed from day-count. Colors/labels reuse the
+// fee_plans convention from Settings.jsx (TT_LABEL/TT_COLOR) so "Daily" /
+// "Alternate" mean the same thing and look the same everywhere in the app.
+const SCHEDULE_TYPES = [
+  { value: 'alternate', label: 'Alternate', hint: 'A fixed pattern — MWF, TTS, ...' },
+  { value: 'daily',     label: 'Daily',     hint: 'Trains every day' },
+]
+const SCHEDULE_BADGE = {
+  daily:     'bg-purple-100 text-purple-700',
+  alternate: 'bg-blue-100 text-blue-700',
+}
+// What "Daily" fills the day-picker with — matches the real academy's
+// existing all-week batches (no Sunday default; still freely editable).
+const DAILY_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
 function AddBatchModal({ onClose, onSave, staff, initialData }) {
   const { selectedSport, selectedBranch, sportBranches, user, role } = useApp()
   const isEdit = !!initialData
@@ -739,8 +758,17 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
     defaultFee:  initialData?.defaultFee  || 0,
     defaultPlan: initialData?.defaultPlan || 'monthly',
     batchType:   initialData?.batchType   || 'development',
+    scheduleType: initialData?.scheduleType || 'alternate',
   })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  // Picking "Daily" auto-fills the day picker (still freely editable after);
+  // "Alternate" has no single canonical pattern, so it leaves days as-is.
+  const setScheduleType = (value) => setForm(f => ({
+    ...f,
+    scheduleType: value,
+    days: value === 'daily' ? DAILY_DAYS : f.days,
+  }))
 
   const toggleSport = (sport) => setForm(f => ({
     ...f,
@@ -804,6 +832,24 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
           <label className="label">Ground / Venue <span className="text-gray-400 font-normal">(optional)</span></label>
           <input className="input" placeholder="e.g. Ground A, Court 1, Indoor Hall"
             value={form.ground} onChange={e => set('ground', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Schedule</label>
+          <div className="grid grid-cols-2 gap-2">
+            {SCHEDULE_TYPES.map(t => (
+              <button key={t.value} type="button" onClick={() => setScheduleType(t.value)}
+                className={`px-3 py-2 rounded-lg text-left border transition ${
+                  form.scheduleType === t.value
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}>
+                <span className="block text-xs font-bold">{t.label}</span>
+                <span className={`block text-[10px] ${form.scheduleType === t.value ? 'text-white/70' : 'text-gray-400'}`}>
+                  {t.hint}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
         <div>
           <label className="label">Batch Days</label>

@@ -51,12 +51,19 @@ export function slotDays(slotBatches) {
 }
 
 /**
- * A batch that trains every single day the GROUP runs, not just every day
- * printed on its own schedule — a group of only two MWF batches has no
- * "full week" at all. Mirrors _slot_day_ceiling always including this
- * batch's own capacity in the minimum for every day.
+ * Is this a "Daily" batch — one that trains every day, not just some
+ * pattern like MWF/TTS? Reads the explicit `batch.scheduleType` (migration
+ * 0186) first, set once by the owner instead of guessed. Falls back to
+ * comparing the batch's own days against the GROUP's full day-span only
+ * when scheduleType is missing (shouldn't happen post-backfill, but a
+ * batch created before 0186's default kicked in is defensive to cover) —
+ * that inference is what the fallback used to be the ONLY mechanism, and
+ * was fragile: a group of only two MWF batches has no "full week" at all,
+ * and adding a new batch to a group could silently change another batch's
+ * label depending on the group's day-span, not the batch's own schedule.
  */
 export function isFullWeekBatch(batch, groupDays) {
+  if (batch?.scheduleType) return batch.scheduleType === 'daily'
   const days = batch?.days || []
   return (groupDays || []).length > 0
     && days.length === groupDays.length

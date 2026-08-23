@@ -924,6 +924,7 @@ export async function fetchBatches(academyId) {
     defaultFee:  row.default_fee  || 0,
     defaultPlan: row.default_plan || 'monthly',
     batchType:   row.batch_type   || 'development',
+    scheduleType: row.schedule_type || 'alternate',
     branchId:    row.branch_id    || null,
     // Shared ground capacity (0184). NULL = ungrouped, capacity behaves
     // exactly as it did before slots existed.
@@ -1793,6 +1794,7 @@ export async function insertBatchV2(b) {
     p_default_plan: b.defaultPlan || 'monthly',
     p_branch_id:   b.branchId    || null,
     p_batch_type:  b.batchType   || 'development',
+    p_schedule_type: b.scheduleType || 'alternate',
   })
   if (error) throw error
   return data || b
@@ -1968,6 +1970,7 @@ export async function updateBatch(batchId, b) {
       defaultFee:  Number(b.defaultFee) || 0,
       defaultPlan: b.defaultPlan || 'monthly',
       batchType:   b.batchType   || 'development',
+      scheduleType: b.scheduleType || 'alternate',
     },
     p_token: _sessionToken(),
   })
