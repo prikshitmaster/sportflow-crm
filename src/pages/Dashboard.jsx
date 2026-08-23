@@ -3,12 +3,12 @@ import { useState, useMemo, useEffect } from 'react'
 import {
   Users, CreditCard, TrendingUp, UserPlus, ChevronRight,
   AlertCircle, CalendarDays, CheckCircle, XCircle, UserCog,
-  BarChart3, Layers, ArrowRight, Clock, FileText,
+  BarChart3, Layers, ArrowRight, Clock, FileText, UserX,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { isOutstanding } from '../lib/studentRules'
+import { isOutstanding, isGhost } from '../lib/studentRules'
 import { Skeleton, SkeletonCards } from '../components/Skeleton'
-import { fetchAllBatchEnrolments, getTodayCheckin, clockIn, clockOut } from '../lib/db'
+import { fetchAllBatchEnrolments, getTodayCheckin, clockIn, clockOut, fetchAttendanceForMonth } from '../lib/db'
 import { toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 
 export default function Dashboard() {
@@ -17,7 +17,47 @@ export default function Dashboard() {
     user, role, hasPermission, dataLoading, attendanceData,
     leaveRequests, loadLeaveRequests, updateLeave,
     selectedSport, selectedBranch, loadAttendanceForDate,
+    sportBranches,
   } = useApp()
+
+  // ── "Not Attending" (0189) ──────────────────────────────────────
+  // Sessions attended in the last 2 calendar months, per student — reused
+  // from the same fetchAttendanceForMonth Students.jsx already calls for its
+  // single-month "Low Attendance" hint, just called twice and summed. Not
+  // part of the sparse `attendanceData` cache (that's today + whatever date
+  // was last viewed on Attendance, not a rolling history).
+  const [sessions2Mo, setSessions2Mo] = useState({})
+  useEffect(() => {
+    if (!user?.academyId) return
+    const now = new Date()
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const count = (byStudent) => {
+      const out = {}
+      for (const [sid, days] of Object.entries(byStudent)) {
+        out[sid] = Object.values(days).filter(st => st === 'Present' || st === 'Late').length
+      }
+      return out
+    }
+    Promise.all([
+      fetchAttendanceForMonth(now.getFullYear(), now.getMonth()),
+      fetchAttendanceForMonth(prev.getFullYear(), prev.getMonth()),
+    ]).then(([cur, prv]) => {
+      const curC = count(cur), prvC = count(prv)
+      const merged = {}
+      for (const sid of new Set([...Object.keys(curC), ...Object.keys(prvC)])) {
+        merged[sid] = (curC[sid] || 0) + (prvC[sid] || 0)
+      }
+      setSessions2Mo(merged)
+    }).catch(() => {})
+  }, [user?.academyId])
+
+  // Each student's own branch decides its threshold (an owner viewing all
+  // branches at once can have students under different settings at the
+  // same time) — default 0 (zero sessions in 2 months) when unset.
+  const ghostMinFor = (s) => sportBranches.find(b => b.id === s.branchId)?.ghostMinSessions ?? 0
+  const ghostIds = useMemo(() => new Set(
+    students.filter(s => isGhost(s, sessions2Mo[s.id], ghostMinFor(s))).map(s => s.id)
+  ), [students, sessions2Mo, sportBranches])
 
   // Multi-batch enrolments — same source as Attendance page so counts match
   const [allEnrolments, setAllEnrolments] = useState({})
@@ -67,8 +107,8 @@ export default function Dashboard() {
   }
 
   const activeStudents = useMemo(() =>
-    students.filter(s => s.status === 'Active')
-  , [students])
+    students.filter(s => s.status === 'Active' && !ghostIds.has(s.id))
+  , [students, ghostIds])
 
   const activeStaff = useMemo(() =>
     staff.filter(s => s.status === 'Active')
@@ -119,7 +159,7 @@ export default function Dashboard() {
       payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => String(p.studentId))
     )
     const virtualOverdue = students
-      .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithRecord.has(String(s.id)))
+      .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithRecord.has(String(s.id)) && !ghostIds.has(s.id))
       .map(s => ({
         id: `DUE-${s.id}`, studentId: s.id, student: s.name,
         amount: s.fees || 0,
@@ -139,7 +179,7 @@ export default function Dashboard() {
       overdueAmt:  oList.reduce((s, p) => s + (p.amount ?? 0), 0),
       pendingAmt:  pList.reduce((s, p) => s + (p.amount ?? 0), 0),
     }
-  }, [payments, students, firstOfMonth])
+  }, [payments, students, firstOfMonth, ghostIds])
 
   const expectedAmt  = useMemo(
     () => activeStudents.reduce((s, st) => s + (st.fees || 0), 0),
@@ -147,6 +187,18 @@ export default function Dashboard() {
   )
   const collectPct   = expectedAmt > 0 ? Math.round((collectedAmt / expectedAmt) * 100) : 0
   const thisMoPct    = expectedAmt > 0 ? Math.round((thisMonthCollected / expectedAmt) * 100) : 0
+
+  // "Not Attending" — Active students below the branch's attendance floor,
+  // excluded from expectedAmt/overdueList above but tracked here so the
+  // owner can still see what that excluded cohort is worth.
+  const ghostStats = useMemo(() => {
+    const ghosts = students.filter(s => ghostIds.has(s.id))
+    return {
+      count:       ghosts.length,
+      feeAmt:      ghosts.reduce((s, st) => s + (st.fees || 0), 0),
+      overdueAmt:  ghosts.filter(s => isOutstanding(s, firstOfMonth)).reduce((s, st) => s + (st.fees || 0), 0),
+    }
+  }, [students, ghostIds, firstOfMonth])
 
   const todayDayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()]
 
@@ -336,6 +388,15 @@ export default function Dashboard() {
           sub={`of ${staff.length} total`}
           icon={UserCog}
         />
+        {ghostStats.count > 0 && (
+          <KpiCard
+            label="Not Attending"
+            value={ghostStats.count}
+            sub={`₹${fmtAmt(ghostStats.feeAmt)}/mo fees · ₹${fmtAmt(ghostStats.overdueAmt)} overdue — excluded above`}
+            icon={UserX}
+            tone="muted"
+          />
+        )}
       </div>
 
       {/* ── Main content ─────────────────────────────────────── */}

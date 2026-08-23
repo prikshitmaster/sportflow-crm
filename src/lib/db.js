@@ -2261,7 +2261,7 @@ export async function fetchSportBranches(academyId) {
   // Try with address first; if the column doesn't exist (42703), retry without it
   let { data, error } = await supabase
     .from('sport_branches')
-    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee, tax_percent, tax_on_fees, tax_on_trial, tax_on_kit, fee_proration_basis, auto_calc_payment_dates, location_id`)
+    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee, tax_percent, tax_on_fees, tax_on_trial, tax_on_kit, fee_proration_basis, auto_calc_payment_dates, ghost_min_sessions, location_id`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
@@ -2304,6 +2304,7 @@ export async function fetchSportBranches(academyId) {
     taxOnKit:   !!r.tax_on_kit,
     prorationBasis: r.fee_proration_basis || 'calendar',
     autoCalcDates: r.auto_calc_payment_dates ?? true,
+    ghostMinSessions: r.ghost_min_sessions ?? 0,
     // Groups every sport row at the same physical place (migration 0174).
     // Null only on the pre-0174 fallback selects below.
     locationId: r.location_id || null,
@@ -2374,7 +2375,7 @@ export async function updateSportBranch(branchId, { branchName, address, manager
 // reassign their own branch. secure_update_branch_fees (migration 0155) can
 // touch six columns and nothing else, and allows the owner OR the staff member
 // who is this branch's manager — enforced in the RPC, not here.
-export async function updateBranchFees(branchId, { trialFee, kitFee, taxPercent, taxOnFees, taxOnTrial, taxOnKit, prorationBasis, autoCalcDates }) {
+export async function updateBranchFees(branchId, { trialFee, kitFee, taxPercent, taxOnFees, taxOnTrial, taxOnKit, prorationBasis, autoCalcDates, ghostMinSessions }) {
   const num = (v) => (v !== undefined && v !== null && v !== '' ? Number(v) : null)
   const { error } = await supabase.rpc('secure_update_branch_fees', {
     p_branch_id:        branchId,
@@ -2386,6 +2387,7 @@ export async function updateBranchFees(branchId, { trialFee, kitFee, taxPercent,
     p_tax_on_kit:       !!taxOnKit,
     p_proration_basis:  prorationBasis || null,
     p_auto_calc_dates:  autoCalcDates === undefined ? null : !!autoCalcDates,
+    p_ghost_min_sessions: num(ghostMinSessions),
     p_token:            _sessionToken(),
   })
   if (error) throw error

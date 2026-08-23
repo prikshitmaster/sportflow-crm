@@ -171,6 +171,18 @@ export function isLowAttendanceUnpaid(s, sessionCount, firstOfMonth = firstOfMon
 }
 
 /**
+ * "Not Attending" — reporting-only classification, no billing effect.
+ * An Active student whose attended sessions over the last 2 calendar
+ * months are at or below the branch's configured floor (default 0, i.e.
+ * literally zero attendance) is excluded from headline revenue/overdue
+ * totals and shown in a separate bucket instead.
+ */
+export function isGhost(s, sessionsLast2Mo, minSessions = 0) {
+  if (s.status !== 'Active') return false
+  return (sessionsLast2Mo ?? 0) <= minSessions
+}
+
+/**
  * Ageing bucket label for a number of days overdue.
  * Matches Reports.jsx exactly: 1–30, 31–60, 61–90, 90+.
  */

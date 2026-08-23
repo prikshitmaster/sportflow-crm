@@ -9,13 +9,13 @@ import {
   ArrowUpRight, ArrowDownRight, Minus, BarChart3, BookOpen, Layers,
   CalendarCheck, Clock, Search, FileText, IndianRupee, Target, Star,
   Shield, ChevronDown, ChevronUp, RefreshCw, Filter, X, Calendar, User,
-  FileDown, CheckSquare, Trash2, PlusSquare, Edit3,
+  FileDown, CheckSquare, Trash2, PlusSquare, Edit3, UserX,
 } from 'lucide-react'
 import * as db from '../lib/db'
 import { ACTION_LABELS, ACTION_CATEGORY, ENTITY_COLORS, ROLE_COLORS } from '../lib/audit'
 import { saveOrShareFile } from '../lib/nativeSave'
 import PaymentTrail from '../components/PaymentTrail'
-import { isOutstanding, daysOverdue as ruleDaysOverdue, ageingBucket, ageingBucketOrder } from '../lib/studentRules'
+import { isOutstanding, daysOverdue as ruleDaysOverdue, ageingBucket, ageingBucketOrder, isGhost } from '../lib/studentRules'
 import { toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel, FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
 
@@ -156,6 +156,7 @@ const TABS = [
   { id: 'ageing',       label: 'Ageing',       icon: Clock        },
   { id: 'attendance',   label: 'Attendance',   icon: CalendarCheck },
   { id: 'performance',  label: 'Performance',  icon: Star         },
+  { id: 'not_attending',label: 'Not Attending',icon: UserX        },
   { id: 'audit',        label: 'Audit Log',    icon: Shield       },
 ]
 
@@ -165,16 +166,49 @@ export default function Reports() {
   const { user, role, students, payments, trials, batches, attendanceData, selectedSport, selectedBranch, sportBranches } = useApp()
   const [activeTab, setActiveTab] = useState('overview')
 
+  // "Not Attending" — same 2-month attendance-floor classification as Dashboard.
+  // Purely computed at page-load time; no student status/fee/due_amount is ever touched.
+  const [sessions2Mo, setSessions2Mo] = useState({})
+  useEffect(() => {
+    if (!user?.academyId) return
+    const now  = new Date()
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const count = (byStudent) => {
+      const out = {}
+      for (const [sid, days] of Object.entries(byStudent)) {
+        out[sid] = Object.values(days).filter(st => st === 'Present' || st === 'Late').length
+      }
+      return out
+    }
+    Promise.all([
+      db.fetchAttendanceForMonth(now.getFullYear(), now.getMonth()),
+      db.fetchAttendanceForMonth(prev.getFullYear(), prev.getMonth()),
+    ]).then(([cur, prv]) => {
+      const curC = count(cur), prvC = count(prv)
+      const merged = {}
+      for (const sid of new Set([...Object.keys(curC), ...Object.keys(prvC)])) {
+        merged[sid] = (curC[sid] || 0) + (prvC[sid] || 0)
+      }
+      setSessions2Mo(merged)
+    }).catch(() => {})
+  }, [user?.academyId])
+
+  const ghostMinFor = (s) => sportBranches.find(b => b.id === s.branchId)?.ghostMinSessions ?? 0
+  const ghostIds = useMemo(() => new Set(
+    students.filter(s => isGhost(s, sessions2Mo[s.id], ghostMinFor(s))).map(s => s.id)
+  ), [students, sessions2Mo, sportBranches])
+  const ghostStudents = useMemo(() => students.filter(s => ghostIds.has(s.id)), [students, ghostIds])
+
   // Header summary stats — live, not hardcoded
   const headerStats = useMemo(() => {
-    const active     = students.filter(s => s.status === 'Active').length
+    const active     = students.filter(s => s.status === 'Active' && !ghostIds.has(s.id)).length
     const currMonth  = toLocalMonthStr(today)
     const collected  = payments.filter(p => p.status === 'Paid' && (p.date || '').slice(0, 7) === currMonth)
                                 .reduce((s, p) => s + p.amount, 0)
-    const expected   = students.filter(s => s.status === 'Active').reduce((s, st) => s + (st.fees || 0), 0)
+    const expected   = students.filter(s => s.status === 'Active' && !ghostIds.has(s.id)).reduce((s, st) => s + (st.fees || 0), 0)
     const rate       = expected > 0 ? Math.round((collected / expected) * 100) : 0
     return { active, collected, expected, rate }
-  }, [students, payments])
+  }, [students, payments, ghostIds])
 
   // Multi-batch enrolments — without this, students who train in a non-primary batch
   // had their payments invisible to that batch's "collected" total. (QA_AUDIT H2)
@@ -237,13 +271,14 @@ export default function Reports() {
 
       {/* Tab panels */}
       <div>
-        {activeTab === 'overview'     && <OverviewTab   students={students} payments={payments} trials={trials} batches={batches} batchToStudents={batchToStudents} />}
-        {activeTab === 'financial'    && <FinancialTab  payments={payments} students={students} />}
-        {activeTab === 'by_batch'     && <BatchTab      batches={batches} students={students} payments={payments} attendanceData={attendanceData} batchToStudents={batchToStudents} />}
+        {activeTab === 'overview'     && <OverviewTab   students={students} payments={payments} trials={trials} batches={batches} batchToStudents={batchToStudents} ghostIds={ghostIds} />}
+        {activeTab === 'financial'    && <FinancialTab  payments={payments} students={students} ghostIds={ghostIds} />}
+        {activeTab === 'by_batch'     && <BatchTab      batches={batches} students={students} payments={payments} attendanceData={attendanceData} batchToStudents={batchToStudents} ghostIds={ghostIds} />}
         {activeTab === 'students'     && <StudentLedgerTab students={students} payments={payments} />}
         {activeTab === 'ageing'       && <AgeingTab     key={`${selectedSport}-${selectedBranch}`} students={students} payments={payments} batches={batches} />}
         {activeTab === 'attendance'   && <AttendanceTab key={`${selectedSport}-${selectedBranch}`} students={students} batches={batches} />}
         {activeTab === 'performance'  && <PerformanceTab students={students} batches={batches} academyId={user?.academyId} />}
+        {activeTab === 'not_attending' && <NotAttendingTab students={ghostStudents} sessions2Mo={sessions2Mo} />}
         {activeTab === 'audit'        && <AuditTab academyId={user?.academyId} selectedSport={role === 'staff' ? (user?.sports?.[0] || null) : selectedSport} selectedBranch={role === 'staff' ? (user?.branchId || null) : selectedBranch} sportBranches={sportBranches} />}
       </div>
     </div>
@@ -252,7 +287,7 @@ export default function Reports() {
 
 // ── Overview ──────────────────────────────────────────────
 
-function OverviewTab({ students, payments, trials, batches, batchToStudents = {} }) {
+function OverviewTab({ students, payments, trials, batches, batchToStudents = {}, ghostIds = new Set() }) {
   const [period, setPeriod] = useState(MONTH_OPTS[0].value)
 
   const prevPeriod = MONTH_OPTS[1]?.value
@@ -260,16 +295,16 @@ function OverviewTab({ students, payments, trials, batches, batchToStudents = {}
   const periodPay  = payments.filter(p => monthKey(p.date) === period)
   const prevPay    = payments.filter(p => monthKey(p.date) === prevPeriod)
 
-  const activeCount   = students.filter(s => s.status === 'Active').length
+  const activeCount   = students.filter(s => s.status === 'Active' && !ghostIds.has(s.id)).length
   const suspCount     = students.filter(s => s.status === 'Suspended').length
   const collected     = periodPay.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
   const prevCollected = prevPay.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0)
   const firstOfMonthStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
   const outstanding   = students
-    .filter(s => isOutstanding(s, firstOfMonthStr))
+    .filter(s => isOutstanding(s, firstOfMonthStr) && !ghostIds.has(s.id))
     .reduce((sum, s) => sum + (s.fees || 0), 0)
   const convRate      = trials.length ? pct(trials.filter(t => t.converted).length, trials.length) : 0
-  const forecast      = students.filter(s => s.status === 'Active').reduce((s, st) => s + (st.fees || 0), 0)
+  const forecast      = students.filter(s => s.status === 'Active' && !ghostIds.has(s.id)).reduce((s, st) => s + (st.fees || 0), 0)
   const collRate      = pct(collected, forecast)
 
   // 6-month revenue trend
@@ -289,22 +324,22 @@ function OverviewTab({ students, payments, trials, batches, batchToStudents = {}
   const overdueAll = useMemo(() => {
     const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
     return students
-      .filter(s => isOutstanding(s, firstOfMonth))
+      .filter(s => isOutstanding(s, firstOfMonth) && !ghostIds.has(s.id))
       .sort((a, b) => (a.paidTill || '').localeCompare(b.paidTill || ''))
-  }, [students])
+  }, [students, ghostIds])
   const overdueStudents = overdueAll.slice(0, 8)
 
   // Batch performance — includes multi-batch students so non-primary batches
   // don't get credit-erased for collected payments.
   const batchPerf = useMemo(() => batches.map(b => {
     const mbIds = batchToStudents[b.id] || new Set()
-    const bs = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name || mbIds.has(s.id)))
+    const bs = students.filter(s => s.status === 'Active' && !ghostIds.has(s.id) && (s.batchId === b.id || s.batch === b.name || mbIds.has(s.id)))
     const exp = bs.reduce((s, st) => s + (st.fees || 0), 0)
     const bsIdSet = new Set(bs.map(s => s.id))
     const col = payments.filter(p => bsIdSet.has(p.studentId) && p.status === 'Paid' && monthKey(p.date) === period)
       .reduce((s, p) => s + p.amount, 0)
     return { name: b.name, count: bs.length, expected: exp, collected: col }
-  }).filter(r => r.count > 0).sort((a, b) => b.expected - a.expected).slice(0, 5), [batches, students, payments, period, batchToStudents])
+  }).filter(r => r.count > 0).sort((a, b) => b.expected - a.expected).slice(0, 5), [batches, students, payments, period, batchToStudents, ghostIds])
 
   return (
     <div className="space-y-6">
@@ -492,7 +527,7 @@ function OverviewTab({ students, payments, trials, batches, batchToStudents = {}
 
 // ── Financial Ledger ──────────────────────────────────────
 
-function FinancialTab({ payments, students }) {
+function FinancialTab({ payments, students, ghostIds = new Set() }) {
   // Receivables state
   const [period,     setPeriod]    = useState(MONTH_OPTS[0].value)
   const [recStatus,  setRecStatus] = useState('All')
@@ -516,7 +551,7 @@ function FinancialTab({ payments, students }) {
   // Build accounts-receivable rows
   const receivables = useMemo(() => {
     return students
-      .filter(s => s.status === 'Active' || s.status === 'Suspended')
+      .filter(s => (s.status === 'Active' || s.status === 'Suspended') && !ghostIds.has(s.id))
       .map(s => {
         const isPaid    = s.paidTill != null && s.paidTill >= lastDayStr
         const isOverdue = s.paidTill == null || s.paidTill < firstDayStr
@@ -538,7 +573,7 @@ function FinancialTab({ payments, students }) {
         }
         return a.s.name.localeCompare(b.s.name)
       })
-  }, [students, payments, period, firstDayStr, lastDayStr])
+  }, [students, payments, period, firstDayStr, lastDayStr, ghostIds])
 
   const filteredRec = useMemo(() => receivables.filter(r => {
     const matchS = recStatus === 'All' || r.status === recStatus
@@ -547,7 +582,7 @@ function FinancialTab({ payments, students }) {
     return matchS && matchQ
   }), [receivables, recStatus, recSearch])
 
-  const expected     = students.filter(s => s.status === 'Active').reduce((sum, s) => sum + (s.fees || 0), 0)
+  const expected     = students.filter(s => s.status === 'Active' && !ghostIds.has(s.id)).reduce((sum, s) => sum + (s.fees || 0), 0)
   const recCollected = payments.filter(p => p.status === 'Paid' && monthKey(p.date) === period).reduce((sum, p) => sum + p.amount, 0)
   const recOutstanding = receivables.reduce((sum, r) => sum + r.outstanding, 0)
   const rate         = pct(recCollected, expected)
@@ -815,7 +850,7 @@ function FinancialTab({ payments, students }) {
 
 // ── By Batch ──────────────────────────────────────────────
 
-function BatchTab({ batches, students, payments, attendanceData, batchToStudents = {} }) {
+function BatchTab({ batches, students, payments, attendanceData, batchToStudents = {}, ghostIds = new Set() }) {
   const [period, setPeriod] = useState(MONTH_OPTS[0].value)
   const todayAtt = attendanceData[todayStr] || {}
 
@@ -823,7 +858,7 @@ function BatchTab({ batches, students, payments, attendanceData, batchToStudents
   // Without the union, multi-batch students' fees and payments were invisible to non-primary batches.
   const rows = useMemo(() => batches.map(b => {
     const mbIds = batchToStudents[b.id] || new Set()
-    const bs  = students.filter(s => s.status === 'Active' && (s.batchId === b.id || s.batch === b.name || mbIds.has(s.id)))
+    const bs  = students.filter(s => s.status === 'Active' && !ghostIds.has(s.id) && (s.batchId === b.id || s.batch === b.name || mbIds.has(s.id)))
     const exp = bs.reduce((s, st) => s + (st.fees || 0), 0)
     const bsIdSet = new Set(bs.map(s => s.id))
     const bPay = payments.filter(p => bsIdSet.has(p.studentId) && monthKey(p.date) === period)
@@ -833,7 +868,7 @@ function BatchTab({ batches, students, payments, attendanceData, batchToStudents
     return { batch: b, count: bs.length, expected: exp, collected: col, pending: pend, attPct: bs.length ? pct(present, bs.length) : 0 }
   }).filter(r => r.count > 0 || r.batch.capacity > 0)
     .sort((a, b) => b.expected - a.expected)
-  , [batches, students, payments, period, todayAtt, batchToStudents])
+  , [batches, students, payments, period, todayAtt, batchToStudents, ghostIds])
 
   const totExp = rows.reduce((s, r) => s + r.expected, 0)
   const totCol = rows.reduce((s, r) => s + r.collected, 0)
@@ -1711,6 +1746,85 @@ function AuditEntry({ log, branchName, expanded, onToggle }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Not Attending ─────────────────────────────────────────
+// Purely a display of the ghost cohort already excluded from every headline
+// figure elsewhere in this page — no billing/status action lives here.
+
+function NotAttendingTab({ students, sessions2Mo }) {
+  const firstOfMonthStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`
+
+  const rows = useMemo(() => students
+    .map(s => ({
+      s,
+      sessions: sessions2Mo[s.id] ?? 0,
+      outstanding: isOutstanding(s, firstOfMonthStr) ? (s.fees || 0) : 0,
+    }))
+    .sort((a, b) => a.sessions - b.sessions || a.s.name.localeCompare(b.s.name))
+  , [students, sessions2Mo, firstOfMonthStr])
+
+  const totalFees = rows.reduce((sum, r) => sum + (r.s.fees || 0), 0)
+  const totalDue  = rows.reduce((sum, r) => sum + r.outstanding, 0)
+
+  const handleExport = () => {
+    const headers = ['Student','Student Code','Batch','Sport','Sessions (last 2mo)','Monthly Fee','Outstanding','Paid Till']
+    downloadCSV(headers, rows.map(({ s, sessions, outstanding }) => [
+      s.name, s.studentCode||'', s.batch||'', s.sport||'', sessions, s.fees||0, outstanding, s.paidTill||''
+    ]), `not-attending-${todayStr}.csv`)
+  }
+
+  const cols = [
+    { key: 'student',     label: 'Student',              w: '2fr'   },
+    { key: 'batch',       label: 'Batch',                w: '1.5fr' },
+    { key: 'sessions',    label: 'Sessions (2mo)',       w: '130px', right: true },
+    { key: 'fee',         label: 'Monthly Fee',          w: '110px', right: true },
+    { key: 'outstanding', label: 'Outstanding',          w: '115px', right: true },
+    { key: 'paidtill',    label: 'Paid Till',            w: '110px' },
+  ]
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800">
+        Students here are Active in the system but attended <strong>zero (or your configured minimum)</strong> sessions
+        in the last 2 months. They're excluded from Expected Revenue / Overdue on every other tab so those numbers
+        reflect students who are actually training. Nothing here is charged, waived, or changed automatically —
+        review the list and decide (suspend, follow up, mark inactive) manually. Adjust the threshold in Settings → Branch Fees & Tax.
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <KpiCard label="Not Attending" value={rows.length} sub="Active, 0 sessions in 60 days" icon={UserX} color="text-amber-700" bg="bg-amber-50" />
+        <KpiCard label="Their Monthly Fees" value={INR(totalFees)} sub="excluded from Forecast" icon={Target} color="text-gray-600" bg="bg-gray-50" />
+        <KpiCard label="Their Outstanding" value={INR(totalDue)} sub="excluded from Overdue" icon={CreditCard} color="text-gray-600" bg="bg-gray-50" />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+        <div className="flex items-center justify-between px-4 pt-4">
+          <SectionHeader title="Not Attending Students" subtitle="Lowest attendance first" />
+          <ExportBtn onClick={handleExport} />
+        </div>
+        <TableHead cols={cols} />
+        {rows.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">No students below the attendance floor — nice.</div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {rows.map(({ s, sessions, outstanding }) => (
+              <div key={s.id}
+                className="grid gap-3 px-4 py-3 items-center hover:bg-brand-50/20 transition"
+                style={{ gridTemplateColumns: cols.map(c => c.w || '1fr').join(' ') }}>
+                <span className="text-sm font-semibold text-gray-800 truncate">{s.name}</span>
+                <span className="text-xs text-gray-500 truncate">{s.batch || '—'}</span>
+                <span className="text-xs text-right font-bold text-gray-700 tabular-nums">{sessions}</span>
+                <span className="text-xs text-right text-gray-600 tabular-nums">{INR(s.fees)}</span>
+                <span className="text-xs text-right font-bold text-red-600 tabular-nums">{INR(outstanding)}</span>
+                <span className="text-xs text-gray-500">{s.paidTill ? new Date(s.paidTill+'T00:00:00').toLocaleDateString('en-IN',{month:'short',year:'numeric'}) : '—'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
