@@ -115,6 +115,47 @@ export function batchSeatInfo({ batch, slot, days, load, enrolled }) {
   }
 }
 
+// ── Day-pattern labels (display only) ──────────────────────────────────
+// Coaches already name these schedules MWF / TTS on the batch cards
+// themselves — showing the ground's per-day load as raw weekday names
+// ("Mon", "Tue", …) instead just makes the owner re-derive a pattern they
+// already picked when they created the batch. Two calendar days collapse
+// into one tile whenever the exact same set of batches meets on both —
+// which is also exactly when their headcounts are guaranteed identical, so
+// merging them loses no information, only the repetition.
+const KNOWN_PATTERNS = { 'Mon,Wed,Fri': 'MWF', 'Tue,Thu,Sat': 'TTS' }
+
+function patternLabel(patternDays, allDays) {
+  if (patternDays.length === allDays.length) return 'Daily'
+  return KNOWN_PATTERNS[patternDays.join(',')]
+    || patternDays.map(d => d.slice(0, 3)).join('/')
+}
+
+/**
+ * Collapses per-day rows (one per weekday) into one row per distinct
+ * batch-day pattern found in `slotBatches` — an MWF batch sharing a ground
+ * with a TTS batch renders as two tiles ("MWF", "TTS"), not six.
+ */
+export function groupRowsByPattern(rows, slotBatches, days) {
+  const groups = new Map()
+  ;(days || []).forEach(d => {
+    const activeIds = (slotBatches || [])
+      .filter(b => (b.days || []).includes(d))
+      .map(b => b.id).sort().join(',')
+    if (!groups.has(activeIds)) groups.set(activeIds, [])
+    groups.get(activeIds).push(d)
+  })
+  const rowByDay = new Map((rows || []).map(r => [r.day, r]))
+  return [...groups.values()].map(patternDays => {
+    const first = rowByDay.get(patternDays[0]) || {}
+    return {
+      label:    patternLabel(patternDays, days || []),
+      days:     patternDays,
+      occupied: first.occupied, free: first.free, full: first.full, over: first.over,
+    }
+  })
+}
+
 /**
  * Everything the Batches page needs for one slot, in one call.
  *
