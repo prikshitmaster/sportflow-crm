@@ -61,6 +61,7 @@ export default function StaffAttendance() {
   const [dirty,         setDirty]         = useState(new Set())
   const [reasons,       setReasons]       = useState({})  // { studentId: 'reason text' }
   const [search,        setSearch]        = useState('')
+  const [sportFilter,   setSportFilter]   = useState('all')
   const [saving,        setSaving]        = useState(false)
 
   // Batches assigned to this coach (or all if none assigned), sorted today's-first
@@ -75,6 +76,18 @@ export default function StaffAttendance() {
     const pool = assigned.length > 0 ? assigned : batches
     return [...pool].sort((a, b) => (batchTrainsToday(b) ? 1 : 0) - (batchTrainsToday(a) ? 1 : 0))
   }, [batches, user, dayShort])
+
+  const batchSportsOf = (b) => Array.isArray(b.sports) ? b.sports : (b.sports ? [String(b.sports)] : [])
+
+  const batchSports = useMemo(() => {
+    const set = new Set()
+    myBatches.forEach(b => batchSportsOf(b).forEach(sp => { if (sp) set.add(sp) }))
+    return [...set].sort()
+  }, [myBatches])
+
+  const visibleBatches = useMemo(() =>
+    sportFilter === 'all' ? myBatches : myBatches.filter(b => batchSportsOf(b).includes(sportFilter))
+  , [myBatches, sportFilter])
 
   // Students in the selected batch (primary + multi-batch)
   const batchStudents = useMemo(() => {
@@ -209,15 +222,35 @@ export default function StaffAttendance() {
           </p>
         </div>
 
-        {myBatches.length === 0 ? (
+        {/* Sport filter — a whole-branch staff member has every sport's batches
+            in this list, so narrowing it is the difference between 4 cards and
+            23. Hidden entirely for a single-sport coach. */}
+        {batchSports.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 mb-4 no-scrollbar">
+            {['all', ...batchSports].map(sp => (
+              <button key={sp} onClick={() => setSportFilter(sp)}
+                className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full transition ${
+                  sportFilter === sp ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'
+                }`}>
+                {sp === 'all' ? 'All Sports' : sp}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {visibleBatches.length === 0 ? (
           <div className="text-center py-16">
             <Users size={32} className="text-gray-200 mx-auto mb-3" />
-            <p className="text-sm text-gray-500">No batches assigned</p>
-            <p className="text-xs text-gray-400 mt-1">Ask your owner to assign you to a batch</p>
+            <p className="text-sm text-gray-500">
+              {myBatches.length === 0 ? 'No batches assigned' : 'No batches for this sport'}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              {myBatches.length === 0 ? 'Ask your owner to assign you to a batch' : 'Pick another sport above'}
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {myBatches.map(b => {
+            {visibleBatches.map(b => {
               const activeCount    = students.filter(s => s.status === 'Active'    && (s.batchId === b.id || s.batch === b.name)).length
               const suspendedCount = students.filter(s => s.status === 'Suspended' && (s.batchId === b.id || s.batch === b.name)).length
               const count = activeCount

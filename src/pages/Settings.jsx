@@ -7,6 +7,7 @@ import {
 import { parseImportFile, importSportData } from '../lib/exportImport'
 import DevFillButton, { setDemoMode, isDemoModeEnabled } from '../components/DevFillButton'
 import { fillFeePlan } from '../lib/devFill'
+import WhatsAppSettings from '../components/WhatsAppSettings'
 
 const tabs = [
   { id: 'academy',       label: 'Academy Profile', icon: Building },
@@ -57,7 +58,7 @@ export default function Settings() {
           {activeTab === 'features'      && <FeaturesTab />}
           {activeTab === 'fees'          && <FeePlansTab onSave={handleSave} saved={saved} />}
           {activeTab === 'notifications' && <NotificationsTab onSave={handleSave} saved={saved} />}
-          {activeTab === 'whatsapp'      && <WhatsAppTab onSave={handleSave} saved={saved} />}
+          {activeTab === 'whatsapp'      && <WhatsAppSettings />}
           {activeTab === 'security'      && <SecurityTab onSave={handleSave} saved={saved} />}
           {activeTab === 'data'          && <DataTab user={user} allStudents={allStudents} showToast={showToast} />}
         </div>
@@ -384,6 +385,7 @@ function BranchFeesSection() {
     kitFee:     b.kitFee     != null ? String(b.kitFee)   : '',
     taxPercent: b.taxPercent != null ? String(b.taxPercent) : '',
     taxOnFees:  !!b.taxOnFees, taxOnTrial: !!b.taxOnTrial, taxOnKit: !!b.taxOnKit,
+    prorationBasis: b.prorationBasis || 'calendar',
   })
   const draftFor = (b) => drafts[b.id] ?? seed(b)
   const setField = (b, k, v) =>
@@ -397,6 +399,7 @@ function BranchFeesSection() {
       await db.updateBranchFees(b.id, {
         trialFee: d.trialFee, kitFee: d.kitFee, taxPercent: d.taxPercent,
         taxOnFees: d.taxOnFees, taxOnTrial: d.taxOnTrial, taxOnKit: d.taxOnKit,
+        prorationBasis: d.prorationBasis,
       })
       await refreshSportBranches()
       setDrafts(prev => { const n = { ...prev }; delete n[b.id]; return n })
@@ -481,6 +484,25 @@ function BranchFeesSection() {
                   {String(d.taxPercent).trim() === '' && (d.taxOnFees || d.taxOnTrial || d.taxOnKit) && (
                     <p className="text-[11px] text-amber-600 mt-1.5 font-semibold">Set a tax rate above, or nothing will be taxed.</p>
                   )}
+                </div>
+                <div className="col-span-2">
+                  <p className="label mb-1.5">Partial-month billing</p>
+                  <p className="text-[11px] text-gray-400 mb-1.5">
+                    When a student joins or pays mid-month, how the leading partial period gets priced.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      { v: 'calendar', label: 'Actual calendar days', hint: '30/31/28 days per month' },
+                      { v: '30day',    label: 'Fixed 30-day month',  hint: 'same per-day rate all year' },
+                    ].map(o => (
+                      <label key={o.v}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm font-medium transition ${d.prorationBasis === o.v ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                        <input type="radio" className="w-3.5 h-3.5 accent-brand-600" name={`proration-${b.id}`}
+                          checked={d.prorationBasis === o.v} onChange={() => setField(b, 'prorationBasis', o.v)} />
+                        {o.label} <span className="text-[10px] text-gray-400 font-normal">({o.hint})</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -735,57 +757,6 @@ function NotificationsTab({ onSave, saved }) {
         <Toggle label="Monthly Revenue Summary" desc="Sent on 1st of every month" defaultChecked={true} />
         <Toggle label="New Student Registration" desc="Alert when a new student is added" defaultChecked={true} />
       </div>
-      <SaveButton onSave={onSave} saved={saved} />
-    </div>
-  )
-}
-
-function WhatsAppTab({ onSave, saved }) {
-  const [connected, setConnected] = useState(false)
-  const [phone, setPhone] = useState('')
-
-  return (
-    <div>
-      <SectionHeader title="WhatsApp Integration" desc="Connect your WhatsApp Business number to send automatic messages" />
-      <div className={`p-4 rounded-xl border-2 mb-6 ${connected ? 'border-emerald-200 bg-emerald-50' : 'border-dashed border-gray-200'}`}>
-        {connected ? (
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-              <MessageCircle size={18} className="text-white" />
-            </div>
-            <div>
-              <p className="font-semibold text-emerald-700 text-sm">WhatsApp Connected</p>
-              <p className="text-xs text-emerald-600">{phone} · Active</p>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center py-4">
-            <div className="w-12 h-12 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <MessageCircle size={22} className="text-green-600" />
-            </div>
-            <p className="text-sm font-semibold text-gray-700 mb-1">Connect WhatsApp Business</p>
-            <p className="text-xs text-gray-500 mb-4">Auto-send fee reminders, trial confirmations and updates</p>
-            <div className="flex gap-2 max-w-xs mx-auto">
-              <input className="input flex-1" placeholder="+91 98765 43210" value={phone} onChange={e => setPhone(e.target.value)} />
-              <button className="bg-green-500 hover:bg-green-600 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition" onClick={() => phone && setConnected(true)}>
-                Connect
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <h4 className="text-sm font-bold text-gray-700 mb-3">Message Templates</h4>
-      {[
-        { name: 'Fee Reminder', template: 'Dear {parent_name}, fees of ₹{amount} for {student_name} are due on {due_date}. Pay via UPI: {upi_id}' },
-        { name: 'Trial Confirmation', template: 'Hi {parent_name}, {student_name}\'s trial session is scheduled for {trial_date} at {time}. See you at the academy!' },
-        { name: 'Overdue Alert', template: 'Dear {parent_name}, fees of ₹{amount} for {student_name} are overdue. Please clear dues to avoid suspension.' },
-      ].map(t => (
-        <div key={t.name} className="mb-3">
-          <label className="label">{t.name}</label>
-          <textarea className="input resize-none text-xs" rows={2} defaultValue={t.template} />
-        </div>
-      ))}
       <SaveButton onSave={onSave} saved={saved} />
     </div>
   )

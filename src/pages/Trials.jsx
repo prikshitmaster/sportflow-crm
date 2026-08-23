@@ -24,6 +24,7 @@ const STAGES = [
   { id: 'scheduled', label: 'Scheduled' },
   { id: 'attended',  label: 'Attended'  },
   { id: 'accepted',  label: 'Accepted'  },
+  { id: 'enquired',  label: 'Enquired'  }, // wanted in, but no seat free — see handleConvert
   { id: 'followup',  label: 'Follow-up' },
   { id: 'done',      label: 'Done'      }, // converted + rejected
 ]
@@ -33,6 +34,9 @@ const STAGE_STYLE = {
   scheduled: { bg: 'bg-blue-100',   text: 'text-blue-700'    },
   attended:  { bg: 'bg-amber-100',  text: 'text-amber-700'   },
   accepted:  { bg: 'bg-emerald-100',text: 'text-emerald-700' },
+  // Violet, not red: enquired is a healthy "yes, but wait" — the family said
+  // yes and the academy wants them. Only the ground is full.
+  enquired:  { bg: 'bg-violet-100', text: 'text-violet-700'  },
   followup:  { bg: 'bg-orange-100', text: 'text-orange-700'  },
   converted: { bg: 'bg-brand-100',  text: 'text-brand-700'   },
   rejected:  { bg: 'bg-red-100',    text: 'text-red-600'     },
@@ -98,10 +102,19 @@ const AGE_GROUPS = ['U6', 'U8', 'U10', 'U12', 'U14', 'U16', 'U18', 'Open']
 
 // ── Trial Slip Printer ────────────────────────────────────────
 
+// Calendar years, not a 365.25-day division — the old version could disagree
+// by one around a birthday with both Students.jsx's calcAge and the
+// EXTRACT(YEAR FROM age(dob)) the DB trigger uses (migration 0182), which meant
+// the screen and the stored value could show different ages for the same child.
 function calcAge(dob) {
   if (!dob) return null
-  const diff = Date.now() - new Date(dob).getTime()
-  return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000))
+  const today = new Date()
+  const birth = new Date(String(dob).slice(0, 10) + 'T00:00:00')
+  if (Number.isNaN(birth.getTime())) return null
+  let age = today.getFullYear() - birth.getFullYear()
+  const m = today.getMonth() - birth.getMonth()
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+  return age >= 0 ? age : null
 }
 
 // Fallback only, for trials created before migration 0124. Note it is NOT
@@ -118,7 +131,7 @@ function buildPrintHTML(trial, academyName, logoUrl, customLogo) {
   const isAcademy = trial.programType !== 'development'
   const isDev     = trial.programType === 'development'
   const feeCollected = trial.trialFeeMode !== 'Not collected'
-  const age       = trial.age || calcAge(trial.dob) || ''
+  const age       = calcAge(trial.dob) ?? trial.age ?? ''   // DOB wins — see 0182
   // Prefer the real payments row id so the printed slip and the revenue
   // record carry the same number.
   const receiptNo = trial.receiptNo || genReceiptNo(trial.name)
@@ -289,7 +302,7 @@ function TrialSlipModal({ trial, academyName, logoUrl, onClose }) {
   // Prefer the real payments row id so the printed slip and the revenue
   // record carry the same number.
   const receiptNo = trial.receiptNo || genReceiptNo(trial.name)
-  const age       = trial.age || calcAge(trial.dob) || '—'
+  const age       = calcAge(trial.dob) ?? trial.age ?? '—'   // DOB wins — see 0182
   const isAcademy = trial.programType !== 'development'
   const isDev     = trial.programType === 'development'
   const feeCollected = trial.trialFeeMode !== 'Not collected'
@@ -490,7 +503,11 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
     if (!form.name.trim() || !form.phone.trim() || !form.sport || !form.trialDate) return
     setSaving(true)
     try {
-      const age = form.age ? Number(form.age) : calcAge(form.dob) || null
+      // DOB wins. It used to be the other way round — a typed age overrode the
+      // date of birth — which is how 20 of 55 trials ended up with an age that
+      // contradicted their own DOB. Typed age is only used when there is no DOB
+      // (legacy and walk-in leads where nobody asked).
+      const age = calcAge(form.dob) ?? (form.age ? Number(form.age) : null)
       await onSave({
         ...form,
         phone:         form.phone.trim(),
@@ -597,14 +614,23 @@ function TrialModal({ onClose, onSave, batches, initial = {}, isEdit = false, se
                 </Field>
               </div>
               <div className="col-span-2">
-                <Field label="Age">
-                  <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-gray-50 focus-within:ring-2 focus-within:ring-brand-500/30 focus-within:border-brand-400 focus-within:bg-white transition">
+                {/* Typed only when there is no DOB. With a DOB set this shows
+                    the calculated value and stops accepting input, matching the
+                    /join form — the two can no longer drift apart. */}
+                <Field label={form.dob ? 'Age (from DOB)' : 'Age'}>
+                  <div className={`flex rounded-xl overflow-hidden border border-gray-200 transition ${
+                    form.dob ? 'bg-gray-100' : 'bg-gray-50 focus-within:ring-2 focus-within:ring-brand-500/30 focus-within:border-brand-400 focus-within:bg-white'
+                  }`}>
                     <input
-                      value={form.age ?? ''}
+                      value={form.dob ? (calcAge(form.dob) ?? '') : (form.age ?? '')}
                       onChange={e => set('age', e.target.value)}
+                      readOnly={!!form.dob}
+                      title={form.dob ? 'Calculated from date of birth' : ''}
                       placeholder="12"
                       type="number" min="3" max="60" inputMode="numeric"
-                      className="flex-1 px-3 py-2.5 text-sm text-gray-900 bg-transparent focus:outline-none placeholder-gray-400 w-full"
+                      className={`flex-1 px-3 py-2.5 text-sm bg-transparent focus:outline-none placeholder-gray-400 w-full ${
+                        form.dob ? 'text-gray-500 cursor-not-allowed' : 'text-gray-900'
+                      }`}
                     />
                     <span className="flex items-center pr-3 text-xs text-gray-400 shrink-0">yrs</span>
                   </div>
@@ -1186,7 +1212,11 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     name:        trial.name,
     parent:      trial.parent      || '',
     phone:       trial.phone       || '',
-    parentPhone: '',
+    // trial.phone IS the parent's OTP-verified number on the /join path
+    // (TrialEnroll.jsx:37) — leaving parentPhone blank here is why 490 of 569
+    // students had none, which silently disabled the automatic WhatsApp
+    // receipt and the parent-account auto-link for every one of them.
+    parentPhone: trial.phone       || '',
     dob:         trial.dob         || '',
     sport:       trial.sport,
     batchId:     trial.batchId ? String(trial.batchId) : '',
@@ -1359,9 +1389,11 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
                 value={form.dob || ''} onChange={e => set('dob', e.target.value)} />
             </div>
 
-            {/* Student Phone */}
+            {/* Contact Phone — on a /join trial this is the parent's verified
+                number, not the child's. Labelled "Student Phone" it invited
+                staff to leave Parent Phone empty. */}
             <div>
-              <label className="label">Student Phone *</label>
+              <label className="label">Contact Phone *</label>
               <div className="flex">
                 <span className="flex items-center px-3 bg-gray-100 border border-gray-200 border-r-0 rounded-l-lg text-sm font-semibold text-gray-600 whitespace-nowrap">+91</span>
                 <input className={`input rounded-l-none flex-1 ${errors.phone ? 'border-red-400' : ''}`}
@@ -1371,9 +1403,9 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
               {errors.phone && <p className="text-[11px] text-red-500 mt-1">{errors.phone}</p>}
             </div>
 
-            {/* Parent Phone */}
+            {/* Parent Phone — receipts and the parent portal key off this one */}
             <div>
-              <label className="label">Parent Phone</label>
+              <label className="label">Parent Phone <span className="normal-case font-normal text-gray-400">(gets receipts)</span></label>
               <div className="flex">
                 <span className="flex items-center px-3 bg-gray-100 border border-gray-200 border-r-0 rounded-l-lg text-sm font-semibold text-gray-600 whitespace-nowrap">+91</span>
                 <input className="input rounded-l-none flex-1"
@@ -1826,6 +1858,22 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
             </button>
           )}
 
+          {/* Enquired = accepted, but the ground had no seat. The way out is
+              to try the conversion again (after a seat frees up, or after the
+              slot cap is raised) — not to re-run the trial. */}
+          {trial.stage === 'enquired' && (
+            <>
+              <button onClick={() => onAction('convert', trial)}
+                className="flex-1 bg-brand-600 text-white rounded-xl py-2.5 text-xs font-black flex items-center justify-center gap-2">
+                <ArrowRight size={14} /> Try again
+              </button>
+              <button onClick={() => onAction('reject', trial)}
+                className="px-3 bg-gray-100 text-gray-500 rounded-xl py-2 text-xs font-bold">
+                Archive
+              </button>
+            </>
+          )}
+
           {trial.stage === 'followup' && (
             <>
               <button onClick={() => onAction('schedule', trial)}
@@ -1857,9 +1905,10 @@ export default function Trials() {
   const { trials, addTrial, updateTrialStatus, deleteTrial, batches, feePlans, addStudent,
           trialSources, addTrialSource, removeTrialSource,
           ageGroups, addAgeGroup, removeAgeGroup, selectedSport, isAllSports,
-          user } = useApp()
+          showSportFilter, user, showToast } = useApp()
 
   const [stage,    setStage]    = useState('all')
+  const [sportFilter, setSportFilter] = useState('All')
   const [search,   setSearch]   = useState('')
   const [page,     setPage]     = useState(1)
   const [modal,    setModal]    = useState(null) // null | 'add' | 'edit' | 'schedule' | 'session' | 'convert' | 'sources' | 'ageGroups' | 'slip'
@@ -1873,21 +1922,28 @@ export default function Trials() {
   const converted = trials.filter(t => t.stage === 'converted').length
   const convRate  = total > 0 ? Math.round((converted / total) * 100) : 0
 
+  // Sports present among the trials actually in scope — a whole-branch staffer
+  // sees leads for every sport at their place and needs to narrow down.
+  const trialSports = useMemo(
+    () => [...new Set(trials.map(t => t.sport).filter(Boolean))].sort(),
+    [trials])
+
   // Filter
   const filtered = useMemo(() => {
     let list = trials
     if (stage === 'done')     list = list.filter(t => t.stage === 'converted' || t.stage === 'rejected')
     else if (stage === 'all') list = list.filter(t => t.stage !== 'converted' && t.stage !== 'rejected')
     else                      list = list.filter(t => t.stage === stage)
+    if (sportFilter !== 'All') list = list.filter(t => t.sport === sportFilter)
     if (search.trim())     list = list.filter(t =>
       t.name.toLowerCase().includes(search.toLowerCase()) ||
       (t.phone || '').includes(search) ||
       (t.sport || '').toLowerCase().includes(search.toLowerCase())
     )
     return list
-  }, [trials, stage, search])
+  }, [trials, stage, sportFilter, search])
 
-  useEffect(() => setPage(1), [stage, search])
+  useEffect(() => setPage(1), [stage, sportFilter, search])
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   // Stage counts
@@ -1974,9 +2030,38 @@ export default function Trials() {
         trialId:      trial.id,
         joiningFee:   Number(form.joiningFee) || 0,
       })
-    } catch {
-      // Revert trial stage if student creation failed (silent — addStudent already toasted the failure)
-      updateTrialStatus(trial.id, { stage: 'accepted' }, { silent: true })
+    } catch (err) {
+      // A trial that can't be seated is NOT the same as one that failed to
+      // save. The family said yes and the academy wants them — the only
+      // problem is that the ground is full on a day they'd need (migration
+      // 0184). Reverting those to "accepted" buried them back in the pipeline
+      // as if nothing had happened, and the office would try again, fail
+      // again, and never learn why.
+      //
+      // "enquired" parks them where they belong: wanted, waiting for a seat.
+      // The hint comes from the DB trigger — ERRCODE alone can't be trusted
+      // here, 23514 is also the alternate-day one-batch rule.
+      if (err?.hint === 'batch_capacity') {
+        updateTrialStatus(trial.id, {
+          stage: 'enquired',
+          // `converted: true` was set optimistically above to stop a double
+          // click creating two students. It MUST be undone on every failure
+          // path or the trial stays flagged as converted with no student
+          // behind it — which is how it silently drops out of every
+          // conversion-rate report.
+          converted: false,
+          // Keep WHY on the row. The message names the day and which limit
+          // to raise, and a week later nobody remembers which ground was full.
+          coachNote: err.message || 'No seat free in the requested batch',
+        }, { silent: true })
+        showToast(
+          `${form.name} moved to Enquired — ${err.message || 'no seat free'}`,
+          'error'
+        )
+      } else {
+        // Revert trial stage if student creation failed (silent — addStudent already toasted the failure)
+        updateTrialStatus(trial.id, { stage: 'accepted', converted: false }, { silent: true })
+      }
     }
   }
 
@@ -2033,13 +2118,25 @@ export default function Trials() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2">
-        <Search size={14} className="text-gray-400" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name, phone, sport…"
-          className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none flex-1" />
-        {search && <button onClick={() => setSearch('')}><X size={13} className="text-gray-400" /></button>}
+      {/* Search + sport */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 flex-1 min-w-[200px]">
+          <Search size={14} className="text-gray-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, phone, sport…"
+            className="bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none flex-1" />
+          {search && <button onClick={() => setSearch('')}><X size={13} className="text-gray-400" /></button>}
+        </div>
+        {/* Only earns space when more than one sport's leads are in view. */}
+        {showSportFilter && trialSports.length > 1 && (
+          <select
+            className={`input w-auto text-xs font-semibold ${sportFilter !== 'All' ? 'border-brand-400 text-brand-700' : ''}`}
+            value={sportFilter}
+            onChange={e => setSportFilter(e.target.value)}>
+            <option value="All">All Sports</option>
+            {trialSports.map(s => <option key={s}>{s}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Trial cards grid */}

@@ -12,6 +12,9 @@ export const ACTIONS = {
   PAYMENT_ADD:        'payment.add',
   PAYMENT_REMOVE:     'payment.remove',
   PAYMENT_PAID:       'payment.mark_paid',
+  // Written server-side by secure_record_gateway_payment (migration 0181), not
+  // from here — a parent paying online has no session in this app.
+  PAYMENT_ONLINE:     'payment.online',
   // Batches
   BATCH_ADD:          'batch.add',
   BATCH_EDIT:         'batch.edit',
@@ -19,6 +22,11 @@ export const ACTIONS = {
   BATCH_COACH:        'batch.coach_assign',
   BATCH_ASSIGN:       'batch.student_assign',
   BATCH_UNASSIGN:     'batch.student_unassign',
+  // Shared ground capacity (0184). Grouping changes what every member batch
+  // reports as free seats, so it belongs in the trail as its own event.
+  SLOT_SAVE:          'batch.slot_save',
+  SLOT_GROUP:         'batch.slot_group',
+  SLOT_DELETE:        'batch.slot_delete',
   // Trials
   TRIAL_ADD:          'trial.add',
   TRIAL_UPDATE:       'trial.update',
@@ -62,6 +70,7 @@ export const ACTION_LABELS = {
   'payment.add':            'Recorded payment',
   'payment.remove':         'Deleted payment',
   'payment.mark_paid':      'Marked payment paid',
+  'payment.online':         'Online payment received',
   // Batches
   'batch.add':              'Created batch',
   'batch.edit':             'Edited batch',
@@ -130,6 +139,7 @@ export const ACTION_CATEGORY = {
   'payment.add':            'add',
   'payment.remove':         'delete',
   'payment.mark_paid':      'edit',
+  'payment.online':         'add',
   'batch.add':              'add',
   'batch.edit':             'edit',
   'batch.delete':           'delete',

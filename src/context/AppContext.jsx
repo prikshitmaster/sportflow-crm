@@ -42,6 +42,9 @@ import { notify } from '../lib/notifications'
 import { staffMatchesAudience, studentMatchesAudience } from '../lib/announcementAudience'
 import { unregisterFcm } from '../lib/fcm'
 import { toLocalDateStr } from '../lib/dates'
+import { buildPaymentReceiptMessage, normalizePhoneForWhatsApp } from '../lib/whatsapp'
+import { buildReceiptHTML } from '../lib/paymentReceipt'
+import { generateAndUploadReceiptPDF } from '../lib/receiptPDF'
 
 // Module-level in-flight payment lock — survives across renders, isolated per tab.
 // Used to refuse rapid duplicate submissions before any network round-trip.
@@ -217,8 +220,15 @@ export function AppProvider({ children }) {
   // Precedence: explicit args → entity-derived scope → the viewer's current
   // filter. This keeps the branch-scoped audit log both complete (nothing
   // silently dropped) and correct (an action lands in the branch it belongs to).
+  // The sport a staff member's own actions belong to. Only meaningful when they
+  // cover exactly ONE sport — a front-desk person handling several sports at a
+  // branch (or all of them, i.e. an empty array) has no single "their sport",
+  // and guessing sports[0] would silently mis-scope the row to whichever sport
+  // happens to sit first in the array. null = branch-wide, which is correct.
+  const staffOwnSport = (u) => (u?.sports?.length === 1 ? u.sports[0] : null)
+
   const logAuditSport = useCallback((args) => {
-    const viewerSport  = selectedSport || (role === 'staff' ? (user?.sports?.[0] || null) : null)
+    const viewerSport  = selectedSport || (role === 'staff' ? staffOwnSport(user) : null)
     const viewerBranch = selectedBranch || (role === 'staff' ? (user?.branchId || null) : null)
     // Use an explicit value ONLY when it's actually present (non-null). A null
     // explicit branch/sport (e.g. a create path where selectedBranch is null for
@@ -246,6 +256,9 @@ export function AppProvider({ children }) {
   const [payments,       setPayments]       = useState([])
   const [trials,         setTrials]         = useState([])
   const [batches,        setBatches]        = useState([])
+  // Shared ground capacity (0184). Batches with the same slotId stand on one
+  // patch of grass and share its cap_per_day — see src/lib/batchCapacity.js.
+  const [batchSlots,     setBatchSlots]     = useState([])
   const [staff,          setStaff]          = useState([])
   const [attendanceData, setAttendanceData] = useState({})
   const [announcements,  setAnnouncements]  = useState([])
@@ -349,6 +362,7 @@ export function AppProvider({ children }) {
         logger.warn?.('fetchFeePlans background failed', err) ?? console.warn('fetchFeePlans background failed', err))
       db.fetchAllBatchEnrolments().then(setBatchEnrolments).catch(err =>
         logger.warn?.('fetchAllBatchEnrolments background failed', err) ?? console.warn('fetchAllBatchEnrolments background failed', err))
+      db.fetchBatchSlots(academyId).then(setBatchSlots).catch(() => {})
       db.fetchTrialSources(academyId).then(setTrialSources).catch(() => {})
       db.fetchAgeGroups(academyId).then(setAgeGroups).catch(() => {})
       db.fetchDrillCategories(academyId).then(setDrillCategories).catch(() => {})
@@ -458,6 +472,7 @@ export function AppProvider({ children }) {
       db.fetchEvents(academyId).then(setEvents).catch(() => {})
       db.fetchFeePlans(academyId).then(setFeePlans).catch(() => {})
       db.fetchAllBatchEnrolments().then(setBatchEnrolments).catch(() => {})
+      db.fetchBatchSlots(academyId).then(setBatchSlots).catch(() => {})
     } catch (err) {
       logger.warn?.('refreshAllSilent failed', err) ?? console.warn('refreshAllSilent failed', err)
     }
@@ -549,6 +564,9 @@ export function AppProvider({ children }) {
               age:         member.age          || null,
               licenceUrl:  member.licence_url  || null,
               branchId:    member.branch_id    || null,
+              // Must be restored too, or a whole-branch staffer silently drops
+              // back to one sport on every page reload.
+              locationId:  member.location_id  || null,
               academy:     academyName,
               academyId,
               academyLogo: academyData2?.logo_url || null,
@@ -757,7 +775,7 @@ export function AppProvider({ children }) {
     await supabase.auth.signOut().catch(() => {})
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
-    setBatches([]);  setStaff([]);   setAnnouncements([])
+    setBatches([]);  setStaff([]);   setAnnouncements([]); setBatchSlots([])
     setAttendanceData({}); setEvents([]); setLeaveRequests([])
     setSelectedSport(null)
   }
@@ -795,6 +813,8 @@ export function AppProvider({ children }) {
       age:        member.age          || null,
       licenceUrl: member.licence_url  || null,
       branchId:   member.branch_id    || null,
+      // Set = whole-branch scope: every sport at that place, one login (0174).
+      locationId: member.location_id  || null,
       academy:     academyName,
       academyId,
       academyLogo: academyData?.logo_url || null,
@@ -833,7 +853,7 @@ export function AppProvider({ children }) {
     clearStaffSession()
     setRole(null); setUser(null); setFeatures({}); setPermissions([])
     setStudents([]); setPayments([]); setTrials([])
-    setBatches([]);  setStaff([]);   setAnnouncements([])
+    setBatches([]);  setStaff([]);   setAnnouncements([]); setBatchSlots([])
     setAttendanceData({}); setEvents([]); setLeaveRequests([])
   }
 
@@ -1419,22 +1439,15 @@ export function AppProvider({ children }) {
   const addPayment = async (p) => {
     // Idempotency guard #1: in-memory lock against double-click / rapid resubmit
     // on the same browser session (kicks in before any network round-trip).
-    const lockKey = `${p.studentId}-${Number(p.amount)}-${p.monthsCovered || 1}`
+    // Includes the coverage period, matching the server-side check below —
+    // two different months at the same fee are not the same payment.
+    const lockKey = `${p.studentId}-${Number(p.amount)}-${p.monthsCovered || 1}-${p.advanceStart || ''}-${p.customPaidTill || ''}`
     if (_paymentInFlight.has(lockKey)) {
       showToast('Already recording this payment — please wait', 'error')
       return
     }
     _paymentInFlight.add(lockKey)
     try {
-      // Idempotency guard #2: server-side check for any payment with the same
-      // (student, amount) inserted in the last 60s — catches duplicates from
-      // a different tab/device or a network retry that bypassed the local lock.
-      const recent = await db.findRecentDuplicatePayment(p.studentId, p.amount, 60)
-      if (recent) {
-        const secsAgo = Math.max(1, Math.round((Date.now() - new Date(recent.created_at).getTime()) / 1000))
-        showToast(`Duplicate blocked — ${recent.id} for ₹${Number(recent.amount).toLocaleString('en-IN')} was just recorded ${secsAgo}s ago`, 'error')
-        return
-      }
       const collectionDate = p.paymentDate ? new Date(p.paymentDate + 'T00:00:00') : new Date()
       // For advance payments, coverage starts from the month after the student's current paidTill.
       //
@@ -1503,8 +1516,12 @@ export function AppProvider({ children }) {
         const st = students.find(s => String(s.id) === String(p.studentId))
         if (!st) { showToast('Student not found', 'error'); return }
 
-        await db.updateStudentPaidTill(st.id, paidTill, null)
-        setStudents(prev => prev.map(s => s.id === st.id ? { ...s, paidTill } : s))
+        // Same forward-only rule as a real payment — marking old months
+        // inactive must never pull a student back behind coverage they have
+        // already paid for.
+        const inactiveTill = (!st.paidTill || paidTill > st.paidTill) ? paidTill : st.paidTill
+        await db.updateStudentPaidTill(st.id, inactiveTill, null)
+        setStudents(prev => prev.map(s => s.id === st.id ? { ...s, paidTill: inactiveTill } : s))
 
         logAuditSport({
           actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student',
@@ -1514,6 +1531,22 @@ export function AppProvider({ children }) {
         })
 
         showToast(`${st.name} marked inactive for ${monthLabel} — no fee due, nothing collected`)
+        return
+      }
+
+      // Idempotency guard #2: server-side check for the same (student, amount,
+      // coverage start) inserted in the last 60s — catches duplicates from a
+      // different tab/device or a network retry that bypassed the local lock.
+      //
+      // Runs here rather than at the top of the function because it needs
+      // coverageStart: keyed on (student, amount) alone it refused a perfectly
+      // normal catch-up — collecting July's ₹4,720 and then August's ₹4,720 for
+      // the same student inside a minute — as a double-click. Same money, same
+      // student, different month is not a duplicate.
+      const recent = await db.findRecentDuplicatePayment(p.studentId, p.amount, 60, coverageStart)
+      if (recent) {
+        const secsAgo = Math.max(1, Math.round((Date.now() - new Date(recent.created_at).getTime()) / 1000))
+        showToast(`Duplicate blocked — ${recent.id} for ₹${Number(recent.amount).toLocaleString('en-IN')} covering the same period was recorded ${secsAgo}s ago`, 'error')
         return
       }
 
@@ -1540,28 +1573,115 @@ export function AppProvider({ children }) {
 
       logAuditSport({ actor: user, action: ACTIONS.PAYMENT_ADD, entityType: 'payment', entityId: invoiceId, entityName: p.student, changes: { amount: String(p.amount), months: String(months), mode: p.mode || 'Cash' }, academyId: user?.academyId, sport: student?.sport ?? null, branchId: student?.branchId ?? null })
 
+      // Partial payment → a linked Due balance for the shortfall vs the locked
+      // fee-plan amount. The main row above already advanced paidTill/coverage
+      // in full (student stays Active) — this is purely a still-owed record,
+      // so it carries no coverage dates of its own and never touches paidTill.
+      // Reuses the existing Pending status/plumbing (Pending card, filters,
+      // reminders) rather than inventing a new concept.
+      if (p.dueAmount > 0) {
+        try {
+          const dueInvoiceId = await db.fetchNextInvoiceId()
+          const dueRow = {
+            studentId: p.studentId, student: p.student, amount: p.dueAmount,
+            month: monthLabel, date: payDate, status: 'Pending', mode: null,
+            paymentType: p.paymentType, discountPct: 0, monthsCovered: months,
+            coverageStart: null, coverageEnd: null, academyId: user?.academyId,
+            notes: `Balance due from ${invoiceId} (₹${p.amount} of ₹${p.amount + p.dueAmount} paid)${p.notes ? ' — ' + p.notes : ''}`,
+          }
+          await db.insertPayment(dueRow, dueInvoiceId)
+          setPayments(prev => [{ ...dueRow, id: dueInvoiceId }, ...prev])
+        } catch (err) {
+          showToast('Payment recorded, but the Due balance entry failed — add it manually', 'error')
+          logger.warn?.('due-balance insert failed', err) ?? console.warn('due-balance insert failed', err)
+        }
+      }
+
+      // ── What this payment does to the student's coverage and fee ─────────
+      //
+      // Coverage only ever moves FORWARD. Writing paid_till unconditionally
+      // meant a backdated payment — or a custom range ending earlier than the
+      // student was already paid up to — overwrote the later date and silently
+      // destroyed months the parent had already paid for. Concretely: paid till
+      // 31 Jul, record a forgotten payment backdated to 15 May, and paid_till
+      // became 31 May with June and July owed all over again. Correcting a
+      // wrong payment is what Delete is for; it recomputes paid_till from the
+      // rows that remain. markPaymentPaid has always had this guard.
+      //
+      // A fee-less row buys no months either: fee 0 with a late fee attached
+      // was collecting ₹500 and handing over a full month of coverage.
+      //
+      // Computed here, above the receipt, so the WhatsApp message quotes the
+      // date the student actually ends up with.
+      const buysCoverage = Number(p.baseAmount) > 0
+      const nextPaidTill = student
+        ? (buysCoverage && (!student.paidTill || paidTill > student.paidTill) ? paidTill : (student.paidTill || null))
+        : paidTill
+      const coverageHeld = !!student && !isCheque && nextPaidTill !== paidTill
+
+      // students.fees is a MONTHLY figure — the overdue amount and the revenue
+      // forecast both read it. Quarterly/yearly send their flat multi-month
+      // total as baseAmount, so writing it here stamped a ₹22,500 quarter onto
+      // the student as a ₹22,500 month. Only plans whose baseAmount really is
+      // one month's fee may update it.
+      const monthlyFee = (p.paymentType === 'monthly' || p.paymentType === 'custom')
+        ? p.baseAmount
+        : null
+
+      // SPIKE — Twilio-sandbox auto receipt send, proving the automation
+      // works end to end. Fire-and-forget: a WhatsApp failure must never
+      // block or roll back a recorded payment. Only reaches a real phone
+      // if student.parentPhone has joined the Twilio sandbox.
+      // `|| student.phone` matches what SendPayLinkModal and WhatsAppBulkModal
+      // already do. This was the only one of the three without the fallback,
+      // and it is the automatic one — so a student with a contact number but no
+      // parent_phone silently got no receipt, which was 490 of 569 of them.
+      const receiptPhone = student?.parentPhone || student?.phone
+      if (!isCheque && receiptPhone) {
+        (async () => {
+          const receiptHTML = buildReceiptHTML(
+            { ...paymentRow, id: invoiceId, date: payDate, status: insertStatus, month: monthLabel },
+            student, user?.academy, user?.academyLogo,
+          )
+          const mediaUrl = await generateAndUploadReceiptPDF(receiptHTML, invoiceId)
+          await supabase.functions.invoke('whatsapp-send-test', {
+            body: {
+              to: '+' + normalizePhoneForWhatsApp(receiptPhone),
+              body: buildPaymentReceiptMessage({ student, academy: user?.academy, amount: p.amount, monthLabel, paidTill: nextPaidTill }),
+              mediaUrl,
+            },
+          })
+        })().catch(err => logger.warn?.('whatsapp-send-test failed', err) ?? console.warn('whatsapp-send-test failed', err))
+      }
+
       if (!isCheque && student) {
         if (student.status === 'Suspended') {
           const batchId   = p.batchId   || student.batchId
           const batchName = p.batchName || student.batch
-          await db.activateStudentWithBatch(student.id, batchId, batchName, paidTill, p.baseAmount)
+          await db.activateStudentWithBatch(student.id, batchId, batchName, nextPaidTill, monthlyFee)
           if (batchId) await db.updateBatchEnrolled(batchId, 1)
           setStudents(prev => prev.map(s => s.id === student.id ? {
             ...s, status: 'Active', batchId, batch: batchName,
-            paidTill, fees: p.baseAmount || s.fees, feeAmount: p.baseAmount || s.fees,
+            paidTill: nextPaidTill,
+            fees: monthlyFee || s.fees, feeAmount: monthlyFee || s.fees,
             suspendedSince: null,
           } : s))
           showToast(`${student.name} reactivated → ${batchName || 'no batch'}`, 'success')
         } else {
-          await db.updateStudentPaidTill(student.id, paidTill, p.baseAmount)
+          await db.updateStudentPaidTill(student.id, nextPaidTill, monthlyFee)
           setStudents(prev => prev.map(s => s.id === student.id ? {
-            ...s, paidTill,
-            fees: p.baseAmount || s.fees, feeAmount: p.baseAmount || s.fees,
+            ...s, paidTill: nextPaidTill,
+            fees: monthlyFee || s.fees, feeAmount: monthlyFee || s.fees,
           } : s))
         }
       }
       showToast(
         isCheque ? 'Cheque recorded as Pending — mark Paid once cleared'
+        // Silence here would be the dangerous outcome: the payment is on the
+        // books but the student's coverage deliberately did not move, and the
+        // operator has to know that rather than discover it next month.
+        : coverageHeld ? `Payment recorded · coverage unchanged${nextPaidTill ? ` — still paid till ${nextPaidTill}` : ''}`
+        : p.dueAmount > 0 ? `Payment recorded · ₹${p.dueAmount} due, added to Pending`
         : p.inactiveCount ? `Payment recorded · ${p.inactiveCount} month${p.inactiveCount !== 1 ? 's' : ''} marked inactive`
         : 'Payment recorded'
       )
@@ -1598,10 +1718,28 @@ export function AppProvider({ children }) {
     }
   }
 
-  const removePayment = async (payment) => {
+  const removePayment = async (payment, note = null) => {
     try {
       await db.deletePayment(payment.id)
-      const remaining = payments.filter(p => p.id !== payment.id)
+
+      // A partial payment writes a linked Pending "Balance due from INV-…" row.
+      // Deleting the payment left that shortfall behind, still counted in the
+      // Pending card and still chased by reminders, pointing at an invoice that
+      // no longer exists. The balance only means anything alongside its parent,
+      // so it goes with it. (The link lives in the note text — there is no FK.)
+      const orphanedDues = payments.filter(x =>
+        x.id !== payment.id &&
+        x.status === 'Pending' &&
+        String(x.studentId) === String(payment.studentId) &&
+        (x.notes || '').includes(`Balance due from ${payment.id}`)
+      )
+      for (const due of orphanedDues) {
+        try { await db.deletePayment(due.id) }
+        catch (e) { logger.warn?.('orphan due delete failed', e) ?? console.warn('orphan due delete failed', e) }
+      }
+
+      const removedIds = new Set([payment.id, ...orphanedDues.map(d => d.id)])
+      const remaining = payments.filter(p => !removedIds.has(p.id))
       setPayments(remaining)
 
       // Revert student's paid_till to their previous payment
@@ -1631,8 +1769,28 @@ export function AppProvider({ children }) {
         await db.updateStudentPaidTill(student.id, newPaidTill, null)
         setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
       }
-      logAuditSport({ actor: user, action: ACTIONS.PAYMENT_REMOVE, entityType: 'payment', entityId: payment.id, entityName: payment.student, changes: { amount: String(payment.amount), month: payment.month || '—' }, academyId: user?.academyId })
-      showToast('Payment deleted')
+      // Deleting a payment is the highest-risk action in the app — it is how
+      // collected cash stops existing on paper. So it records the most, not the
+      // least: mode and original date included, and the typed reason as the
+      // note. Without mode, a deleted cash payment and a deleted UPI one look
+      // identical in the log, and only one of those needs explaining.
+      logAuditSport({
+        actor: user, action: ACTIONS.PAYMENT_REMOVE, entityType: 'payment',
+        entityId: payment.id, entityName: payment.student,
+        changes: {
+          amount: String(payment.amount),
+          month:  payment.month || '—',
+          mode:   payment.mode || '—',
+          date:   payment.date || '—',
+          // Named in the log so the linked balance doesn't just disappear.
+          ...(orphanedDues.length ? { linkedDuesRemoved: orphanedDues.map(d => d.id).join(', ') } : {}),
+        },
+        note: note || null,
+        academyId: user?.academyId,
+      })
+      showToast(orphanedDues.length
+        ? `Payment deleted · ${orphanedDues.length} linked balance row${orphanedDues.length === 1 ? '' : 's'} removed`
+        : 'Payment deleted')
     } catch (err) {
       showToast(err.message || 'Delete failed', 'error')
     }
@@ -1651,7 +1809,13 @@ export function AppProvider({ children }) {
       // A cheque taken for a custom date range stored its exact end in
       // coverage_end — recomputing from monthsCovered would snap it back to a
       // month boundary and silently shorten the period the student paid for.
-      if (payment?.status === 'Pending') {
+      //
+      // Guarded on coverageStart/coverageEnd, not status alone — a linked Due
+      // balance (partial-payment shortfall, see addPayment) is also Pending
+      // but carries no coverage of its own: the ORIGINAL payment already
+      // advanced paidTill in full when it was recorded. Advancing again here
+      // would push paidTill a second time for a period already covered.
+      if (payment?.status === 'Pending' && (payment.coverageStart || payment.coverageEnd)) {
         const student = students.find(s => String(s.id) === String(payment.studentId))
         if (student) {
           let newPaidTill
@@ -1662,7 +1826,27 @@ export function AppProvider({ children }) {
             const months = payment.monthsCovered || 1
             newPaidTill  = toLocalDateStr(new Date(base.getFullYear(), base.getMonth() + months, 0))
           }
-          if (!student.paidTill || newPaidTill > student.paidTill) {
+          const shouldAdvance = !student.paidTill || newPaidTill > student.paidTill
+          const effectiveTill = shouldAdvance ? newPaidTill : student.paidTill
+
+          if (student.status === 'Suspended') {
+            // Taking a cheque from a suspended student deliberately does NOT
+            // reactivate them — the money isn't in yet. Nothing reactivated
+            // them when it cleared either, so they stayed Suspended while
+            // fully paid: absent from Active lists, batch headcount short, and
+            // no action anywhere in the app would ever fix it. Clearing the
+            // cheque is the moment the money becomes real, so it is the moment
+            // they come back.
+            const batchId   = student.batchId || student.lastBatchId   || null
+            const batchName = student.batch   || student.lastBatchName || null
+            await db.activateStudentWithBatch(student.id, batchId, batchName, effectiveTill, null)
+            if (batchId) await db.updateBatchEnrolled(batchId, 1)
+            setStudents(prev => prev.map(s => s.id === student.id ? {
+              ...s, status: 'Active', batchId, batch: batchName,
+              paidTill: effectiveTill, suspendedSince: null,
+            } : s))
+            showToast(`${student.name} reactivated — cheque cleared`, 'success')
+          } else if (shouldAdvance) {
             await db.updateStudentPaidTill(student.id, newPaidTill, null)
             setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
           }
@@ -2216,17 +2400,34 @@ export function AppProvider({ children }) {
     showToast('Academy profile saved')
   }
 
-  const editStaffMember = async (id, { name, phone, photoFile, photoUrl: existingUrl, age }) => {
+  const editStaffMember = async (id, { name, phone, photoFile, photoUrl: existingUrl, age, sports, locationId }) => {
     const old = staff.find(s => s.id === id)
     let photoUrl = existingUrl
     if (photoFile) { try { photoUrl = await db.uploadStaffPhoto(photoFile, id) } catch (_) {} }
-    await db.updateStaffProfile(id, { name, phone, photoUrl })
+    // `sports` / `locationId` are only sent when the editor actually has the
+    // staff.manage UI — undefined leaves them untouched (and skips the RPC's
+    // escalation checks).
+    await db.updateStaffProfile(id, { name, phone, photoUrl, sports, locationId })
     if (age !== undefined) await db.upsertStaffProfileExtra(id, { age })
-    setStaff(prev => prev.map(s => s.id === id ? { ...s, name, phone, photoUrl: photoUrl || s.photoUrl, age } : s))
+    setStaff(prev => prev.map(s => s.id === id
+      ? { ...s, name, phone, photoUrl: photoUrl || s.photoUrl, age,
+          ...(sports     !== undefined ? { sports } : {}),
+          ...(locationId !== undefined ? { locationId } : {}) }
+      : s))
     showToast('Staff updated')
     const changes = {}
     if (old?.name !== name) changes.Name = { old: old?.name || '—', new: name }
     if (old?.phone !== phone) changes.Phone = { old: old?.phone || '—', new: phone || '—' }
+    if (sports !== undefined) {
+      const label = (arr) => (arr || []).length ? arr.join(', ') : 'All sports'
+      if (label(old?.sports) !== label(sports)) changes.Sports = { old: label(old?.sports), new: label(sports) }
+    }
+    if (locationId !== undefined && (old?.locationId || null) !== (locationId || null)) {
+      const locName = (lid) => lid
+        ? (sportBranches.find(b => b.locationId === lid)?.branchName || 'a branch')
+        : 'Single sport only'
+      changes.Scope = { old: locName(old?.locationId), new: locName(locationId) }
+    }
     logAuditSport({ actor: user, action: ACTIONS.STAFF_EDIT, entityType: 'staff', entityId: id, entityName: name, changes, academyId: user?.academyId })
   }
 
@@ -2374,7 +2575,7 @@ export function AppProvider({ children }) {
         title, body, type: 'Staff Notice',
         author:       user?.name    || 'Staff',
         academyId:    user?.academyId,
-        sport:        role === 'owner' ? (selectedSport || null) : (user?.sports?.[0] || null),
+        sport:        role === 'owner' ? (selectedSport || null) : staffOwnSport(user),
         branchId:     role === 'owner' ? (selectedBranch || null) : (user?.branchId   || null),
         audienceType: allStaff ? 'staff' : 'staff_members',
         audienceIds:  allStaff ? [] : ids,
@@ -2405,9 +2606,10 @@ export function AppProvider({ children }) {
         author:   user?.name    || 'Owner',
         academyId: user?.academyId,
         // Tag with current sport/branch scope so only that audience sees it.
-        // Owner uses sport switcher (selectedSport); staff uses assigned sport.
+        // Owner uses sport switcher (selectedSport); staff uses assigned sport,
+        // but only when they cover exactly one (see staffOwnSport).
         // null = academy-wide (visible to every student).
-        sport:    a.sport    ?? (role === 'owner' ? (selectedSport || null) : (user?.sports?.[0] || null)),
+        sport:    a.sport    ?? (role === 'owner' ? (selectedSport || null) : staffOwnSport(user)),
         branchId: a.branchId ?? (role === 'owner' ? (selectedBranch || null) : (user?.branchId   || null)),
       }
       const created = await db.insertAnnouncement(ann)
@@ -2463,6 +2665,22 @@ export function AppProvider({ children }) {
     }
   }
 
+  // Physical places, grouped from the (sport × location) sport_branches rows
+  // via location_id (migration 0174). This is what a person at a counter means
+  // by "my branch" — one place running several sports.
+  const locations = useMemo(() => {
+    const map = new Map()
+    ;(sportBranches || []).forEach(sb => {
+      if (!sb.locationId) return
+      if (!map.has(sb.locationId)) {
+        map.set(sb.locationId, { id: sb.locationId, name: (sb.branchName || '').trim() || 'Unnamed branch', sports: [] })
+      }
+      const l = map.get(sb.locationId)
+      if (sb.sportName && !l.sports.includes(sb.sportName)) l.sports.push(sb.sportName)
+    })
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [sportBranches])
+
   const isAuthenticated = role !== null
 
   // ── Sport + Branch scoped filtered views ──────────────
@@ -2478,6 +2696,32 @@ export function AppProvider({ children }) {
   //   • Branch-less staff (office/multi-branch) — no branch filter (see all).
   const effectiveBranch = role === 'staff' ? (user?.branchId || null) : selectedBranch
   const hasBranchScope = Boolean(effectiveBranch)
+
+  // Whole-branch staff (staff.location_id set, migration 0174) work across EVERY
+  // sport at their place, so their scope is a SET of sport_branches rows rather
+  // than the single effectiveBranch above — mirrors current_staff_branch_ids()
+  // on the server. null here means "no set-based widening", i.e. fall back to
+  // the plain effectiveBranch equality, which is what everyone else uses.
+  const branchScopeIds = useMemo(() => {
+    if (role !== 'staff' || !user?.locationId) return null
+    const ids = (sportBranches || [])
+      .filter(b => b.locationId === user.locationId)
+      .map(b => b.id)
+    // Fail closed: an empty set must not read as "no restriction". Keep their
+    // own branch so a not-yet-loaded sportBranches list can't blank the app.
+    return ids.length ? ids : (user.branchId ? [user.branchId] : [])
+  }, [role, user?.locationId, user?.branchId, sportBranches])
+
+  // Single predicate every filter below uses, so the two scoping modes can
+  // never drift apart.
+  const inBranchScope = useCallback((branchId) => {
+    if (branchScopeIds) return branchScopeIds.includes(branchId)
+    if (!hasBranchScope) return true
+    return branchId === effectiveBranch
+  }, [branchScopeIds, hasBranchScope, effectiveBranch])
+
+  // True whenever ANY branch restriction applies (single branch or a location set).
+  const branchScoped = Boolean(branchScopeIds) || hasBranchScope
 
   // Clear attendance cache when sport or branch changes so stale cross-scope
   // aggregate counts don't leak into the new view's batch cards.
@@ -2519,37 +2763,38 @@ export function AppProvider({ children }) {
     isAllSports ? trials : trials.filter(t => t.sport === selectedSport)
   , [trials, selectedSport, isAllSports])
 
-  // Step 2: branch filter on top — only narrows further when selectedBranch is set
+  // Step 2: branch filter on top. inBranchScope() covers both modes — a single
+  // branch, or the whole-branch set of a location-scoped staff member.
   const filteredStudents = useMemo(() =>
-    hasBranchScope ? sportStudents.filter(s => s.branchId === effectiveBranch) : sportStudents
-  , [sportStudents, effectiveBranch, hasBranchScope])
+    branchScoped ? sportStudents.filter(s => inBranchScope(s.branchId)) : sportStudents
+  , [sportStudents, inBranchScope, branchScoped])
 
   const filteredBatches = useMemo(() =>
-    hasBranchScope ? sportBatches.filter(b => b.branchId === effectiveBranch) : sportBatches
-  , [sportBatches, effectiveBranch, hasBranchScope])
+    branchScoped ? sportBatches.filter(b => inBranchScope(b.branchId)) : sportBatches
+  , [sportBatches, inBranchScope, branchScoped])
 
   const filteredStaff = useMemo(() => {
-    if (!hasBranchScope) return sportStaff
+    if (!branchScoped) return sportStaff
     // Keep non-branch-bound staff visible (no branchId), filter the rest by branch
-    return sportStaff.filter(s => !s.branchId || s.branchId === effectiveBranch)
-  }, [sportStaff, effectiveBranch, hasBranchScope])
+    return sportStaff.filter(s => !s.branchId || inBranchScope(s.branchId))
+  }, [sportStaff, inBranchScope, branchScoped])
 
   const filteredPayments = useMemo(() => {
-    if (!hasBranchScope) return sportPayments
+    if (!branchScoped) return sportPayments
     const branchStudentIds = new Set(
-      students.filter(s => s.branchId === effectiveBranch).map(s => s.id)
+      students.filter(s => inBranchScope(s.branchId)).map(s => s.id)
     )
     // Strict equality on the self-scoped branch: a trial row with no
     // branchId is HIDDEN rather than shown everywhere. Failing closed is
     // the only acceptable direction for branch isolation.
     return sportPayments.filter(p => p.studentId != null
       ? branchStudentIds.has(p.studentId)
-      : p.branchId === effectiveBranch)
-  }, [sportPayments, students, effectiveBranch, hasBranchScope])
+      : Boolean(p.branchId) && inBranchScope(p.branchId))
+  }, [sportPayments, students, inBranchScope, branchScoped])
 
   const filteredTrials = useMemo(() =>
-    hasBranchScope ? sportTrials.filter(t => t.branchId === effectiveBranch) : sportTrials
-  , [sportTrials, effectiveBranch, hasBranchScope])
+    branchScoped ? sportTrials.filter(t => inBranchScope(t.branchId)) : sportTrials
+  , [sportTrials, inBranchScope, branchScoped])
 
   // A leave_requests row carries no sport/branch of its own — only staff_id.
   // It inherits the scope of the staff member who raised it, so resolve that
@@ -2565,14 +2810,14 @@ export function AppProvider({ children }) {
       const st = byId.get(String(r.staff_id))
       // Orphaned row (staff deleted, or staff not loaded yet) — surface it only
       // in the unscoped view rather than leaking it into a specific branch.
-      if (!st) return isAllSports && !hasBranchScope
+      if (!st) return isAllSports && !branchScoped
       const sportOk = isAllSports || !st.sports?.length ||
         st.sports.some(sp => sp?.toLowerCase() === selectedSport?.toLowerCase())
       // Mirrors filteredStaff: staff with no branch stay visible everywhere.
-      const branchOk = !hasBranchScope || !st.branchId || st.branchId === effectiveBranch
+      const branchOk = !branchScoped || !st.branchId || inBranchScope(st.branchId)
       return sportOk && branchOk
     })
-  }, [leaveRequests, staff, role, isAllSports, selectedSport, hasBranchScope, effectiveBranch])
+  }, [leaveRequests, staff, role, isAllSports, selectedSport, branchScoped, inBranchScope])
 
   // Coach-scope: when logged in as a staff member, limit batches/students to
   // only their sport(s). This prevents cross-sport data leakage while still
@@ -2649,8 +2894,9 @@ export function AppProvider({ children }) {
     return events.filter(e => {
       // Staff-targeted events are only visible to the targeted staff.
       if (isStaff && e.audience_type === 'staff_members') return (e.audience_ids || []).includes(user?.id)
-      // Branch: academy-wide (null branch) shows everywhere; else must match the active branch.
-      if (effBranch && e.branch_id && e.branch_id !== effBranch) return false
+      // Branch: academy-wide (null branch) shows everywhere; else must be in
+      // scope — one branch, or every branch at a whole-branch staffer's place.
+      if (e.branch_id && (isStaff ? !inBranchScope(e.branch_id) : (effBranch && e.branch_id !== effBranch))) return false
       // Sport: staff use their assigned sports; owner uses the selected sport.
       if (isStaff) {
         if (staffSports.size > 0 && e.sport) return staffSports.has(e.sport.toLowerCase())
@@ -2659,7 +2905,7 @@ export function AppProvider({ children }) {
       }
       return true
     })
-  }, [events, role, user?.sports, user?.branchId, user?.id, selectedSport, selectedBranch])
+  }, [events, role, user?.sports, user?.branchId, user?.id, selectedSport, selectedBranch, inBranchScope])
 
   const staffScopedAnnouncements = useMemo(() => {
     const isStaff   = role === 'staff'
@@ -2673,8 +2919,8 @@ export function AppProvider({ children }) {
     return announcements.filter(a => {
       // Academy-wide announcements (no sport, no branch) are always visible.
       if (!a.sport && !a.branchId) return true
-      // Branch: academy-wide (null) shows everywhere; else must match the active branch.
-      if (effBranch && a.branchId && a.branchId !== effBranch) return false
+      // Branch: academy-wide (null) shows everywhere; else must be in scope.
+      if (a.branchId && (isStaff ? !inBranchScope(a.branchId) : (effBranch && a.branchId !== effBranch))) return false
       // Sport: staff use assigned sports; owner uses the selected sport.
       if (isStaff) {
         if (staffSports.size > 0 && a.sport) return staffSports.has(a.sport.toLowerCase())
@@ -2683,15 +2929,36 @@ export function AppProvider({ children }) {
       }
       return true
     })
-  }, [announcements, role, user?.sports, user?.branchId, user?.id, selectedSport, selectedBranch])
+  }, [announcements, role, user?.sports, user?.branchId, user?.id, selectedSport, selectedBranch, inBranchScope])
+
+  // The distinct sports actually visible in the current scope. Drives the sport
+  // filter on Payments/Students/Attendance/Batches/Trials: those pages used to
+  // show it only when an OWNER had picked "All Sports", which meant a
+  // whole-branch staffer looking at six sports at once had no way to narrow
+  // down. Deriving it from the data covers every case — owner on All, a
+  // location-scoped staffer, or a single-sport coach (who still sees no filter,
+  // because there is nothing to choose).
+  // Unions students AND batches: Attendance filters the batch strip, so a branch
+  // whose students all sit in one sport but which runs batches in several must
+  // still get the filter.
+  const visibleSports = useMemo(() => {
+    const set = new Set()
+    ;(staffScopedStudents || []).forEach(s => { if (s.sport) set.add(s.sport) })
+    ;(staffScopedBatches  || []).forEach(b => {
+      const sports = Array.isArray(b.sports) ? b.sports : (b.sports ? [String(b.sports)] : [])
+      sports.forEach(sp => { if (sp) set.add(sp) })
+    })
+    return [...set].sort()
+  }, [staffScopedStudents, staffScopedBatches])
+  const showSportFilter = visibleSports.length > 1
 
   // Fee plans inherit scope through their batch_id. If we can see the batch,
   // we can see its fee plans. Outside any sport scope → show everything.
   const filteredFeePlans = useMemo(() => {
-    if (isAllSports && !hasBranchScope) return feePlans
+    if (isAllSports && !branchScoped) return feePlans
     const visibleBatchIds = new Set(filteredBatches.map(b => b.id))
     return feePlans.filter(p => visibleBatchIds.has(p.batchId))
-  }, [feePlans, filteredBatches, isAllSports, hasBranchScope])
+  }, [feePlans, filteredBatches, isAllSports, branchScoped])
 
   // { batchId: Set<studentId> } from student_batches. THE shared answer to
   // "who else is in this batch" — every screen that shows a batch roster or
@@ -2720,6 +2987,59 @@ export function AppProvider({ children }) {
     []
   )
 
+  // ── Batch slots: shared ground capacity (0184) ──────────────────────
+  // Grouping is a separate action from updateBatch on purpose: it rewrites
+  // several batches at once and must land as one server call, or a
+  // half-applied group would quote free seats for a ground nobody is on.
+  //
+  // These deliberately let server errors propagate. The trigger raises
+  // messages meant to be read by a human ("Ground full on Mon: …"), and
+  // swallowing them would leave the owner staring at a silently failed save.
+  const saveBatchSlot = useCallback(async ({ id = null, name, capPerDay, branchId = null }) => {
+    const saved = await db.upsertBatchSlot({ id, name, capPerDay, branchId })
+    setBatchSlots(prev => prev.some(s => s.id === saved.id)
+      ? prev.map(s => (s.id === saved.id ? saved : s))
+      : [...prev, saved])
+    logAuditSport({
+      actor: user, action: ACTIONS.SLOT_SAVE, entityType: 'batch_slot',
+      entityId: saved.id, entityName: saved.name,
+      changes: { capacityPerDay: String(saved.capPerDay) },
+      academyId: user?.academyId, sport: selectedSport ?? null,
+      branchId: saved.branchId || selectedBranch || null,
+    })
+    return saved
+  }, [user, selectedSport, selectedBranch])
+
+  const groupBatchesIntoSlot = useCallback(async (batchIds, slotId) => {
+    await db.setBatchSlot(batchIds, slotId)
+    const ids = new Set(batchIds)
+    setBatches(prev => prev.map(b => (ids.has(b.id) ? { ...b, slotId } : b)))
+    const slot = batchSlots.find(s => s.id === slotId)
+    logAuditSport({
+      actor: user, action: ACTIONS.SLOT_GROUP, entityType: 'batch_slot',
+      entityId: slotId, entityName: slot?.name || '—',
+      changes: { batches: String(batchIds.length), action: slotId ? 'grouped' : 'ungrouped' },
+      academyId: user?.academyId, sport: selectedSport ?? null,
+      branchId: slot?.branchId || selectedBranch || null,
+    })
+  }, [user, selectedSport, selectedBranch, batchSlots])
+
+  const removeBatchSlot = useCallback(async (slotId) => {
+    const slot = batchSlots.find(s => s.id === slotId)
+    await db.deleteBatchSlot(slotId)
+    setBatchSlots(prev => prev.filter(s => s.id !== slotId))
+    // The FK is ON DELETE SET NULL — mirror that locally so member batches
+    // stop pointing at a slot that no longer exists and fall back to their
+    // own capacity, which is what the server now reports too.
+    setBatches(prev => prev.map(b => (b.slotId === slotId ? { ...b, slotId: null } : b)))
+    logAuditSport({
+      actor: user, action: ACTIONS.SLOT_DELETE, entityType: 'batch_slot',
+      entityId: slotId, entityName: slot?.name || '—',
+      academyId: user?.academyId, sport: selectedSport ?? null,
+      branchId: slot?.branchId || selectedBranch || null,
+    })
+  }, [user, selectedSport, selectedBranch, batchSlots])
+
   return (
     <AppContext.Provider value={{
       // auth
@@ -2742,6 +3062,11 @@ export function AppProvider({ children }) {
       // branch scoping (within a sport)
       selectedBranch, setSelectedBranch, setSelectedSportAndBranch,
       sportBranches, refreshSportBranches, hasBranchScope,
+      // Whole-branch scope (0174): branchScoped covers both modes, and
+      // inBranchScope() is the single predicate for "is this row in my branch".
+      branchScoped, inBranchScope, branchScopeIds,
+      // Sports present in the current scope + whether a filter is worth showing.
+      visibleSports, showSportFilter,
       // raw data (for SportSelect page and any page needing unfiltered data)
       allStudents: students, allStaff: staff, allBatches: batches,
       allPayments: payments, allTrials: trials,
@@ -2756,11 +3081,14 @@ export function AppProvider({ children }) {
       batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, reassignPrimaryBatch, updateBatch, updateBatchFee, deleteBatch,
       // multi-batch enrolment — one source for every batch headcount/roster
       batchEnrolments, enrolmentIdsByBatch, batchRoster, refreshBatchEnrolments,
+      // shared ground capacity (0184)
+      batchSlots, saveBatchSlot, groupBatchesIntoSlot, removeBatchSlot,
       feePlans: filteredFeePlans, addFeePlan, editFeePlan, removeFeePlan,
       events: staffScopedEvents, addEvent, updateEvent, updateEventStatus, removeEvent,
       staff: staffScopedStaff, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions,
       updateStaffProfile,
       branches, addBranch, removeBranch,
+      locations,
       // raw fee plans (unfiltered) for places that need everything
       allFeePlans: feePlans,
       attendanceData, loadAttendanceForDate, saveAttendance,

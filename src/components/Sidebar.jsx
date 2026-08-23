@@ -115,10 +115,14 @@ export default function Sidebar({ collapsed, setCollapsed }) {
     const permOk     = role === 'owner' || item.permission === null || hasPermission(item.permission)
     // For non-owners use their own sport(s) to evaluate the football filter,
     // since selectedSport is null in their session (owner-only concept).
-    const effectiveSport = role === 'owner'
-      ? selectedSport
-      : (user?.sports?.[0] || null)
-    const footballOk = !item.footballOnly || !effectiveSport || effectiveSport.toLowerCase() === 'football'
+    // Checked across the WHOLE array: staff covering several sports at one
+    // branch must still see football items when football is any of them, and
+    // an empty array means "all sports", which also passes.
+    const footballOk = !item.footballOnly || (
+      role === 'owner'
+        ? (!selectedSport || selectedSport.toLowerCase() === 'football')
+        : (!user?.sports?.length || user.sports.some(sp => sp?.toLowerCase() === 'football'))
+    )
     return featureOk && permOk && footballOk
   }
 

@@ -6,92 +6,17 @@ import {
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import * as db from '../lib/db'
-import { isOutstanding, firstOfMonthIso, daysOverdue, normTrainingType, trainingTypeLabel } from '../lib/studentRules'
-import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getOverallScore } from '../lib/performance'
+import { normTrainingType, trainingTypeLabel } from '../lib/studentRules'
+import StudentDetail from './StudentDetail'
+// Presentation primitives live in ./detail/ui so StudentDetail can share them
+// without importing back from this file (which imports StudentDetail).
+import { fmtMoney, fmtDate, monthLabel, Pill, Avatar, Tile, Section, Empty } from './detail/ui'
 
 // ── 360° record detail page — /detail/:type/:id ──────────────────────────
 // One page for any record the AI assistant (or, later, any list) links to:
 // student, coach, batch, payment. Purely read-only + additive: it composes
 // data already in AppContext with a few targeted fetches, and never touches
 // the existing list pages.
-
-const fmtMoney = n => '₹' + Number(n || 0).toLocaleString('en-IN')
-const fmtDate = d => {
-  if (!d) return '—'
-  const dt = new Date(String(d).slice(0, 10) + 'T00:00:00')
-  return isNaN(dt) ? String(d) : dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-const monthLabel = (y, m) => new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-
-// Whole calendar months owed between paidTill's month and the anchor month —
-// same approximation the edge function and Reports use.
-function monthsOwed(paidTill, anchor) {
-  if (!paidTill || !anchor) return 0
-  const [py, pm] = paidTill.split('-').map(Number)
-  const [ay, am] = anchor.split('-').map(Number)
-  return Math.max(0, (ay * 12 + am - 1) - (py * 12 + pm - 1))
-}
-
-const STATUS_STYLE = {
-  Active:    'bg-emerald-50 text-emerald-700',
-  Suspended: 'bg-amber-50 text-amber-700',
-  Inactive:  'bg-gray-100 text-gray-500',
-  Paid:      'bg-emerald-50 text-emerald-700',
-  Pending:   'bg-amber-50 text-amber-700',
-  Overdue:   'bg-red-50 text-red-600',
-  Approved:  'bg-emerald-50 text-emerald-700',
-  Rejected:  'bg-red-50 text-red-600',
-}
-const Pill = ({ children }) => (
-  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${STATUS_STYLE[children] || 'bg-gray-100 text-gray-600'}`}>
-    {children}
-  </span>
-)
-
-const Avatar = ({ name, photoUrl, size = 'w-16 h-16 text-xl' }) => (
-  photoUrl
-    ? <img src={photoUrl} alt={name} className={`${size} rounded-2xl object-cover flex-shrink-0`} />
-    : (
-      <div className={`${size} rounded-2xl bg-brand-600 text-white font-black flex items-center justify-center flex-shrink-0`}>
-        {(name || '?').split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
-      </div>
-    )
-)
-
-const Tile = ({ icon: Icon, label, value, sub, tone = 'text-gray-900' }) => (
-  <div className="bg-white rounded-2xl border border-gray-100 p-4">
-    <div className="flex items-center gap-1.5 text-gray-400 text-xs font-semibold uppercase tracking-wide">
-      <Icon size={13} /> {label}
-    </div>
-    <div className={`mt-1.5 text-lg font-black leading-tight ${tone}`}>{value}</div>
-    {sub && <div className="text-xs text-gray-500 mt-0.5">{sub}</div>}
-  </div>
-)
-
-const Section = ({ icon: Icon, title, right, children }) => (
-  <div className="bg-white rounded-2xl border border-gray-100 p-5">
-    <div className="flex items-center justify-between gap-3 mb-3">
-      <h3 className="font-black text-gray-900 flex items-center gap-2 text-sm">
-        <Icon size={15} className="text-brand-600" /> {title}
-      </h3>
-      {right}
-    </div>
-    {children}
-  </div>
-)
-
-const Empty = ({ children }) => (
-  <p className="text-sm text-gray-400 py-2">{children}</p>
-)
-
-const KV = ({ label, value }) => (
-  <div>
-    <div className="text-xs text-gray-400 font-semibold uppercase tracking-wide">{label}</div>
-    <div className="text-sm font-semibold text-gray-800 mt-0.5">{value ?? '—'}</div>
-  </div>
-)
-
-const ATT_TONE = { Present: 'text-emerald-600', Late: 'text-amber-600', Absent: 'text-red-500', Leave: 'text-sky-600' }
 
 export default function RecordDetail() {
   const { type, id } = useParams()
@@ -117,7 +42,7 @@ export default function RecordDetail() {
     )
   }
 
-  const views = { student: StudentView, coach: CoachView, batch: BatchView, payment: PaymentView }
+  const views = { student: StudentDetail, coach: CoachView, batch: BatchView, payment: PaymentView }
   const View = views[type]
   return (
     <Shell onBack={() => navigate(-1)} title={`${type?.charAt(0).toUpperCase()}${type?.slice(1)} detail`}>
@@ -129,7 +54,7 @@ export default function RecordDetail() {
 }
 
 const Shell = ({ onBack, title, children }) => (
-  <div className="space-y-5 max-w-[1000px]">
+  <div className="space-y-5 max-w-[1240px]">
     <div className="flex items-center gap-3">
       <button
         onClick={onBack}
@@ -150,152 +75,6 @@ const NotFound = ({ children }) => (
     <p className="text-xs text-gray-400 mt-1">If this record belongs to another branch or sport, switch to it first.</p>
   </div>
 )
-
-// ── Student ───────────────────────────────────────────────────────────────
-function StudentView({ id, students, payments, batches, staff, goDetail }) {
-  const student = students.find(s => String(s.id) === String(id))
-  const [attendance, setAttendance] = useState(null)   // { thisMonth: {counts,pct}, lastMonth: {...} }
-  const [assessment, setAssessment] = useState(null)
-
-  useEffect(() => {
-    if (!student) return
-    const now = new Date()
-    const counts = map => {
-      const c = { Present: 0, Absent: 0, Late: 0, Leave: 0 }
-      Object.values(map || {}).forEach(st => { c[st] = (c[st] || 0) + 1 })
-      const total = Object.values(c).reduce((a, b) => a + b, 0)
-      const attended = c.Present + c.Late
-      return { ...c, total, pct: total ? Math.round((attended / total) * 100) : null }
-    }
-    const load = async (y, m0) => counts((await db.fetchAttendanceForStudents(y, m0, [student.id]))[student.id])
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    Promise.all([load(now.getFullYear(), now.getMonth()), load(prev.getFullYear(), prev.getMonth())])
-      .then(([thisMonth, lastMonth]) => setAttendance({ thisMonth, lastMonth }))
-      .catch(() => setAttendance({}))
-    db.fetchStudentAssessments(student.id).then(rows => setAssessment(rows[0] || null)).catch(() => {})
-  }, [student?.id])
-
-  if (!student) return <NotFound>Student not found in the current view.</NotFound>
-
-  const firstOfMonth = firstOfMonthIso()
-  const outstanding = isOutstanding(student, firstOfMonth)
-  const owed = outstanding ? monthsOwed(student.paidTill, firstOfMonth) : 0
-  const owedAmount = owed * Number(student.fees || 0)
-  const overdueDays = daysOverdue(student)
-  const myPayments = payments.filter(p => String(p.studentId) === String(student.id)).slice(0, 8)
-  const batch = batches.find(b => String(b.id) === String(student.batchId)) || batches.find(b => b.name === student.batch)
-  const coach = batch && staff.find(s => s.name?.trim().toLowerCase() === batch.coach?.trim().toLowerCase())
-  const scores = assessment?.scores && typeof assessment.scores === 'object' ? Object.entries(assessment.scores) : []
-  // Same category-weighted average used everywhere else assessments are shown
-  // (StaffAssess, StudentPerformance, StudentStats) — this used to be a flat
-  // mean of every raw skill score here, which silently disagreed with those
-  // pages for the exact same assessment.
-  const assessCategories = SPORT_CATEGORIES[student.sport] || FOOTBALL_CATEGORIES
-  const avgScore = assessment?.scores ? getOverallScore(assessment.scores, assessCategories) || null : null
-  const now = new Date()
-
-  return (
-    <>
-      <div className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4 flex-wrap">
-        <Avatar name={student.name} photoUrl={student.photoUrl} />
-        <div className="flex-1 min-w-[200px]">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-lg font-black text-gray-900">{student.name}</h2>
-            <Pill>{student.status}</Pill>
-            {outstanding && <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-50 text-red-600">Fees due</span>}
-          </div>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {student.studentCode} · {student.sport || '—'}
-            {batch && <> · <button className="text-brand-600 font-semibold hover:underline" onClick={() => goDetail('batch', batch.id)}>{batch.name}</button></>}
-          </p>
-        </div>
-        {student.phone && (
-          <a href={`tel:${student.phone}`} className="flex items-center gap-1.5 text-sm font-semibold text-brand-600 bg-brand-50 px-3 py-2 rounded-xl hover:bg-brand-100 transition">
-            <Phone size={14} /> {student.phone}
-          </a>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile icon={IndianRupee} label="Monthly fee" value={fmtMoney(student.fees)} sub={`${student.feePlan || 'monthly'} · ${student.trainingType || 'Daily'}`} />
-        <Tile icon={CalendarCheck} label="Paid till" value={fmtDate(student.paidTill)} sub={overdueDays ? `${overdueDays} days overdue` : 'up to date'} tone={outstanding ? 'text-red-600' : 'text-gray-900'} />
-        <Tile icon={CreditCard} label="Outstanding" value={outstanding ? `~${fmtMoney(owedAmount)}` : '₹0'} sub={outstanding ? `${owed} month${owed === 1 ? '' : 's'} unpaid` : 'nothing due'} tone={outstanding ? 'text-red-600' : 'text-emerald-600'} />
-        <Tile icon={Activity} label="Attendance" value={attendance?.thisMonth?.pct != null ? `${attendance.thisMonth.pct}%` : '—'} sub={monthLabel(now.getFullYear(), now.getMonth() + 1)} />
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-5">
-        <Section icon={CreditCard} title="Recent payments">
-          {myPayments.length === 0 ? <Empty>No payments recorded yet.</Empty> : (
-            <div className="divide-y divide-gray-50">
-              {myPayments.map(p => (
-                <button key={p.id} onClick={() => goDetail('payment', p.id)} className="w-full flex items-center justify-between gap-3 py-2.5 text-left hover:bg-gray-50 rounded-lg px-2 -mx-2 transition">
-                  <div>
-                    <div className="text-sm font-bold text-gray-800">{fmtMoney(p.amount)} <span className="font-normal text-gray-400">· {p.month}</span></div>
-                    <div className="text-xs text-gray-400">{fmtDate(p.date)} · {p.mode || '—'} · {p.id}</div>
-                  </div>
-                  <div className="flex items-center gap-2"><Pill>{p.status}</Pill><ChevronRight size={14} className="text-gray-300" /></div>
-                </button>
-              ))}
-            </div>
-          )}
-        </Section>
-
-        <div className="space-y-5">
-          <Section icon={CalendarDays} title="Attendance">
-            {!attendance ? <Empty>Loading…</Empty> : (
-              [['This month', attendance.thisMonth], ['Last month', attendance.lastMonth]].map(([label, a]) => (
-                <div key={label} className="flex items-center justify-between py-1.5">
-                  <span className="text-sm text-gray-500 w-24">{label}</span>
-                  {!a || !a.total ? <span className="text-sm text-gray-400">not marked</span> : (
-                    <div className="flex items-center gap-3 text-xs font-semibold">
-                      {['Present', 'Late', 'Absent', 'Leave'].map(k => a[k] > 0 && <span key={k} className={ATT_TONE[k]}>{a[k]} {k}</span>)}
-                      <span className="text-gray-900 font-black text-sm">{a.pct}%</span>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </Section>
-
-          <Section icon={Award} title="Latest performance">
-            {!assessment ? <Empty>No skill assessment recorded yet.</Empty> : (
-              <>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-gray-400">{assessment.assessed_month}{assessment.sport ? ` · ${assessment.sport}` : ''}</span>
-                  {avgScore != null && <span className="text-sm font-black text-brand-600">{avgScore}/100 avg</span>}
-                </div>
-                <div className="space-y-1.5">
-                  {scores.map(([skill, val]) => (
-                    <div key={skill} className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 w-28 capitalize truncate">{skill}</span>
-                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-brand-600 rounded-full" style={{ width: `${Math.min(100, Number(val) || 0)}%` }} />
-                      </div>
-                      <span className="text-xs font-bold text-gray-700 w-7 text-right">{val}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </Section>
-        </div>
-      </div>
-
-      <Section icon={FileText} title="Profile">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <KV label="Parent" value={student.parent} />
-          <KV label="Parent phone" value={student.parentPhone ? <a className="text-brand-600" href={`tel:${student.parentPhone}`}>{student.parentPhone}</a> : '—'} />
-          <KV label="Age" value={student.age} />
-          <KV label="Joined" value={fmtDate(student.joinDate)} />
-          <KV label="Training" value={student.trainingType} />
-          <KV label="Fee plan" value={student.feePlan} />
-          <KV label="Position" value={student.position || '—'} />
-          <KV label="Coach" value={coach ? <button className="text-brand-600 font-semibold hover:underline" onClick={() => goDetail('coach', coach.id)}>{coach.name}</button> : (batch?.coach || '—')} />
-        </div>
-      </Section>
-    </>
-  )
-}
 
 // ── Coach / staff ─────────────────────────────────────────────────────────
 function CoachView({ id, batches, staff, students, user, goDetail }) {

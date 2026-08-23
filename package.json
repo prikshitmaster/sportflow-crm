@@ -13,6 +13,7 @@
     "test:headed": "playwright test --headed",
     "test:students": "playwright test add-student",
     "test:payments": "playwright test payments",
+    "test:attendance": "playwright test attendance",
     "electron:dev": "concurrently -n vite,electron -c blue,green \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:preview": "vite build --base ./ && electron .",
     "electron:build": "vite build --base ./ && electron-builder"

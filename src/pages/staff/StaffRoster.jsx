@@ -13,6 +13,7 @@ export default function StaffRoster() {
   const { user, batches, students, hasPermission } = useApp()
   const [search, setSearch] = useState('')
   const [batchFilter, setBatchFilter] = useState('all')
+  const [sportFilter, setSportFilter] = useState('all')
   const [docsStudent, setDocsStudent] = useState(null)   // student whose docs sheet is open
   const [lockMsg, setLockMsg] = useState(false)
   const canViewDocs = hasPermission('documents.view')
@@ -51,15 +52,23 @@ export default function StaffRoster() {
     )
   }, [students, myBatches])
 
-  // Apply search + batch filter
+  // Sports present in this roster. A whole-branch staff member (staff.location_id
+  // set) covers every sport at their place, so without this they'd scroll one
+  // undifferentiated list of hundreds.
+  const rosterSports = useMemo(
+    () => [...new Set(rosterStudents.map(s => s.sport).filter(Boolean))].sort(),
+    [rosterStudents])
+
+  // Apply search + sport + batch filter
   const visible = useMemo(() => {
     const q = search.toLowerCase()
     return rosterStudents.filter(s => {
+      const matchSport  = sportFilter === 'all' || s.sport === sportFilter
       const matchBatch  = batchFilter === 'all' || s.batch === batchFilter || String(s.batchId) === batchFilter
       const matchSearch = !q || s.name.toLowerCase().includes(q) || (s.parent || '').toLowerCase().includes(q)
-      return matchBatch && matchSearch
+      return matchSport && matchBatch && matchSearch
     })
-  }, [rosterStudents, search, batchFilter])
+  }, [rosterStudents, search, sportFilter, batchFilter])
 
   const attStatus = (id) => todayAtt[id] || 'Unmarked'
   const attColor  = { Present: 'bg-emerald-100 text-emerald-700', Absent: 'bg-red-100 text-red-700', Late: 'bg-amber-100 text-amber-700', Unmarked: 'bg-gray-100 text-gray-500' }
@@ -93,6 +102,24 @@ export default function StaffRoster() {
             onChange={e => setSearch(e.target.value)}
           />
         </div>
+
+        {/* Sport filter — only when this roster actually spans several sports,
+            i.e. a whole-branch staff member. A single-sport coach sees nothing
+            extra. Sits above the batch tabs because it narrows them. */}
+        {rosterSports.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 mb-2">
+            {['all', ...rosterSports].map(sp => (
+              <button key={sp}
+                onClick={() => { setSportFilter(sp); setBatchFilter('all') }}
+                className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full transition ${
+                  sportFilter === sp ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'
+                }`}
+              >
+                {sp === 'all' ? 'All Sports' : sp}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Batch filter tabs */}
         <div className="flex gap-2 overflow-x-auto pb-1">

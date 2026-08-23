@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X, Send, Search, Trash2 } from 'lucide-react'
+import { Megaphone, Plus, Calendar, Trophy, Bell, Mic, PartyPopper, X, Send, Search, Trash2, MapPin, Image, Loader2 } from 'lucide-react'
+import * as db from '../lib/db'
 import { Modal } from './Students'
 import SendStaffNoticeModal from '../components/SendStaffNoticeModal'
 import DevFillButton from '../components/DevFillButton'
@@ -29,6 +30,28 @@ function audienceLabel(a) {
   if (type === 'students_list') return `${n} student${n === 1 ? '' : 's'}`
   if (type === 'staff_members') return `${n} staff`
   return 'Everyone'
+}
+
+// "When" line for a notice carrying event dates (0183). Relative wording for
+// the near future because that is what people are actually scanning for —
+// an exact date tells you less than "Tomorrow" when it is tomorrow.
+const dmy = (d) => new Date(d + 'T00:00:00')
+  .toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+
+function eventWhen(a) {
+  if (!a?.eventDate) return ''
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const start = dmy(a.eventDate)
+  if (a.eventEndDate && a.eventEndDate !== a.eventDate) {
+    return `${start} – ${dmy(a.eventEndDate)}`
+  }
+  const days = Math.round((new Date(a.eventDate + 'T00:00:00') - today) / 86400000)
+  if (days === 0) return `Today · ${start}`
+  if (days === 1) return `Tomorrow · ${start}`
+  if (days < 0)   return start
+  if (days <= 7)  return `In ${days} days · ${start}`
+  return new Date(a.eventDate + 'T00:00:00')
+    .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 export default function Community() {
@@ -140,6 +163,21 @@ export default function Community() {
                     <span className="text-[10px] text-gray-400 font-medium">{audienceLabel(a)}</span>
                   </div>
                   <h3 className="font-bold text-gray-900 mb-1.5">{a.title}</h3>
+                  {/* When / where, when this notice is an event (0183). Sits
+                      above the body because it is the part people scan for. */}
+                  {a.eventDate && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-700 bg-brand-50 px-2 py-1 rounded-lg">
+                        <Calendar size={11} />
+                        {eventWhen(a)}
+                      </span>
+                      {a.venue && (
+                        <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                          <MapPin size={11} className="text-gray-400" /> {a.venue}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {/* Truncated here — full text lives in the detail popup */}
                   <p className="text-sm text-gray-600 leading-relaxed line-clamp-2">{a.body}</p>
                   <p className="text-xs text-gray-400 mt-3">— {a.author}</p>
@@ -189,6 +227,25 @@ export default function Community() {
             </span>
             <span className="text-xs text-gray-500 font-medium">{audienceLabel(detail)}</span>
           </div>
+
+          {/* Event details (0183) */}
+          {detail.flyerUrl && (
+            <img src={detail.flyerUrl} alt={detail.title}
+              className="w-full rounded-xl mb-3 max-h-72 object-cover" />
+          )}
+          {detail.eventDate && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-700 bg-brand-50 px-2.5 py-1.5 rounded-lg">
+                <Calendar size={12} /> {eventWhen(detail)}
+              </span>
+              {detail.venue && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1.5 rounded-lg">
+                  <MapPin size={12} /> {detail.venue}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* whitespace-pre-wrap so line breaks the author typed survive */}
           <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
             {detail.body || <span className="text-gray-400 italic">No message body</span>}
@@ -263,7 +320,13 @@ const AUDIENCES = [
 const PICKER = { batches: 'batches', students_list: 'students', staff_members: 'staff' }
 
 function AddAnnouncementModal({ onClose, onSave, staff = [], students = [], batches = [] }) {
-  const [form, setForm] = useState({ title: '', body: '', type: TYPES[4], audienceType: 'all', audienceIds: [] })
+  const [form, setForm] = useState({
+    title: '', body: '', type: TYPES[4], audienceType: 'all', audienceIds: [],
+    eventDate: '', eventEndDate: '', venue: '', flyerUrl: null,
+  })
+  const [isEvent,   setIsEvent]   = useState(false)
+  const [flyerFile, setFlyerFile] = useState(null)
+  const [saving,    setSaving]    = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const pickerKind = PICKER[form.audienceType]
@@ -277,17 +340,40 @@ function AddAnnouncementModal({ onClose, onSave, staff = [], students = [], batc
 
   // A "pick specific people" audience with nothing ticked would notify nobody.
   const needsPick = !!pickerKind && form.audienceIds.length === 0
-  const canSave   = form.title.trim() && !needsPick
+  // An event with no date is just a notice — the date is what makes it one.
+  const needsDate = isEvent && !form.eventDate
+  const badRange  = isEvent && form.eventEndDate && form.eventEndDate < form.eventDate
+  const canSave   = form.title.trim() && !needsPick && !needsDate && !badRange && !saving
+
+  const handleSave = async () => {
+    if (!canSave) return
+    setSaving(true)
+    try {
+      let flyerUrl = null
+      if (isEvent && flyerFile) flyerUrl = await db.uploadEventFlyer(flyerFile, form.title)
+      // Event fields are stripped unless the toggle is on, so turning it off
+      // after typing a date can't post a stray one the feed would then render.
+      await onSave({
+        ...form,
+        eventDate:    isEvent ? form.eventDate            : null,
+        eventEndDate: isEvent ? (form.eventEndDate || null) : null,
+        venue:        isEvent ? (form.venue || null)        : null,
+        flyerUrl:     isEvent ? flyerUrl                    : null,
+      })
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // Buttons go in the Modal's pinned footer, not the scrolling body — the
   // audience picker makes this form tall enough that on a phone they'd sit
   // below the fold and the form would look like it had no submit button.
   const footer = (
     <div className="flex justify-end gap-3">
-      <button className="btn-secondary" onClick={onClose}>Cancel</button>
-      <button className="btn-primary disabled:opacity-50" disabled={!canSave}
-        onClick={() => { if (canSave) { onSave(form); onClose() } }}>
-        Post Announcement
+      <button className="btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+      <button className="btn-primary disabled:opacity-50" disabled={!canSave} onClick={handleSave}>
+        {saving ? <><Loader2 size={14} className="animate-spin" /> Posting…</> : isEvent ? 'Post Event' : 'Post Announcement'}
       </button>
     </div>
   )
@@ -326,6 +412,70 @@ function AddAnnouncementModal({ onClose, onSave, staff = [], students = [], batc
             value={form.body}
             onChange={e => set('body', e.target.value)}
           />
+        </div>
+
+        {/* Event details — the old Events page, folded in. A notice with a
+            date is an event; without one it stays an ordinary notice. */}
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setIsEvent(v => !v)}
+            className="w-full flex items-center justify-between gap-3 px-3.5 py-3 bg-gray-50 hover:bg-gray-100 transition"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <Calendar size={14} className="text-brand-600" />
+              This is an event
+            </span>
+            <span className={`relative inline-flex w-10 h-5.5 rounded-full transition-colors flex-shrink-0 ${isEvent ? 'bg-brand-600' : 'bg-gray-300'}`}
+                  style={{ height: 22, width: 40 }}>
+              <span className={`inline-block w-4 h-4 bg-white rounded-full shadow transition-transform mt-1 ${isEvent ? 'translate-x-5' : 'translate-x-1'}`} />
+            </span>
+          </button>
+
+          {isEvent && (
+            <div className="p-3.5 space-y-3 bg-white border-t border-gray-100">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Date *</label>
+                  <input type="date" className="input" value={form.eventDate}
+                    onChange={e => set('eventDate', e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Ends <span className="normal-case font-normal text-gray-400">(optional)</span></label>
+                  <input type="date" className="input" value={form.eventEndDate} min={form.eventDate || undefined}
+                    onChange={e => set('eventEndDate', e.target.value)} />
+                </div>
+              </div>
+              {badRange && (
+                <p className="text-[11px] text-red-600 font-semibold">The end date is before the start date.</p>
+              )}
+              <div>
+                <label className="label">Venue</label>
+                <div className="relative">
+                  <MapPin size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input className="input pl-8" placeholder="e.g. ARA Ground, SG Highway"
+                    value={form.venue} onChange={e => set('venue', e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="label">Flyer <span className="normal-case font-normal text-gray-400">(optional)</span></label>
+                {!flyerFile ? (
+                  <label className="flex items-center justify-center gap-2 py-3 text-xs font-semibold text-gray-500 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition">
+                    <Image size={14} /> Choose an image
+                    <input type="file" accept="image/*" className="hidden"
+                      onChange={e => setFlyerFile(e.target.files?.[0] || null)} />
+                  </label>
+                ) : (
+                  <div className="flex items-center justify-between gap-2 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl">
+                    <span className="text-xs text-gray-700 truncate">{flyerFile.name}</span>
+                    <button type="button" onClick={() => setFlyerFile(null)} className="flex-shrink-0">
+                      <X size={15} className="text-gray-400 hover:text-red-500" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Audience */}

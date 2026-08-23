@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus } from 'lucide-react'
+import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus, Link2, Unlink, Check } from 'lucide-react'
+import { slotSummary } from '../lib/batchCapacity'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import DevFillButton from '../components/DevFillButton'
@@ -19,7 +20,8 @@ const NAVY_HEX  = '#0f172a'
 
 export default function Batches() {
   const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch, role, user, hasPermission,
-          batchRoster, refreshBatchEnrolments } = useApp()
+          batchRoster, refreshBatchEnrolments,
+          batchSlots, saveBatchSlot, groupBatchesIntoSlot, removeBatchSlot } = useApp()
   const canManageBatches  = hasPermission('batches.manage')
   const canManageStudents = hasPermission('students.manage')
   // Branch is mandatory — a branchless batch would show across every branch.
@@ -28,6 +30,15 @@ export default function Batches() {
   const [editingBatch, setEditingBatch] = useState(null)
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [activeBranch, setActiveBranch] = useState('All')
+  // Grouping batches onto one shared ground (slot). Kept as page state rather
+  // than a route so leaving the page cannot strand a half-built group.
+  const [groupMode,   setGroupMode]   = useState(false)
+  const [pickedIds,   setPickedIds]   = useState(() => new Set())
+  const [draftName,   setDraftName]   = useState('')
+  const [draftCap,    setDraftCap]    = useState(20)
+  const [editingSlot, setEditingSlot] = useState(null)   // slot being re-edited, if any
+  const [slotSaving,  setSlotSaving]  = useState(false)
+  const [slotError,   setSlotError]   = useState('')
 
   // Reset branch tab + selected batch when scope changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -55,6 +66,52 @@ export default function Batches() {
   // Seats occupied — the sum. Correct to double-count here: two batches really
   // do give up two seats for the same student.
   const totalEnrolments = (list) => list.reduce((n, b) => n + (countByBatch[b.id] || 0), 0)
+
+  // ── Shared ground capacity (0184) ─────────────────────────────────────
+  // Batches pointing at the same slot stand on one patch of grass. Their real
+  // limit is per DAY, shared — not three independent per-batch numbers. The
+  // rule lives in src/lib/batchCapacity.js and is mirrored by the DB trigger,
+  // so what this shows is what the server will actually allow.
+  const rosterOf = useMemo(
+    () => (b) => batchRoster(b.id, b.name, activeStudents),
+    [batchRoster, activeStudents]
+  )
+  const countOf = useMemo(
+    () => (b) => countByBatch[b.id] || 0,
+    [countByBatch]
+  )
+
+  const slotById = useMemo(() => new Map(batchSlots.map(s => [s.id, s])), [batchSlots])
+
+  // { slotId → slotSummary }. Only slots that still have member batches; a slot
+  // whose batches were all detached has nothing to report.
+  const slotInfo = useMemo(() => {
+    const out = new Map()
+    batchSlots.forEach(slot => {
+      const members = batches.filter(b => b.slotId === slot.id)
+      if (members.length === 0) return
+      out.set(slot.id, slotSummary({ slot, slotBatches: members, rosterOf, countOf }))
+    })
+    return out
+  }, [batchSlots, batches, rosterOf, countOf])
+
+  // Per-batch seat detail, keyed by batch id, pulled out of its slot summary.
+  const seatByBatch = useMemo(() => {
+    const out = {}
+    slotInfo.forEach(info => info.batches.forEach(r => { out[r.batch.id] = r }))
+    return out
+  }, [slotInfo])
+
+  // Live preview while the owner is still picking batches — same function, fed
+  // an unsaved slot. Seeing "Mon 20/20" BEFORE committing is the whole point.
+  const draftPreview = useMemo(() => {
+    if (!groupMode || pickedIds.size === 0) return null
+    const members = batches.filter(b => pickedIds.has(b.id))
+    return slotSummary({
+      slot: { capPerDay: Number(draftCap) || 0 },
+      slotBatches: members, rosterOf, countOf,
+    })
+  }, [groupMode, pickedIds, draftCap, batches, rosterOf, countOf])
 
   const refreshEnrolments = refreshBatchEnrolments
 
@@ -90,9 +147,95 @@ export default function Batches() {
     ? batches
     : batches.filter(b => getBatchSection(b) === activeBranch)
 
+  // Seats Free — this tile used to sum each batch's leftovers independently,
+  // which counted the same patch of grass once per batch standing on it. A
+  // morning U15 slot with a TTS, an MWF and a Daily batch claimed 60 free
+  // seats on a ground that holds 20.
+  //
+  // Now a SLOT contributes once, and only its tightest day. That is the
+  // number you can promise whoever walks in next: an alternate-day student
+  // might still fit on a looser day, but never fewer than this. Under-
+  // promising on capacity is the safe direction to be wrong in.
+  const seatsFree = useMemo(() => {
+    const countedSlots = new Set()
+    return visibleBatches.reduce((total, b) => {
+      if (b.slotId && slotInfo.has(b.slotId)) {
+        if (countedSlots.has(b.slotId)) return total
+        countedSlots.add(b.slotId)
+        const rows = slotInfo.get(b.slotId).rows
+        return total + (rows.length ? Math.min(...rows.map(r => r.free)) : 0)
+      }
+      return total + Math.max(0, (b.capacity || 0) - (countByBatch[b.id] || 0))
+    }, 0)
+  }, [visibleBatches, slotInfo, countByBatch])
+
   const handleAdd = async (b) => {
     await addBatch(b)
     setShowModal(false)
+  }
+
+  // ── Grouping handlers ────────────────────────────────────────────────
+  const exitGroupMode = () => {
+    setGroupMode(false); setPickedIds(new Set()); setEditingSlot(null)
+    setDraftName(''); setDraftCap(20); setSlotError('')
+  }
+
+  const togglePicked = (id) => setPickedIds(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  // Re-open an existing slot for editing: preselect its batches so the owner
+  // can add or drop one in the same pass as changing the cap.
+  const openSlotForEdit = (slot) => {
+    setGroupMode(true)
+    setEditingSlot(slot)
+    setDraftName(slot.name)
+    setDraftCap(slot.capPerDay)
+    setPickedIds(new Set(batches.filter(b => b.slotId === slot.id).map(b => b.id)))
+    setSlotError('')
+  }
+
+  const handleSaveSlot = async () => {
+    setSlotSaving(true); setSlotError('')
+    try {
+      const slot = await saveBatchSlot({
+        id: editingSlot?.id ?? null,
+        name: draftName.trim(),
+        capPerDay: Number(draftCap),
+        branchId: editingSlot?.branchId
+          ?? batches.find(b => pickedIds.has(b.id))?.branchId
+          ?? selectedBranch ?? null,
+      })
+      const picked = [...pickedIds]
+      await groupBatchesIntoSlot(picked, slot.id)
+      // Batches dropped from an existing slot must be detached explicitly —
+      // secure_set_batch_slot only touches the ids it is handed.
+      if (editingSlot) {
+        const dropped = batches
+          .filter(b => b.slotId === editingSlot.id && !pickedIds.has(b.id))
+          .map(b => b.id)
+        if (dropped.length) await groupBatchesIntoSlot(dropped, null)
+      }
+      exitGroupMode()
+    } catch (e) {
+      setSlotError(e?.message || 'Could not save this slot.')
+    } finally {
+      setSlotSaving(false)
+    }
+  }
+
+  const handleUngroupSlot = async (slot) => {
+    setSlotSaving(true); setSlotError('')
+    try {
+      await removeBatchSlot(slot.id)
+      exitGroupMode()
+    } catch (e) {
+      setSlotError(e?.message || 'Could not remove this slot.')
+    } finally {
+      setSlotSaving(false)
+    }
   }
 
   const handleEdit = async (b) => {
@@ -116,13 +259,26 @@ export default function Batches() {
           <p className="text-xs text-gray-500">Tap a batch to view details &amp; manage students</p>
         </div>
         {canManageBatches && (
-          <button
-            className="btn-primary shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={!branchReady}
-            title={branchReady ? '' : 'Open a specific branch first to create a batch'}
-            onClick={() => branchReady && setShowModal(true)}>
-            <Plus size={15} /> <span className="hidden sm:inline">Create Batch</span><span className="sm:hidden">New</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              className={`shrink-0 px-3 py-2 rounded-lg text-sm font-bold border transition inline-flex items-center gap-1.5 ${
+                groupMode
+                  ? 'bg-gray-900 text-white border-gray-900'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+              title="Group batches that share one ground so they share its daily limit"
+              onClick={() => (groupMode ? exitGroupMode() : setGroupMode(true))}>
+              {groupMode ? <X size={15} /> : <Link2 size={15} />}
+              <span className="hidden sm:inline">{groupMode ? 'Cancel' : 'Group batches'}</span>
+            </button>
+            <button
+              className="btn-primary shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!branchReady || groupMode}
+              title={branchReady ? '' : 'Open a specific branch first to create a batch'}
+              onClick={() => branchReady && setShowModal(true)}>
+              <Plus size={15} /> <span className="hidden sm:inline">Create Batch</span><span className="sm:hidden">New</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -155,7 +311,7 @@ export default function Batches() {
           { val: uniqueStudents(visibleBatches), label: 'Students', color: 'text-brand-600' },
           { val: totalEnrolments(visibleBatches), label: 'Enrolments', color: 'text-brand-500' },
           { val: visibleBatches.reduce((s,b) => s + (b.waitlist || 0), 0), label: 'Waitlist', color: 'text-amber-600' },
-          { val: visibleBatches.reduce((s,b) => s + Math.max(0, b.capacity - (countByBatch[b.id] || 0)), 0), label: 'Seats Free', color: 'text-gray-400' },
+          { val: seatsFree, label: 'Seats Free', color: 'text-gray-400' },
         ].map(({ val, label, color }) => (
           <div key={label} className="card p-3 text-center">
             <p className={`text-2xl font-black ${color}`}>{val}</p>
@@ -163,6 +319,112 @@ export default function Batches() {
           </div>
         ))}
       </div>
+
+      {/* ── Group mode: pick the batches that share one ground ── */}
+      {groupMode && (
+        <div className="card p-4 border-2 border-gray-900 space-y-3">
+          <div className="flex items-start gap-2">
+            <Link2 size={16} className="text-gray-900 mt-0.5 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-black text-gray-900">
+                {editingSlot ? `Editing "${editingSlot.name}"` : 'Group batches onto one ground'}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Tick every batch that stands on the same ground at the same time. They&apos;ll share
+                one daily limit instead of each keeping its own.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Slot name</label>
+              <input className="input" value={draftName} placeholder="e.g. Morning · Ground A"
+                onChange={e => setDraftName(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Ground holds (students per day)</label>
+              <input className="input" type="number" min={1} value={draftCap}
+                onChange={e => setDraftCap(e.target.value)} />
+            </div>
+          </div>
+
+          {/* Live day preview — the reason this panel exists. Seeing "Mon 20/20"
+              BEFORE committing is what stops a slot being created already broken. */}
+          {draftPreview && draftPreview.days.length > 0 && (
+            <div>
+              <p className="text-xs font-bold text-gray-500 mb-1.5">
+                {pickedIds.size} batch{pickedIds.size === 1 ? '' : 'es'} selected ·
+                {' '}{draftPreview.headcount} student{draftPreview.headcount === 1 ? '' : 's'} on this ground
+              </p>
+              <DayLoadStrip rows={draftPreview.rows} cap={Number(draftCap) || 0} />
+              {draftPreview.anyOver && (
+                <p className="text-[11px] text-red-600 mt-1.5 flex items-start gap-1">
+                  <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+                  Some days are already over this limit. Existing students stay put — new
+                  enrolments on those days are blocked until it drains or you raise the number.
+                </p>
+              )}
+            </div>
+          )}
+
+          {slotError && (
+            <p className="text-xs text-red-600 flex items-start gap-1">
+              <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />{slotError}
+            </p>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-2">
+            {editingSlot && (
+              <button className="px-3 py-2 rounded-lg text-sm font-bold text-red-600 hover:bg-red-50 inline-flex items-center gap-1.5 disabled:opacity-50"
+                disabled={slotSaving} onClick={() => handleUngroupSlot(editingSlot)}>
+                <Unlink size={14} /> Ungroup
+              </button>
+            )}
+            <button className="btn-secondary" onClick={exitGroupMode} disabled={slotSaving}>Cancel</button>
+            <button className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={slotSaving || pickedIds.size < 2 || !draftName.trim() || Number(draftCap) < 1}
+              title={pickedIds.size < 2 ? 'Pick at least two batches' : ''}
+              onClick={handleSaveSlot}>
+              {slotSaving ? 'Saving…' : editingSlot ? 'Save slot' : 'Create slot'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Existing slots: the day table that per-batch numbers can't show ── */}
+      {!groupMode && [...slotInfo.entries()].map(([slotId, info]) => {
+        const slot = slotById.get(slotId)
+        // Respect the active sport/branch tab. A slot whose batches are all
+        // filtered out belongs to another part of the academy — showing its
+        // day table here would leak another branch's headcount onto this one.
+        if (!slot || !visibleBatches.some(b => b.slotId === slotId)) return null
+        return (
+          <div key={slotId} className="card p-4 space-y-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-black text-gray-900 flex items-center gap-1.5">
+                  <Link2 size={13} className="text-gray-400 flex-shrink-0" />
+                  <span className="truncate">{slot.name}</span>
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {info.batches.length} batches share this ground ·
+                  {' '}{info.headcount} student{info.headcount === 1 ? '' : 's'} ·
+                  {' '}holds {slot.capPerDay}/day
+                </p>
+              </div>
+              {canManageBatches && (
+                <button onClick={() => openSlotForEdit(slot)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition flex-shrink-0"
+                  title="Edit this slot">
+                  <Pencil size={13} />
+                </button>
+              )}
+            </div>
+            <DayLoadStrip rows={info.rows} cap={slot.capPerDay} />
+          </div>
+        )
+      })}
 
       {/* ── Grouped branch sections (when branches configured) ── */}
       {grouped && activeBranch === 'All' ? (
@@ -179,7 +441,7 @@ export default function Batches() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {branchBatches.map((b) => (
-                  <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
+                  <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} seat={seatByBatch[b.id]} selectable={groupMode} selected={pickedIds.has(b.id)} onToggleSelect={togglePicked} />
                 ))}
               </div>
             </div>
@@ -194,7 +456,7 @@ export default function Batches() {
         /* Single branch selected — flat grid */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {visibleBatches.map((b) => (
-            <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />
+            <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} seat={seatByBatch[b.id]} selectable={groupMode} selected={pickedIds.has(b.id)} onToggleSelect={togglePicked} />
           ))}
         </div>
       )}
@@ -202,7 +464,7 @@ export default function Batches() {
       {/* Fallback flat grid when no branches configured */}
       {!grouped && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {batches.map((b) => <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} />)}
+          {batches.map((b) => <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} seat={seatByBatch[b.id]} selectable={groupMode} selected={pickedIds.has(b.id)} onToggleSelect={togglePicked} />)}
         </div>
       )}
 
@@ -238,10 +500,43 @@ export default function Batches() {
   )
 }
 
-function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) {
+// One tile per day the ground runs: bodies standing on it, out of the slot's
+// limit. This is the view a per-batch number can never give you — a daily
+// student shows up on every day, an alternate only on their own batch's days,
+// and the day that fills first is what actually blocks the next enrolment.
+function DayLoadStrip({ rows, cap }) {
+  if (!rows?.length) return null
+  const nearlyFull = Math.max(1, Math.round((cap || 0) * 0.15))
+  return (
+    <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+      {rows.map(r => {
+        const tone = r.over          ? 'bg-red-100 text-red-700 border-red-300'
+                   : r.full          ? 'bg-red-50 text-red-600 border-red-200'
+                   : r.free <= nearlyFull ? 'bg-amber-50 text-amber-700 border-amber-200'
+                   : 'bg-gray-50 text-gray-600 border-gray-200'
+        return (
+          <div key={r.day} className={`rounded-lg border px-2 py-1.5 text-center ${tone}`}>
+            <p className="text-[10px] font-bold uppercase tracking-wide opacity-60">{r.day}</p>
+            <p className="text-sm font-black leading-tight">
+              {r.occupied}<span className="opacity-40 font-bold">/{cap}</span>
+            </p>
+            <p className="text-[9px] font-bold opacity-70">
+              {r.over ? `${r.occupied - cap} over` : r.full ? 'FULL' : `${r.free} free`}
+            </p>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit,
+                     seat = null, selectable = false, selected = false, onToggleSelect }) {
   const enrolled      = liveCount
   const pct           = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
-  const isFull        = enrolled >= b.capacity
+  // A grouped batch is full when EITHER its own cap or the shared ground is
+  // out of room on a day it runs — seat.altFree already folds both together.
+  const isFull        = seat ? seat.altFree === 0 : enrolled >= b.capacity
   const hex           = BRAND_HEX
   const barColor      = isFull ? '#ef4444' : pct > 80 ? '#f59e0b' : hex
   const todayDayShort = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]
@@ -249,18 +544,30 @@ function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) 
   const coachStaff = b.coach ? staff.find(s => s.name === b.coach) : null
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm hover:shadow-lg active:scale-[0.98] transition-all border border-gray-200">
+    <div
+      onClick={selectable ? () => onToggleSelect?.(b.id) : undefined}
+      className={`bg-white rounded-2xl shadow-sm transition-all border relative ${
+        selectable ? 'cursor-pointer' : 'hover:shadow-lg active:scale-[0.98]'
+      } ${selected ? 'border-gray-900 ring-2 ring-gray-900' : 'border-gray-200'}`}>
+      {/* Selection tick — only in group mode, where the whole card is the target */}
+      {selectable && (
+        <div className={`absolute top-3 right-3 z-10 w-6 h-6 rounded-md border-2 flex items-center justify-center transition ${
+          selected ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white/90 border-white/60'
+        }`}>
+          {selected && <Check size={14} strokeWidth={3} />}
+        </div>
+      )}
       {/* Header — click opens detail panel. Solid deep-navy band, inset with
           its own rounded corners so adjacent cards read as clearly separate
           chips instead of merging into one dark strip at a glance. */}
       <div className="p-2 pb-0">
         <div
-          className="relative cursor-pointer rounded-xl px-4 pt-3.5 pb-3.5"
+          className={`relative rounded-xl px-4 pt-3.5 pb-3.5 ${selectable ? '' : 'cursor-pointer'}`}
           style={{ background: NAVY_HEX }}
-          onClick={() => onSelect(b)}
+          onClick={() => { if (!selectable) onSelect(b) }}
         >
           {/* Edit button top-right */}
-          {canEdit && (
+          {canEdit && !selectable && (
             <button
               onClick={e => { e.stopPropagation(); onEdit(b) }}
               className="absolute top-3 right-3 p-1.5 rounded-lg text-white/50 hover:bg-white/10 hover:text-white transition"
@@ -303,7 +610,8 @@ function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) 
       </div>
 
       {/* Card body */}
-      <div className="px-4 py-3 cursor-pointer" onClick={() => onSelect(b)}>
+      <div className={`px-4 py-3 ${selectable ? '' : 'cursor-pointer'}`}
+           onClick={() => { if (!selectable) onSelect(b) }}>
         {/* Capacity bar */}
         <div className="mb-2">
           <div className="flex justify-between text-xs mb-1">
@@ -313,6 +621,24 @@ function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit }) 
           <div className="w-full bg-gray-100 rounded-full h-1.5">
             <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: barColor }} />
           </div>
+          {/* Shared-ground seats. TWO numbers, because they genuinely differ:
+              an alternate-day kid only needs this batch's days, a daily kid
+              needs every day the ground runs. An MWF batch can be wide open
+              for alternates and completely shut for dailies at once — which
+              is exactly the case the old single number got wrong. */}
+          {seat && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] font-bold">
+              <Link2 size={10} className="text-gray-400 flex-shrink-0" />
+              <span className={seat.altFree === 0 ? 'text-red-600' : 'text-gray-600'}>
+                {seat.altFree} alt-day
+              </span>
+              <span className="text-gray-300">·</span>
+              <span className={seat.dailyFree === 0 ? 'text-red-600' : 'text-gray-600'}>
+                {seat.dailyFree} daily
+              </span>
+              <span className="text-gray-400 font-medium">seats left</span>
+            </div>
+          )}
         </div>
 
         {/* Status badges + age */}
@@ -544,6 +870,11 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
   const { user, reassignPrimaryBatch, batches, batchEnrolments } = useApp()
   const [mbEnrolments, setMbEnrolments] = useState([])
   const [assignSearch, setAssignSearch] = useState('')
+  // The server can now refuse an enrolment (shared ground full on some day,
+  // migration 0184). Its message names the day and which limit to raise, so
+  // it must reach the screen — this handler used to be try/finally with no
+  // catch, which turned a refusal into "nothing happened".
+  const [assignError, setAssignError] = useState('')
   const [assigning, setAssigning] = useState(null)
   const [unassigning, setUnassigning] = useState(null)
   const [moveId, setMoveId]       = useState(null)   // primary student being moved
@@ -636,12 +967,18 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
       return
     }
     setAssigning(student.id)
+    setAssignError('')
     try {
       await assignStudentToBatch(student.id, b.id, b.name, user?.academyId)
       setMbEnrolments(prev => [...prev, { student_id: student.id, batch_id: b.id }])
       onEnrolledChange?.(b.id, 1)
       logAudit({ actor: user, action: ACTIONS.BATCH_ASSIGN, entityType: 'batch', entityId: b.id, entityName: b.name, changes: { student: student.name }, academyId: user?.academyId, sport: b.sports?.[0] ?? null, branchId: b.branchId ?? null })
       setAssignSearch('')
+    } catch (e) {
+      // Capacity refusals arrive here with a message written to be read
+      // ("Ground full on Mon: … Raise the slot capacity"). Show it verbatim
+      // rather than a generic failure — it tells the owner what to do next.
+      setAssignError(e?.message || 'Could not add this student to the batch.')
     } finally {
       setAssigning(null)
     }
@@ -785,9 +1122,15 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
                 className="input pl-8 text-sm"
                 placeholder="Type name to search…"
                 value={assignSearch}
-                onChange={e => setAssignSearch(e.target.value)}
+                onChange={e => { setAssignSearch(e.target.value); setAssignError('') }}
               />
             </div>
+            {assignError && (
+              <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2 flex items-start gap-1.5">
+                <AlertCircle size={13} className="mt-px flex-shrink-0" />
+                <span>{assignError}</span>
+              </p>
+            )}
             {searchResults.length > 0 && (
               <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
                 {searchResults.map(s => {

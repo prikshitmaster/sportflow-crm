@@ -70,7 +70,7 @@ function DobInput({ value, onChange, hasError }) {
 
 export default function Students() {
   const navigate = useNavigate()
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, role, hasPermission } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, role, hasPermission, visibleSports, showSportFilter } = useApp()
   const canManageStudents = hasPermission('students.manage')
   const canManageTrials   = hasPermission('trials.manage')
   const canManagePayments = hasPermission('payments.manage')
@@ -436,10 +436,14 @@ export default function Students() {
           />
         </div>
         <div className="flex gap-2 flex-wrap">
-          {selectedSport === 'All' && (
+          {/* Shown whenever more than one sport is in view — an owner on "All
+              Sports" OR a staff member who runs a whole branch. Options come
+              from the data in scope, not the static catalog, so it never lists
+              a sport with nothing behind it. */}
+          {showSportFilter && (
             <select className="input flex-1 min-w-0" value={sportFilter} onChange={e => { setSportFilter(e.target.value); setBatchFilter('All') }}>
               <option value="All">All Sports</option>
-              {SPORTS.map(s => <option key={s}>{s}</option>)}
+              {visibleSports.map(s => <option key={s}>{s}</option>)}
             </select>
           )}
           <select className="input flex-1 min-w-0" value={batchFilter} onChange={e => setBatchFilter(e.target.value)}>
@@ -729,6 +733,7 @@ export default function Students() {
           onStatusChange={(id, status) => { updateStudentStatus(id, status); setProfile(p => ({ ...p, status })) }}
           onReset={async (s) => { const c = await resetStudentPasswordAdmin(s.id); setResetResult({ id: s.id, studentCode: s.studentCode, joinCode: c }); setProfile(null) }}
           onSuspend={(s) => { suspendStudent(s); setProfile(null) }}
+          onFullProfile={(s) => { setProfile(null); navigate(`${role === 'staff' ? '/staff' : ''}/detail/student/${s.id}`) }}
         />
       )}
     </div>
@@ -875,12 +880,24 @@ function RegistrationReceiptModal({ student, payment, onClose }) {
   )
 }
 
+// Batches must match the chosen sport. Without this a whole-branch staff member
+// picking "Football" was still offered every Squash/Cricket/Tennis batch at
+// their branch — and enrolling into one would put the student in a batch for a
+// different sport entirely. Batches carrying no sport at all (legacy rows) stay
+// selectable so they never become unreachable.
+export const batchMatchesSport = (b, sport) => {
+  if (!sport) return true
+  const list = Array.isArray(b.sports) ? b.sports : (b.sports ? [String(b.sports)] : [])
+  if (list.length === 0) return true
+  return list.some(sp => sp?.toLowerCase() === sport.toLowerCase())
+}
+
 function AddStudentModal({ onClose, onSave }) {
   const { batches, selectedSport, selectedBranch, sportBranches, branches, user, allStudents } = useApp()
   // New students always start in a Development batch — Advance squads are
   // earned, so they're only reachable from Edit Student, never at registration.
   // Rows written before batch_type existed default to 'development'.
-  const devBatches = batches.filter(b => (b.batchType || 'development') !== 'advance')
+  const allDevBatches = batches.filter(b => (b.batchType || 'development') !== 'advance')
   // The code (not the full name) is what staff actually scan for here —
   // it's the short unique label batches are now required to carry (0160).
   // Falls back to the name only for batches created before that, which
@@ -898,7 +915,21 @@ function AddStudentModal({ onClose, onSave }) {
   const configuredCatalogSports = allSportNames
     .filter(b => catalogLower.includes(b.toLowerCase()))
     .map(b => SPORT_CATALOG[catalogLower.indexOf(b.toLowerCase())])
-  const sportOptions = configuredCatalogSports.length > 0 ? configuredCatalogSports : SPORTS
+  const configuredSports = configuredCatalogSports.length > 0 ? configuredCatalogSports : SPORTS
+  // Staff may only file a student under a sport they actually cover. Filing
+  // outside their set half-hides the result: batches ARE sport-scoped by RLS
+  // (current_staff_sports(), security-v3/15), so the student would land in a
+  // batch this staffer can't see. An empty array means "all sports" — those
+  // staff keep the full list.
+  const sportOptions = user?.sports?.length
+    ? (() => {
+        const mine = configuredSports.filter(o => user.sports.some(us => us.toLowerCase() === o.toLowerCase()))
+        // Never strand a staffer whose assigned sport isn't in the academy's
+        // configured list (sport removed, or a name outside SPORT_CATALOG) —
+        // an empty dropdown would make it impossible to register anyone.
+        return mine.length ? mine : user.sports
+      })()
+    : configuredSports
   // Staff single-sport default: if staff has exactly one assigned sport, pre-select it
   const staffSingleSport = (user?.sports?.length === 1)
     ? (SPORT_CATALOG.find(s => s.toLowerCase() === user.sports[0].toLowerCase()) || null)
@@ -924,6 +955,8 @@ function AddStudentModal({ onClose, onSave }) {
   const [medicalFile, setMedicalFile] = useState(null)
   const [additionalBatchIds, setAdditionalBatchIds] = useState([])
   const [errors,  setErrors]  = useState({})
+  // What the batch pickers actually offer — scoped to the selected sport.
+  const devBatches = allDevBatches.filter(b => batchMatchesSport(b, form.sport))
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -1169,7 +1202,14 @@ function AddStudentModal({ onClose, onSave }) {
             </div>
           ) : (
             <select className={`input ${errors.sport ? 'border-red-400' : ''}`}
-              value={form.sport} onChange={e => set('sport', e.target.value)}>
+              value={form.sport}
+              onChange={e => {
+                // Changing sport invalidates any batch already picked — clear it
+                // rather than silently keeping a batch from the previous sport.
+                setForm(f => ({ ...f, sport: e.target.value, batchId: '', batchName: '' }))
+                setAdditionalBatchIds([])
+                setErrors(er => ({ ...er, sport: undefined, batchId: undefined }))
+              }}>
               <option value="">— Select Sport —</option>
               {sportOptions.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -1357,7 +1397,7 @@ function AddStudentModal({ onClose, onSave }) {
   )
 }
 
-function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit, onStatusChange, onReset, onSuspend }) {
+function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit, onStatusChange, onReset, onSuspend, onFullProfile }) {
   const paid    = payments.filter(p => p.status === 'Paid')
   const pending = payments.filter(p => p.status !== 'Paid')
   const totalPaid = paid.reduce((sum, p) => sum + p.amount, 0)
@@ -1405,6 +1445,15 @@ function StudentProfileModal({ student: s, canManage, payments, onClose, onEdit,
                   ★ New Student · Trial
                 </span>
               )}
+              {/* This drawer stays the quick operational view; the full 360°
+                  page (attendance calendar, score trend, documents, every
+                  registration field) lives at /detail/student/:id. */}
+              <button
+                onClick={() => onFullProfile?.(s)}
+                className="inline-flex items-center gap-1 mt-2 text-[11px] font-bold text-white bg-white/20 hover:bg-white/30 px-2.5 py-1 rounded-lg transition"
+              >
+                Full profile <ChevronRight size={12} />
+              </button>
             </div>
           </div>
           {/* Quick stats */}
@@ -1766,7 +1815,13 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <label className="label">Batch</label>
           <select className="input" value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— No Batch —</option>
-            {batches.map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
+            {/* Same rule as Add Student: only batches for this student's sport.
+                The student's CURRENT batch is always kept in the list, so an
+                existing cross-sport assignment stays visible and fixable rather
+                than silently blanking the field. */}
+            {batches
+              .filter(b => batchMatchesSport(b, form.sport) || String(b.id) === String(form.batchId))
+              .map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
         </div>
         <div>

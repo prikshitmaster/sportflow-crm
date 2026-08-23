@@ -14,6 +14,7 @@ import {
 import * as db from '../lib/db'
 import { ACTION_LABELS, ACTION_CATEGORY, ENTITY_COLORS, ROLE_COLORS } from '../lib/audit'
 import { saveOrShareFile } from '../lib/nativeSave'
+import PaymentTrail from '../components/PaymentTrail'
 import { isOutstanding, daysOverdue as ruleDaysOverdue, ageingBucket, ageingBucketOrder } from '../lib/studentRules'
 import { toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 import { SPORT_CATEGORIES, FOOTBALL_CATEGORIES, getCategoryAvg, getOverallScore, getTier, buildMonthOpts, monthLabel, FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
@@ -522,7 +523,9 @@ function FinancialTab({ payments, students }) {
         const noPayment = s.paidTill == null
         const status    = noPayment ? 'No Payment' : isPaid ? 'Paid' : 'Overdue'
         const monthPays = payments.filter(p => String(p.studentId) === String(s.id) && monthKey(p.date) === period)
-        const collected = monthPays.reduce((sum, p) => sum + p.amount, 0)
+        // status === 'Paid' only — an uncleared cheque or a linked Due-balance
+        // row (partial-payment shortfall) is still Pending, not money in hand.
+        const collected = monthPays.filter(p => p.status === 'Paid').reduce((sum, p) => sum + p.amount, 0)
         return { s, isPaid, isOverdue, status, outstanding: isPaid ? 0 : (s.fees || 0), collected }
       })
       .sort((a, b) => {
@@ -1728,7 +1731,9 @@ function AuditTab({ academyId, selectedSport, selectedBranch, sportBranches }) {
   const [dateTo, setDateTo]         = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [showFilters, setShowFilters] = useState(false)
-  const [auditSection, setAuditSection] = useState('checkins') // 'checkins' | 'all'
+  // Payments leads because it is the section with money in it — the one people
+  // actually open the audit log to check.
+  const [auditSection, setAuditSection] = useState('payments') // 'payments' | 'checkins' | 'all'
 
   const load = () => {
     setLoading(true)
@@ -1792,9 +1797,13 @@ function AuditTab({ academyId, selectedSport, selectedBranch, sportBranches }) {
           <p className="text-xs text-gray-500">Every action — who did it, when, and what changed</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => exportAuditCSV(filtered)} className="btn-secondary text-xs gap-1.5" disabled={filtered.length === 0}>
-            <FileDown size={12} /> Export CSV
-          </button>
+          {/* Payment Trail carries its own export scoped to payment rows — this
+              one would quietly hand you the whole activity log instead. */}
+          {auditSection !== 'payments' && (
+            <button onClick={() => exportAuditCSV(filtered)} className="btn-secondary text-xs gap-1.5" disabled={filtered.length === 0}>
+              <FileDown size={12} /> Export CSV
+            </button>
+          )}
           <button onClick={load} className="btn-secondary text-xs gap-1.5">
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
@@ -1803,6 +1812,10 @@ function AuditTab({ academyId, selectedSport, selectedBranch, sportBranches }) {
 
       {/* Section toggle */}
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+        <button onClick={() => setAuditSection('payments')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold transition ${auditSection === 'payments' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          Payment Trail
+        </button>
         <button onClick={() => setAuditSection('checkins')}
           className={`px-4 py-2 rounded-lg text-xs font-bold transition ${auditSection === 'checkins' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
           Student Check-ins
@@ -1812,6 +1825,16 @@ function AuditTab({ academyId, selectedSport, selectedBranch, sportBranches }) {
           All Activity
         </button>
       </div>
+
+      {/* ── Payment trail section ── */}
+      {auditSection === 'payments' && (
+        <PaymentTrail
+          logs={logs}
+          branchNameById={branchNameById}
+          loading={loading}
+          todayStr={todayStr}
+        />
+      )}
 
       {/* ── Check-ins section ── */}
       {auditSection === 'checkins' && (

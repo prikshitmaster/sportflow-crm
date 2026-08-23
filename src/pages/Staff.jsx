@@ -8,8 +8,66 @@ import { fillStaff, fillInvite } from '../lib/devFill'
 import { ALL_PERMISSIONS, ROLE_PRESETS, PERMISSION_GROUPS, PERM_LABEL, ACCESS_ROLES, ACCESS_ROLE_LABEL, ACCESS_ROLE_COLOR } from '../lib/permissions'
 import * as db from '../lib/db'
 import { toLocalDateStr } from '../lib/dates'
+import { academySportOptions } from '../lib/sportCatalog'
 
 const ROLES = ['Head Coach', 'Coach', 'Trainer', 'Dance Trainer', 'Admin', 'Support Staff']
+
+// Sport assignment for a staff member. Multi-select on purpose: a branch that
+// runs several sports usually has ONE counter person doing fees + admissions
+// for all of them, and they must not need a separate login per sport.
+// Selecting none = stored as an empty array, which the RLS helper
+// current_staff_sports() reads as "all sports at this branch".
+// `allowAll` mirrors the server's no-escalation cap (0173): a creator/editor who
+// is themselves restricted to specific sports may not hand out "all sports".
+function SportPicker({ options, value, onChange, error, allowAll = true }) {
+  const selected = value || []
+  const allSports = selected.length === 0
+  // Always show what's actually assigned, even if that sport is no longer in the
+  // academy's configured list — otherwise the value is invisible yet still saved,
+  // and there'd be no way to untick it.
+  const shown = [...options, ...selected.filter(s => !options.some(o => o.toLowerCase() === s.toLowerCase()))]
+  const toggle = (sport) => {
+    onChange(selected.some(s => s.toLowerCase() === sport.toLowerCase())
+      ? selected.filter(s => s.toLowerCase() !== sport.toLowerCase())
+      : [...selected, sport])
+  }
+  const chipCls = (on) => `px-2.5 py-1.5 rounded-lg text-xs font-bold border-2 transition ${
+    on ? 'border-brand-500 bg-brand-50 text-brand-700'
+       : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+  }`
+  return (
+    <div>
+      <label className="label">Sports</label>
+      <div className="flex flex-wrap gap-1.5">
+        {/* Clearing to [] is the stored form of "all sports" — surfaced as a
+            real chip so it's a deliberate pick, not an empty-by-accident state. */}
+        {allowAll && (
+          <button type="button" onClick={() => onChange([])} className={chipCls(allSports)}>
+            {allSports && <Check size={11} className="inline mr-1 -mt-0.5" />}All sports
+          </button>
+        )}
+        {shown.map(sport => {
+          const on = selected.some(s => s.toLowerCase() === sport.toLowerCase())
+          return (
+            <button key={sport} type="button" onClick={() => toggle(sport)} className={chipCls(on)}>
+              {on && <Check size={11} className="inline mr-1 -mt-0.5" />}{sport}
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-[11px] text-gray-400 mt-1.5">
+        {allSports
+          ? (allowAll
+              ? 'Sees every sport at their branch — including sports added later.'
+              : 'Pick at least one sport.')
+          : selected.length === 1
+            ? 'Tick more than one for front-desk staff who handle several sports.'
+            : `Handles ${selected.length} sports — one login covers all of them.`}
+      </p>
+      {error && <p className="text-[11px] text-red-500 mt-1">{error}</p>}
+    </div>
+  )
+}
 
 export default function Staff() {
   const { staff, batches, updateBatchCoach, leaveRequests, loadLeaveRequests, updateLeave, deleteLeave, role, user, selectedBranch, demoMode, inviteStaff, updateStaffAccess, revokeStaffAccess, addStaffMember, removeStaffMember, editStaffMember, editStaffPermissions, hasPermission, showToast, refreshData } = useApp()
@@ -654,8 +712,21 @@ function dayCount(start, end) {
 }
 
 function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPermission, currentUserId, branchManagerCount, onClose, onAssign, onUnassign, onDelete, onEdit, onEditPermissions, onResetAccount }) {
-  const { selectedSport, students, batchRoster } = useApp()
+  const { selectedSport, students, batchRoster, branches, sportBranches, locations, user: me } = useApp()
   const isFootball = (selectedSport || '').toLowerCase() === 'football'
+  // Reassigning sports widens what this member can see, so it rides the same
+  // gate as the Edit tab itself (owners + branch managers) and is re-checked
+  // server-side by secure_update_staff_profile (0173) — including the
+  // no-escalation cap mirrored here.
+  const canEditSports = isOwner || hasPermission?.('staff.manage')
+  const canGrantAll   = isOwner || !me?.sports?.length
+  const allSportOptions = academySportOptions({ branches, sportBranches })
+  const sportOptions = canGrantAll
+    ? allSportOptions
+    : (() => {
+        const mine = allSportOptions.filter(o => me.sports.some(us => us.toLowerCase() === o.toLowerCase()))
+        return mine.length ? mine : me.sports
+      })()
   const isBrokenAccount = isOwner && s.accountStatus === 'active' && !s.email
   const photoRef = useRef(null)
   const assignedBatches   = batches.filter(b => b.coach === s.name)
@@ -679,6 +750,8 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPe
   const [editName,      setEditName]      = useState(s.name)
   const [editPhone,     setEditPhone]     = useState(s.phone || '')
   const [editAge,       setEditAge]       = useState(s.age || '')
+  const [editSports,    setEditSports]    = useState(s.sports || [])
+  const [editLocation,  setEditLocation]  = useState(s.locationId || null)
   const [editPhoto,     setEditPhoto]     = useState(null)
   const [editPreview,   setEditPreview]   = useState(null)
   const [editSaving,    setEditSaving]    = useState(false)
@@ -722,9 +795,23 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPe
 
   const handleEditSave = async () => {
     if (!editName.trim()) { setEditError('Name is required'); return }
+    // Not required for a whole-branch scope — that means all sports by design.
+    if (canEditSports && !editLocation && !canGrantAll && editSports.length === 0) {
+      setEditError('Select at least one sport'); return
+    }
     setEditSaving(true); setEditError('')
     try {
-      await onEdit(s.id, { name: editName.trim(), phone: editPhone.trim(), photoFile: editPhoto, photoUrl: s.photoUrl, age: editAge ? Number(editAge) : null })
+      await onEdit(s.id, {
+        name: editName.trim(), phone: editPhone.trim(),
+        photoFile: editPhoto, photoUrl: s.photoUrl,
+        age: editAge ? Number(editAge) : null,
+        // Omitted entirely when not permitted, so the RPC skips its checks.
+        // With a whole-branch scope the server clears sports itself, so sending
+        // them would only trip the sports escalation cap for a restricted caller.
+        ...(canEditSports
+          ? { locationId: editLocation, ...(editLocation ? {} : { sports: editSports }) }
+          : {}),
+      })
       setEditPhoto(null); setEditPreview(null)
     } catch (err) { setEditError(err.message || 'Failed to save') }
     finally { setEditSaving(false) }
@@ -984,6 +1071,65 @@ function StaffProfilePanel({ member: s, batches, canManageAccess, isOwner, hasPe
                 <label className="label">Age</label>
                 <input className="input" value={editAge} onChange={e => setEditAge(e.target.value)} type="number" min="16" max="70" placeholder="Years" />
               </div>
+              {canEditSports && (() => {
+                // Only a caller who ALREADY has whole-branch scope may grant it,
+                // and only for their own place — mirrors the server cap in 0177
+                // so the UI never offers a choice the RPC will refuse.
+                const opts = isOwner ? locations : locations.filter(l => l.id === me?.locationId)
+                const current = locations.find(l => l.id === editLocation)
+                return (
+                  <div>
+                    <label className="label">Branch access</label>
+                    <div className="space-y-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditLocation(null)}
+                        className={`w-full text-left px-3 py-2.5 rounded-xl border-2 transition ${
+                          !editLocation ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <p className="text-xs font-bold text-gray-900">
+                          {!editLocation && <Check size={11} className="inline mr-1 -mt-0.5 text-brand-600" />}
+                          This sport only
+                        </p>
+                        <p className="text-[11px] text-gray-500 mt-0.5">
+                          Sees just their own sport at their branch — how every staff member works today.
+                        </p>
+                      </button>
+                      {opts.map(l => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          onClick={() => setEditLocation(l.id)}
+                          className={`w-full text-left px-3 py-2.5 rounded-xl border-2 transition ${
+                            editLocation === l.id ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                          }`}
+                        >
+                          <p className="text-xs font-bold text-gray-900">
+                            {editLocation === l.id && <Check size={11} className="inline mr-1 -mt-0.5 text-brand-600" />}
+                            Whole branch — {l.name}
+                          </p>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            All {l.sports.length} sport{l.sports.length === 1 ? '' : 's'} here
+                            {l.sports.length ? ` (${l.sports.join(', ')})` : ''} — one login, no switching.
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                    {current && (
+                      <p className="text-[11px] text-brand-600 font-semibold mt-1.5">
+                        Fees and admissions for every sport at {current.name}.
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
+              {/* Sports narrow WITHIN a sport-only scope; a whole-branch staffer
+                  sees every sport there regardless, so hide the picker to avoid
+                  implying a filter that does not apply to students or payments. */}
+              {canEditSports && !editLocation && (
+                <SportPicker options={sportOptions} value={editSports} onChange={setEditSports} allowAll={canGrantAll} />
+              )}
               <div>
                 <label className="label">Email</label>
                 {s.email
@@ -1993,17 +2139,33 @@ function StaffMemberDetailPanel({ staff: s, user, onClose }) {
 }
 
 function AddStaffModal({ onClose, onSave, demoMode }) {
-  const { selectedSport, selectedBranch, sportBranches, role, user, permissions: myPerms, allStaff } = useApp()
+  const { selectedSport, selectedBranch, sportBranches, branches, role, user, permissions: myPerms, allStaff } = useApp()
   const isOwner = role === 'owner'
   // Non-owner creators may only grant permissions they themselves hold (no escalation).
   const allowedPerm = (p) => isOwner || (myPerms || []).includes(p)
   const fileRef = useRef(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [photoFile,    setPhotoFile]    = useState(null)
-  // Owners: auto-set from selected sport. Non-owners: pre-select their own sport (still editable).
+  // A creator can only hand out sports they cover themselves: owners get the
+  // whole academy list, staff get their own sports (their empty array = "all",
+  // so they fall back to the academy list too).
+  const allSportOptions = academySportOptions({ branches, sportBranches })
+  // A creator whose own sports is empty already means "all sports", so they are
+  // unrestricted — same rule the RPC applies (0173).
+  const canGrantAll = isOwner || !user?.sports?.length
+  const sportOptions = canGrantAll
+    ? allSportOptions
+    : (() => {
+        const mine = allSportOptions.filter(s => user.sports.some(us => us.toLowerCase() === s.toLowerCase()))
+        // Empty here would leave a restricted creator with no chips AND a
+        // "pick at least one sport" error — unable to add staff at all.
+        return mine.length ? mine : user.sports
+      })()
+  // Seeded, not locked: owners start from the sport they're viewing, staff from
+  // their own set. Either can then tick extra sports for a multi-sport counter.
   const defaultSports = isOwner
     ? (selectedSport && selectedSport !== 'All' ? [selectedSport] : [])
-    : (user?.sports?.length ? [user.sports[0]] : [])
+    : (user?.sports?.length ? [...user.sports] : [])
   // Resolve the human-readable name of the auto-linked branch for the hint.
   // Branch managers: their own branch is always auto-linked (migration 0080 enforces server-side).
   const effectiveBranchId = selectedBranch || (role !== 'owner' ? user?.branchId : null) || null
@@ -2013,9 +2175,11 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
   const [form, setForm] = useState({
     name: '', role: '', phone: '', age: '', sports: defaultSports, status: 'Active', staffType: 'coach',
   })
-  // Keep sports in sync with the owner's selected sport (owners only).
+  // Re-seed from the owner's sport only while the field is still untouched —
+  // switching sport behind an open modal shouldn't wipe a multi-sport pick.
+  const sportsTouched = useRef(false)
   useEffect(() => {
-    if (!isOwner) return
+    if (!isOwner || sportsTouched.current) return
     setForm(f => ({ ...f, sports: selectedSport && selectedSport !== 'All' ? [selectedSport] : [] }))
   }, [selectedSport, isOwner])
   const [giveAccess,   setGiveAccess]   = useState(false)
@@ -2081,7 +2245,10 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
       const dup = (allStaff || []).find(m => m.phone?.replace(/^\+91/, '').replace(/\D/g, '') === phoneDigits)
       if (dup) errs.phone = `Number already used by ${dup.name}`
     }
-    if (!isOwner && form.sports.length === 0) errs.sport = 'Select a sport'
+    // An empty array is the stored form of "all sports at this branch" and is an
+    // explicit chip in SportPicker — legitimate, but only for creators allowed to
+    // grant it. Restricted creators must name at least one sport (RPC agrees).
+    if (!canGrantAll && form.sports.length === 0) errs.sport = 'Select at least one sport'
     if (Object.keys(errs).length) { setFieldErrors(errs); return }
     setFieldErrors({})
     setLoading(true)
@@ -2147,8 +2314,8 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
     setForm(f => ({
       ...f,
       name: data.name, role: data.role, phone: data.phone, age: data.age,
-      // Non-owners have sport locked to their branch — don't override it
-      ...(isOwner ? { sports: data.sports } : {}),
+      // Keep generated sports inside what this creator is allowed to hand out.
+      sports: (data.sports || []).filter(s => sportOptions.some(o => o.toLowerCase() === s.toLowerCase())),
     }))
     setGiveAccess(true)
     selectPortalType(Math.random() > 0.5 ? 'field' : 'office')
@@ -2250,40 +2417,35 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
               </div>
               {fieldErrors.phone && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.phone}</p>}
             </div>
-            {/* Sport: owners see a read-only hint; branch managers pick explicitly */}
-            {isOwner ? (
-              (form.sports.length > 0 || linkedBranchName) && (
-                <div className="text-[11px] text-gray-400 -mt-1 space-y-0.5">
-                  {form.sports.length > 0 && (
-                    <div>
-                      Sport: <span className="font-semibold text-gray-600">{form.sports.join(', ')}</span>
-                      <span className="ml-1">(auto-linked from your sport selection)</span>
-                    </div>
-                  )}
-                  {linkedBranchName && (
+            {/* Sports are pickable by everyone now — one counter person often
+                covers several sports at the same branch. Branch stays locked. */}
+            <div className="-mt-1 space-y-1.5">
+              <SportPicker
+                options={sportOptions}
+                value={form.sports}
+                error={fieldErrors.sport}
+                allowAll={canGrantAll}
+                onChange={(next) => {
+                  sportsTouched.current = true
+                  set('sports', next)
+                  setFieldErrors(f => ({ ...f, sport: '' }))
+                }}
+              />
+              {isOwner ? (
+                <div className="text-[11px] text-gray-400 space-y-0.5">
+                  {linkedBranchName ? (
                     <div>
                       Branch: <span className="font-semibold text-gray-600">{linkedBranchName}</span>
                       <span className="ml-1">(auto-linked — staff will only see this branch's data)</span>
                     </div>
-                  )}
-                  {!linkedBranchName && (
+                  ) : (
                     <div className="text-amber-600">
                       ⚠ No branch selected — a branch is required to add staff. Switch to a specific branch first.
                     </div>
                   )}
                 </div>
-              )
-            ) : (
-              <div className="-mt-1 space-y-1.5">
-                <div>
-                  <label className="label">Sport</label>
-                  <div className="input bg-gray-50 text-gray-700 flex items-center gap-2 cursor-not-allowed select-none">
-                    {form.sports[0] || '—'}
-                    <span className="ml-auto text-[10px] text-gray-400 font-semibold uppercase tracking-wide">locked to your branch</span>
-                  </div>
-                  {fieldErrors.sport && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.sport}</p>}
-                </div>
-                {linkedBranchName && (
+              ) : (
+                linkedBranchName && (
                   <div>
                     <label className="label">Branch</label>
                     <div className="input bg-gray-50 text-gray-700 flex items-center gap-2 cursor-not-allowed select-none">
@@ -2291,9 +2453,9 @@ function AddStaffModal({ onClose, onSave, demoMode }) {
                       <span className="ml-auto text-[10px] text-gray-400 font-semibold uppercase tracking-wide">locked to your branch</span>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
+                )
+              )}
+            </div>
           </div>
         </div>
 

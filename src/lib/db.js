@@ -317,6 +317,7 @@ export async function fetchPayments(academyId) {
     paymentType:   row.payment_type   || 'monthly',
     discountPct:   row.discount_pct   || 0,
     monthsCovered: row.months_covered || 1,
+    dueAmount:     row.due_amount     || 0,
     notes:         row.notes          || '',
     // Trial-fee rows carry their own scope because they have no student
     // to join through until conversion (migration 0124). Student-linked
@@ -350,6 +351,7 @@ export async function insertPayment(p, invoiceId) {
       coverageEnd:    p.coverageEnd   || null,
       academyId:      p.academyId    || null,
       notes:          p.notes        || null,
+      dueAmount:      p.dueAmount    || 0,
     },
     p_token: _sessionToken(),
   })
@@ -358,17 +360,21 @@ export async function insertPayment(p, invoiceId) {
 
 // Returns the most recent payment for (studentId, amount) within the given window, or null.
 // Used by addPayment to refuse duplicates from double-click or simultaneous staff submissions.
-export async function findRecentDuplicatePayment(studentId, amount, withinSeconds = 60) {
+export async function findRecentDuplicatePayment(studentId, amount, withinSeconds = 60, coverageStart = null) {
   if (!studentId || !amount) return null
   const sinceIso = new Date(Date.now() - withinSeconds * 1000).toISOString()
-  const { data, error } = await supabase
+  let q = supabase
     .from('payments')
-    .select('id, student, amount, created_at, mode')
+    .select('id, student, amount, created_at, mode, coverage_start')
     .eq('student_id', studentId)
     .eq('amount', Number(amount))
     .gte('created_at', sinceIso)
-    .order('created_at', { ascending: false })
-    .limit(1)
+  // Same student + same amount is NOT a duplicate when it covers a different
+  // period. Collecting July's ₹4,720 and then August's ₹4,720 for one student
+  // inside a minute — ordinary catch-up collection — was refused as a
+  // double-click. The billing period is what makes two rows twins.
+  if (coverageStart) q = q.eq('coverage_start', coverageStart)
+  const { data, error } = await q.order('created_at', { ascending: false }).limit(1)
   if (error) return null
   return data?.[0] || null
 }
@@ -919,6 +925,9 @@ export async function fetchBatches(academyId) {
     defaultPlan: row.default_plan || 'monthly',
     batchType:   row.batch_type   || 'development',
     branchId:    row.branch_id    || null,
+    // Shared ground capacity (0184). NULL = ungrouped, capacity behaves
+    // exactly as it did before slots existed.
+    slotId:      row.slot_id      ?? null,
   }))
 }
 
@@ -938,6 +947,55 @@ export async function insertBatch(b) {
     .single()
   if (error) throw error
   return { ...b, id: data.id, enrolled: 0, waitlist: 0 }
+}
+
+// ── Batch slots: shared ground capacity (migration 0184) ──
+// A slot is one physical ground at one time. Several batches (TTS / MWF /
+// Daily) point at it and share its cap_per_day, because they are the same
+// patch of grass. The seat rule lives in src/lib/batchCapacity.js; the
+// server enforces it with triggers, so these calls can fail with a 23514
+// carrying a human-readable message — surface it, don't swallow it.
+
+export async function fetchBatchSlots(academyId) {
+  let q = supabase.from('batch_slots').select('*').order('name')
+  if (academyId) q = q.eq('academy_id', academyId)
+  const { data, error } = await q
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return (data || []).map(row => ({
+    id:        row.id,
+    name:      row.name,
+    capPerDay: row.cap_per_day,
+    branchId:  row.branch_id || null,
+  }))
+}
+
+export async function upsertBatchSlot({ id = null, name, capPerDay, branchId = null }) {
+  const { data, error } = await supabase.rpc('secure_upsert_batch_slot', {
+    p_id:          id,
+    p_name:        name,
+    p_cap_per_day: Number(capPerDay),
+    p_branch_id:   branchId,
+    p_token:       _sessionToken(),
+  })
+  if (error) throw error
+  return { id: data.id, name: data.name, capPerDay: data.cap_per_day, branchId: data.branch_id || null }
+}
+
+// slotId null detaches the batches — they revert to standalone capacity.
+export async function setBatchSlot(batchIds, slotId) {
+  const { error } = await supabase.rpc('secure_set_batch_slot', {
+    p_batch_ids: batchIds,
+    p_slot_id:   slotId,
+    p_token:     _sessionToken(),
+  })
+  if (error) throw error
+}
+
+export async function deleteBatchSlot(id) {
+  const { error } = await supabase.rpc('secure_delete_batch_slot', {
+    p_id: id, p_token: _sessionToken(),
+  })
+  if (error) throw error
 }
 
 // ── Staff ─────────────────────────────────────────────────
@@ -971,6 +1029,8 @@ export async function fetchStaff(academyId) {
       age:           row.age          || null,
       licenceUrl:    row.licence_url  || null,
       branchId:      row.branch_id || null,
+      // Set = whole-branch scope, every sport at that place (0174/0177).
+      locationId:    row.location_id || null,
     }))
   }
   let query = supabase.from('staff')
@@ -1007,6 +1067,7 @@ export async function fetchStaff(academyId) {
       age:           profile?.age          || null,
       licenceUrl:    profile?.licence_url  || null,
       branchId:      row.branch_id || null,
+      locationId:    row.location_id || null,
     }
   })
 }
@@ -1170,13 +1231,20 @@ export async function deleteStaffSession(token) {
   await supabase.rpc('secure_logout_staff', { p_token: token })
 }
 
-export async function updateStaffProfile(staffId, { name, phone, photoUrl }) {
+export async function updateStaffProfile(staffId, { name, phone, photoUrl, sports, locationId }) {
   // Routed through secure_update_staff_profile (migration 0041).
   // Staff may update their own profile; owners may update any in their academy.
+  // `sports` is the exception — it widens what the staff member can SEE, so the
+  // RPC requires staff.manage + branch scope for it even on a self-edit (0173).
+  // An empty array is meaningful: it means "all sports at this branch".
   const payload = {}
   if (name     !== undefined) payload.name     = name
   if (phone    !== undefined) payload.phone    = phone
   if (photoUrl !== undefined) payload.photoUrl = photoUrl
+  if (sports   !== undefined) payload.sports   = sports || []
+  // Whole-branch scope (0177). null clears it, back to single sport-branch
+  // pinning. Like `sports`, the RPC gates this behind staff.manage.
+  if (locationId !== undefined) payload.locationId = locationId || null
   if (!Object.keys(payload).length) return
   const { error } = await supabase.rpc('secure_update_staff_profile', {
     p_staff_id: staffId,
@@ -1755,6 +1823,13 @@ export async function fetchAnnouncements(academyId) {
     branchId: row.branch_id || null,
     audienceType: row.audience_type || 'all',
     audienceIds:  row.audience_ids  || [],
+    // Event details (0183). eventDate set = this notice is an event.
+    // `date` above stays the POST date — an event announced today can run
+    // next month, so the two are never the same field.
+    eventDate:    row.event_date     || null,
+    eventEndDate: row.event_end_date || null,
+    venue:        row.venue          || null,
+    flyerUrl:     row.flyer_url      || null,
   }))
 }
 
@@ -1769,6 +1844,10 @@ export async function insertAnnouncement(a) {
     p_branch_id: a.branchId  || null,
     p_audience_type: a.audienceType || 'all',
     p_audience_ids:  a.audienceIds  || [],
+    p_event_date:     a.eventDate    || null,
+    p_event_end_date: a.eventEndDate || null,
+    p_venue:          a.venue        || null,
+    p_flyer_url:      a.flyerUrl     || null,
   })
   if (error) throw error
   const row = typeof data === 'string' ? JSON.parse(data) : data
@@ -1777,6 +1856,13 @@ export async function insertAnnouncement(a) {
     id: row.id, date: row.date, sport: row.sport || null, branchId: row.branch_id || null,
     audienceType: row.audience_type || 'all',
     audienceIds:  row.audience_ids  || [],
+    // Read back from the row, not echoed from `a` — the server normalises
+    // empty strings to NULL, and the local copy must match what a refetch
+    // will return or the card changes shape on reload.
+    eventDate:    row.event_date     || null,
+    eventEndDate: row.event_end_date || null,
+    venue:        row.venue          || null,
+    flyerUrl:     row.flyer_url      || null,
   }
 }
 
@@ -2157,7 +2243,7 @@ export async function fetchSportBranches(academyId) {
   // Try with address first; if the column doesn't exist (42703), retry without it
   let { data, error } = await supabase
     .from('sport_branches')
-    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee, tax_percent, tax_on_fees, tax_on_trial, tax_on_kit`)
+    .select(`${baseColumns}, address, manager_id, photo_url, trial_fee, kit_fee, tax_percent, tax_on_fees, tax_on_trial, tax_on_kit, fee_proration_basis, location_id`)
     .eq('academy_id', academyId)
     .order('sport_name')
     .order('branch_name')
@@ -2198,6 +2284,10 @@ export async function fetchSportBranches(academyId) {
     taxOnFees:  !!r.tax_on_fees,
     taxOnTrial: !!r.tax_on_trial,
     taxOnKit:   !!r.tax_on_kit,
+    prorationBasis: r.fee_proration_basis || 'calendar',
+    // Groups every sport row at the same physical place (migration 0174).
+    // Null only on the pre-0174 fallback selects below.
+    locationId: r.location_id || null,
     createdAt:  r.created_at,
   }))
 }
@@ -2265,17 +2355,18 @@ export async function updateSportBranch(branchId, { branchName, address, manager
 // reassign their own branch. secure_update_branch_fees (migration 0155) can
 // touch six columns and nothing else, and allows the owner OR the staff member
 // who is this branch's manager — enforced in the RPC, not here.
-export async function updateBranchFees(branchId, { trialFee, kitFee, taxPercent, taxOnFees, taxOnTrial, taxOnKit }) {
+export async function updateBranchFees(branchId, { trialFee, kitFee, taxPercent, taxOnFees, taxOnTrial, taxOnKit, prorationBasis }) {
   const num = (v) => (v !== undefined && v !== null && v !== '' ? Number(v) : null)
   const { error } = await supabase.rpc('secure_update_branch_fees', {
-    p_branch_id:    branchId,
-    p_trial_fee:    num(trialFee),
-    p_kit_fee:      num(kitFee),
-    p_tax_percent:  num(taxPercent),
-    p_tax_on_fees:  !!taxOnFees,
-    p_tax_on_trial: !!taxOnTrial,
-    p_tax_on_kit:   !!taxOnKit,
-    p_token:        _sessionToken(),
+    p_branch_id:        branchId,
+    p_trial_fee:        num(trialFee),
+    p_kit_fee:          num(kitFee),
+    p_tax_percent:      num(taxPercent),
+    p_tax_on_fees:      !!taxOnFees,
+    p_tax_on_trial:     !!taxOnTrial,
+    p_tax_on_kit:       !!taxOnKit,
+    p_proration_basis:  prorationBasis || null,
+    p_token:            _sessionToken(),
   })
   if (error) throw error
 }
@@ -3805,5 +3896,159 @@ export async function verifyTrialRazorpayPayment({ slug, trialId, orderId, payme
   })
   if (error) throw error
   if (data?.error) throw new Error(data.error)
+  return data
+}
+
+// ── WhatsApp automation ───────────────────────────────────
+// Every one of these is an RPC, with no PostgREST read alongside it. The
+// whatsapp_* tables have RLS enabled and deliberately no policies (migration
+// 0180), so `.from('whatsapp_accounts').select()` returns nothing by design —
+// the table holds a permanent Meta access token and the academy's app secret,
+// and neither ever travels to a browser. secure_whatsapp_status returns
+// has_token / has_app_secret booleans instead of the values.
+
+// Connection state + caps + quiet hours. Always returns a well-formed object,
+// even before the academy has connected anything.
+export async function fetchWhatsAppStatus() {
+  const { data, error } = await supabase.rpc('secure_whatsapp_status', {
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return {
+    displayNumber:    data?.display_number || '',
+    status:           data?.status || 'disconnected',
+    dailyCap:         data?.daily_cap ?? 200,
+    quietStart:       (data?.quiet_start || '09:00:00').slice(0, 5),
+    quietEnd:         (data?.quiet_end   || '20:00:00').slice(0, 5),
+    paused:           !!data?.paused,
+    lastError:        data?.last_error || null,
+    hasToken:         !!data?.has_token,
+    hasAppSecret:     !!data?.has_app_secret,
+    phoneNumberId:    data?.phone_number_id || '',
+    wabaId:           data?.waba_id || '',
+    suspendGraceDays: data?.suspend_grace_days ?? 3,
+    sentToday:        Number(data?.sent_today ?? 0),
+  }
+}
+
+export async function connectWhatsApp({ phoneNumberId, wabaId, accessToken, appSecret, displayNumber }) {
+  const { error } = await supabase.rpc('secure_whatsapp_connect', {
+    p_phone_number_id: phoneNumberId,
+    p_waba_id:         wabaId,
+    p_access_token:    accessToken,
+    p_app_secret:      appSecret || null,
+    p_display_number:  displayNumber || null,
+    p_token:           _sessionToken(),
+  })
+  if (error) throw error
+  return fetchWhatsAppStatus()
+}
+
+export async function disconnectWhatsApp() {
+  const { error } = await supabase.rpc('secure_whatsapp_disconnect', {
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return fetchWhatsAppStatus()
+}
+
+// Any subset of the settings; nulls are left untouched server-side.
+export async function saveWhatsAppSettings({ dailyCap, quietStart, quietEnd, paused, graceDays }) {
+  const { error } = await supabase.rpc('secure_whatsapp_save_settings', {
+    p_daily_cap:   dailyCap   ?? null,
+    p_quiet_start: quietStart ?? null,
+    p_quiet_end:   quietEnd   ?? null,
+    p_paused:      paused     ?? null,
+    p_grace_days:  graceDays  ?? null,
+    p_token:       _sessionToken(),
+  })
+  if (error) throw error
+  return fetchWhatsAppStatus()
+}
+
+// Saved rows only. The caller merges these over the code catalogue in
+// src/lib/whatsappCatalogue.js — code decides which automations exist.
+export async function fetchWhatsAppAutomations() {
+  const { data, error } = await supabase.rpc('secure_whatsapp_automations', {
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return data || []
+}
+
+export async function saveWhatsAppAutomation({ kind, enabled, timing, audienceType, audienceIds }) {
+  const { data, error } = await supabase.rpc('secure_whatsapp_save_automation', {
+    p_kind:          kind,
+    p_enabled:       enabled ?? null,
+    p_timing:        timing ?? null,
+    p_audience_type: audienceType ?? null,
+    p_audience_ids:  audienceIds ?? null,
+    p_token:         _sessionToken(),
+  })
+  if (error) throw error
+  return data
+}
+
+// Saving always lands the template back in 'draft' and disarms its automation:
+// Meta does not allow editing an approved template in place, so edited text is
+// not what would go out until it is resubmitted and approved.
+export async function saveWhatsAppTemplate({
+  kind, templateName, bodyText, category, headerText, footerText, buttons, varMap, language,
+}) {
+  const { data, error } = await supabase.rpc('secure_whatsapp_save_template', {
+    p_kind:          kind ?? null,
+    p_template_name: templateName,
+    p_body_text:     bodyText,
+    p_category:      category || 'utility',
+    p_header_text:   headerText || null,
+    p_footer_text:   footerText || null,
+    p_buttons:       buttons || [],
+    p_var_map:       varMap || {},
+    p_language:      language || 'en',
+    p_token:         _sessionToken(),
+  })
+  if (error) throw error
+  return data
+}
+
+export async function fetchWhatsAppLog(limit = 100) {
+  const { data, error } = await supabase.rpc('secure_whatsapp_log', {
+    p_limit: limit,
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return (data || []).map(r => ({
+    id:             r.id,
+    kind:           r.kind,
+    toPhone:        r.to_phone,
+    status:         r.status,
+    skipReason:     r.skip_reason,
+    deliveryStatus: r.delivery_status,
+    error:          r.error,
+    attempts:       r.attempts,
+    scheduledFor:   r.scheduled_for,
+    createdAt:      r.created_at,
+    sentAt:         r.sent_at,
+    studentName:    r.student_name,
+  }))
+}
+
+export async function fetchWhatsAppOptOuts() {
+  const { data, error } = await supabase.rpc('secure_whatsapp_opt_outs', {
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+  return (data || []).map(r => ({
+    phone: r.phone, optedOutAt: r.opted_out_at, source: r.source,
+  }))
+}
+
+export async function setWhatsAppOptOut(phone, optedOut) {
+  const { data, error } = await supabase.rpc('secure_whatsapp_opt_out_set', {
+    p_phone:     phone,
+    p_opted_out: !!optedOut,
+    p_token:     _sessionToken(),
+  })
+  if (error) throw error
   return data
 }

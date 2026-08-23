@@ -443,7 +443,7 @@ function StudentAttendancePanel({ student, allMonthData, onClose, onCycle, showT
 
 // ── Main component ─────────────────────────────────────────────
 export default function Attendance() {
-  const { students, batches, showToast, selectedSport, selectedBranch: contextBranch } = useApp()
+  const { students, batches, showToast, selectedSport, selectedBranch: contextBranch, showSportFilter } = useApp()
   const now           = new Date()
   const todayDay      = now.getDate()
   const todayMonth    = now.getMonth()
@@ -677,15 +677,20 @@ export default function Attendance() {
         </button>
       </div>
 
-      {/* ── Branch pills ─────────────────────────────────── */}
-      {selectedSport === 'All' && (
+      {/* ── Sport pills ──────────────────────────────────────
+          NOTE: `branchList` / `selectedBranch` here are historically misnamed —
+          they are built from batch.sports and filter by SPORT, not branch. The
+          buttons used to be labelled "All Branches" while listing sport names.
+          Shown whenever more than one sport is in view, so a staff member
+          running a whole branch can narrow the batch strip down to one sport. */}
+      {showSportFilter && (
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {branchList.map(br => (
             <button key={br} onClick={() => { setSelectedBranch(br); setSelectedBatch(null) }}
               className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
                 selectedBranch === br ? 'bg-gray-900 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}>
-              {br === 'All' ? 'All Branches' : br}
+              {br === 'All' ? 'All Sports' : br}
             </button>
           ))}
         </div>
@@ -847,9 +852,18 @@ export default function Attendance() {
               const st = getStatus(s.id, mobileDay)
               const cfg = st ? S[st] : null
               const isOff = isCurrentMonth && s.trainingType==='Alternate' && selectedBatch?.days?.length>0 && !selectedBatch.days.includes(dayName(year,month,mobileDay))
+              // The row is a div, not a button: it CONTAINS two buttons (avatar
+              // and name open the student panel), and nesting a button inside a
+              // button is invalid HTML — React warned on every render and
+              // browsers may swallow the inner clicks. role/tabIndex/onKeyDown
+              // keep the whole row keyboard-operable exactly like the button was.
+              const rowOff = isOff && !cfg
+              const cycleRow = () => { if (!rowOff) cycle(s.id, mobileDay) }
               return (
-                <button key={s.id} onClick={() => cycle(s.id, mobileDay)} disabled={isOff && !cfg}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 transition text-left ${isOff&&!cfg?'opacity-50 bg-gray-50/60':'active:bg-gray-50'}`}>
+                <div key={s.id} role="button" tabIndex={rowOff ? -1 : 0} aria-disabled={rowOff || undefined}
+                  onClick={cycleRow}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cycleRow() } }}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 transition text-left cursor-pointer ${rowOff?'opacity-50 bg-gray-50/60 cursor-default':'active:bg-gray-50'}`}>
                   <span className="text-xs text-gray-400 w-5 flex-shrink-0 font-medium">{(page-1)*PAGE_SIZE+idx+1}</span>
                   <button onClick={(e) => { e.stopPropagation(); setSelectedStudent(s) }} className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center text-sm font-bold text-brand-700 flex-shrink-0 hover:bg-brand-200 transition">{s.name[0]}</button>
                   <div className="flex-1 min-w-0">
@@ -860,14 +874,14 @@ export default function Attendance() {
                     </div>
                     <p className="text-xs text-gray-400 truncate">{s.sport} · {s.batch}</p>
                   </div>
-                  {isOff && !cfg ? (
+                  {rowOff ? (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border border-gray-200 text-gray-400">✕ Off day</span>
                   ) : cfg ? (
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${cfg.light} ${cfg.text}`}><span>{cfg.icon}</span> {cfg.label}</span>
                   ) : (
                     <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-medium border border-gray-200 text-gray-400">— Mark</span>
                   )}
-                </button>
+                </div>
               )
             })}
           </div>
