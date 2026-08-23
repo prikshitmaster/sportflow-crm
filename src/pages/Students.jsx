@@ -978,16 +978,20 @@ function AddStudentModal({ onClose, onSave }) {
     setErrors(e => ({ ...e, hasMedical: undefined, medicalNotes: undefined }))
   }
 
+  // Branch setting (0187) — off means Paid Till is never auto-filled here;
+  // staff always types it directly into the (already editable) date input.
+  const autoCalcDates = sportBranches.find(b => b.id === selectedBranch)?.autoCalcDates ?? true
+
   const handleFeePlan = (plan) => {
     setForm(f => ({
       ...f, feePlan: plan,
-      paidTill: plan !== 'custom' ? calcPaidTillFull(f.joinDate, plan) : f.paidTill,
+      paidTill: (autoCalcDates && plan !== 'custom') ? calcPaidTillFull(f.joinDate, plan) : f.paidTill,
     }))
   }
   const handleJoinDateAdd = (date) => {
     setForm(f => ({
       ...f, joinDate: date,
-      paidTill: f.feePlan !== 'custom' ? calcPaidTillFull(date, f.feePlan) : f.paidTill,
+      paidTill: (autoCalcDates && f.feePlan !== 'custom') ? calcPaidTillFull(date, f.feePlan) : f.paidTill,
     }))
   }
 
@@ -1699,7 +1703,12 @@ function DeleteStudentModal({ student: s, onClose, onConfirm }) {
 }
 
 function EditStudentModal({ student: s, batches, onClose, onSave }) {
-  const { allStudents } = useApp()
+  const { allStudents, sportBranches } = useApp()
+  // Branch setting (0187) — off means Paid Till is never auto-filled here;
+  // staff always types it directly. Keyed off the STUDENT's own branch, not
+  // whatever branch happens to be selected in the sidebar (an owner can be
+  // editing across branches).
+  const autoCalcDates = sportBranches.find(b => b.id === s.branchId)?.autoCalcDates ?? true
   // Normalize paidTill to match the input type:
   // custom → YYYY-MM-DD (pad if YYYY-MM), standard → YYYY-MM (truncate if YYYY-MM-DD)
   const isCustom = s.feePlan === 'custom'
@@ -1741,14 +1750,14 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
   const handleJoinDate = (date) => {
     setForm(f => ({
       ...f, joinDate: date,
-      paidTill: f.feePlan !== 'custom' ? calcPaidTill(date, f.feePlan) : f.paidTill,
+      paidTill: (autoCalcDates && f.feePlan !== 'custom') ? calcPaidTill(date, f.feePlan) : f.paidTill,
     }))
   }
 
   const handleFeePlan = (plan) => {
     setForm(f => ({
       ...f, feePlan: plan,
-      paidTill: plan !== 'custom' ? calcPaidTill(f.joinDate, plan) : f.paidTill,
+      paidTill: (autoCalcDates && plan !== 'custom') ? calcPaidTill(f.joinDate, plan) : f.paidTill,
     }))
   }
 
