@@ -5,15 +5,24 @@
 // screen that shows a seat count must derive it from here, or two screens
 // end up quoting different numbers for the same ground.
 //
-// This file MIRRORS the SQL in supabase/migrations/0184_batch_slots.sql
-// (_slot_days / _slot_seats / slot_day_load / _require_batch_capacity).
-// The database is the enforcer; this is the preview. If you change the rule
-// in one place, change it in the other or the UI will promise seats the
-// server then refuses.
+// This file MIRRORS the SQL in supabase/migrations/0184_batch_slots.sql and
+// 0185_auto_ground_capacity.sql (_slot_days / _slot_seats / slot_day_load /
+// _slot_day_ceiling / _require_batch_capacity). The database is the
+// enforcer; this is the preview. If you change the rule in one place,
+// change it in the other or the UI will promise seats the server then
+// refuses.
 //
 // ── The rule ────────────────────────────────────────────────────────────
-// A slot is a physical ground at a time. Batches point at it and share its
-// cap_per_day. Seat-days come from the STUDENT, not the batch:
+// A slot is a physical ground at a time. There is no manually-typed "ground
+// holds X" number (0185 removed it — it was an unknowable guess layered on
+// top of numbers that already meant something). Instead, each calendar day
+// the slot runs gets an automatic ceiling: the SMALLEST `capacity` among
+// every batch in the slot that trains that day. A batch that trains every
+// day the slot runs (e.g. a generic "Football" batch, Mon–Sat) is always
+// part of that minimum on every day, so it alone can never let the ground
+// be double-booked beyond whichever batch is tightest.
+//
+// Seat-days come from the STUDENT, not the batch:
 //
 //     Alternate → their batch's days       (an MWF kid → Mon/Wed/Fri)
 //     Daily     → every day the slot runs  (all six)
@@ -42,6 +51,19 @@ export function slotDays(slotBatches) {
 }
 
 /**
+ * A batch that trains every single day the GROUP runs, not just every day
+ * printed on its own schedule — a group of only two MWF batches has no
+ * "full week" at all. Mirrors _slot_day_ceiling always including this
+ * batch's own capacity in the minimum for every day.
+ */
+export function isFullWeekBatch(batch, groupDays) {
+  const days = batch?.days || []
+  return (groupDays || []).length > 0
+    && days.length === groupDays.length
+    && groupDays.every(d => days.includes(d))
+}
+
+/**
  * Headcount standing on the ground each day.
  *
  * `rosterOf(batch)` must return that batch's ACTIVE students — pass the
@@ -66,6 +88,23 @@ export function computeSlotLoad(slotBatches, rosterOf) {
 }
 
 /**
+ * The auto-derived ceiling for each day: the smallest `capacity` among
+ * every batch in the slot that trains that day. Mirrors SQL
+ * `_slot_day_ceiling`. No batch capacity on that day → Infinity (never
+ * blocks — matches the ungrouped/legacy behaviour for a stray day).
+ */
+export function computeDayCeilings(slotBatches, days) {
+  const ceilings = {}
+  ;(days || []).forEach(d => {
+    const caps = (slotBatches || [])
+      .filter(b => (b.days || []).includes(d) && Number.isFinite(b.capacity))
+      .map(b => b.capacity)
+    ceilings[d] = caps.length ? Math.min(...caps) : Infinity
+  })
+  return ceilings
+}
+
+/**
  * Seats left in one batch — the whole point of this module.
  *
  * Returns BOTH answers, because they genuinely differ:
@@ -76,14 +115,14 @@ export function computeSlotLoad(slotBatches, rosterOf) {
  * dailies at the same time, which is exactly the case that made the old
  * per-batch number wrong.
  *
- * `slot` may be null — an ungrouped batch falls back to its own capacity
- * alone, which is precisely the legacy behaviour.
+ * `slotBatches` may be empty/absent — an ungrouped batch falls back to its
+ * own capacity alone, which is precisely the legacy behaviour.
  */
-export function batchSeatInfo({ batch, slot, days, load, enrolled }) {
+export function batchSeatInfo({ batch, slotBatches, days, load, ceilings, enrolled }) {
   const cap       = Number.isFinite(batch?.capacity) ? batch.capacity : Infinity
   const batchFree = Math.max(0, cap - (enrolled || 0))
 
-  if (!slot) {
+  if (!slotBatches || slotBatches.length === 0) {
     return {
       batchFree,
       altFree:   batchFree,
@@ -93,8 +132,7 @@ export function batchSeatInfo({ batch, slot, days, load, enrolled }) {
     }
   }
 
-  const perDay = slot.capPerDay
-  const freeOn = (d) => Math.max(0, perDay - (load?.[d] ?? 0))
+  const freeOn = (d) => Math.max(0, (ceilings?.[d] ?? Infinity) - (load?.[d] ?? 0))
   const min    = (list) => list.length ? Math.min(...list.map(freeOn)) : Infinity
 
   const batchDays = (batch.days || []).filter(d => (days || []).includes(d))
@@ -120,13 +158,13 @@ export function batchSeatInfo({ batch, slot, days, load, enrolled }) {
 // themselves — showing the ground's per-day load as raw weekday names
 // ("Mon", "Tue", …) instead just makes the owner re-derive a pattern they
 // already picked when they created the batch. Two calendar days collapse
-// into one tile whenever the exact same set of batches meets on both —
-// which is also exactly when their headcounts are guaranteed identical, so
-// merging them loses no information, only the repetition.
+// into one tile whenever the exact same set of (non-full-week) batches
+// meets on both — which is also exactly when their headcounts are
+// guaranteed identical, so merging them loses no information, only the
+// repetition.
 const KNOWN_PATTERNS = { 'Mon,Wed,Fri': 'MWF', 'Tue,Thu,Sat': 'TTS' }
 
-function patternLabel(patternDays, allDays) {
-  if (patternDays.length === allDays.length) return 'Daily'
+function patternLabel(patternDays) {
   return KNOWN_PATTERNS[patternDays.join(',')]
     || patternDays.map(d => d.slice(0, 3)).join('/')
 }
@@ -135,8 +173,12 @@ function patternLabel(patternDays, allDays) {
  * Collapses per-day rows (one per weekday) into one row per distinct
  * batch-day pattern found in `slotBatches` — an MWF batch sharing a ground
  * with a TTS batch renders as two tiles ("MWF", "TTS"), not six.
+ *
+ * Pass only the NON-full-week batches here — a batch that runs every day
+ * the group spans gets its own explicit "Daily" tile instead (see
+ * `isFullWeekBatch`), rather than being silently merged into every pattern.
  */
-export function groupRowsByPattern(rows, slotBatches, days) {
+export function groupRowsByPattern(rows, slotBatches, days, ceilings) {
   const groups = new Map()
   ;(days || []).forEach(d => {
     const activeIds = (slotBatches || [])
@@ -149,11 +191,31 @@ export function groupRowsByPattern(rows, slotBatches, days) {
   return [...groups.values()].map(patternDays => {
     const first = rowByDay.get(patternDays[0]) || {}
     return {
-      label:    patternLabel(patternDays, days || []),
+      label:    patternLabel(patternDays),
       days:     patternDays,
       occupied: first.occupied, free: first.free, full: first.full, over: first.over,
+      cap:      ceilings?.[patternDays[0]],
     }
   })
+}
+
+/**
+ * One tile per full-week batch — its own enrolled/capacity, with `free`
+ * already folding in the ground's tightest day (batchSeatInfo.dailyFree).
+ */
+export function dailyBatchRows(slotBatchInfos, days) {
+  return (slotBatchInfos || [])
+    .filter(r => isFullWeekBatch(r.batch, days))
+    .map(r => ({
+      label:    'Daily',
+      batchName: r.batch.name,
+      days,
+      occupied: r.enrolled,
+      free:     r.dailyFree,
+      full:     r.dailyFree === 0,
+      over:     r.enrolled > r.batch.capacity,
+      cap:      r.batch.capacity,
+    }))
 }
 
 /**
@@ -163,19 +225,21 @@ export function groupRowsByPattern(rows, slotBatches, days) {
  * `countOf` supply live enrolment so the preview matches what the server
  * will decide.
  */
-export function slotSummary({ slot, slotBatches, rosterOf, countOf }) {
+export function slotSummary({ slotBatches, rosterOf, countOf }) {
   const { days, load } = computeSlotLoad(slotBatches, rosterOf)
+  const ceilings = computeDayCeilings(slotBatches, days)
   const rows = days.map(d => ({
     day:      d,
     occupied: load[d],
-    free:     Math.max(0, slot.capPerDay - load[d]),
-    full:     load[d] >= slot.capPerDay,
-    over:     load[d] > slot.capPerDay,
+    free:     Math.max(0, (ceilings[d] ?? Infinity) - load[d]),
+    full:     load[d] >= (ceilings[d] ?? Infinity),
+    over:     load[d] > (ceilings[d] ?? Infinity),
   }))
 
   return {
     days,
     load,
+    ceilings,
     rows,
     // Unique bodies across the whole slot — NOT the sum of the day rows, which
     // would count a daily student six times.
@@ -186,8 +250,9 @@ export function slotSummary({ slot, slotBatches, rosterOf, countOf }) {
     anyOver: rows.some(r => r.over),
     batches: (slotBatches || []).map(b => ({
       batch: b,
+      enrolled: countOf(b),
       ...batchSeatInfo({
-        batch: b, slot, days, load, enrolled: countOf(b),
+        batch: b, slotBatches, days, load, ceilings, enrolled: countOf(b),
       }),
     })),
   }

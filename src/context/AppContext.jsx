@@ -256,8 +256,9 @@ export function AppProvider({ children }) {
   const [payments,       setPayments]       = useState([])
   const [trials,         setTrials]         = useState([])
   const [batches,        setBatches]        = useState([])
-  // Shared ground capacity (0184). Batches with the same slotId stand on one
-  // patch of grass and share its cap_per_day — see src/lib/batchCapacity.js.
+  // Shared ground capacity (0184/0185). Batches with the same slotId stand on
+  // one patch of grass; each day's limit is auto-derived from the member
+  // batches' own capacities — see src/lib/batchCapacity.js.
   const [batchSlots,     setBatchSlots]     = useState([])
   const [staff,          setStaff]          = useState([])
   const [attendanceData, setAttendanceData] = useState({})
@@ -3003,7 +3004,10 @@ export function AppProvider({ children }) {
     logAuditSport({
       actor: user, action: ACTIONS.SLOT_SAVE, entityType: 'batch_slot',
       entityId: saved.id, entityName: saved.name,
-      changes: { capacityPerDay: String(saved.capPerDay) },
+      // capPerDay is a vestigial placeholder since 0185 — each day's real
+      // limit is auto-derived from member batches' own capacities, so it's
+      // not worth recording here (would read as a number nobody set).
+      changes: {},
       academyId: user?.academyId, sport: selectedSport ?? null,
       branchId: saved.branchId || selectedBranch || null,
     })
