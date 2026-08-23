@@ -22,6 +22,11 @@ export const ACTIONS = {
   BATCH_COACH:        'batch.coach_assign',
   BATCH_ASSIGN:       'batch.student_assign',
   BATCH_UNASSIGN:     'batch.student_unassign',
+  // Shared ground capacity (0184). Grouping changes what every member batch
+  // reports as free seats, so it belongs in the trail as its own event.
+  SLOT_SAVE:          'batch.slot_save',
+  SLOT_GROUP:         'batch.slot_group',
+  SLOT_DELETE:        'batch.slot_delete',
   // Trials
   TRIAL_ADD:          'trial.add',
   TRIAL_UPDATE:       'trial.update',
