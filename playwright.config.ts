@@ -6,6 +6,8 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   reporter: 'html',
+  globalSetup:    './tests/global-setup.ts',
+  globalTeardown: './tests/global-teardown.ts',
   use: {
     baseURL:    'http://localhost:5173',
     headless:   false,
@@ -17,4 +19,10 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: true,
+    timeout: 60_000,
+  },
 })

@@ -925,6 +925,9 @@ export async function fetchBatches(academyId) {
     defaultPlan: row.default_plan || 'monthly',
     batchType:   row.batch_type   || 'development',
     branchId:    row.branch_id    || null,
+    // Shared ground capacity (0184). NULL = ungrouped, capacity behaves
+    // exactly as it did before slots existed.
+    slotId:      row.slot_id      ?? null,
   }))
 }
 
@@ -944,6 +947,55 @@ export async function insertBatch(b) {
     .single()
   if (error) throw error
   return { ...b, id: data.id, enrolled: 0, waitlist: 0 }
+}
+
+// ── Batch slots: shared ground capacity (migration 0184) ──
+// A slot is one physical ground at one time. Several batches (TTS / MWF /
+// Daily) point at it and share its cap_per_day, because they are the same
+// patch of grass. The seat rule lives in src/lib/batchCapacity.js; the
+// server enforces it with triggers, so these calls can fail with a 23514
+// carrying a human-readable message — surface it, don't swallow it.
+
+export async function fetchBatchSlots(academyId) {
+  let q = supabase.from('batch_slots').select('*').order('name')
+  if (academyId) q = q.eq('academy_id', academyId)
+  const { data, error } = await q
+  if (error) { if (error.code === '42P01') return []; throw error }
+  return (data || []).map(row => ({
+    id:        row.id,
+    name:      row.name,
+    capPerDay: row.cap_per_day,
+    branchId:  row.branch_id || null,
+  }))
+}
+
+export async function upsertBatchSlot({ id = null, name, capPerDay, branchId = null }) {
+  const { data, error } = await supabase.rpc('secure_upsert_batch_slot', {
+    p_id:          id,
+    p_name:        name,
+    p_cap_per_day: Number(capPerDay),
+    p_branch_id:   branchId,
+    p_token:       _sessionToken(),
+  })
+  if (error) throw error
+  return { id: data.id, name: data.name, capPerDay: data.cap_per_day, branchId: data.branch_id || null }
+}
+
+// slotId null detaches the batches — they revert to standalone capacity.
+export async function setBatchSlot(batchIds, slotId) {
+  const { error } = await supabase.rpc('secure_set_batch_slot', {
+    p_batch_ids: batchIds,
+    p_slot_id:   slotId,
+    p_token:     _sessionToken(),
+  })
+  if (error) throw error
+}
+
+export async function deleteBatchSlot(id) {
+  const { error } = await supabase.rpc('secure_delete_batch_slot', {
+    p_id: id, p_token: _sessionToken(),
+  })
+  if (error) throw error
 }
 
 // ── Staff ─────────────────────────────────────────────────

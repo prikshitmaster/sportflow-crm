@@ -38,3 +38,4 @@ enroll-app/node_modules
 
 # QA harness run output — regenerated per run, holds live tokens/JWTs
 scripts/_qa/*state.json
+tests/.qa-state.json

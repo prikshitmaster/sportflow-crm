@@ -24,6 +24,7 @@ const STAGES = [
   { id: 'scheduled', label: 'Scheduled' },
   { id: 'attended',  label: 'Attended'  },
   { id: 'accepted',  label: 'Accepted'  },
+  { id: 'enquired',  label: 'Enquired'  }, // wanted in, but no seat free — see handleConvert
   { id: 'followup',  label: 'Follow-up' },
   { id: 'done',      label: 'Done'      }, // converted + rejected
 ]
@@ -33,6 +34,9 @@ const STAGE_STYLE = {
   scheduled: { bg: 'bg-blue-100',   text: 'text-blue-700'    },
   attended:  { bg: 'bg-amber-100',  text: 'text-amber-700'   },
   accepted:  { bg: 'bg-emerald-100',text: 'text-emerald-700' },
+  // Violet, not red: enquired is a healthy "yes, but wait" — the family said
+  // yes and the academy wants them. Only the ground is full.
+  enquired:  { bg: 'bg-violet-100', text: 'text-violet-700'  },
   followup:  { bg: 'bg-orange-100', text: 'text-orange-700'  },
   converted: { bg: 'bg-brand-100',  text: 'text-brand-700'   },
   rejected:  { bg: 'bg-red-100',    text: 'text-red-600'     },
@@ -1854,6 +1858,22 @@ function TrialCard({ trial, batches, onAction, onDelete }) {
             </button>
           )}
 
+          {/* Enquired = accepted, but the ground had no seat. The way out is
+              to try the conversion again (after a seat frees up, or after the
+              slot cap is raised) — not to re-run the trial. */}
+          {trial.stage === 'enquired' && (
+            <>
+              <button onClick={() => onAction('convert', trial)}
+                className="flex-1 bg-brand-600 text-white rounded-xl py-2.5 text-xs font-black flex items-center justify-center gap-2">
+                <ArrowRight size={14} /> Try again
+              </button>
+              <button onClick={() => onAction('reject', trial)}
+                className="px-3 bg-gray-100 text-gray-500 rounded-xl py-2 text-xs font-bold">
+                Archive
+              </button>
+            </>
+          )}
+
           {trial.stage === 'followup' && (
             <>
               <button onClick={() => onAction('schedule', trial)}
@@ -1885,7 +1905,7 @@ export default function Trials() {
   const { trials, addTrial, updateTrialStatus, deleteTrial, batches, feePlans, addStudent,
           trialSources, addTrialSource, removeTrialSource,
           ageGroups, addAgeGroup, removeAgeGroup, selectedSport, isAllSports,
-          showSportFilter, user } = useApp()
+          showSportFilter, user, showToast } = useApp()
 
   const [stage,    setStage]    = useState('all')
   const [sportFilter, setSportFilter] = useState('All')
@@ -2010,9 +2030,38 @@ export default function Trials() {
         trialId:      trial.id,
         joiningFee:   Number(form.joiningFee) || 0,
       })
-    } catch {
-      // Revert trial stage if student creation failed (silent — addStudent already toasted the failure)
-      updateTrialStatus(trial.id, { stage: 'accepted' }, { silent: true })
+    } catch (err) {
+      // A trial that can't be seated is NOT the same as one that failed to
+      // save. The family said yes and the academy wants them — the only
+      // problem is that the ground is full on a day they'd need (migration
+      // 0184). Reverting those to "accepted" buried them back in the pipeline
+      // as if nothing had happened, and the office would try again, fail
+      // again, and never learn why.
+      //
+      // "enquired" parks them where they belong: wanted, waiting for a seat.
+      // The hint comes from the DB trigger — ERRCODE alone can't be trusted
+      // here, 23514 is also the alternate-day one-batch rule.
+      if (err?.hint === 'batch_capacity') {
+        updateTrialStatus(trial.id, {
+          stage: 'enquired',
+          // `converted: true` was set optimistically above to stop a double
+          // click creating two students. It MUST be undone on every failure
+          // path or the trial stays flagged as converted with no student
+          // behind it — which is how it silently drops out of every
+          // conversion-rate report.
+          converted: false,
+          // Keep WHY on the row. The message names the day and which limit
+          // to raise, and a week later nobody remembers which ground was full.
+          coachNote: err.message || 'No seat free in the requested batch',
+        }, { silent: true })
+        showToast(
+          `${form.name} moved to Enquired — ${err.message || 'no seat free'}`,
+          'error'
+        )
+      } else {
+        // Revert trial stage if student creation failed (silent — addStudent already toasted the failure)
+        updateTrialStatus(trial.id, { stage: 'accepted', converted: false }, { silent: true })
+      }
     }
   }
 
