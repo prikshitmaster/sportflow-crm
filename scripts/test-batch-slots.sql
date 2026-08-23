@@ -1,16 +1,19 @@
--- Server-side tests for migration 0184 (shared ground capacity).
+-- Server-side tests for migrations 0184 + 0185 (shared ground capacity).
 --
 -- Run:  supabase db query --linked --file scripts/test-batch-slots.sql
 --
 -- Everything happens inside a transaction that ROLLS BACK, so this is safe to
--- run against the live project: no slot is created, no student is enrolled.
+-- run against the live project: no slot is created, no student is enrolled,
+-- and the temporary capacity tweaks below never persist.
 --
--- The fixture is real data — the "Full Ground" slot (Evening Under 20 Advance
--- MWF + Development TTF). Its live ACTIVE load is Mon 4, Tue 2, Wed 4, Thu 2,
--- Fri 4, Sat 2, which comes from 3 alternates in MWF, 1 alternate in TTF, and
--- 1 DAILY student in TTF who stands on all six days. Cap is set to 4 so Mon /
--- Wed / Fri are exactly full and Tue / Thu / Sat have room — the sharpest
--- possible test of "a daily student is blocked by a day his batch doesn't run".
+-- 0185 removed the manually-typed "ground holds X" number (batch_slots still
+-- has the cap_per_day COLUMN — kept only to satisfy its NOT NULL constraint,
+-- a fixed placeholder is inserted below and never read). Each day's ceiling
+-- is now auto-derived: the smallest `capacity` among every batch in the slot
+-- that trains that day (`_slot_day_ceiling`). This test temporarily sets the
+-- real "Evening Under 20 Advance MWF" / "Development TTF" batches' own
+-- capacities to reconstruct the same tight-Monday/open-Tuesday shape the
+-- original 0184 test used a manual number for.
 --
 -- The JS mirror of this same rule is checked by scripts/test-batch-capacity.mjs.
 -- If you change the rule, both must change together.
@@ -19,21 +22,52 @@ BEGIN;
 
 CREATE TEMP TABLE res (test TEXT, expected TEXT, got TEXT, pass BOOLEAN);
 
+-- Save real capacities so the intent here is legible (the ROLLBACK at the
+-- bottom is what actually restores them; this is just documentation).
+INSERT INTO res
+SELECT 'setup: real capacity before override — ' || name, capacity::TEXT, capacity::TEXT, TRUE
+  FROM batches WHERE ground = 'Full Ground';
+
+-- MWF → 4 (so Mon/Wed/Fri's auto-ceiling becomes 4, same as the old manual
+-- cap_per_day=4). TTF → 10 (so Tue/Thu/Sat's ceiling is a distinct, looser
+-- number — proof the ceiling is genuinely per-day, not one flat value).
+UPDATE batches SET capacity = 4  WHERE name = 'Evening Under 20 Advance MWF';
+UPDATE batches SET capacity = 10 WHERE name = 'Evening Under 20 Development TTF';
+
 INSERT INTO batch_slots (academy_id, branch_id, name, cap_per_day)
-SELECT academy_id, branch_id, 'TEST FG', 4 FROM batches WHERE ground = 'Full Ground' LIMIT 1;
+SELECT academy_id, branch_id, 'TEST FG', 9999 FROM batches WHERE ground = 'Full Ground' LIMIT 1;
 
 UPDATE batches SET slot_id = (SELECT id FROM batch_slots WHERE name = 'TEST FG')
  WHERE ground = 'Full Ground';
 
--- ── The day table itself ──────────────────────────────────────────────────
+-- ── The auto-derived ceiling itself — no manual number anywhere ───────────
 INSERT INTO res
-SELECT 'day load ' || l.day,
-       expected::TEXT,
-       l.occupied::TEXT,
-       l.occupied = expected
-  FROM slot_day_load((SELECT id FROM batch_slots WHERE name = 'TEST FG')) l
-  JOIN (VALUES ('Mon',4),('Tue',2),('Wed',4),('Thu',2),('Fri',4),('Sat',2)) AS e(day, expected)
-    ON e.day = l.day;
+SELECT 'auto ceiling ' || e.day, e.expected::TEXT,
+       _slot_day_ceiling((SELECT id FROM batch_slots WHERE name = 'TEST FG'), e.day)::TEXT,
+       _slot_day_ceiling((SELECT id FROM batch_slots WHERE name = 'TEST FG'), e.day) = e.expected
+  FROM (VALUES ('Mon',4),('Tue',10),('Wed',4),('Thu',10),('Fri',4),('Sat',10)) AS e(day, expected);
+
+-- A third, smaller batch sharing only Saturday should tighten JUST Saturday —
+-- this is the general "any future batch, any schedule" case, not special-
+-- cased to full-week batches. Mirrors the "Weekend Special" example worked
+-- out with the owner.
+INSERT INTO batches (name, days, capacity, sports, academy_id, branch_id, slot_id)
+SELECT 'ZZ TEST Saturday Only', ARRAY['Sat'], 3, sports, academy_id, branch_id,
+       (SELECT id FROM batch_slots WHERE name = 'TEST FG')
+  FROM batches WHERE name = 'Evening Under 20 Development TTF';
+
+INSERT INTO res
+SELECT 'Saturday ceiling drops to 3 once a smaller batch joins it', '3',
+       _slot_day_ceiling((SELECT id FROM batch_slots WHERE name = 'TEST FG'), 'Sat')::TEXT,
+       _slot_day_ceiling((SELECT id FROM batch_slots WHERE name = 'TEST FG'), 'Sat') = 3;
+INSERT INTO res
+SELECT 'Thursday is untouched by the Saturday-only batch', '10',
+       _slot_day_ceiling((SELECT id FROM batch_slots WHERE name = 'TEST FG'), 'Thu')::TEXT,
+       _slot_day_ceiling((SELECT id FROM batch_slots WHERE name = 'TEST FG'), 'Thu') = 10;
+
+-- Remove the throwaway third batch before running the behavioural checks
+-- below — they're written against the original 2-batch fixture.
+DELETE FROM batches WHERE name = 'ZZ TEST Saturday Only';
 
 DO $do$
 DECLARE
@@ -58,10 +92,10 @@ BEGIN
   -- ── Existing students being moved ───────────────────────────────────────
   BEGIN
     PERFORM _require_batch_capacity(v_mwf, v_alt);
-    INSERT INTO res VALUES ('alternate into full MWF (Mon 4/4)', 'BLOCK', 'allowed', FALSE);
+    INSERT INTO res VALUES ('alternate into full MWF (Mon 4/4, auto-ceiling)', 'BLOCK', 'allowed', FALSE);
   EXCEPTION WHEN check_violation THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
-    INSERT INTO res VALUES ('alternate into full MWF (Mon 4/4)', 'BLOCK', v_msg, TRUE);
+    INSERT INTO res VALUES ('alternate into full MWF (Mon 4/4, auto-ceiling)', 'BLOCK', v_msg, TRUE);
   END;
 
   -- The HINT is a contract, not decoration: Trials.jsx keys off exactly this
@@ -80,10 +114,10 @@ BEGIN
 
   BEGIN
     PERFORM _require_batch_capacity(v_ttf, v_alt);
-    INSERT INTO res VALUES ('alternate into open TTF (Tue 2/4)', 'ALLOW', 'allowed', TRUE);
+    INSERT INTO res VALUES ('alternate into open TTF (Tue 2/10, auto-ceiling)', 'ALLOW', 'allowed', TRUE);
   EXCEPTION WHEN check_violation THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
-    INSERT INTO res VALUES ('alternate into open TTF (Tue 2/4)', 'ALLOW', v_msg, FALSE);
+    INSERT INTO res VALUES ('alternate into open TTF (Tue 2/10, auto-ceiling)', 'ALLOW', v_msg, FALSE);
   END;
 
   -- THE case. TTF's own days are wide open, but a daily student also needs

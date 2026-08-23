@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus, Link2, Unlink, Check } from 'lucide-react'
-import { slotSummary, groupRowsByPattern } from '../lib/batchCapacity'
+import { slotSummary, groupRowsByPattern, dailyBatchRows, isFullWeekBatch } from '../lib/batchCapacity'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import DevFillButton from '../components/DevFillButton'
@@ -35,7 +35,6 @@ export default function Batches() {
   const [groupMode,   setGroupMode]   = useState(false)
   const [pickedIds,   setPickedIds]   = useState(() => new Set())
   const [draftName,   setDraftName]   = useState('')
-  const [draftCap,    setDraftCap]    = useState(20)
   const [editingSlot, setEditingSlot] = useState(null)   // slot being re-edited, if any
   const [slotSaving,  setSlotSaving]  = useState(false)
   const [slotError,   setSlotError]   = useState('')
@@ -90,7 +89,7 @@ export default function Batches() {
     batchSlots.forEach(slot => {
       const members = batches.filter(b => b.slotId === slot.id)
       if (members.length === 0) return
-      out.set(slot.id, slotSummary({ slot, slotBatches: members, rosterOf, countOf }))
+      out.set(slot.id, slotSummary({ slotBatches: members, rosterOf, countOf }))
     })
     return out
   }, [batchSlots, batches, rosterOf, countOf])
@@ -107,11 +106,8 @@ export default function Batches() {
   const draftPreview = useMemo(() => {
     if (!groupMode || pickedIds.size === 0) return null
     const members = batches.filter(b => pickedIds.has(b.id))
-    return slotSummary({
-      slot: { capPerDay: Number(draftCap) || 0 },
-      slotBatches: members, rosterOf, countOf,
-    })
-  }, [groupMode, pickedIds, draftCap, batches, rosterOf, countOf])
+    return slotSummary({ slotBatches: members, rosterOf, countOf })
+  }, [groupMode, pickedIds, batches, rosterOf, countOf])
 
   const refreshEnrolments = refreshBatchEnrolments
 
@@ -177,7 +173,7 @@ export default function Batches() {
   // ── Grouping handlers ────────────────────────────────────────────────
   const exitGroupMode = () => {
     setGroupMode(false); setPickedIds(new Set()); setEditingSlot(null)
-    setDraftName(''); setDraftCap(20); setSlotError('')
+    setDraftName(''); setSlotError('')
   }
 
   const togglePicked = (id) => setPickedIds(prev => {
@@ -187,15 +183,20 @@ export default function Batches() {
   })
 
   // Re-open an existing slot for editing: preselect its batches so the owner
-  // can add or drop one in the same pass as changing the cap.
+  // can add or drop one in the same pass.
   const openSlotForEdit = (slot) => {
     setGroupMode(true)
     setEditingSlot(slot)
     setDraftName(slot.name)
-    setDraftCap(slot.capPerDay)
     setPickedIds(new Set(batches.filter(b => b.slotId === slot.id).map(b => b.id)))
     setSlotError('')
   }
+
+  // batch_slots.cap_per_day is a vestigial NOT NULL column (migration 0185
+  // dropped the manual ground-cap concept — each day's ceiling is now
+  // auto-derived from the member batches' own capacities). This constant
+  // only exists to satisfy that column; nothing reads it anymore.
+  const LEGACY_CAP_PLACEHOLDER = 9999
 
   const handleSaveSlot = async () => {
     setSlotSaving(true); setSlotError('')
@@ -203,7 +204,7 @@ export default function Batches() {
       const slot = await saveBatchSlot({
         id: editingSlot?.id ?? null,
         name: draftName.trim(),
-        capPerDay: Number(draftCap),
+        capPerDay: LEGACY_CAP_PLACEHOLDER,
         branchId: editingSlot?.branchId
           ?? batches.find(b => pickedIds.has(b.id))?.branchId
           ?? selectedBranch ?? null,
@@ -336,44 +337,43 @@ export default function Batches() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Slot name</label>
-              <input className="input" value={draftName} placeholder="e.g. Morning · Ground A"
-                onChange={e => setDraftName(e.target.value)} />
-            </div>
-            <div>
-              <label className="label">Ground holds (students per day)</label>
-              <input className="input" type="number" min={1} value={draftCap}
-                onChange={e => setDraftCap(e.target.value)} />
-            </div>
+          <div>
+            <label className="label">Slot name</label>
+            <input className="input" value={draftName} placeholder="e.g. Morning · Ground A"
+              onChange={e => setDraftName(e.target.value)} />
           </div>
 
-          {/* Live day preview — the reason this panel exists. Seeing "Mon 20/20"
-              BEFORE committing is what stops a slot being created already broken. */}
-          {draftPreview && draftPreview.days.length > 0 && (
-            <div>
-              <p className="text-xs font-bold text-gray-500 mb-1.5">
-                {pickedIds.size} batch{pickedIds.size === 1 ? '' : 'es'} selected ·
-                {' '}{draftPreview.headcount} student{draftPreview.headcount === 1 ? '' : 's'} on this ground
-              </p>
-              <DayLoadStrip
-                rows={groupRowsByPattern(
-                  draftPreview.rows,
-                  batches.filter(b => pickedIds.has(b.id)),
-                  draftPreview.days,
-                )}
-                cap={Number(draftCap) || 0}
-              />
-              {draftPreview.anyOver && (
-                <p className="text-[11px] text-red-600 mt-1.5 flex items-start gap-1">
-                  <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
-                  Some days are already over this limit. Existing students stay put — new
-                  enrolments on those days are blocked until it drains or you raise the number.
+          {/* Live day preview — the reason this panel exists. Seeing "Mon 18/20"
+              BEFORE committing is what stops a slot being created already broken.
+              No manual number to set: each day's limit is auto-derived as the
+              smallest capacity among whichever batches train that day. */}
+          {draftPreview && draftPreview.days.length > 0 && (() => {
+            const draftBatches  = batches.filter(b => pickedIds.has(b.id))
+            const dailyRows     = dailyBatchRows(draftPreview.batches, draftPreview.days)
+            const patternRows   = groupRowsByPattern(
+              draftPreview.rows,
+              draftBatches.filter(b => !isFullWeekBatch(b, draftPreview.days)),
+              draftPreview.days,
+              draftPreview.ceilings,
+            )
+            return (
+              <div>
+                <p className="text-xs font-bold text-gray-500 mb-1.5">
+                  {pickedIds.size} batch{pickedIds.size === 1 ? '' : 'es'} selected ·
+                  {' '}{draftPreview.headcount} student{draftPreview.headcount === 1 ? '' : 's'} on this ground
                 </p>
-              )}
-            </div>
-          )}
+                <DayLoadStrip rows={[...patternRows, ...dailyRows]} />
+                {draftPreview.anyOver && (
+                  <p className="text-[11px] text-red-600 mt-1.5 flex items-start gap-1">
+                    <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
+                    Some days are already over the ground's limit. Existing students stay put —
+                    new enrolments on those days are blocked until it drains or a batch's own
+                    capacity is raised.
+                  </p>
+                )}
+              </div>
+            )
+          })()}
 
           {slotError && (
             <p className="text-xs text-red-600 flex items-start gap-1">
@@ -390,7 +390,7 @@ export default function Batches() {
             )}
             <button className="btn-secondary" onClick={exitGroupMode} disabled={slotSaving}>Cancel</button>
             <button className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={slotSaving || pickedIds.size < 2 || !draftName.trim() || Number(draftCap) < 1}
+              disabled={slotSaving || pickedIds.size < 2 || !draftName.trim()}
               title={pickedIds.size < 2 ? 'Pick at least two batches' : ''}
               onClick={handleSaveSlot}>
               {slotSaving ? 'Saving…' : editingSlot ? 'Save slot' : 'Create slot'}
@@ -406,6 +406,13 @@ export default function Batches() {
         // filtered out belongs to another part of the academy — showing its
         // day table here would leak another branch's headcount onto this one.
         if (!slot || !visibleBatches.some(b => b.slotId === slotId)) return null
+        const dailyRows   = dailyBatchRows(info.batches, info.days)
+        const patternRows = groupRowsByPattern(
+          info.rows,
+          info.batches.map(r => r.batch).filter(b => !isFullWeekBatch(b, info.days)),
+          info.days,
+          info.ceilings,
+        )
         return (
           <div key={slotId} className="card p-4 space-y-2.5">
             <div className="flex items-start justify-between gap-3">
@@ -416,8 +423,7 @@ export default function Batches() {
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {info.batches.length} batches share this ground ·
-                  {' '}{info.headcount} student{info.headcount === 1 ? '' : 's'} ·
-                  {' '}holds {slot.capPerDay}/day
+                  {' '}{info.headcount} student{info.headcount === 1 ? '' : 's'}
                 </p>
               </div>
               {canManageBatches && (
@@ -428,10 +434,7 @@ export default function Batches() {
                 </button>
               )}
             </div>
-            <DayLoadStrip
-              rows={groupRowsByPattern(info.rows, info.batches.map(r => r.batch), info.days)}
-              cap={slot.capPerDay}
-            />
+            <DayLoadStrip rows={[...patternRows, ...dailyRows]} />
           </div>
         )
       })}
@@ -510,23 +513,26 @@ export default function Batches() {
   )
 }
 
-// One tile per batch-day PATTERN the ground runs (MWF / TTS / Daily / …),
-// not one per weekday — bodies standing on it, out of the slot's limit. This
-// is the view a per-batch number can never give you — a daily student shows
-// up on every day, an alternate only on their own batch's days, and the
-// pattern that fills first is what actually blocks the next enrolment.
-function DayLoadStrip({ rows, cap }) {
+// One tile per batch-day PATTERN the ground runs (MWF / TTS / …), plus one
+// tile per batch that trains every day the group spans ("Daily") — not one
+// per weekday. Each tile's cap is auto-derived (migration 0185): the
+// smallest capacity among whichever batches actually share that day/pattern,
+// no manual ground number involved. A full-week batch gets its own tile
+// instead of silently blending into every other pattern's numbers.
+function DayLoadStrip({ rows }) {
   if (!rows?.length) return null
-  const nearlyFull = Math.max(1, Math.round((cap || 0) * 0.15))
   return (
     <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
       {rows.map(r => {
+        const cap = r.cap ?? 0
+        const nearlyFull = Math.max(1, Math.round(cap * 0.15))
         const tone = r.over          ? 'bg-red-100 text-red-700 border-red-300'
                    : r.full          ? 'bg-red-50 text-red-600 border-red-200'
                    : r.free <= nearlyFull ? 'bg-amber-50 text-amber-700 border-amber-200'
                    : 'bg-gray-50 text-gray-600 border-gray-200'
+        const title = r.batchName ? `${r.batchName} — ${r.days.join(', ')}` : r.days.join(', ')
         return (
-          <div key={r.label} title={r.days.join(', ')}
+          <div key={`${r.label}-${r.batchName || ''}`} title={title}
             className={`rounded-lg border px-2 py-1.5 text-center ${tone}`}>
             <p className="text-[10px] font-bold uppercase tracking-wide opacity-60">{r.label}</p>
             <p className="text-sm font-black leading-tight">

@@ -1,5 +1,6 @@
 // Verifies src/lib/batchCapacity.js against the numbers the SQL in
-// supabase/migrations/0184_batch_slots.sql produces for the same data.
+// supabase/migrations/0184_batch_slots.sql + 0185_auto_ground_capacity.sql
+// produces for the same data.
 //
 // WHY THIS EXISTS
 //   The seat rule is written twice — once in SQL (the enforcer, via triggers)
@@ -7,13 +8,17 @@
 //   offers a seat the server then refuses, which reads as a random failure to
 //   the owner. This pins them together.
 //
-//   The fixture is real: it is the live "Full Ground" slot (Evening Under 20
-//   Advance MWF + Development TTF), whose per-day load was confirmed against
-//   the database as Mon 4, Tue 2, Wed 4, Thu 2, Fri 4, Sat 2.
+//   0185 removed the manually-typed "ground holds X" number entirely. Each
+//   day's ceiling is now auto-derived: the smallest `capacity` among every
+//   batch in the slot that trains that day. The fixtures below are the two
+//   worked examples the design was built from in conversation.
 //
 // Run:  node scripts/test-batch-capacity.mjs
 
-import { slotDays, computeSlotLoad, batchSeatInfo, slotSummary } from '../src/lib/batchCapacity.js'
+import {
+  slotDays, computeSlotLoad, computeDayCeilings, isFullWeekBatch,
+  batchSeatInfo, slotSummary, groupRowsByPattern, dailyBatchRows,
+} from '../src/lib/batchCapacity.js'
 
 let failures = 0
 const eq = (label, got, want) => {
@@ -23,68 +28,121 @@ const eq = (label, got, want) => {
   console.log(`${ok ? '  ok  ' : '  FAIL'} ${label}${ok ? '' : `\n         got  ${g}\n         want ${w}`}`)
 }
 
-// ── Fixture: the live Full Ground slot ────────────────────────────────────
-const mwf = { id: 1, name: 'Evening Under 20 Advance MWF',     days: ['Mon', 'Wed', 'Fri'], capacity: 30 }
-const ttf = { id: 2, name: 'Evening Under 20 Development TTF', days: ['Tue', 'Thu', 'Sat'], capacity: 30 }
+// ── Worked example 1: the "4 is the Daily limit" conversation ────────────
+// TTS cap 10, enrolled 5 → 5 free. MWF cap 10, enrolled 6 → 4 free. A kid
+// who trains every day can only get as many spots as the tighter allows.
+console.log('\nworked example: TTS(10)/5 + MWF(10)/6 → Daily limit 4')
+{
+  const tts = { id: 1, name: 'TTS', days: ['Tue', 'Thu', 'Sat'], capacity: 10 }
+  const mwf = { id: 2, name: 'MWF', days: ['Mon', 'Wed', 'Fri'], capacity: 10 }
+  const roster = {
+    1: Array.from({ length: 5 }, (_, i) => ({ id: 100 + i, trainingType: 'Alternate' })),
+    2: Array.from({ length: 6 }, (_, i) => ({ id: 200 + i, trainingType: 'Alternate' })),
+  }
+  const members  = [tts, mwf]
+  const rosterOf = (b) => roster[b.id] || []
+  const countOf  = (b) => rosterOf(b).length
 
-const roster = {
-  1: [ { id: 101, trainingType: 'Alternate' },
-       { id: 102, trainingType: 'Alternate' },
-       { id: 103, trainingType: 'Alternate' } ],
-  // The daily student is in the TTF batch but stands on all six days.
-  2: [ { id: 201, trainingType: 'Alternate' },
-       { id: 202, trainingType: 'Daily'     } ],
+  const { days, load } = computeSlotLoad(members, rosterOf)
+  const ceilings = computeDayCeilings(members, days)
+  eq('no manual number: ceiling = smallest capacity active that day', ceilings,
+     { Mon: 10, Tue: 10, Wed: 10, Thu: 10, Fri: 10, Sat: 10 })
+
+  const ttsSeat = batchSeatInfo({ batch: tts, slotBatches: members, days, load, ceilings, enrolled: countOf(tts) })
+  const mwfSeat = batchSeatInfo({ batch: mwf, slotBatches: members, days, load, ceilings, enrolled: countOf(mwf) })
+  eq('TTS free (own days only)', ttsSeat.altFree, 5)
+  eq('MWF free (own days only)', mwfSeat.altFree, 4)
+  // Neither batch alone spans every day, so there is no "Daily" batch here —
+  // dailyFree on either pattern batch is bounded by the OTHER pattern's days
+  // too, since a Daily student would stand on both.
+  eq('a Daily-type enrolment is capped by the tighter pattern', Math.min(ttsSeat.dailyFree, mwfSeat.dailyFree), 4)
 }
-const members  = [mwf, ttf]
-const rosterOf = (b) => roster[b.id] || []
-const countOf  = (b) => rosterOf(b).length
 
-console.log('\nslot days')
-eq('ordered Mon→Sun, not alphabetically',
-   slotDays(members), ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])
+// ── Worked example 2: "Weekend Special" — the general case ───────────────
+// A batch training only Sat+Sun, capacity 15, added to a group that
+// otherwise runs Mon–Sat. Saturday already has TTS(32) + Football(20); the
+// new batch's 15 should become Saturday's ceiling automatically.
+console.log('\nworked example: a random 2-day batch tightens only the days it shares')
+{
+  const tts      = { id: 1, name: 'TTS',            days: ['Tue', 'Thu', 'Sat'],               capacity: 32 }
+  const mwf      = { id: 2, name: 'MWF',            days: ['Mon', 'Wed', 'Fri'],               capacity: 20 }
+  const football = { id: 3, name: 'Football',       days: ['Mon','Tue','Wed','Thu','Fri','Sat'], capacity: 20 }
+  const weekend  = { id: 4, name: 'Weekend Special', days: ['Sat', 'Sun'],                       capacity: 15 }
+  const noRoster = () => []
+  const members  = [tts, mwf, football, weekend]
 
-console.log('\nper-day load (must match the SQL slot_day_load exactly)')
-const { days, load } = computeSlotLoad(members, rosterOf)
-eq('Full Ground day load', load, { Mon: 4, Tue: 2, Wed: 4, Thu: 2, Fri: 4, Sat: 2 })
+  const groupDays = slotDays(members)
+  eq('group now spans all 7 days', groupDays, ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'])
 
-console.log('\nthe daily student is the whole point')
-eq('daily kid counted on Mon, a day his TTF batch does not run',
-   load.Mon, 3 /* MWF alternates */ + 1 /* the daily kid */)
-eq('daily kid also counted on his own Tue', load.Tue, 1 + 1)
+  const ceilings = computeDayCeilings(members, groupDays)
+  eq('Saturday ceiling drops to 15 (Weekend Special is smallest there)', ceilings.Sat, 15)
+  eq('Sunday ceiling is 15 (only Weekend Special runs that day)',        ceilings.Sun, 15)
+  eq('Monday ceiling stays 20 (MWF/Football, untouched by the new batch)', ceilings.Mon, 20)
+  eq('Tuesday ceiling stays 20 (TTS/Football, untouched)',                 ceilings.Tue, 20)
 
-console.log('\nseats left at cap 4/day — mirrors the 6 SQL guard tests')
-const slot = { capPerDay: 4 }
-const mwfSeat = batchSeatInfo({ batch: mwf, slot, days, load, enrolled: countOf(mwf) })
-const ttfSeat = batchSeatInfo({ batch: ttf, slot, days, load, enrolled: countOf(ttf) })
+  // Adding Weekend Special stretches the group to 7 days — Football (Mon–Sat)
+  // no longer covers EVERY group day, so it stops being auto-detected as
+  // "Daily" the moment a 7th day enters the picture. Confirm that against
+  // the tighter 6-day group (no Sunday) where Football genuinely is full-week.
+  const sixDayGroup = slotDays([tts, mwf, football])
+  eq('Football IS Daily in a plain 6-day group', isFullWeekBatch(football, sixDayGroup), true)
+  eq('...but NOT once a 7th day (Sunday) joins the group', isFullWeekBatch(football, groupDays), false)
+  eq('Weekend Special does NOT span every day → not Daily',  isFullWeekBatch(weekend, groupDays), false)
+  eq('TTS does not span every day → not Daily',               isFullWeekBatch(tts, groupDays), false)
 
-// SQL test 1: alternate into MWF was BLOCKED (Mon 4/4).
-eq('MWF: no room for an alternate (Mon/Wed/Fri all 4/4)', mwfSeat.altFree, 0)
-// SQL test 2: alternate into TTF was ALLOWED (Tue 2/4).
-eq('TTF: room for an alternate (Tue/Thu/Sat at 2/4)',     ttfSeat.altFree, 2)
-// SQL test 3: daily into TTF was BLOCKED by Mon.
-eq('TTF: no room for a daily (blocked by Mon 4/4)',       ttfSeat.dailyFree, 0)
-eq('and it names Mon/Wed/Fri as the full days',           ttfSeat.fullDays, ['Mon', 'Wed', 'Fri'])
-eq('TTF is limited by the ground, not its own capacity',  ttfSeat.limitedBy, null)
-eq('MWF is limited by the ground, not its own capacity',  mwfSeat.limitedBy, 'ground')
-
-console.log('\nthe bug this replaces')
-// The old tile did: sum of (capacity - enrolled) per batch.
-const oldNumber = members.reduce((n, b) => n + (b.capacity - countOf(b)), 0)
-eq('old per-batch sum claimed this many free seats', oldNumber, 27 + 28)
-eq('tightest real day can take this many more people',
-   Math.min(...days.map(d => slot.capPerDay - load[d])), 0)
+  // Pattern tiles are built from ALL non-full-week batches (here, that's
+  // everyone — nothing spans all 7 days). Saturday now differs from
+  // Tue/Thu structurally (Weekend Special also trains Saturday), so it
+  // correctly splits off into its own tile instead of merging into "TTS" —
+  // merging them would hide that Saturday has a tighter real ceiling.
+  const { load } = computeSlotLoad(members, noRoster)
+  const rows = groupDays.map(d => ({ day: d, occupied: load[d], free: ceilings[d] - load[d], full: false, over: false }))
+  const patternRows = groupRowsByPattern(rows, members, groupDays, ceilings)
+  eq('Saturday splits off from Tue/Thu — it is not really the same pattern anymore',
+     patternRows.map(r => r.label).sort(), ['MWF', 'Sat', 'Sun', 'Tue/Thu'])
+  const satRow   = patternRows.find(r => r.label === 'Sat')
+  const tueRow   = patternRows.find(r => r.label === 'Tue/Thu')
+  eq('Saturday\'s real ceiling (15) differs from Tue/Thu\'s (20) — proof they must not merge',
+     [satRow.cap, tueRow.cap], [15, 20])
+}
 
 console.log('\nungrouped batches must behave exactly as before')
-const solo = batchSeatInfo({ batch: mwf, slot: null, days, load, enrolled: 3 })
-eq('no slot → plain capacity minus enrolled', solo.altFree, 27)
-eq('no slot → daily and alternate agree',     solo.dailyFree, 27)
-eq('no slot → no day is ever "full"',         solo.fullDays, [])
+{
+  const solo = batchSeatInfo({ batch: { capacity: 30 }, slotBatches: [], days: [], load: {}, ceilings: {}, enrolled: 3 })
+  eq('no slot → plain capacity minus enrolled', solo.altFree, 27)
+  eq('no slot → daily and alternate agree',     solo.dailyFree, 27)
+  eq('no slot → no day is ever "full"',         solo.fullDays, [])
+}
 
-console.log('\nslotSummary headcount')
-const summary = slotSummary({ slot, slotBatches: members, rosterOf, countOf })
-eq('counts PEOPLE once, not seat-days', summary.headcount, 5)
-eq('flags that some day is full',       summary.anyFull, true)
-eq('nothing is over the limit yet',     summary.anyOver, false)
+console.log('\nslotSummary / dailyBatchRows — the live "evening" shape')
+{
+  const tts      = { id: 5,   name: 'Evening Under 20 Development TTF', days: ['Tue','Thu','Sat'], capacity: 32 }
+  const mwf      = { id: 6,   name: 'Under 15 advance MWF',             days: ['Mon','Wed','Fri'], capacity: 20 }
+  const football = { id: 157, name: 'Football',                        days: ['Mon','Tue','Wed','Thu','Fri','Sat'], capacity: 20 }
+  const roster = {
+    5:   [{ id: 1, trainingType: 'Alternate' }, { id: 2, trainingType: 'Alternate' }],
+    6:   [{ id: 3, trainingType: 'Alternate' }],
+    157: [],
+  }
+  const members  = [tts, mwf, football]
+  const rosterOf = (b) => roster[b.id] || []
+  const countOf  = (b) => rosterOf(b).length
+
+  const summary = slotSummary({ slotBatches: members, rosterOf, countOf })
+  eq('counts PEOPLE once, not seat-days', summary.headcount, 3)
+  eq('every day ceiling is 20 (Football is always the smallest)',
+     summary.days.every(d => summary.ceilings[d] === 20), true)
+
+  const daily = dailyBatchRows(summary.batches, summary.days)
+  eq('exactly one Daily tile (Football)', daily.length, 1)
+  eq('Daily tile carries the batch name', daily[0].batchName, 'Football')
+  // Football itself has 0 enrolled, but it shares every day with TTS/MWF's
+  // ALREADY-enrolled kids (2 on Tue/Thu/Sat, 1 on Mon/Wed/Fri) — a NEW daily
+  // enrolment is bounded by the tightest of those days (20 - 2 = 18), not by
+  // Football's own empty roster. This is the whole point of the feature.
+  eq('Football\'s free seats are bounded by the busiest shared day (18), not its own empty roster',
+     daily[0].free, 18)
+}
 
 console.log(failures === 0
   ? '\nAll checks passed — JS preview agrees with the SQL enforcer.\n'
