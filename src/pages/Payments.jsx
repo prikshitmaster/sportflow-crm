@@ -1499,6 +1499,12 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const selectedStudent = students.find(s => String(s.id) === String(form.studentId))
   const isSuspended = selectedStudent?.status === 'Suspended'
 
+  // Branch setting (0187): moved up here (was only computed lower down for
+  // proration) so monthPickerOn can also read it — off means no auto
+  // month-picker, no "Custom coverage dates" toggle, plain manual dates only.
+  const branchForProration    = sportBranches.find(b => String(b.id) === String(selectedStudent?.branchId))
+  const autoCalcEnabled       = branchForProration?.autoCalcDates !== false
+
   // ── Pending months ────────────────────────────────────────────────────
   // Every month the student still owes: the month after their paidTill through
   // the current month. Empty when they are already paid up — that is the
@@ -1532,7 +1538,8 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // when a custom date range is in play — otherwise `months`/`subtotal` below
   // keep computing from a picker the staff can no longer see, pre-filling the
   // total with a month-count that has nothing to do with the custom period.
-  const monthPickerOn = !customDates
+  const monthPickerOn = autoCalcEnabled
+    && !customDates
     && form.paymentType === 'monthly'
     && dueMonths.length > 0
     && paymentDate === toLocalDateStr()
@@ -1635,7 +1642,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // If no monthly rate can be found at all (no fee_plans row AND no batch
   // default), skip the deduction entirely rather than guess — a missing
   // discount is a support ticket, a wrong one is a trust problem.
-  const branchForProration    = sportBranches.find(b => String(b.id) === String(selectedStudent?.branchId))
   const prorationBasisSetting = branchForProration?.prorationBasis || 'calendar'
   const monthlyRateForProration = getFeePlanRate(form.batchId, selectedStudent?.trainingType, 'monthly')?.rate || 0
   // monthly & custom: fee × months; quarterly/yearly: entered amount is the flat total

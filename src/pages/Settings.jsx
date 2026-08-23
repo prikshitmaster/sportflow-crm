@@ -386,6 +386,7 @@ function BranchFeesSection() {
     taxPercent: b.taxPercent != null ? String(b.taxPercent) : '',
     taxOnFees:  !!b.taxOnFees, taxOnTrial: !!b.taxOnTrial, taxOnKit: !!b.taxOnKit,
     prorationBasis: b.prorationBasis || 'calendar',
+    autoCalcDates: b.autoCalcDates ?? true,
   })
   const draftFor = (b) => drafts[b.id] ?? seed(b)
   const setField = (b, k, v) =>
@@ -399,7 +400,7 @@ function BranchFeesSection() {
       await db.updateBranchFees(b.id, {
         trialFee: d.trialFee, kitFee: d.kitFee, taxPercent: d.taxPercent,
         taxOnFees: d.taxOnFees, taxOnTrial: d.taxOnTrial, taxOnKit: d.taxOnKit,
-        prorationBasis: d.prorationBasis,
+        prorationBasis: d.prorationBasis, autoCalcDates: d.autoCalcDates,
       })
       await refreshSportBranches()
       setDrafts(prev => { const n = { ...prev }; delete n[b.id]; return n })
@@ -484,6 +485,25 @@ function BranchFeesSection() {
                   {String(d.taxPercent).trim() === '' && (d.taxOnFees || d.taxOnTrial || d.taxOnKit) && (
                     <p className="text-[11px] text-amber-600 mt-1.5 font-semibold">Set a tax rate above, or nothing will be taxed.</p>
                   )}
+                </div>
+                <div className="col-span-2">
+                  <p className="label mb-1.5">Auto-calculate payment dates</p>
+                  <p className="text-[11px] text-gray-400 mb-1.5">
+                    When off, dates are always entered by hand — no auto month-picker on
+                    Record Payment, no auto Paid-Till on Add/Edit Student.
+                  </p>
+                  <div className="flex gap-2">
+                    {[{ v: true, label: 'On' }, { v: false, label: 'Off' }].map(o => (
+                      <button key={String(o.v)} type="button" onClick={() => setField(b, 'autoCalcDates', o.v)}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold border transition ${
+                          d.autoCalcDates === o.v
+                            ? 'bg-brand-600 text-white border-brand-600'
+                            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                        }`}>
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <p className="label mb-1.5">Partial-month billing</p>
