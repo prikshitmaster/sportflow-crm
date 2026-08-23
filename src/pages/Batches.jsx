@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus, Link2, Unlink, Check } from 'lucide-react'
-import { slotSummary } from '../lib/batchCapacity'
+import { slotSummary, groupRowsByPattern } from '../lib/batchCapacity'
 import { Modal } from './Students'
 import { SPORTS } from '../data/mockData'
 import DevFillButton from '../components/DevFillButton'
@@ -357,7 +357,14 @@ export default function Batches() {
                 {pickedIds.size} batch{pickedIds.size === 1 ? '' : 'es'} selected ·
                 {' '}{draftPreview.headcount} student{draftPreview.headcount === 1 ? '' : 's'} on this ground
               </p>
-              <DayLoadStrip rows={draftPreview.rows} cap={Number(draftCap) || 0} />
+              <DayLoadStrip
+                rows={groupRowsByPattern(
+                  draftPreview.rows,
+                  batches.filter(b => pickedIds.has(b.id)),
+                  draftPreview.days,
+                )}
+                cap={Number(draftCap) || 0}
+              />
               {draftPreview.anyOver && (
                 <p className="text-[11px] text-red-600 mt-1.5 flex items-start gap-1">
                   <AlertCircle size={12} className="mt-0.5 flex-shrink-0" />
@@ -421,7 +428,10 @@ export default function Batches() {
                 </button>
               )}
             </div>
-            <DayLoadStrip rows={info.rows} cap={slot.capPerDay} />
+            <DayLoadStrip
+              rows={groupRowsByPattern(info.rows, info.batches.map(r => r.batch), info.days)}
+              cap={slot.capPerDay}
+            />
           </div>
         )
       })}
@@ -500,10 +510,11 @@ export default function Batches() {
   )
 }
 
-// One tile per day the ground runs: bodies standing on it, out of the slot's
-// limit. This is the view a per-batch number can never give you — a daily
-// student shows up on every day, an alternate only on their own batch's days,
-// and the day that fills first is what actually blocks the next enrolment.
+// One tile per batch-day PATTERN the ground runs (MWF / TTS / Daily / …),
+// not one per weekday — bodies standing on it, out of the slot's limit. This
+// is the view a per-batch number can never give you — a daily student shows
+// up on every day, an alternate only on their own batch's days, and the
+// pattern that fills first is what actually blocks the next enrolment.
 function DayLoadStrip({ rows, cap }) {
   if (!rows?.length) return null
   const nearlyFull = Math.max(1, Math.round((cap || 0) * 0.15))
@@ -515,8 +526,9 @@ function DayLoadStrip({ rows, cap }) {
                    : r.free <= nearlyFull ? 'bg-amber-50 text-amber-700 border-amber-200'
                    : 'bg-gray-50 text-gray-600 border-gray-200'
         return (
-          <div key={r.day} className={`rounded-lg border px-2 py-1.5 text-center ${tone}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wide opacity-60">{r.day}</p>
+          <div key={r.label} title={r.days.join(', ')}
+            className={`rounded-lg border px-2 py-1.5 text-center ${tone}`}>
+            <p className="text-[10px] font-bold uppercase tracking-wide opacity-60">{r.label}</p>
             <p className="text-sm font-black leading-tight">
               {r.occupied}<span className="opacity-40 font-bold">/{cap}</span>
             </p>
