@@ -387,6 +387,7 @@ function BranchFeesSection() {
     taxOnFees:  !!b.taxOnFees, taxOnTrial: !!b.taxOnTrial, taxOnKit: !!b.taxOnKit,
     prorationBasis: b.prorationBasis || 'calendar',
     autoCalcDates: b.autoCalcDates ?? true,
+    ghostMinSessions: b.ghostMinSessions ?? 0,
   })
   const draftFor = (b) => drafts[b.id] ?? seed(b)
   const setField = (b, k, v) =>
@@ -401,6 +402,7 @@ function BranchFeesSection() {
         trialFee: d.trialFee, kitFee: d.kitFee, taxPercent: d.taxPercent,
         taxOnFees: d.taxOnFees, taxOnTrial: d.taxOnTrial, taxOnKit: d.taxOnKit,
         prorationBasis: d.prorationBasis, autoCalcDates: d.autoCalcDates,
+        ghostMinSessions: d.ghostMinSessions,
       })
       await refreshSportBranches()
       setDrafts(prev => { const n = { ...prev }; delete n[b.id]; return n })
@@ -523,6 +525,17 @@ function BranchFeesSection() {
                       </label>
                     ))}
                   </div>
+                </div>
+                <div className="col-span-2">
+                  <label className="label">"Not Attending" threshold</label>
+                  <p className="text-[11px] text-gray-400 mb-1.5">
+                    An Active student with this many or fewer attended sessions in the last 2 months
+                    is shown in a separate "Not Attending" bucket on Dashboard/Reports, excluded from
+                    Expected Revenue and Overdue. Nothing is charged or changed automatically —
+                    default 0 flags only students with literally zero attendance.
+                  </p>
+                  <input className="input w-32" type="number" min="0" step="1" placeholder="0"
+                    value={d.ghostMinSessions} onChange={e => setField(b, 'ghostMinSessions', e.target.value)} />
                 </div>
               </div>
             </div>
