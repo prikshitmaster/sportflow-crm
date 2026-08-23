@@ -1406,7 +1406,11 @@ export function AppProvider({ children }) {
     try {
       await db.updateStudentStatus(id, status)
       const s = students.find(x => x.id === id)
-      setStudents(prev => prev.map(x => x.id === id ? { ...x, status } : x))
+      // Mirror db.js: stamp/clear suspendedSince locally too, so the freeze
+      // in studentRules.js's effectiveAnchor() applies from this same
+      // session without waiting for a refetch.
+      const suspendedSince = status === 'Suspended' ? toLocalDateStr() : status === 'Active' ? null : s?.suspendedSince
+      setStudents(prev => prev.map(x => x.id === id ? { ...x, status, suspendedSince } : x))
       showToast(`Student marked as ${status}`)
       logAuditSport({ actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student', entityId: id, entityName: s?.name, changes: { Status: { old: s?.status, new: status } }, academyId: user?.academyId })
     } catch (err) {
