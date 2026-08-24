@@ -315,9 +315,12 @@ export default function Payments() {
         </div>
       )}
       <div className="grid grid-cols-3 gap-3">
-        <SummaryCard label="Collected" value={fmtMoney(paid)} count={paidBase.length} color="emerald" icon={CheckCircle} />
-        <SummaryCard label="Pending"   value={fmtMoney(pending)} count={pendingBase.length} color="amber" icon={Clock} />
-        <SummaryCard label="Overdue"   value={fmtMoney(overdueAmt)} count={overdueCount} color="red" icon={AlertCircle} />
+        <SummaryCard label="Collected" value={fmtMoney(paid)} count={paidBase.length} color="emerald" icon={CheckCircle}
+          active={statusFilter === 'Paid'} onClick={() => setStatusFilter(statusFilter === 'Paid' ? 'All' : 'Paid')} />
+        <SummaryCard label="Pending"   value={fmtMoney(pending)} count={pendingBase.length} color="amber" icon={Clock}
+          active={statusFilter === 'Pending'} onClick={() => setStatusFilter(statusFilter === 'Pending' ? 'All' : 'Pending')} />
+        <SummaryCard label="Overdue"   value={fmtMoney(overdueAmt)} count={overdueCount} color="red" icon={AlertCircle}
+          active={statusFilter === 'Overdue'} onClick={() => setStatusFilter(statusFilter === 'Overdue' ? 'All' : 'Overdue')} />
       </div>
 
       {/* Revenue chart */}
@@ -1437,22 +1440,25 @@ function ConfirmMarkPaidModal({ payment, studentMap, onConfirm, onClose, isLoadi
   )
 }
 
-function SummaryCard({ label, value, count, color, icon: Icon }) {
+function SummaryCard({ label, value, count, color, icon: Icon, onClick, active }) {
   const theme = {
-    emerald: { text: 'text-emerald-600', bar: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-600' },
-    amber:   { text: 'text-amber-600',   bar: 'bg-amber-500',   chip: 'bg-amber-50 text-amber-600' },
-    red:     { text: 'text-red-600',     bar: 'bg-red-500',     chip: 'bg-red-50 text-red-600' },
+    emerald: { text: 'text-emerald-600', bar: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-600', ring: 'ring-emerald-400' },
+    amber:   { text: 'text-amber-600',   bar: 'bg-amber-500',   chip: 'bg-amber-50 text-amber-600',   ring: 'ring-amber-400'   },
+    red:     { text: 'text-red-600',     bar: 'bg-red-500',     chip: 'bg-red-50 text-red-600',     ring: 'ring-red-400'     },
   }[color]
   return (
-    <div className="relative card p-3 sm:p-5 overflow-hidden pl-4 sm:pl-6">
+    <button type="button" onClick={onClick}
+      className={`relative card p-3 sm:p-5 overflow-hidden pl-4 sm:pl-6 text-left w-full transition ${
+        onClick ? 'cursor-pointer hover:shadow-md' : 'cursor-default'
+      } ${active ? `ring-2 ${theme.ring}` : ''}`}>
       <span className={`absolute left-0 top-0 bottom-0 w-1 ${theme.bar}`} />
       <div className="flex items-start justify-between">
         <p className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</p>
         {Icon && <span className={`hidden sm:flex w-7 h-7 rounded-lg items-center justify-center ${theme.chip}`}><Icon size={14} /></span>}
       </div>
       <p className={`text-lg sm:text-2xl font-black tracking-tight ${theme.text}`}>{value}</p>
-      <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{count} {count === 1 ? 'record' : 'records'}</p>
-    </div>
+      <p className="text-[10px] sm:text-xs text-gray-400 mt-1">{count} {count === 1 ? 'record' : 'records'}{active ? ' · filtering' : ''}</p>
+    </button>
   )
 }
 
