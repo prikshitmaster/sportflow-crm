@@ -1449,7 +1449,8 @@ function SummaryCard({ label, value, count, color, icon: Icon }) {
 }
 
 export function RecordPaymentModal({ onClose, onSave, students, batches = [], feePlans = [], payments = [], initialStudentId }) {
-  const { sportBranches } = useApp()
+  const { sportBranches, isFeatureOn } = useApp()
+  const showRecentPayments = isFeatureOn('payment_recent_history')
   const initStudent = initialStudentId
     ? (students.find(s => s.id === initialStudentId) || {})
     : {}
@@ -2065,7 +2066,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
               </span>
             </div>
           )}
-          {form.studentId && studentRecentPayments.length > 0 && (
+          {showRecentPayments && form.studentId && studentRecentPayments.length > 0 && (
             <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
               <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-1.5">
                 Last {studentRecentPayments.length} payment{studentRecentPayments.length === 1 ? '' : 's'}

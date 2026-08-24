@@ -819,6 +819,7 @@ function FeaturesTab() {
     // a batch for the family rather than something already true until you
     // turn it off. Only takes effect while Batch Choice above is off.
     { key: 'auto_assign_batch_by_age', label: 'Auto-Assign Batch by Age', desc: 'Only applies when Batch Choice on Registration is off — places the student in a matching Development batch by age as soon as they enter date of birth, and shows the assigned coach', defaultOff: true },
+    { key: 'payment_recent_history', label: 'Recent Payments in Payment Form', desc: 'Show the student’s last 3 payments inside Record Payment, so staff can spot duplicates before saving — turn off for a simpler form' },
   ]
 
   return (
