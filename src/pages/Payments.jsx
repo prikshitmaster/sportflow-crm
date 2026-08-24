@@ -646,6 +646,7 @@ export default function Payments() {
           batches={batches}
           feePlans={feePlans}
           payments={payments}
+          onClearDue={handleMarkPaid}
         />
       )}
       {payForStudent && (
@@ -657,6 +658,7 @@ export default function Payments() {
           feePlans={feePlans}
           payments={payments}
           initialStudentId={payForStudent.id}
+          onClearDue={handleMarkPaid}
         />
       )}
 
@@ -1448,7 +1450,7 @@ function SummaryCard({ label, value, count, color, icon: Icon }) {
   )
 }
 
-export function RecordPaymentModal({ onClose, onSave, students, batches = [], feePlans = [], payments = [], initialStudentId }) {
+export function RecordPaymentModal({ onClose, onSave, students, batches = [], feePlans = [], payments = [], initialStudentId, onClearDue }) {
   const { sportBranches, isFeatureOn } = useApp()
   const showRecentPayments = isFeatureOn('payment_recent_history')
   const initStudent = initialStudentId
@@ -1827,6 +1829,19 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
   const firstOfMonth = todayStr.slice(0, 7) + '-01'
   const isUpToDate = !isSuspended && selectedStudent?.paidTill && selectedStudent.paidTill >= firstOfMonth
+
+  // Outstanding Pending rows for this student — most commonly a linked
+  // Due-balance row left over from an earlier partial payment (see
+  // addPayment), but also catches an uncleared cheque. paidTill already
+  // moved forward when the partial payment was recorded, so "Paid till
+  // Aug 2026" above looks all-clear even with money still owed — without
+  // this, staff had no way to see that from inside this form and would
+  // record a fresh month on top of an unpaid balance sitting in a
+  // different filter tab.
+  const studentPendingRows = form.studentId
+    ? payments.filter(p => p.status === 'Pending' && String(p.studentId) === String(form.studentId))
+    : []
+  const studentPendingTotal = studentPendingRows.reduce((s, p) => s + (p.amount || 0), 0)
   const advanceStart = isUpToDate
     ? (() => {
         const [yr, mo] = selectedStudent.paidTill.split('-').map(Number)
@@ -2042,6 +2057,24 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             <p className="text-xs text-amber-600 mt-1 font-semibold">
               ⚠ Suspended — payment will reactivate this student.
             </p>
+          )}
+          {studentPendingRows.length > 0 && (
+            <div className="mt-2 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 text-xs text-amber-800">
+              <div className="flex items-start justify-between gap-2">
+                <span>
+                  <span className="text-base leading-none mr-1">⚠</span>
+                  <strong>₹{studentPendingTotal.toLocaleString('en-IN')} pending</strong>
+                  {' '}from {studentPendingRows.length === 1 ? (studentPendingRows[0].month || 'an earlier payment') : `${studentPendingRows.length} earlier payments`}
+                  {' '}still uncollected — separate from whatever you record below. Clear it here, or it stays invisible outside the Pending filter.
+                </span>
+                {studentPendingRows.length === 1 && onClearDue && (
+                  <button type="button" onClick={() => onClearDue(studentPendingRows[0].id)}
+                    className="flex-shrink-0 text-amber-800 font-bold underline whitespace-nowrap">
+                    Clear now
+                  </button>
+                )}
+              </div>
+            </div>
           )}
           {isUpToDate && (
             <div className="mt-2 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 text-xs text-brand-700">
