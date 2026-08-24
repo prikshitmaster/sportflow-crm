@@ -1593,6 +1593,13 @@ export function AppProvider({ children }) {
             paymentType: p.paymentType, discountPct: 0, monthsCovered: months,
             coverageStart: null, coverageEnd: null, academyId: user?.academyId,
             notes: `Balance due from ${invoiceId} (₹${p.amount} of ₹${p.amount + p.dueAmount} paid)${p.notes ? ' — ' + p.notes : ''}`,
+            // The server's fee-plan mismatch check (0188) has no way to know this
+            // row IS the shortfall, not a fee collection — its amount is a derived
+            // remainder, never expected to match the batch's rate, so it always
+            // tripped the >30%-off rejection and silently killed this insert
+            // (caught below, "add it manually"). confirmedMismatch skips that
+            // check the same way a user-acknowledged typo would.
+            confirmedMismatch: true,
           }
           await db.insertPayment(dueRow, dueInvoiceId)
           setPayments(prev => [{ ...dueRow, id: dueInvoiceId }, ...prev])
