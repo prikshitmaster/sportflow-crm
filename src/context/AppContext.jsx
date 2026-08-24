@@ -2173,8 +2173,10 @@ export function AppProvider({ children }) {
   const removeStudentFromBatch = async (student) => {
     if (!student.batchId) return
     try {
-      await db.reassignStudentBatch(student.id, null, null)
-      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, batchId: null, batch: '' } : s))
+      await db.removeStudentFromBatch(student.id, student.batchId, student.batch)
+      setStudents(prev => prev.map(s => s.id === student.id
+        ? { ...s, batchId: null, batch: '', lastBatchId: student.batchId, lastBatchName: student.batch }
+        : s))
       logAuditSport({
         actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student',
         entityId: student.id, entityName: student.name,
