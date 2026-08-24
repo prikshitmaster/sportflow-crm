@@ -93,14 +93,18 @@ export default function Students() {
   const [copied,          setCopied]          = useState(null)
   const [resetResult,     setResetResult]     = useState(null)
   const [profile,         setProfile]         = useState(null)
-  const [activeTab,       setActiveTab]       = useState('students') // 'students' | 'suspended'
+  const [activeTab,       setActiveTab]       = useState('students') // 'students' | 'suspended' | 'inactive'
   const [suspBatchFilter, setSuspBatchFilter] = useState('All')
   const [suspSportFilter, setSuspSportFilter] = useState('All')
   const [suspSearch,      setSuspSearch]      = useState('')
+  const [inactiveBatchFilter, setInactiveBatchFilter] = useState('All')
+  const [inactiveSportFilter, setInactiveSportFilter] = useState('All')
+  const [inactiveSearch,      setInactiveSearch]      = useState('')
   const [editStudent,     setEditStudent]     = useState(null)
   const [deleteTarget,    setDeleteTarget]    = useState(null)
   const [page,            setPage]            = useState(1)
   const [suspPage,        setSuspPage]        = useState(1)
+  const [inactivePage,    setInactivePage]    = useState(1)
 
   // Close row menu on outside click — delayed so the opening click doesn't immediately close it
   useEffect(() => {
@@ -163,6 +167,26 @@ export default function Students() {
   const activeStudents    = useMemo(() => students.filter(s => s.status !== 'Suspended'), [students])
   const suspendedStudents = useMemo(() => students.filter(s => s.status === 'Suspended'), [students])
 
+  // A suspended student who's stayed suspended for 2+ months hasn't attended
+  // OR paid in that whole window — suspension itself already implies both,
+  // so there's no separate attendance check needed here, unlike the
+  // Dashboard/Reports "Not Attending" bucket which watches Active students.
+  // Split so the Suspended tab stays a short, actionable "worth chasing"
+  // list instead of accumulating everyone who's ever paused, going back
+  // years — the old ones move to their own Inactive tab instead.
+  // suspendedSince missing (legacy row) stays in Suspended, not Inactive —
+  // "unknown how long" shouldn't default to "assume long gone".
+  const INACTIVE_AFTER_DAYS = 60
+  const inactiveCutoff = toLocalDateStr(new Date(now.getTime() - INACTIVE_AFTER_DAYS * 86400000))
+  const recentlySuspended = useMemo(
+    () => suspendedStudents.filter(s => !s.suspendedSince || s.suspendedSince >= inactiveCutoff),
+    [suspendedStudents, inactiveCutoff]
+  )
+  const inactiveStudents = useMemo(
+    () => suspendedStudents.filter(s => s.suspendedSince && s.suspendedSince < inactiveCutoff),
+    [suspendedStudents, inactiveCutoff]
+  )
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return activeStudents.filter(s => {
@@ -182,25 +206,37 @@ export default function Students() {
   }, [activeStudents, search, sportFilter, batchFilter, accFilter, mbStudentIds])
 
   const suspBatchName  = (s) => s.lastBatchName || s.batch || ''
-  const suspBatches    = useMemo(() => [...new Set(suspendedStudents.map(suspBatchName).filter(Boolean))].sort(), [suspendedStudents])
-  const suspSports     = useMemo(() => [...new Set(suspendedStudents.map(s => s.sport).filter(Boolean))].sort(), [suspendedStudents])
+  const suspBatches    = useMemo(() => [...new Set(recentlySuspended.map(suspBatchName).filter(Boolean))].sort(), [recentlySuspended])
+  const suspSports     = useMemo(() => [...new Set(recentlySuspended.map(s => s.sport).filter(Boolean))].sort(), [recentlySuspended])
   const suspFiltered   = useMemo(() => {
     const q = suspSearch.toLowerCase()
-    return suspendedStudents
+    return recentlySuspended
       .filter(s => suspBatchFilter === 'All' || suspBatchName(s) === suspBatchFilter)
       .filter(s => suspSportFilter === 'All' || s.sport === suspSportFilter)
       .filter(s => !q || s.name.toLowerCase().includes(q) || (s.studentCode || '').toLowerCase().includes(q))
-  }, [suspendedStudents, suspBatchFilter, suspSportFilter, suspSearch])
+  }, [recentlySuspended, suspBatchFilter, suspSportFilter, suspSearch])
+
+  const inactiveBatches  = useMemo(() => [...new Set(inactiveStudents.map(suspBatchName).filter(Boolean))].sort(), [inactiveStudents])
+  const inactiveSports   = useMemo(() => [...new Set(inactiveStudents.map(s => s.sport).filter(Boolean))].sort(), [inactiveStudents])
+  const inactiveFiltered = useMemo(() => {
+    const q = inactiveSearch.toLowerCase()
+    return inactiveStudents
+      .filter(s => inactiveBatchFilter === 'All' || suspBatchName(s) === inactiveBatchFilter)
+      .filter(s => inactiveSportFilter === 'All' || s.sport === inactiveSportFilter)
+      .filter(s => !q || s.name.toLowerCase().includes(q) || (s.studentCode || '').toLowerCase().includes(q))
+  }, [inactiveStudents, inactiveBatchFilter, inactiveSportFilter, inactiveSearch])
 
   // Reset pages when filters change
   useEffect(() => setPage(1), [search, sportFilter, batchFilter, accFilter])
   useEffect(() => setSuspPage(1), [suspSearch, suspSportFilter, suspBatchFilter])
+  useEffect(() => setInactivePage(1), [inactiveSearch, inactiveSportFilter, inactiveBatchFilter])
 
   // Reset all local filters when context scope changes so stale values don't hide students
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setSportFilter('All'); setBatchFilter('All'); setAccFilter('All')
     setSuspSportFilter('All'); setSuspBatchFilter('All'); setSuspSearch('')
+    setInactiveSportFilter('All'); setInactiveBatchFilter('All'); setInactiveSearch('')
   }, [selectedSport, selectedBranch])
 
   // Deep link from the header's global search: /students?open=<id> opens that
@@ -219,8 +255,9 @@ export default function Students() {
     setSearchParams(searchParams, { replace: true })
   }, [searchParams, students, setSearchParams])
 
-  const paged     = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-  const suspPaged = suspFiltered.slice((suspPage - 1) * PAGE_SIZE, suspPage * PAGE_SIZE)
+  const paged         = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const suspPaged     = suspFiltered.slice((suspPage - 1) * PAGE_SIZE, suspPage * PAGE_SIZE)
+  const inactivePaged = inactiveFiltered.slice((inactivePage - 1) * PAGE_SIZE, inactivePage * PAGE_SIZE)
 
   const pendingCount   = students.filter(s => s.accountStatus === 'pending').length
   const activeCount    = students.filter(s => s.accountStatus === 'active').length
@@ -281,7 +318,12 @@ export default function Students() {
         <button onClick={() => setActiveTab('suspended')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${activeTab === 'suspended' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
           Suspended
-          {suspendedStudents.length > 0 && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'suspended' ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600'}`}>{suspendedStudents.length}</span>}
+          {recentlySuspended.length > 0 && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'suspended' ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600'}`}>{recentlySuspended.length}</span>}
+        </button>
+        <button onClick={() => setActiveTab('inactive')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition ${activeTab === 'inactive' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+          Inactive
+          {inactiveStudents.length > 0 && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === 'inactive' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`}>{inactiveStudents.length}</span>}
         </button>
       </div>
 
@@ -291,8 +333,8 @@ export default function Students() {
           {/* Summary */}
           <div className="grid grid-cols-2 gap-4">
             <div className="card p-4 text-center">
-              <p className="text-2xl font-black text-red-600">{suspendedStudents.length}</p>
-              <p className="text-xs text-gray-500 mt-1">Suspended</p>
+              <p className="text-2xl font-black text-red-600">{recentlySuspended.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Suspended <span className="text-gray-400 font-normal">(under {INACTIVE_AFTER_DAYS} days)</span></p>
             </div>
             <div className="card p-4 text-center">
               <p className="text-2xl font-black text-gray-600">{suspBatches.length}</p>
@@ -416,6 +458,148 @@ export default function Students() {
             {suspFiltered.length > PAGE_SIZE && (
               <div className="px-4 py-2 border-t border-gray-100">
                 <Paginator page={suspPage} total={suspFiltered.length} onChange={setSuspPage} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── INACTIVE TAB ── */}
+      {/* Suspended for 60+ days — long enough that suspension itself already
+          means no attendance and no payment for that whole window. Same
+          actions as Suspended (still reactivatable, still editable/deletable)
+          — this is a display split for a shorter, more actionable Suspended
+          list, not a different real status or a dead end. */}
+      {activeTab === 'inactive' && (
+        <div className="space-y-4">
+          {/* Summary */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-black text-gray-600">{inactiveStudents.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Inactive <span className="text-gray-400 font-normal">({INACTIVE_AFTER_DAYS}+ days)</span></p>
+            </div>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-black text-gray-600">{inactiveBatches.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Batches Affected</p>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="card p-3 sm:p-4 space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-3 sm:items-center">
+            <input className="input w-full sm:w-44" placeholder="Search by name…"
+              value={inactiveSearch} onChange={e => setInactiveSearch(e.target.value)} />
+            <div className="flex gap-2">
+              <select className="input flex-1" value={inactiveSportFilter} onChange={e => setInactiveSportFilter(e.target.value)}>
+                <option value="All">All Sports</option>
+                {inactiveSports.map(sp => <option key={sp}>{sp}</option>)}
+              </select>
+              <select className="input flex-1" value={inactiveBatchFilter} onChange={e => setInactiveBatchFilter(e.target.value)}>
+                <option value="All">All Batches</option>
+                {inactiveBatches.map(b => <option key={b}>{b}</option>)}
+              </select>
+            </div>
+            {(inactiveSearch || inactiveSportFilter !== 'All' || inactiveBatchFilter !== 'All') && (
+              <button className="text-xs text-gray-400 hover:text-red-500 transition"
+                onClick={() => { setInactiveSearch(''); setInactiveSportFilter('All'); setInactiveBatchFilter('All') }}>
+                Clear filters
+              </button>
+            )}
+            <span className="text-xs text-gray-400 sm:ml-auto">{inactiveFiltered.length} students</span>
+          </div>
+
+          {/* Inactive — desktop table */}
+          <div className="card overflow-hidden hidden sm:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    {['Student / ID', 'Sport', 'Last Batch', 'Inactive Since', 'Fee', 'Action'].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {inactivePaged.map(s => (
+                    <tr key={s.id} className="hover:bg-gray-50/60 transition">
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-gray-900">{s.name}</p>
+                        {s.studentCode && <p className="text-[10px] font-mono text-gray-400">{s.studentCode}</p>}
+                      </td>
+                      <td className="px-4 py-3"><span className="badge badge-blue">{s.sport}</span></td>
+                      <td className="px-4 py-3 text-gray-600">{suspBatchName(s) || '—'}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs font-medium">
+                        {s.suspendedSince ? new Date(s.suspendedSince).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-900">₹{(s.fees || 0).toLocaleString('en-IN')}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {s.paidTill && s.paidTill >= today
+                            ? (canManageStudents && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition" onClick={() => reactivateStudent(s)}>Reactivate</button>)
+                            : (canManagePayments && <button className="btn-primary text-xs py-1.5 px-3" onClick={() => { setPayStudent(s); setShowPayModal(true) }}>Record Payment</button>)
+                          }
+                          {canManageStudents && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition flex items-center gap-1" onClick={() => setEditStudent(s)}><Pencil size={11} /> Edit</button>}
+                          {canManageStudents && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-red-100 text-red-600 hover:bg-red-200 transition" onClick={() => setDeleteTarget(s)}>Delete</button>}
+                          {!canManageStudents && !canManagePayments && <span className="text-xs text-gray-300">—</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {inactiveFiltered.length === 0 && (
+                <div className="text-center py-16 text-gray-400">
+                  <UsersIcon size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No inactive students</p>
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-2 border-t border-gray-100">
+              <Paginator page={inactivePage} total={inactiveFiltered.length} onChange={setInactivePage} />
+            </div>
+          </div>
+
+          {/* Inactive — mobile card list */}
+          <div className="sm:hidden card overflow-hidden divide-y divide-gray-50">
+            {inactiveFiltered.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <UsersIcon size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No inactive students</p>
+              </div>
+            ) : inactivePaged.map(s => (
+              <div key={s.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-gray-900">{s.name}</p>
+                    {s.studentCode && <p className="text-[10px] font-mono text-gray-400">{s.studentCode}</p>}
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="badge badge-blue text-[10px]">{s.sport}</span>
+                      {suspBatchName(s) && <span className="badge badge-gray text-[10px]">{suspBatchName(s)}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-bold text-gray-800">₹{(s.fees || 0).toLocaleString('en-IN')}</p>
+                    {s.suspendedSince && (
+                      <p className="text-[10px] text-gray-500 mt-0.5">
+                        Since {new Date(s.suspendedSince).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {(canManageStudents || canManagePayments) && (
+                <div className="flex gap-2 flex-wrap">
+                  {s.paidTill && s.paidTill >= today
+                    ? (canManageStudents && <button className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 text-white active:scale-95 transition" onClick={() => reactivateStudent(s)}>Reactivate</button>)
+                    : (canManagePayments && <button className="flex-1 btn-primary justify-center py-2.5" onClick={() => { setPayStudent(s); setShowPayModal(true) }}>Record Payment</button>)
+                  }
+                  {canManageStudents && <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 active:scale-95 transition flex items-center gap-1" onClick={() => setEditStudent(s)}><Pencil size={13} /> Edit</button>}
+                  {canManageStudents && <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-100 text-red-600 active:scale-95 transition" onClick={() => setDeleteTarget(s)}>Delete</button>}
+                </div>
+                )}
+              </div>
+            ))}
+            {inactiveFiltered.length > PAGE_SIZE && (
+              <div className="px-4 py-2 border-t border-gray-100">
+                <Paginator page={inactivePage} total={inactiveFiltered.length} onChange={setInactivePage} />
               </div>
             )}
           </div>
