@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import {
-  Menu, X, ArrowRight, CheckCircle, ChevronDown,
+  Menu, X, ArrowRight, CheckCircle, XCircle, MinusCircle, ChevronDown,
   Users, ScanLine, CreditCard, UserPlus, BarChart3, Layers, ShieldCheck, Smartphone,
   Instagram, DoorOpen, Share2, Megaphone, Dumbbell, Wallet, CalendarClock,
   MessageCircle, FileSpreadsheet, IndianRupee, Phone, MessagesSquare, FileWarning,
   ClipboardList, AlertTriangle, LayoutDashboard, TrendingUp, Sparkles, Globe, Monitor,
+  MapPin, Receipt, UserX, Building2, Database, Award,
 } from 'lucide-react'
 
 // The Khelit "K" mark — matches the real app icon / Play Store listing
@@ -67,6 +68,37 @@ function Logo({ size = 34, dark = false }) {
         <KMark size={size * 0.52} />
       </div>
       <span className={`text-lg font-extrabold tracking-tight ${dark ? 'text-white' : 'text-slate-900'}`}>Khelit</span>
+    </div>
+  )
+}
+
+// Thin diagonal "track lines" texture — a court/running-track motif instead
+// of a generic radial-gradient blob, used behind the dark sections.
+function TrackLines({ className = '' }) {
+  return (
+    <svg className={`absolute inset-0 w-full h-full pointer-events-none ${className}`} preserveAspectRatio="none">
+      <defs>
+        <pattern id="khTrack" width="64" height="64" patternUnits="userSpaceOnUse" patternTransform="rotate(-18)">
+          <line x1="0" y1="0" x2="0" y2="64" stroke="white" strokeOpacity="0.05" strokeWidth="1" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#khTrack)" />
+    </svg>
+  )
+}
+
+// A short, bold "scoreboard" number — the sportier alternative to another
+// generic stat-card row.
+function ScoreStat({ value, label, accent = false }) {
+  return (
+    <div className="text-center px-3">
+      <p
+        className={`text-4xl md:text-5xl font-bold leading-none tabular-nums ${accent ? 'text-orange-400' : 'text-white'}`}
+        style={{ fontFamily: "'Oswald', 'Plus Jakarta Sans', sans-serif" }}
+      >
+        {value}
+      </p>
+      <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-2">{label}</p>
     </div>
   )
 }
@@ -151,13 +183,13 @@ function DiagramNode({ x, y, icon: Icon, label, tone = 'neutral' }) {
   const tones = {
     neutral: 'bg-white border-slate-200 text-slate-800',
     chaos:   'bg-red-50 border-red-200 text-red-800',
-    result:  'bg-blue-50 border-blue-200 text-blue-900',
+    result:  'bg-orange-50 border-orange-200 text-slate-900',
     hub:     '',
   }
   const iconTones = {
     neutral: 'bg-slate-100 text-slate-600',
     chaos:   'bg-red-100 text-red-600',
-    result:  'bg-blue-600 text-white',
+    result:  'bg-orange-500 text-white',
   }
   return (
     <foreignObject x={x - 90} y={y - 32} width={180} height={64}>
@@ -208,7 +240,7 @@ function WithDiagram() {
     <svg viewBox={`0 0 ${VB_W} ${VB_H}`} className="w-full h-auto">
       <defs>
         <marker id="khArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="#2563eb" />
+          <path d="M0,0 L10,5 L0,10 z" fill="#f97316" />
         </marker>
       </defs>
 
@@ -225,7 +257,7 @@ function WithDiagram() {
       </g>
 
       {/* outbound: hub -> results, animated flow */}
-      <g stroke="#2563eb" strokeWidth="3" fill="none" strokeLinecap="round" markerEnd="url(#khArrow)">
+      <g stroke="#f97316" strokeWidth="3" fill="none" strokeLinecap="round" markerEnd="url(#khArrow)">
         {RIGHT.map((p, i) => (
           <path key={`r${i}`} className="kh-flow" d={connector(HUB.x + 72, HUB.y, p.x - 90, p.y)} />
         ))}
@@ -257,7 +289,7 @@ function DiagramSection() {
       `}</style>
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-10">
-          <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3">One Academy, Two Realities</p>
+          <p className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-3">One Academy, Two Realities</p>
           <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-4">The same day. A completely different outcome.</h2>
           <p className="text-slate-500 max-w-xl mx-auto text-base">
             Trials still come from Instagram and walk-ins. Fees still get paid over WhatsApp and UPI.
@@ -279,7 +311,7 @@ function DiagramSection() {
             </button>
             <button
               onClick={() => setWithKhelit(true)}
-              className={`relative z-10 px-6 py-2.5 text-sm font-bold rounded-full transition-colors ${withKhelit ? 'text-blue-600' : 'text-slate-500'}`}
+              className={`relative z-10 px-6 py-2.5 text-sm font-bold rounded-full transition-colors ${withKhelit ? 'text-orange-600' : 'text-slate-500'}`}
             >
               WITH KHELIT
             </button>
@@ -304,8 +336,8 @@ function DiagramSection() {
 
 // ─────────────────────────────────────────────────────────────────────────
 // Device showcase — laptop / tablet / phone, each showing a faithful mini
-// recreation of a real screen (Owner Dashboard alerts, Attendance list,
-// Student stats), not a generic "browser window with colored boxes."
+// recreation of a real screen (Owner Dashboard, Attendance list, Student
+// stats), not a generic "browser window with colored boxes."
 // ─────────────────────────────────────────────────────────────────────────
 function ScreenChrome({ children, className = '' }) {
   return <div className={`bg-white overflow-hidden ${className}`}>{children}</div>
@@ -324,9 +356,9 @@ function DeviceShowcase() {
             </div>
             <div className="grid grid-cols-3 gap-1.5 mb-2">
               {[
-                { icon: CreditCard,    label: '6 overdue', tone: 'bg-red-50 text-red-600' },
-                { icon: UserPlus,      label: '3 follow-ups', tone: 'bg-amber-50 text-amber-600' },
-                { icon: CalendarClock, label: '1 leave req.', tone: 'bg-slate-100 text-slate-600' },
+                { icon: CreditCard, label: '6 overdue', tone: 'bg-red-50 text-red-600' },
+                { icon: UserX,      label: '4 not attending', tone: 'bg-slate-100 text-slate-500' },
+                { icon: UserPlus,   label: '3 follow-ups', tone: 'bg-amber-50 text-amber-600' },
               ].map(k => (
                 <div key={k.label} className={`rounded p-1.5 ${k.tone}`}>
                   <k.icon size={10} />
@@ -409,36 +441,50 @@ function DeviceShowcase() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Static content for the rest of the page
+// Static content for the rest of the page — every item below maps to a
+// real route/feature in this codebase (see src/App.jsx), not marketing filler.
 // ─────────────────────────────────────────────────────────────────────────
 const painPoints = [
   'A fee reminder buried three scrolls up in the parents’ WhatsApp group',
   'No idea which of your students actually paid this month',
   'A paper attendance register nobody’s opened since last term',
-  'Three trial kids who never heard back after their first session',
+  'A student who quietly stopped coming two months ago still counted in this month’s revenue forecast',
+]
+
+const scoreStats = [
+  { value: '4',  label: 'Dedicated Portals' },
+  { value: '13', label: 'WhatsApp Automations', accent: true },
+  { value: '0',  label: 'Spreadsheets Needed' },
+  { value: '100%', label: 'Branch Data Isolation' },
 ]
 
 const features = [
-  { icon: Users,      title: 'Student & Batch Management', desc: 'Full profiles, join codes, batches, coaches, and parent contacts — organized by sport and branch, not by memory.' },
-  { icon: ScanLine,   title: 'QR Gate Attendance',        desc: 'One printed code at the entrance. Students scan once a day — present, timestamped, tamper-proof. No register, no arguments.' },
-  { icon: CreditCard, title: 'Fee & Payment Tracking',     desc: 'See who’s paid, who’s overdue, and by how much. Send a Razorpay payment link or a WhatsApp reminder in one tap.' },
-  { icon: UserPlus,   title: 'Trial Pipeline',             desc: 'Every trial from Instagram, a walk-in, or a referral lands in one list — followed up until it converts, not forgotten.' },
-  { icon: BarChart3,  title: 'Reports & Analytics',        desc: 'Revenue, attendance trends, and overdue collections at a glance — the numbers your Excel sheet was supposed to give you.' },
-  { icon: Layers,     title: 'Multi-Sport & Multi-Branch', desc: 'Run football, cricket, and tennis from one account. Every branch’s data stays fully isolated from the others.' },
-  { icon: ShieldCheck,title: 'Staff Permissions',          desc: 'Coaches see their students and schedule. Office staff see what you allow. Fee and payment data stays owner-controlled by default.' },
-  { icon: Smartphone, title: 'One App, Every Device',      desc: 'The same system as a website, an Android app, and a desktop app — no separate builds to keep in sync.' },
+  { icon: Users,      title: 'Student & Batch Management',    desc: 'Full profiles, join codes, multi-batch enrolment, coaches, and parent contacts — organized by sport and branch, not by memory.' },
+  { icon: MapPin,      title: 'Shared Ground & Slot Capacity', desc: 'Batches training on the same ground get one real, auto-derived daily ceiling — no more double-booking a pitch three coaches think is theirs.' },
+  { icon: CalendarClock, title: 'Alternate & Daily Schedules', desc: 'Training pattern is a real field on the batch, not a guess — fee plans and the student form both key off it automatically.' },
+  { icon: ScanLine,   title: 'QR Gate & Staff Attendance',     desc: 'One printed code at the entrance for students, a separate scan-in for staff. Present, timestamped, tamper-proof — no register, no arguments.' },
+  { icon: CreditCard, title: 'Partial Payments & Proration',   desc: 'Mid-month joins are billed by the day, not the month. A parent paying less than the full fee leaves a tracked Due balance — never just a note in a chat.' },
+  { icon: Receipt,    title: 'Payment Trail & Collection Sheet', desc: 'A money-first audit view of every rupee in and out, plus a printable daily collection sheet for reconciling cash at day’s end.' },
+  { icon: UserPlus,   title: 'Trial Pipeline & Public Join Page', desc: 'Every trial from Instagram, a walk-in, a referral, or your own /join link lands in one list — followed up until it converts, not forgotten.' },
+  { icon: MessageCircle, title: 'WhatsApp Automation',         desc: '13 built-in automations — fee reminders, payment receipts, trial follow-ups — fire themselves on schedule. You approve the templates once.' },
+  { icon: UserX,      title: 'Not Attending & Inactive Tracking', desc: 'A student who’s stopped showing up gets pulled out of your revenue forecast and overdue total automatically — reviewed by you, not hidden, not auto-charged.' },
+  { icon: BarChart3,  title: 'Reports & Analytics',            desc: 'Revenue, ageing buckets, attendance trends, and batch-by-batch collection at a glance — the numbers your Excel sheet was supposed to give you.' },
+  { icon: Building2,  title: 'Multi-Sport & Multi-Branch',     desc: 'Run football, cricket, and tennis from one account. Every branch’s students, staff, and fee data stays fully isolated from the others.' },
+  { icon: ShieldCheck, title: 'Staff Permissions, Down to the Action', desc: 'Coaches see their students and schedule. Office staff see exactly what you allow — payment data stays owner-controlled by default.' },
+  { icon: Award,      title: 'Skill Assessments + AI Analysis', desc: 'Score a student on real criteria, and get a specific, per-student written breakdown of what to work on next — not a generic percentage.' },
+  { icon: Database,   title: 'Backups & Data Ownership',       desc: 'Export your students, attendance, and payment history any time. Your data isn’t held hostage by the platform.' },
 ]
 
 const portals = [
-  { badge: 'Owner',         title: 'Full Control',         desc: 'The complete academy hub — every branch, every rupee, every report.', points: ['Multi-sport & multi-branch dashboard', 'Revenue & overdue reports', 'Staff permissions & roles', 'Trial pipeline oversight'] },
-  { badge: 'Coach & Staff', title: 'Built for the Ground',  desc: 'Coaches and office staff see exactly what their role needs — nothing more.', points: ['Mark attendance in seconds', 'Skill assessments & session plans', 'Own schedule & leave requests', 'Permission-gated access, not guesswork'] },
-  { badge: 'Parent',        title: 'No More Office Calls',  desc: 'Parents see what’s happening without messaging the front desk.', points: ['Payment receipts on their phone', 'Attendance updates', 'Staff notices & announcements'] },
-  { badge: 'Student',       title: 'Progress, In Their Pocket', desc: 'Players track their own journey from their own phone.', points: ['Attendance history', 'Payment status', 'Performance stats & progress'] },
+  { badge: 'Owner',         title: 'Full Control',         desc: 'The complete academy hub — every branch, every rupee, every report.', points: ['Multi-sport & multi-branch dashboard', 'Revenue, ageing & overdue reports', 'Staff permissions & roles', 'Trial pipeline oversight', 'Inventory, turf booking & backups'] },
+  { badge: 'Coach & Staff', title: 'Built for the Ground',  desc: 'Coaches and office staff see exactly what their role needs — nothing more.', points: ['Roster & attendance in seconds', 'Skill assessments & session plans', 'Own schedule & leave requests', 'QR scan-in for staff', 'Permission-gated — not guesswork'] },
+  { badge: 'Parent',        title: 'No More Office Calls',  desc: 'Parents see what’s happening without messaging the front desk.', points: ['Payment receipts & Due balances', 'Attendance updates', 'Staff notices & announcements', 'One login covers every sibling'] },
+  { badge: 'Student',       title: 'Progress, In Their Pocket', desc: 'Players track their own journey from their own phone.', points: ['Attendance history & streaks', 'Payment status', 'AI performance breakdown', 'Self QR check-in'] },
 ]
 
 const steps = [
   { step: '01', title: 'Create your academy',       desc: 'Sign up, name your academy, and pick your first sport. Takes minutes, not a training session.' },
-  { step: '02', title: 'Add students & batches',    desc: 'Import existing students or add them one by one. Set up batches with coaches, timings, and fees.' },
+  { step: '02', title: 'Add students & batches',    desc: 'Import existing students or add them one by one. Set up batches with coaches, timings, ground capacity, and fees.' },
   { step: '03', title: 'Invite your staff',         desc: 'Coaches get their own portal. Office staff get exactly the permissions you choose — and no more.' },
   { step: '04', title: 'Go live',                   desc: 'Print the gate QR, share student codes, and start tracking attendance and fees from day one.' },
 ]
@@ -446,14 +492,37 @@ const steps = [
 // NOTE: placeholder pricing — not tied to a live billing system yet.
 // Confirm real numbers before this goes to production.
 const plans = [
-  { name: 'Starter', price: '₹999',   period: '/month', students: 'Single branch, one sport', features: ['Student & attendance', 'Fee & payment tracking', 'QR gate attendance', 'Trial pipeline', 'Coach & student portals'], popular: false },
-  { name: 'Growth',  price: '₹2,499', period: '/month', students: 'Multi-branch, multi-sport', features: ['Everything in Starter', 'Unlimited branches & sports', 'Full reports & analytics', 'Staff permission controls', 'Priority support'], popular: true },
+  { name: 'Starter', price: '₹999',   period: '/month', students: 'Single branch, one sport', features: ['Student & attendance', 'Partial payment tracking', 'QR gate attendance', 'Trial pipeline', 'Coach & student portals'], popular: false },
+  { name: 'Growth',  price: '₹2,499', period: '/month', students: 'Multi-branch, multi-sport', features: ['Everything in Starter', 'Unlimited branches & sports', 'WhatsApp automation', 'Full reports & analytics', 'Priority support'], popular: true },
   { name: 'Enterprise', price: 'Custom', period: '', students: 'Large or multi-city academies', features: ['Everything in Growth', 'Dedicated onboarding', 'Custom integrations', 'Account manager'], popular: false },
 ]
+
+// Why Khelit — a direct comparison, not a vague "we're the best" claim.
+// Rows are things Khelit genuinely does that a chat-app-plus-spreadsheet
+// setup or an off-the-shelf, sport-agnostic CRM/ERP realistically doesn't.
+const comparisonRows = [
+  { label: 'Built specifically for sports academies', chat: false, generic: false, khelit: true },
+  { label: 'QR gate attendance with timestamps',      chat: false, generic: false, khelit: true },
+  { label: 'Partial payments tracked as a real Due balance', chat: 'partial', generic: 'partial', khelit: true },
+  { label: 'Ground/slot capacity shared across batches', chat: false, generic: false, khelit: true },
+  { label: 'Inactive students auto-excluded from revenue forecasts', chat: false, generic: false, khelit: true },
+  { label: 'WhatsApp reminders that send themselves', chat: false, generic: 'partial', khelit: true },
+  { label: 'Dedicated apps for owner, coach, parent & student', chat: false, generic: false, khelit: true },
+  { label: 'Per-branch data isolation, multi-sport', chat: false, generic: 'partial', khelit: true },
+  { label: 'AI performance write-up per assessment', chat: false, generic: false, khelit: true },
+  { label: 'Your data, exportable any time',          chat: 'partial', generic: 'partial', khelit: true },
+]
+
+function ComparisonCell({ state }) {
+  if (state === true)  return <CheckCircle size={18} className="text-orange-500 mx-auto" />
+  if (state === false) return <XCircle size={18} className="text-slate-300 mx-auto" />
+  return <MinusCircle size={18} className="text-slate-300 mx-auto" />
+}
 
 const faqs = [
   { q: 'How does QR gate attendance actually work?', a: 'You print one Gate QR code and place it at your academy entrance. Each student scans it once with their phone — it marks them present with a timestamp instantly. No app install needed to scan; it works from any mobile browser.' },
   { q: 'Can coaches see fee or payment data?',        a: 'Not unless you explicitly allow it. Payment data is owner-controlled by default. Every coach and staff permission is configurable — you decide what each person can see and do.' },
+  { q: 'What happens when a student stops attending but hasn’t formally left?', a: 'Khelit tracks it: an Active student with almost no attendance for a couple of months gets pulled into a separate "Not Attending" view instead of quietly inflating your revenue forecast or overdue total. Nothing is auto-charged or auto-suspended — you review and decide.' },
   { q: 'Can I run multiple sports or branches from one account?', a: 'Yes. You can run football, cricket, tennis, or any combination from a single login, with each branch’s students, staff, and fee data kept fully isolated from the others.' },
   { q: 'Does this work on a phone, or do I need a laptop?', a: 'The owner dashboard, coach portal, and student app are all built mobile-first. The same account also works as a native Android app and a Windows/Mac desktop app.' },
   { q: 'What happens to my data if I stop using Khelit?', a: 'It’s yours. Student records, attendance logs, and payment history can be exported at any time — your data isn’t held hostage by the platform.' },
@@ -468,7 +537,7 @@ function FaqItem({ q, a }) {
         className="w-full flex items-center justify-between gap-4 py-5 text-left"
       >
         <span className="font-semibold text-slate-900 text-[15px]">{q}</span>
-        <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180 text-blue-600' : ''}`} />
+        <ChevronDown size={18} className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180 text-orange-600' : ''}`} />
       </button>
       <div className={`grid transition-all duration-300 ${open ? 'grid-rows-[1fr] pb-5' : 'grid-rows-[0fr]'}`} style={{ display: 'grid' }}>
         <div className="overflow-hidden">
@@ -484,7 +553,7 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-canvas" style={{ fontFamily: "'Plus Jakarta Sans', Inter, system-ui, sans-serif" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Oswald:wght@500;600;700&display=swap');`}</style>
       {/* Nav */}
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16">
@@ -492,11 +561,12 @@ export default function Landing() {
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-sm text-slate-600 hover:text-slate-900 transition">Features</a>
             <a href="#diagram" className="text-sm text-slate-600 hover:text-slate-900 transition">Why Khelit</a>
+            <a href="#compare" className="text-sm text-slate-600 hover:text-slate-900 transition">Compare</a>
             <a href="#portals" className="text-sm text-slate-600 hover:text-slate-900 transition">Portals</a>
             <a href="#pricing" className="text-sm text-slate-600 hover:text-slate-900 transition">Pricing</a>
             <a href="#faq" className="text-sm text-slate-600 hover:text-slate-900 transition">FAQ</a>
             <Link to="/login" className="text-sm text-slate-600 hover:text-slate-900 transition">Login</Link>
-            <Link to="/signup" className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-4 py-2 rounded-lg transition shadow-sm shadow-blue-600/20">
+            <Link to="/signup" className="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-4 py-2 rounded-lg transition shadow-sm shadow-orange-500/20">
               Start Free
             </Link>
           </div>
@@ -508,46 +578,51 @@ export default function Landing() {
           <div className="md:hidden border-t border-slate-100 bg-white px-4 py-4 space-y-3">
             <a href="#features" onClick={() => setMenuOpen(false)} className="block text-sm text-slate-700">Features</a>
             <a href="#diagram" onClick={() => setMenuOpen(false)} className="block text-sm text-slate-700">Why Khelit</a>
+            <a href="#compare" onClick={() => setMenuOpen(false)} className="block text-sm text-slate-700">Compare</a>
             <a href="#portals" onClick={() => setMenuOpen(false)} className="block text-sm text-slate-700">Portals</a>
             <a href="#pricing" onClick={() => setMenuOpen(false)} className="block text-sm text-slate-700">Pricing</a>
             <a href="#faq" onClick={() => setMenuOpen(false)} className="block text-sm text-slate-700">FAQ</a>
             <Link to="/login" className="block text-sm text-slate-700">Login</Link>
-            <Link to="/signup" className="block text-center bg-blue-600 text-white font-bold text-sm py-2.5 rounded-lg">Start Free</Link>
+            <Link to="/signup" className="block text-center bg-orange-500 text-white font-bold text-sm py-2.5 rounded-lg">Start Free</Link>
           </div>
         )}
       </nav>
 
       {/* Hero */}
       <section className="relative overflow-hidden bg-slate-900 text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(37,99,235,0.25),transparent_60%)]" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-32">
+        <TrackLines />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(37,99,235,0.28),transparent_60%)]" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-20 md:py-28">
           <div className="max-w-4xl">
             <Reveal>
-              <div className="inline-flex items-center gap-2 bg-blue-600/15 border border-blue-500/30 rounded-full px-4 py-1.5 mb-8">
-                <span className="w-2 h-2 bg-blue-400 rounded-full" />
-                <span className="text-xs font-medium text-blue-300">Built for sports academies done improvising</span>
+              <div className="inline-flex items-center gap-2 bg-orange-500/15 border border-orange-400/30 rounded-full px-4 py-1.5 mb-8">
+                <span className="w-2 h-2 bg-orange-400 rounded-full" />
+                <span className="text-xs font-bold text-orange-300 uppercase tracking-wide">Built for academies running on WhatsApp and hope</span>
               </div>
             </Reveal>
             <Reveal delay={80}>
-              <h1 className="text-4xl md:text-6xl font-black leading-tight mb-6">
-                Your academy deserves<br />
-                better than a <span className="text-blue-400">WhatsApp group</span>
+              <h1
+                className="text-4xl md:text-6xl font-bold leading-[1.05] mb-6 uppercase"
+                style={{ fontFamily: "'Oswald', 'Plus Jakarta Sans', sans-serif" }}
+              >
+                Coach the team.<br />
+                Let <span className="text-orange-400">Khelit</span> coach the paperwork.
               </h1>
             </Reveal>
             <Reveal delay={140}>
               <p className="text-lg md:text-xl text-slate-300 mb-10 max-w-2xl leading-relaxed">
-                Students, attendance, fees, trials, and staff — in one clean system instead of
-                scattered across group chats, an Excel sheet, and a paper register.
+                Students, batches, attendance, fees, trials, and staff — in one system built for
+                how Indian sports academies actually run, not a generic CRM with a cricket bat icon.
               </p>
             </Reveal>
             <Reveal delay={200}>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link to="/signup" className="inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-base px-8 py-4 rounded-xl transition-all shadow-lg shadow-blue-600/30 active:scale-95">
+                <Link to="/signup" className="inline-flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-400 text-white font-bold text-base px-8 py-4 rounded-xl transition-all shadow-lg shadow-orange-500/30 active:scale-95">
                   Start Free
                   <ArrowRight size={18} />
                 </Link>
-                <a href="#diagram" className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-base px-8 py-4 rounded-xl border border-white/20 transition">
-                  See the Difference
+                <a href="#compare" className="inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-base px-8 py-4 rounded-xl border border-white/20 transition">
+                  See Why We're Different
                 </a>
               </div>
             </Reveal>
@@ -555,7 +630,7 @@ export default function Landing() {
               <div className="flex flex-wrap items-center gap-6 mt-10 text-sm text-slate-400">
                 {['No credit card to start', 'Web, Android & desktop', 'Setup in minutes'].map(t => (
                   <div key={t} className="flex items-center gap-1.5">
-                    <CheckCircle size={14} className="text-blue-400" />
+                    <CheckCircle size={14} className="text-orange-400" />
                     {t}
                   </div>
                 ))}
@@ -575,7 +650,7 @@ export default function Landing() {
               <span className="inline-flex items-center gap-1.5 bg-white/5 border border-white/10 text-slate-300 text-xs font-semibold px-3 py-1.5 rounded-full">
                 <Monitor size={13} className="text-emerald-400" /> Windows & Mac — Live
               </span>
-              <span className="inline-flex items-center gap-1.5 bg-blue-500/10 border border-blue-400/30 text-blue-300 text-xs font-semibold px-3 py-1.5 rounded-full">
+              <span className="inline-flex items-center gap-1.5 bg-orange-500/10 border border-orange-400/30 text-orange-300 text-xs font-semibold px-3 py-1.5 rounded-full">
                 <Smartphone size={13} /> Android — Coming Soon to Google Play
               </span>
             </div>
@@ -583,10 +658,20 @@ export default function Landing() {
         </Reveal>
       </section>
 
+      {/* Scoreboard stat strip */}
+      <section className="relative bg-slate-950 py-10 overflow-hidden">
+        <TrackLines className="opacity-60" />
+        <div className="relative max-w-5xl mx-auto px-4 sm:px-6 grid grid-cols-2 md:grid-cols-4 gap-y-8 gap-x-4">
+          {scoreStats.map(s => (
+            <Reveal key={s.label}><ScoreStat {...s} /></Reveal>
+          ))}
+        </div>
+      </section>
+
       {/* Problem-agitation strip */}
       <section className="bg-slate-50 border-b border-slate-100 py-16">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
-          <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-4">Sound familiar?</p>
+          <p className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-4">Sound familiar?</p>
           <div className="grid sm:grid-cols-2 gap-4 text-left max-w-3xl mx-auto">
             {painPoints.map(p => (
               <Reveal key={p} className="flex items-start gap-3 bg-white border border-slate-100 rounded-xl p-4">
@@ -605,17 +690,17 @@ export default function Landing() {
       <section id="features" className="py-24 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
-            <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3">Everything You Need</p>
+            <p className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-3">Everything You Need</p>
             <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-4">
               Replace the group chat, the spreadsheet,<br />and the paper register
             </h2>
-            <p className="text-slate-500 max-w-xl mx-auto text-base">Real features built for how Indian sports academies actually run.</p>
+            <p className="text-slate-500 max-w-xl mx-auto text-base">Real features built for how Indian sports academies actually run — every one of these is a live screen, not a roadmap promise.</p>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((f, i) => (
-              <Reveal key={f.title} delay={(i % 4) * 60} className="border border-slate-100 rounded-2xl p-6 hover:border-blue-200 hover:shadow-md transition-all group">
-                <div className="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-100 transition">
-                  <f.icon size={22} className="text-blue-600" />
+              <Reveal key={f.title} delay={(i % 3) * 60} className="border border-slate-100 rounded-2xl p-6 hover:border-orange-200 hover:shadow-md transition-all group">
+                <div className="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center mb-4 group-hover:bg-orange-50 transition">
+                  <f.icon size={22} className="text-blue-600 group-hover:text-orange-600 transition" />
                 </div>
                 <h3 className="font-bold text-slate-900 mb-2">{f.title}</h3>
                 <p className="text-sm text-slate-500 leading-relaxed">{f.desc}</p>
@@ -626,8 +711,9 @@ export default function Landing() {
       </section>
 
       {/* AI Coach Analysis spotlight — a real, differentiated feature, not a generic "AI" bullet */}
-      <section className="py-24 bg-slate-950 text-white overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 grid lg:grid-cols-2 gap-14 items-center">
+      <section className="relative py-24 bg-slate-950 text-white overflow-hidden">
+        <TrackLines className="opacity-40" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 grid lg:grid-cols-2 gap-14 items-center">
           <Reveal>
             <p className="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3">Not Just a Spreadsheet Replacement</p>
             <h2 className="text-3xl md:text-4xl font-black mb-5">
@@ -676,18 +762,58 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Why Khelit — direct comparison table */}
+      <section id="compare" className="py-24 bg-white">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-14">
+            <p className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-3">The Honest Comparison</p>
+            <h2 className="text-3xl md:text-4xl font-black text-slate-900 mb-4">What you’re actually choosing between</h2>
+            <p className="text-slate-500 max-w-xl mx-auto text-base">
+              Not a made-up "us vs. them" — this is WhatsApp + Excel + a paper register, and a
+              generic sport-agnostic CRM, against what Khelit actually does.
+            </p>
+          </div>
+          <Reveal className="overflow-x-auto rounded-2xl border border-slate-100 shadow-sm">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="text-left px-5 py-4 font-bold text-slate-500 text-xs uppercase tracking-wide">Capability</th>
+                  <th className="px-4 py-4 font-bold text-slate-500 text-xs uppercase tracking-wide text-center w-36">WhatsApp + Excel + Register</th>
+                  <th className="px-4 py-4 font-bold text-slate-500 text-xs uppercase tracking-wide text-center w-36">Generic CRM / ERP</th>
+                  <th className="px-4 py-4 font-black text-orange-600 text-xs uppercase tracking-wide text-center w-32 bg-orange-50/60">Khelit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonRows.map((r, i) => (
+                  <tr key={r.label} className={i % 2 ? 'bg-white' : 'bg-slate-50/40'}>
+                    <td className="px-5 py-4 text-slate-700 font-medium">{r.label}</td>
+                    <td className="px-4 py-4"><ComparisonCell state={r.chat} /></td>
+                    <td className="px-4 py-4"><ComparisonCell state={r.generic} /></td>
+                    <td className="px-4 py-4 bg-orange-50/60"><ComparisonCell state={r.khelit} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Reveal>
+          <p className="text-center text-xs text-slate-400 mt-4">
+            <MinusCircle size={11} className="inline -mt-0.5 mr-1" />
+            = partially, usually with manual setup or a workaround.
+          </p>
+        </div>
+      </section>
+
       {/* Portals */}
       <section id="portals" className="py-24 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
-            <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3">Four Roles, One Platform</p>
+            <p className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-3">Four Roles, One Platform</p>
             <h2 className="text-3xl md:text-4xl font-black text-slate-900">Every role gets their own view</h2>
             <p className="text-slate-500 mt-3 max-w-xl mx-auto">Not a one-size-fits-all interface — owner, coach, parent, and student each see exactly what they need.</p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {portals.map((p, i) => (
               <Reveal key={p.badge} delay={i * 80} className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-                <span className="inline-block text-[11px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full mb-4">{p.badge}</span>
+                <span className="inline-block text-[11px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-2.5 py-1 rounded-full mb-4">{p.badge}</span>
                 <h3 className="font-bold text-slate-900 text-lg mb-1.5">{p.title}</h3>
                 <p className="text-sm text-slate-500 leading-relaxed mb-4">{p.desc}</p>
                 <ul className="space-y-2">
@@ -708,7 +834,7 @@ export default function Landing() {
       <section id="how" className="py-24 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
-            <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3">Simple Setup</p>
+            <p className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-3">Simple Setup</p>
             <h2 className="text-3xl md:text-4xl font-black text-slate-900">Up and running before your next session</h2>
           </div>
           <div className="grid md:grid-cols-4 gap-8">
@@ -718,7 +844,10 @@ export default function Landing() {
                   <div className="hidden md:block absolute top-6 left-full w-full h-px bg-slate-200 -translate-y-px z-0" />
                 )}
                 <div className="relative bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-                  <div className="text-4xl font-black text-slate-100 mb-3">{s.step}</div>
+                  <div
+                    className="text-4xl font-bold text-slate-100 mb-3"
+                    style={{ fontFamily: "'Oswald', 'Plus Jakarta Sans', sans-serif" }}
+                  >{s.step}</div>
                   <h3 className="font-bold text-slate-900 mb-2">{s.title}</h3>
                   <p className="text-sm text-slate-500 leading-relaxed">{s.desc}</p>
                 </div>
@@ -732,34 +861,34 @@ export default function Landing() {
       <section id="pricing" className="py-24 bg-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-16">
-            <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3">Simple Pricing</p>
+            <p className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-3">Simple Pricing</p>
             <h2 className="text-3xl md:text-4xl font-black text-slate-900">Start small. Scale with your academy.</h2>
             <p className="text-slate-500 mt-3">No hidden fees. Cancel anytime.</p>
           </div>
           <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {plans.map((p, i) => (
-              <Reveal key={p.name} delay={i * 100} className={`rounded-2xl p-6 border-2 relative h-full ${p.popular ? 'bg-blue-600 border-blue-600 text-white shadow-xl shadow-blue-600/20' : 'bg-white border-slate-100'}`}>
+              <Reveal key={p.name} delay={i * 100} className={`rounded-2xl p-6 border-2 relative h-full ${p.popular ? 'bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-900/20' : 'bg-white border-slate-100'}`}>
                 {p.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-400 text-slate-900 text-xs font-bold px-3 py-1 rounded-full">Most Popular</div>
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-xs font-bold px-3 py-1 rounded-full">Most Popular</div>
                 )}
                 <h3 className={`font-bold text-lg mb-1 ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.name}</h3>
-                <p className={`text-xs mb-4 ${p.popular ? 'text-blue-200' : 'text-slate-500'}`}>{p.students}</p>
+                <p className={`text-xs mb-4 ${p.popular ? 'text-slate-400' : 'text-slate-500'}`}>{p.students}</p>
                 <div className="flex items-end gap-1 mb-6">
                   <span className={`text-4xl font-black ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.price}</span>
-                  <span className={`text-sm mb-1 ${p.popular ? 'text-blue-200' : 'text-slate-400'}`}>{p.period}</span>
+                  <span className={`text-sm mb-1 ${p.popular ? 'text-slate-400' : 'text-slate-400'}`}>{p.period}</span>
                 </div>
                 <ul className="space-y-2.5 mb-8">
                   {p.features.map(f => (
                     <li key={f} className="flex items-center gap-2.5">
-                      <CheckCircle size={14} className={p.popular ? 'text-blue-200' : 'text-blue-600'} />
-                      <span className={`text-sm ${p.popular ? 'text-blue-100' : 'text-slate-600'}`}>{f}</span>
+                      <CheckCircle size={14} className={p.popular ? 'text-orange-400' : 'text-orange-500'} />
+                      <span className={`text-sm ${p.popular ? 'text-slate-300' : 'text-slate-600'}`}>{f}</span>
                     </li>
                   ))}
                 </ul>
                 <Link
                   to="/signup"
                   className={`block text-center py-3 px-4 rounded-xl font-bold text-sm transition active:scale-95 ${
-                    p.popular ? 'bg-white text-blue-600 hover:bg-blue-50' : 'bg-blue-600 text-white hover:bg-blue-700'
+                    p.popular ? 'bg-orange-500 text-white hover:bg-orange-400' : 'bg-slate-900 text-white hover:bg-slate-800'
                   }`}
                 >
                   {p.name === 'Enterprise' ? 'Contact Sales' : 'Get Started'}
@@ -774,7 +903,7 @@ export default function Landing() {
       <section id="faq" className="py-24 bg-white">
         <div className="max-w-3xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-12">
-            <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-3">Questions</p>
+            <p className="text-xs font-bold text-orange-600 uppercase tracking-widest mb-3">Questions</p>
             <h2 className="text-3xl md:text-4xl font-black text-slate-900">Got questions?</h2>
           </div>
           <Reveal className="bg-white rounded-2xl border border-slate-100 shadow-sm px-6">
@@ -784,13 +913,14 @@ export default function Landing() {
       </section>
 
       {/* CTA Banner */}
-      <section className="py-20 bg-slate-900 text-white">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
+      <section className="relative py-20 bg-slate-900 text-white overflow-hidden">
+        <TrackLines className="opacity-40" />
+        <div className="relative max-w-3xl mx-auto px-4 sm:px-6 text-center">
           <h2 className="text-3xl md:text-4xl font-black mb-4">
-            Your academy, <span className="text-blue-400">finally in one place</span>
+            Your academy, <span className="text-orange-400">finally in one place</span>
           </h2>
           <p className="text-slate-400 mb-8">Stop reconciling three tools every evening. Start running one.</p>
-          <Link to="/signup" className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg px-10 py-4 rounded-xl transition shadow-lg shadow-blue-600/30 active:scale-95">
+          <Link to="/signup" className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-400 text-white font-bold text-lg px-10 py-4 rounded-xl transition shadow-lg shadow-orange-500/30 active:scale-95">
             Create Your Academy Free
             <ArrowRight size={20} />
           </Link>
