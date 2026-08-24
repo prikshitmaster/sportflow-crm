@@ -1339,7 +1339,13 @@ function ConfirmMarkPaidModal({ payment, studentMap, onConfirm, onClose, isLoadi
   const chqBank = chqMatch?.[2]?.split('\n')[0]?.trim()
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    // z-[60], not z-50: this can now open ON TOP OF Record Payment (the
+    // "Clear now" button on a pending-due banner), and Record Payment's
+    // Modal wrapper is portalled to document.body while this isn't — at
+    // equal z-50 the already-mounted portal always wins the DOM-order tie
+    // and silently buries this confirm dialog behind it. Strictly higher
+    // z-index sidesteps the portal-vs-not asymmetry regardless of mount order.
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={!isLoading ? onClose : undefined} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm animate-slide-up overflow-hidden">
 
