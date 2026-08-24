@@ -305,6 +305,25 @@ export async function reassignStudentBatch(studentId, batchId, batchName) {
   if (error) throw error
 }
 
+// Clears a student's batch while recording where they came from, so "Last
+// Batch" (Students.jsx Suspended/Inactive tables: lastBatchName || batch)
+// keeps working after batch/batch_id go empty — mirrors what the
+// daily-overdue-check auto-suspend path already does via a direct table
+// write (migration 0191 added the same last_batch_name/last_batch_id write
+// path to this RPC so the client side can do it too).
+export async function removeStudentFromBatch(studentId, lastBatchId, lastBatchName) {
+  const { error } = await supabase.rpc('secure_update_student', {
+    p_student_id: studentId,
+    p_payload: {
+      batchId: null, batchName: '',
+      lastBatchId:   lastBatchId != null ? String(lastBatchId) : null,
+      lastBatchName: lastBatchName || '',
+    },
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+}
+
 // ── Payments ──────────────────────────────────────────────
 export async function fetchPayments(academyId) {
   let query = supabase.from('payments').select('*').order('created_at', { ascending: false })
