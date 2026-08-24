@@ -1,10 +1,10 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
-import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, X, Pencil, Trash2, Printer, Link as LinkIcon, MessageCircle, FileSpreadsheet, Download, ChevronLeft, ChevronRight, ChevronDown, SlidersHorizontal, Wallet } from 'lucide-react'
+import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, UserX, X, Pencil, Trash2, Printer, Link as LinkIcon, MessageCircle, FileSpreadsheet, Download, ChevronLeft, ChevronRight, ChevronDown, SlidersHorizontal, Wallet } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { isOutstanding, normTrainingType, trainingTypeLabel } from '../lib/studentRules'
+import { isOutstanding, normTrainingType, trainingTypeLabel, isGhost } from '../lib/studentRules'
 import DevFillButton from '../components/DevFillButton'
 import { fillPayment } from '../lib/devFill'
 import SendPayLinkModal from '../components/SendPayLinkModal'
@@ -13,7 +13,7 @@ import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/
 import { todayStr, toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 import { buildReceiptHTML } from '../lib/paymentReceipt'
 import { resolveBranchTax, computeTax, taxRowLabel } from '../lib/tax'
-import { fetchAttendanceForStudents } from '../lib/db'
+import { fetchAttendanceForStudents, fetchAttendanceForMonth } from '../lib/db'
 
 // Casing differs either side of the students ↔ fee_plans join — see
 // normTrainingType in lib/studentRules.js for the full story.
@@ -43,9 +43,10 @@ function fmtMoney(n) {
 }
 
 const STATUS_MAP = {
-  Paid:    { cls: 'badge-green',  icon: CheckCircle, iconCls: 'text-emerald-500' },
-  Pending: { cls: 'badge-yellow', icon: Clock,       iconCls: 'text-amber-500' },
-  Overdue: { cls: 'badge-red',    icon: AlertCircle, iconCls: 'text-red-500' },
+  Paid:         { cls: 'badge-green',  icon: CheckCircle, iconCls: 'text-emerald-500' },
+  Pending:      { cls: 'badge-yellow', icon: Clock,       iconCls: 'text-amber-500' },
+  Overdue:      { cls: 'badge-red',    icon: AlertCircle, iconCls: 'text-red-500' },
+  'Not Attending': { cls: 'badge-gray',   icon: UserX,       iconCls: 'text-gray-400' },
 }
 
 export default function Payments() {
@@ -111,6 +112,42 @@ export default function Payments() {
     return m
   }, [students])
 
+  // "Not Attending" — same 2-month attendance-floor classification as
+  // Dashboard/Reports (see project_not_attending_bucket memory). An Active
+  // student with ~0 sessions in the last 2 months shouldn't inflate Overdue
+  // with money from someone who's functionally stopped coming — pulled out
+  // of the main Overdue total/list here and surfaced in their own filter
+  // instead, purely a display-time split, no billing/status change.
+  const [sessions2Mo, setSessions2Mo] = useState({})
+  useEffect(() => {
+    if (!user?.academyId) return
+    const nowD = new Date()
+    const prev = new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1)
+    const count = (byStudent) => {
+      const out = {}
+      for (const [sid, days] of Object.entries(byStudent)) {
+        out[sid] = Object.values(days).filter(st => st === 'Present' || st === 'Late').length
+      }
+      return out
+    }
+    Promise.all([
+      fetchAttendanceForMonth(nowD.getFullYear(), nowD.getMonth()),
+      fetchAttendanceForMonth(prev.getFullYear(), prev.getMonth()),
+    ]).then(([cur, prv]) => {
+      const curC = count(cur), prvC = count(prv)
+      const merged = {}
+      for (const sid of new Set([...Object.keys(curC), ...Object.keys(prvC)])) {
+        merged[sid] = (curC[sid] || 0) + (prvC[sid] || 0)
+      }
+      setSessions2Mo(merged)
+    }).catch(() => {})
+  }, [user?.academyId])
+
+  const ghostMinFor = (s) => sportBranches.find(b => b.id === s.branchId)?.ghostMinSessions ?? 0
+  const ghostIds = useMemo(() => new Set(
+    students.filter(s => isGhost(s, sessions2Mo[s.id], ghostMinFor(s))).map(s => s.id)
+  ), [students, sessions2Mo, sportBranches])
+
   // Build last 8 months of real collected revenue from actual Paid payments
   const revenueData = useMemo(() => {
     const months = []
@@ -128,13 +165,16 @@ export default function Payments() {
     return months
   }, [payments])
 
-  // Virtual overdue rows: active students with an expired paid_till and no pending payment already recorded
+  // Virtual overdue rows: active students with an expired paid_till and no pending payment already recorded.
+  // Ghosts (see above) are excluded here — they get their own bucket below
+  // instead of inflating the main Overdue total with money from a student
+  // who's stopped showing up.
   const overdueRows = useMemo(() => {
     const studentsWithPendingRecord = new Set(
       payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => p.studentId)
     )
     return students
-      .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithPendingRecord.has(s.id))
+      .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithPendingRecord.has(s.id) && !ghostIds.has(s.id))
       .map(s => ({
         id:          `DUE-${s.id}`,
         studentId:   s.id,
@@ -147,9 +187,31 @@ export default function Payments() {
         isVirtual:   true,
         isSuspended: s.status === 'Suspended',
       }))
-  }, [students, payments, firstOfMonth])
+  }, [students, payments, firstOfMonth, ghostIds])
 
-  const allRecords = useMemo(() => [...overdueRows, ...payments], [overdueRows, payments])
+  // The "other section" — Active students with ~0 attendance in the last 2
+  // months, pulled out of Overdue above. Listed regardless of whether they
+  // actually owe money (outstanding shown as their amount, 0 if paid up) so
+  // staff can see the whole cohort in one place and decide manually
+  // (suspend, follow up, mark inactive) — nothing here is automatic.
+  const notAttendingRows = useMemo(() =>
+    students
+      .filter(s => ghostIds.has(s.id))
+      .map(s => ({
+        id:          `NA-${s.id}`,
+        studentId:   s.id,
+        student:     s.name,
+        amount:      isOutstanding(s, firstOfMonth) ? (s.fees || 0) : 0,
+        month:       `Not attending — ${sessions2Mo[s.id] || 0} session${sessions2Mo[s.id] === 1 ? '' : 's'} in 60 days`,
+        date:        null,
+        status:      'Not Attending',
+        mode:        null,
+        isVirtual:   true,
+        isSuspended: false,
+      }))
+  , [students, ghostIds, firstOfMonth, sessions2Mo])
+
+  const allRecords = useMemo(() => [...overdueRows, ...notAttendingRows, ...payments], [overdueRows, notAttendingRows, payments])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setPage(1), [statusFilter, sportFilter, batchFilter, monthFilter, modeFilter, dateFrom, dateTo, newRenewalFilter])
 
@@ -181,7 +243,9 @@ export default function Payments() {
   const filtered = allRecords.filter(p => {
     const q       = search.toLowerCase()
     const matchQ  = !q || (p.student || '').toLowerCase().includes(q) || (p.id || '').toLowerCase().includes(q)
-    const matchS  = statusFilter === 'All' || p.status === statusFilter
+    // "Not Attending" is its own bucket, not part of the main list — matches
+    // its dedicated pill only, same as Reports' separate tab for the same cohort.
+    const matchS  = statusFilter === 'All' ? p.status !== 'Not Attending' : p.status === statusFilter
     const stu     = studentMap[p.studentId]
     // Trial-fee rows have no student until conversion and carry their own
     // sport, so fall back to it or they vanish whenever a sport is picked.
@@ -192,7 +256,10 @@ export default function Payments() {
     // Match by date (Paid/Overdue with a paid date) OR by billing month (Pending where date is NULL)
     // Virtual overdue rows have no date/month string — re-derive "was this student
     // overdue as of the selected month" instead of the real current month.
+    // Not Attending is a current-state snapshot (who's a ghost right now),
+    // not tied to any billing month, so it always matches regardless of monthFilter.
     const matchMonth = !monthFilter ||
+      p.status === 'Not Attending' ||
       (p.isVirtual && isOutstanding(stu, monthFilter + '-01')) ||
       (!p.isVirtual && p.date && p.date.slice(0, 7) === monthFilter) ||
       (!p.isVirtual && !p.date && p.month === monthFilter)
@@ -213,11 +280,15 @@ export default function Payments() {
     : payments.filter(p => p.status === 'Pending')
   // Overdue is always all-time — not filtered by month
   const overdueBase  = [...payments.filter(p => p.status === 'Overdue'), ...overdueRows]
+  // Not Attending is a current-state snapshot too — always all-time, same as Overdue
+  const notAttendingBase = notAttendingRows
 
-  const paid         = paidBase.reduce((s, p) => s + (p.amount ?? 0), 0)
-  const pending      = pendingBase.reduce((s, p) => s + (p.amount ?? 0), 0)
-  const overdueAmt   = overdueBase.reduce((s, p) => s + (p.amount ?? 0), 0)
-  const overdueCount = overdueBase.length
+  const paid              = paidBase.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const pending           = pendingBase.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const overdueAmt        = overdueBase.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const overdueCount      = overdueBase.length
+  const notAttendingAmt   = notAttendingBase.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const notAttendingCount = notAttendingBase.length
 
   const monthLabel = monthFilter
     ? new Date(monthFilter + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
@@ -314,13 +385,17 @@ export default function Payments() {
           </button>
         </div>
       )}
-      <div className="grid grid-cols-3 gap-3">
+      <div className={`grid gap-3 ${notAttendingCount > 0 ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-3'}`}>
         <SummaryCard label="Collected" value={fmtMoney(paid)} count={paidBase.length} color="emerald" icon={CheckCircle}
           active={statusFilter === 'Paid'} onClick={() => setStatusFilter(statusFilter === 'Paid' ? 'All' : 'Paid')} />
         <SummaryCard label="Pending"   value={fmtMoney(pending)} count={pendingBase.length} color="amber" icon={Clock}
           active={statusFilter === 'Pending'} onClick={() => setStatusFilter(statusFilter === 'Pending' ? 'All' : 'Pending')} />
         <SummaryCard label="Overdue"   value={fmtMoney(overdueAmt)} count={overdueCount} color="red" icon={AlertCircle}
           active={statusFilter === 'Overdue'} onClick={() => setStatusFilter(statusFilter === 'Overdue' ? 'All' : 'Overdue')} />
+        {notAttendingCount > 0 && (
+          <SummaryCard label="Not Attending" value={fmtMoney(notAttendingAmt)} count={notAttendingCount} color="gray" icon={UserX}
+            active={statusFilter === 'Not Attending'} onClick={() => setStatusFilter(statusFilter === 'Not Attending' ? 'All' : 'Not Attending')} />
+        )}
       </div>
 
       {/* Revenue chart */}
@@ -364,10 +439,14 @@ export default function Payments() {
               </button>
             )}
           </div>
-          {['All','Paid','Pending','Overdue'].map(s => (
-            <button key={s} onClick={() => setStatusFilter(s)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold border transition ${statusFilter===s ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-              {s}
+          {[
+            { v: 'All', label: 'All' }, { v: 'Paid', label: 'Paid' },
+            { v: 'Pending', label: 'Pending' }, { v: 'Overdue', label: 'Overdue' },
+            ...(notAttendingCount > 0 ? [{ v: 'Not Attending', label: 'Not Attending' }] : []),
+          ].map(({ v, label }) => (
+            <button key={v} onClick={() => setStatusFilter(v)}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold border transition ${statusFilter===v ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+              {label}
             </button>
           ))}
           {/* Sport sits in the PRIMARY row, not behind "More filters": whoever
@@ -1445,6 +1524,7 @@ function SummaryCard({ label, value, count, color, icon: Icon, onClick, active }
     emerald: { text: 'text-emerald-600', bar: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-600', ring: 'ring-emerald-400' },
     amber:   { text: 'text-amber-600',   bar: 'bg-amber-500',   chip: 'bg-amber-50 text-amber-600',   ring: 'ring-amber-400'   },
     red:     { text: 'text-red-600',     bar: 'bg-red-500',     chip: 'bg-red-50 text-red-600',     ring: 'ring-red-400'     },
+    gray:    { text: 'text-gray-500',    bar: 'bg-gray-400',    chip: 'bg-gray-100 text-gray-500',    ring: 'ring-gray-400'    },
   }[color]
   return (
     <button type="button" onClick={onClick}
