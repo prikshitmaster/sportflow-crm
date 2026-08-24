@@ -2162,6 +2162,31 @@ export function AppProvider({ children }) {
     }
   }
 
+  // Fully clears a Suspended/Inactive student's batch — unlike
+  // reassignPrimaryBatch above, this deliberately CAN leave them batch-less;
+  // that function's "never leave batch-less" rule is about the live roster
+  // (an Active student mid-move), not a long-inactive one whose capacity
+  // slot was already freed when they were suspended. Doesn't touch
+  // batches.enrolled — suspendStudent() already decremented it once; doing
+  // it again here would double-count. lastBatchName is left alone so the
+  // Inactive tab still shows where they used to train.
+  const removeStudentFromBatch = async (student) => {
+    if (!student.batchId) return
+    try {
+      await db.reassignStudentBatch(student.id, null, null)
+      setStudents(prev => prev.map(s => s.id === student.id ? { ...s, batchId: null, batch: '' } : s))
+      logAuditSport({
+        actor: user, action: ACTIONS.STUDENT_EDIT, entityType: 'student',
+        entityId: student.id, entityName: student.name,
+        changes: { Batch: { old: student.batch || '—', new: '—' } },
+        academyId: user?.academyId, sport: student.sport ?? null, branchId: student.branchId ?? null,
+      })
+      showToast(`${student.name} removed from ${student.batch || 'their batch'}`)
+    } catch (err) {
+      showToast(err.message || 'Remove failed', 'error')
+    }
+  }
+
   const updateBatch = async (batchId, b) => {
     try {
       const oldBatch = batches.find(x => x.id === batchId)
@@ -3094,7 +3119,7 @@ export function AppProvider({ children }) {
       ageGroups, addAgeGroup, removeAgeGroup,
       drillCategories, addDrillCategory, removeDrillCategory,
       refreshData: loadAll,
-      batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, reassignPrimaryBatch, updateBatch, updateBatchFee, deleteBatch,
+      batches: staffScopedBatches, setBatches, addBatch, updateBatchCoach, reassignPrimaryBatch, removeStudentFromBatch, updateBatch, updateBatchFee, deleteBatch,
       // multi-batch enrolment — one source for every batch headcount/roster
       batchEnrolments, enrolmentIdsByBatch, batchRoster, refreshBatchEnrolments,
       // shared ground capacity (0184)

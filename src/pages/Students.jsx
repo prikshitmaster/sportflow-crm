@@ -70,7 +70,7 @@ function DobInput({ value, onChange, hasError }) {
 
 export default function Students() {
   const navigate = useNavigate()
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, role, hasPermission, visibleSports, showSportFilter, sportBranches } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, removeStudentFromBatch, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, role, hasPermission, visibleSports, showSportFilter, sportBranches } = useApp()
   const canManageStudents = hasPermission('students.manage')
   const canManageTrials   = hasPermission('trials.manage')
   const canManagePayments = hasPermission('payments.manage')
@@ -544,6 +544,7 @@ export default function Students() {
                             ? (canManageStudents && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition" onClick={() => reactivateStudent(s)}>Reactivate</button>)
                             : (canManagePayments && <button className="btn-primary text-xs py-1.5 px-3" onClick={() => { setPayStudent(s); setShowPayModal(true) }}>Record Payment</button>)
                           }
+                          {canManageStudents && s.batchId && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition flex items-center gap-1" title="Clears their batch assignment — frees them from that batch's roster/attendance list. Doesn't affect capacity (already freed at suspension) or their fee/payment history." onClick={() => removeStudentFromBatch(s)}><UserX size={11} /> Remove from Batch</button>}
                           {canManageStudents && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-gray-100 text-gray-700 hover:bg-gray-200 transition flex items-center gap-1" onClick={() => setEditStudent(s)}><Pencil size={11} /> Edit</button>}
                           {canManageStudents && <button className="text-xs py-1.5 px-3 rounded-lg font-semibold bg-red-100 text-red-600 hover:bg-red-200 transition" onClick={() => setDeleteTarget(s)}>Delete</button>}
                           {!canManageStudents && !canManagePayments && <span className="text-xs text-gray-300">—</span>}
@@ -598,6 +599,7 @@ export default function Students() {
                     ? (canManageStudents && <button className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 text-white active:scale-95 transition" onClick={() => reactivateStudent(s)}>Reactivate</button>)
                     : (canManagePayments && <button className="flex-1 btn-primary justify-center py-2.5" onClick={() => { setPayStudent(s); setShowPayModal(true) }}>Record Payment</button>)
                   }
+                  {canManageStudents && s.batchId && <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 active:scale-95 transition flex items-center gap-1" onClick={() => removeStudentFromBatch(s)}><UserX size={13} /> Remove from Batch</button>}
                   {canManageStudents && <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-700 active:scale-95 transition flex items-center gap-1" onClick={() => setEditStudent(s)}><Pencil size={13} /> Edit</button>}
                   {canManageStudents && <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-100 text-red-600 active:scale-95 transition" onClick={() => setDeleteTarget(s)}>Delete</button>}
                 </div>
