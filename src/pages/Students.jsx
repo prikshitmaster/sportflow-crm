@@ -70,7 +70,7 @@ function DobInput({ value, onChange, hasError }) {
 
 export default function Students() {
   const navigate = useNavigate()
-  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, role, hasPermission, visibleSports, showSportFilter } = useApp()
+  const { students, addStudent, updateStudent, deleteStudent, suspendStudent, reactivateStudent, updateStudentStatus, resetStudentPasswordAdmin, batches, payments, feePlans, addPayment, selectedSport, selectedBranch, user, role, hasPermission, visibleSports, showSportFilter, sportBranches } = useApp()
   const canManageStudents = hasPermission('students.manage')
   const canManageTrials   = hasPermission('trials.manage')
   const canManagePayments = hasPermission('payments.manage')
@@ -176,15 +176,22 @@ export default function Students() {
   // years — the old ones move to their own Inactive tab instead.
   // suspendedSince missing (legacy row) stays in Suspended, not Inactive —
   // "unknown how long" shouldn't default to "assume long gone".
+  // Manager-configurable per branch (Settings → Branch Fees & Tax →
+  // "Inactive" threshold), default 60 — see migration 0190.
   const INACTIVE_AFTER_DAYS = 60
-  const inactiveCutoff = toLocalDateStr(new Date(now.getTime() - INACTIVE_AFTER_DAYS * 86400000))
+  const inactiveDaysFor = (s) => sportBranches.find(b => b.id === s.branchId)?.inactiveAfterDays ?? INACTIVE_AFTER_DAYS
+  // For the summary-card label only — a single-branch view (the normal
+  // case) has one clear answer; multi-branch view falls back to the
+  // 60-day default rather than guessing which branch's number to show.
+  const displayInactiveDays = sportBranches.find(b => b.id === selectedBranch)?.inactiveAfterDays ?? INACTIVE_AFTER_DAYS
+  const inactiveCutoffFor = (s) => toLocalDateStr(new Date(now.getTime() - inactiveDaysFor(s) * 86400000))
   const recentlySuspended = useMemo(
-    () => suspendedStudents.filter(s => !s.suspendedSince || s.suspendedSince >= inactiveCutoff),
-    [suspendedStudents, inactiveCutoff]
+    () => suspendedStudents.filter(s => !s.suspendedSince || s.suspendedSince >= inactiveCutoffFor(s)),
+    [suspendedStudents, sportBranches] // eslint-disable-line react-hooks/exhaustive-deps
   )
   const inactiveStudents = useMemo(
-    () => suspendedStudents.filter(s => s.suspendedSince && s.suspendedSince < inactiveCutoff),
-    [suspendedStudents, inactiveCutoff]
+    () => suspendedStudents.filter(s => s.suspendedSince && s.suspendedSince < inactiveCutoffFor(s)),
+    [suspendedStudents, sportBranches] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const filtered = useMemo(() => {
@@ -334,7 +341,7 @@ export default function Students() {
           <div className="grid grid-cols-2 gap-4">
             <div className="card p-4 text-center">
               <p className="text-2xl font-black text-red-600">{recentlySuspended.length}</p>
-              <p className="text-xs text-gray-500 mt-1">Suspended <span className="text-gray-400 font-normal">(under {INACTIVE_AFTER_DAYS} days)</span></p>
+              <p className="text-xs text-gray-500 mt-1">Suspended <span className="text-gray-400 font-normal">(under {displayInactiveDays} days)</span></p>
             </div>
             <div className="card p-4 text-center">
               <p className="text-2xl font-black text-gray-600">{suspBatches.length}</p>
@@ -476,7 +483,7 @@ export default function Students() {
           <div className="grid grid-cols-2 gap-4">
             <div className="card p-4 text-center">
               <p className="text-2xl font-black text-gray-600">{inactiveStudents.length}</p>
-              <p className="text-xs text-gray-500 mt-1">Inactive <span className="text-gray-400 font-normal">({INACTIVE_AFTER_DAYS}+ days)</span></p>
+              <p className="text-xs text-gray-500 mt-1">Inactive <span className="text-gray-400 font-normal">({displayInactiveDays}+ days)</span></p>
             </div>
             <div className="card p-4 text-center">
               <p className="text-2xl font-black text-gray-600">{inactiveBatches.length}</p>

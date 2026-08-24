@@ -388,6 +388,7 @@ function BranchFeesSection() {
     prorationBasis: b.prorationBasis || 'calendar',
     autoCalcDates: b.autoCalcDates ?? true,
     ghostMinSessions: b.ghostMinSessions ?? 0,
+    inactiveAfterDays: b.inactiveAfterDays ?? 60,
   })
   const draftFor = (b) => drafts[b.id] ?? seed(b)
   const setField = (b, k, v) =>
@@ -402,7 +403,7 @@ function BranchFeesSection() {
         trialFee: d.trialFee, kitFee: d.kitFee, taxPercent: d.taxPercent,
         taxOnFees: d.taxOnFees, taxOnTrial: d.taxOnTrial, taxOnKit: d.taxOnKit,
         prorationBasis: d.prorationBasis, autoCalcDates: d.autoCalcDates,
-        ghostMinSessions: d.ghostMinSessions,
+        ghostMinSessions: d.ghostMinSessions, inactiveAfterDays: d.inactiveAfterDays,
       })
       await refreshSportBranches()
       setDrafts(prev => { const n = { ...prev }; delete n[b.id]; return n })
@@ -536,6 +537,17 @@ function BranchFeesSection() {
                   </p>
                   <input className="input w-32" type="number" min="0" step="1" placeholder="0"
                     value={d.ghostMinSessions} onChange={e => setField(b, 'ghostMinSessions', e.target.value)} />
+                </div>
+                <div className="col-span-2">
+                  <label className="label">"Inactive" threshold (days)</label>
+                  <p className="text-[11px] text-gray-400 mb-1.5">
+                    On the Students page, a Suspended student moves from the "Suspended" tab into
+                    "Inactive" once they've been suspended this many days — keeps Suspended a short,
+                    actionable list instead of piling up everyone ever paused. Same actions either way
+                    (Reactivate, Record Payment, Edit, Delete) — this only changes which tab they're in.
+                  </p>
+                  <input className="input w-32" type="number" min="1" step="1" placeholder="60"
+                    value={d.inactiveAfterDays} onChange={e => setField(b, 'inactiveAfterDays', e.target.value)} />
                 </div>
               </div>
             </div>
