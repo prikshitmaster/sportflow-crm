@@ -1073,7 +1073,16 @@ export function AppProvider({ children }) {
           )
         }
         const invoiceId = await db.fetchNextInvoiceId()
-        payment = { invoiceId, amount: payAmount, label, startDate, monthsCovered }
+        // Custom (day-priced) conversions keep their exact mid-month join
+        // date as coverage_start, same convention Payments.jsx's custom
+        // coverage dates use — every other plan snaps to the month
+        // boundary calcHistoricalPayment already computed. coverageEnd is
+        // just paidTill: that's literally the date the modal/form decided
+        // this payment covers through. Without these (migration 0192),
+        // create_student_with_payment month-truncated a real custom start
+        // date and never recorded an end at all.
+        const coverageStart = s.feePlan === 'custom' ? joinDateStr : startDate
+        payment = { invoiceId, amount: payAmount, label, startDate, monthsCovered, coverageStart, coverageEnd: paidTill }
       }
 
       // ONE atomic write: student + (optional) batch counter + (optional) payment
