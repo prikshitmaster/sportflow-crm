@@ -1403,6 +1403,21 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
   // real lost revenue, not just a cosmetic display bug.
   const trialDeduct = trial.trialFeeMode !== 'Not collected' ? (trial.trialFeePaid || 0) : 0
 
+  // How many months Paid Till actually implies for a non-custom plan —
+  // same whole-calendar-month count AppContext's calcHistoricalPayment uses
+  // to compute the REAL charge (fees × months for 'monthly'). Paid Till is
+  // freely editable independent of Fee Duration, so picking it 3 months out
+  // while still on "Monthly" quietly multiplies the actual charge — this
+  // was previously invisible: the preview only ever showed the single
+  // per-month rate, never the total that actually gets saved.
+  const previewMonths = (() => {
+    if (form.feePlan !== 'monthly' || !form.joinDate || !form.paidTill) return 1
+    const [sy, sm] = form.joinDate.split('-').map(Number)
+    const [ey, em] = form.paidTill.slice(0, 7).split('-').map(Number)
+    return Math.max(1, (ey - sy) * 12 + (em - sm) + 1)
+  })()
+  const feeTotal = (Number(form.fees) || 0) * previewMonths
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* No backdrop-blur — it forces the browser to keep recompositing this
@@ -1624,8 +1639,11 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
             </div>
             <div className="bg-emerald-50 px-4 py-3 space-y-1.5 text-xs">
               <div className="flex justify-between text-gray-600">
-                <span>{FEE_LABEL[form.feePlan]?.replace(' *','') || 'Fee'}</span>
-                <span className="font-semibold">₹{form.fees ? Number(form.fees).toLocaleString('en-IN') : '—'}</span>
+                <span>
+                  {FEE_LABEL[form.feePlan]?.replace(' *','') || 'Fee'}
+                  {previewMonths > 1 && <span className="text-gray-400"> × {previewMonths} months</span>}
+                </span>
+                <span className="font-semibold">₹{form.fees ? feeTotal.toLocaleString('en-IN') : '—'}</span>
               </div>
               {/* Discount row — %/₹ toggle, same pattern as Payments.jsx */}
               <div className="flex items-center justify-between pt-1">
@@ -1656,9 +1674,9 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
               {discountAmt > 0 && (
                 <div className="flex justify-between text-emerald-700">
                   <span className="text-[11px] text-emerald-500">
-                    {discountMode === 'pct' ? `${discountValue}% of ₹${feeNum.toLocaleString('en-IN')}` : 'Flat discount'}
+                    {discountMode === 'pct' ? `${discountValue}% of ₹${feeNum.toLocaleString('en-IN')}${previewMonths > 1 ? '/month' : ''}` : 'Flat discount'}
                   </span>
-                  <span className="font-bold">− ₹{discountAmt.toLocaleString('en-IN')}</span>
+                  <span className="font-bold">− ₹{(discountAmt * previewMonths).toLocaleString('en-IN')}</span>
                 </div>
               )}
               {trialDeduct > 0 && (
@@ -1685,7 +1703,7 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
                 <span>First Payment Due</span>
                 <span className="text-emerald-700">
                   ₹{form.fees
-                    ? Math.max(0, feeNum - discountAmt - trialDeduct + (Number(form.joiningFee) || 0)).toLocaleString('en-IN')
+                    ? Math.max(0, (feeNum - discountAmt) * previewMonths - trialDeduct + (Number(form.joiningFee) || 0)).toLocaleString('en-IN')
                     : '—'}
                 </span>
               </div>
