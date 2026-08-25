@@ -1554,7 +1554,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     student:     initStudent.name     || '',
     baseAmount:  initStudent.fees     || 0,
     paymentType: initStudent.feePlan  || 'monthly',
-    discountPct: 0,
     batchId:     String(initStudent.batchId || initStudent.lastBatchId || ''),
     batchName:   initStudent.batch || initStudent.lastBatchName || '',
     mode:        'UPI',
@@ -1563,6 +1562,11 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const [loading,        setLoading]       = useState(false)
   const [studentSearch,  setStudentSearch] = useState(initStudent.name || '')
   const [showDropdown,   setShowDropdown]  = useState(false)
+  // Discount can be entered as a flat rupee amount or a percentage — the DB
+  // only has a discount_pct column, so whichever mode is used gets converted
+  // to the equivalent percentage of the subtotal right before save.
+  const [discountMode,   setDiscountMode]  = useState('pct')  // 'pct' | 'amount'
+  const [discountValue,  setDiscountValue] = useState(0)
   const [amountOverride, setAmountOverride] = useState(null)
   // Locked to the fee-plan total (Total field read-only) until explicitly
   // ticked — turns editing the Total from an implicit side effect into a
@@ -1785,7 +1789,16 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   })()
   const prorationDeduction = prorationInfo?.deduction || 0
   const subtotal = rangePricing ? rangePricing.amount : preProrationAmount - prorationDeduction
-  const discountAmt = Math.round(subtotal * form.discountPct / 100)
+  // Flat ₹ discounts are capped to whatever base they're applied against, so
+  // they can never push a taxable base negative the way an >100 pct could.
+  const discountFor = (base) => discountMode === 'amount'
+    ? Math.min(Math.max(0, Number(discountValue) || 0), base)
+    : Math.round(base * (Number(discountValue) || 0) / 100)
+  const discountAmt = discountFor(subtotal)
+  // The DB only stores a percentage — whichever mode staff used, this is the
+  // equivalent effective rate for THIS transaction, so receipts/exports keep
+  // reading discount_pct exactly as before with no backend changes.
+  const discountPctToSave = subtotal > 0 ? Math.round((discountAmt / subtotal) * 100) : 0
   const lateFeeAmt  = Math.max(0, Number(lateFee) || 0)
   // Tax on the fee itself (Settings > Branch Fees & Tax > "Apply tax to:
   // Monthly fees") — was configurable but silently never applied here; late
@@ -1851,6 +1864,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
       const notes = chequePrefix + inactivePrefix + (form.notes || '')
       await onSave({
         ...form, notes,
+        discountPct: discountPctToSave,  // whichever mode was used, stored as the equivalent effective %
         amount: finalAmount,
         dueAmount,                   // shortfall vs the locked fee-plan amount — becomes a linked Pending row
         monthsCovered: months,       // months actually charged for
@@ -1982,7 +1996,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const expectedSubtotal = rangePricing
     ? Math.round((expectedFullSubtotal / Math.max(1, months)) * rangePricing.fractionalMonths)
     : expectedFullSubtotal
-  const expectedTaxableBase = Math.max(0, expectedSubtotal - Math.round(expectedSubtotal * form.discountPct / 100) - prorationDeduction)
+  const expectedTaxableBase = Math.max(0, expectedSubtotal - discountFor(expectedSubtotal) - prorationDeduction)
   const { taxAmount: expectedTaxAmt } = computeTax(expectedTaxableBase, taxPct)
   const expectedTotal = expectedTaxableBase + expectedTaxAmt + lateFeeAmt
   const sanityMismatch = !!(
@@ -2052,7 +2066,9 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
       setStudentSearch(student.name)
       handleStudentChange(String(student.id))
     }
-    setForm(f => ({ ...f, mode, paymentType, discountPct }))
+    setForm(f => ({ ...f, mode, paymentType }))
+    setDiscountMode('pct')
+    setDiscountValue(discountPct)
   }
 
   return (
@@ -2310,9 +2326,21 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
             )}
           </div>
           <div>
-            <label className="label">Discount (%)</label>
-            <input className="input" type="number" min="0" max="100" value={form.discountPct}
-              onChange={e => setForm(f => ({ ...f, discountPct: Number(e.target.value) }))} />
+            <div className="flex items-center justify-between mb-1">
+              <label className="label !mb-0">Discount</label>
+              <div className="flex rounded-md border border-gray-200 overflow-hidden text-[11px] font-bold">
+                {['pct', 'amount'].map(m => (
+                  <button key={m} type="button"
+                    onClick={() => { setDiscountMode(m); setDiscountValue(0) }}
+                    className={`px-2 py-0.5 transition ${discountMode === m ? 'bg-brand-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                    {m === 'pct' ? '%' : '₹'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <input className="input" type="number" min="0" max={discountMode === 'pct' ? 100 : undefined}
+              value={discountValue}
+              onChange={e => setDiscountValue(Number(e.target.value))} />
           </div>
         </div>
 
@@ -2499,7 +2527,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
           )}
           {discountAmt > 0 && (
             <div className="flex justify-between text-xs text-emerald-600 font-medium">
-              <span>Discount ({form.discountPct}%)</span>
+              <span>Discount ({discountMode === 'amount' ? `₹${Number(discountValue).toLocaleString('en-IN')}` : `${discountValue}%`})</span>
               <span>−₹{discountAmt.toLocaleString('en-IN')}</span>
             </div>
           )}

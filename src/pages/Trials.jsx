@@ -1236,6 +1236,10 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     joiningFee:  '',
   })
   const [errors, setErrors] = useState({})
+  // Discount can be entered as a flat rupee amount or a percentage of the fee
+  // entered above — same %/₹ toggle as Payments.jsx's RecordPaymentModal.
+  const [discountMode,  setDiscountMode]  = useState('pct')  // 'pct' | 'amount'
+  const [discountValue, setDiscountValue] = useState(0)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -1372,10 +1376,22 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     return Object.keys(e).length === 0
   }
 
+  const feeNum = Number(form.fees) || 0
+  // Flat ₹ discounts are capped to the fee itself so they can't push the
+  // charged amount negative the way an >100 pct could.
+  const discountAmt = discountMode === 'amount'
+    ? Math.min(Math.max(0, Number(discountValue) || 0), feeNum)
+    : Math.round(feeNum * (Number(discountValue) || 0) / 100)
+
   function handleSave() {
     if (!validate()) return
+    // addStudent (AppContext) only understands a percentage — whichever mode
+    // was used here, this is the equivalent effective rate for this fee, so
+    // it records on the first-payment receipt exactly like a normal payment's
+    // discount would.
+    const discountPct = feeNum > 0 ? Math.round((discountAmt / feeNum) * 100) : 0
     // Parent (handleConvert) closes modal immediately and handles errors internally
-    onConvert(form)
+    onConvert({ ...form, fees: String(Math.max(0, feeNum - discountAmt)), discountPct })
   }
 
   const preview     = coveragePreview(form.joinDate, form.paidTill)
@@ -1611,6 +1627,40 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
                 <span>{FEE_LABEL[form.feePlan]?.replace(' *','') || 'Fee'}</span>
                 <span className="font-semibold">₹{form.fees ? Number(form.fees).toLocaleString('en-IN') : '—'}</span>
               </div>
+              {/* Discount row — %/₹ toggle, same pattern as Payments.jsx */}
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-emerald-700 font-semibold">Discount</span>
+                  <div className="flex rounded-md border border-emerald-200 overflow-hidden text-[10px] font-bold">
+                    {['pct', 'amount'].map(m => (
+                      <button key={m} type="button"
+                        onClick={() => { setDiscountMode(m); setDiscountValue(0) }}
+                        className={`px-1.5 py-0.5 transition ${discountMode === m ? 'bg-emerald-600 text-white' : 'bg-white text-emerald-600 hover:bg-emerald-50'}`}>
+                        {m === 'pct' ? '%' : '₹'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-emerald-600 font-bold text-[11px]">− {discountMode === 'amount' ? '₹' : ''}</span>
+                  <input
+                    type="number" min="0" max={discountMode === 'pct' ? 100 : undefined} inputMode="numeric"
+                    placeholder="0"
+                    value={discountValue}
+                    onChange={e => setDiscountValue(Number(e.target.value))}
+                    className="w-20 px-2 py-1 rounded-lg border border-emerald-200 bg-white text-sm font-semibold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-300 text-right"
+                  />
+                  {discountMode === 'pct' && <span className="text-emerald-600 font-bold text-[11px]">%</span>}
+                </div>
+              </div>
+              {discountAmt > 0 && (
+                <div className="flex justify-between text-emerald-700">
+                  <span className="text-[11px] text-emerald-500">
+                    {discountMode === 'pct' ? `${discountValue}% of ₹${feeNum.toLocaleString('en-IN')}` : 'Flat discount'}
+                  </span>
+                  <span className="font-bold">− ₹{discountAmt.toLocaleString('en-IN')}</span>
+                </div>
+              )}
               {trialDeduct > 0 && (
                 <div className="flex justify-between text-emerald-700">
                   <span>Trial Fee Deduction</span>
@@ -1635,7 +1685,7 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
                 <span>First Payment Due</span>
                 <span className="text-emerald-700">
                   ₹{form.fees
-                    ? Math.max(0, Number(form.fees) - trialDeduct + (Number(form.joiningFee) || 0)).toLocaleString('en-IN')
+                    ? Math.max(0, feeNum - discountAmt - trialDeduct + (Number(form.joiningFee) || 0)).toLocaleString('en-IN')
                     : '—'}
                 </span>
               </div>
@@ -2080,6 +2130,7 @@ export default function Trials() {
         batchName:    form.batchName   || '',
         joinDate:     form.joinDate,
         fees:         Number(form.fees) || 0,
+        discountPct:  Number(form.discountPct) || 0,
         feePlan:      form.feePlan,
         trainingType: form.trainingType || 'Daily',
         paidTill:     form.paidTill    || null,

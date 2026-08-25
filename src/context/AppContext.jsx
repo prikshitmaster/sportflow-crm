@@ -1048,6 +1048,9 @@ export function AppProvider({ children }) {
       const fees        = Number(s.fees) || 0
       const trialDeduct = s.fromTrial ? (Number(s.trialFeePaid) || 0) : 0
       const joiningFee  = Number(s.joiningFee) || 0
+      // Already netted into `fees` by ConvertModal — kept only so the
+      // resulting payment row records the discount, same as a normal payment.
+      const discountPct = Number(s.discountPct) || 0
       let payment = null
       if (paidTill && fees > 0) {
         const joinDateStr = s.joinDate || toLocalDateStr()
@@ -1141,13 +1144,14 @@ export function AppProvider({ children }) {
           console.warn('trial payment link failed:', err.message)
         }
       }
-      // Persist trial deduction / joining fee notes to payment record
-      if (payment && (trialDeduct > 0 || joiningFee > 0)) {
+      // Persist trial deduction / joining fee / discount to payment record
+      if (payment && (trialDeduct > 0 || joiningFee > 0 || discountPct > 0)) {
         const noteParts = []
+        if (discountPct > 0) noteParts.push(`Discount applied: ${discountPct}%`)
         if (trialDeduct > 0) noteParts.push(`Trial fee deducted: −₹${trialDeduct}`)
         if (joiningFee  > 0) noteParts.push(`Joining fee included: +₹${joiningFee}`)
         ;(async () => {
-          try { await supabase.from('payments').update({ notes: noteParts.join(' · ') }).eq('id', payment.invoiceId) } catch {}
+          try { await supabase.from('payments').update({ notes: noteParts.join(' · '), discount_pct: discountPct }).eq('id', payment.invoiceId) } catch {}
         })()
       }
 
@@ -1219,10 +1223,10 @@ export function AppProvider({ children }) {
           status:         'Paid',
           mode:           'Cash',
           paymentType:    'monthly',
-          discountPct:    0,
+          discountPct:    discountPct,
           monthsCovered:  payment.monthsCovered,
           academyId:      user?.academyId,
-          notes:          [trialDeduct > 0 ? `Trial fee deducted: −₹${trialDeduct} (see separate trial receipt)` : '', joiningFee > 0 ? `Joining fee included: +₹${joiningFee}` : ''].filter(Boolean).join(' · '),
+          notes:          [discountPct > 0 ? `Discount applied: ${discountPct}%` : '', trialDeduct > 0 ? `Trial fee deducted: −₹${trialDeduct} (see separate trial receipt)` : '', joiningFee > 0 ? `Joining fee included: +₹${joiningFee}` : ''].filter(Boolean).join(' · '),
         }
         setPayments(prev => [paymentRow, ...prev])
       }
