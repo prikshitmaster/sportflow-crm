@@ -12,6 +12,7 @@ import { toLocalDateStr } from '../lib/dates'
 import { normTrainingType, trainingTypeLabel } from '../lib/studentRules'
 import { MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 import { resolveBranchTax, computeTax, taxRowLabel } from '../lib/tax'
+import { computeDateRangeProration } from '../lib/proration'
 import { buildTrialReceiptHTML } from '../lib/trialReceipt'
 import ReceiptActions from '../components/ReceiptActions'
 import useBodyScrollLock from '../hooks/useBodyScrollLock'
@@ -1199,9 +1200,14 @@ function SessionModal({ trial, onClose, onSave }) {
 
 function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
   useBodyScrollLock()
+  const { sportBranches } = useApp()
   const batchOpts = trial.sport
     ? batches.filter(b => (b.sports || []).includes(trial.sport))
     : batches
+  // Same per-branch calendar/30-day setting Payments.jsx's custom coverage
+  // dates already respect (Settings > Branch Fees & Tax) — the day-math
+  // itself is shared via computeDateRangeProration so it can't drift.
+  const prorationBasis = sportBranches.find(b => b.id === trial.branchId)?.prorationBasis || 'calendar'
 
   const autoMonth = (() => {
     const d = new Date()
@@ -1324,6 +1330,37 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
       }
     })
   }
+
+  // The monthly rate to price a custom range against — same matched-plan
+  // lookup handleBatch/handleTrainingType already did, falling back to the
+  // batch's own default rate when the batch has no named fee plans at all
+  // (mirrors the batchPlans.length === 0 fallback in handleBatch above).
+  const customMonthlyRate = (() => {
+    const matchedPlan = form.feePlanId ? feePlans.find(p => String(p.id) === String(form.feePlanId)) : null
+    if (matchedPlan) return matchedPlan.monthlyFee || 0
+    const b = batches.find(b => String(b.id) === String(form.batchId))
+    return b?.defaultFee || 0
+  })()
+
+  // "Custom" used to mean "pick two dates, then type a number yourself" —
+  // no different from a sticky note. Prices the range by the day, exactly
+  // like Payments.jsx's custom coverage dates, and pre-fills `fees` with
+  // it — still just a starting point, not locked, so staff can still
+  // override for a real one-off discount.
+  const handleCustomDate = (key, value) => {
+    setForm(f => {
+      const next = { ...f, [key]: value }
+      if (next.feePlan === 'custom' && next.joinDate && next.paidTill) {
+        const priced = computeDateRangeProration(next.joinDate, next.paidTill, customMonthlyRate, prorationBasis)
+        if (priced && !priced.tooLong) next.fees = String(priced.amount)
+      }
+      return next
+    })
+  }
+
+  const customPricing = form.feePlan === 'custom'
+    ? computeDateRangeProration(form.joinDate, form.paidTill, customMonthlyRate, prorationBasis)
+    : null
 
   const validate = () => {
     const e = {}
@@ -1515,20 +1552,50 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
               </div>
             )}
 
-            {/* Custom date range */}
+            {/* Custom date range — priced by the day via computeDateRangeProration,
+                same engine Payments.jsx's custom coverage dates already use. */}
             {form.feePlan === 'custom' && (
               <div className="sm:col-span-2 bg-brand-50 border border-brand-100 rounded-xl p-4 grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="label text-brand-700">Join / Start Date</label>
                   <input className="input" type="date" max={toLocalDateStr()}
-                    value={form.joinDate} onChange={e => set('joinDate', e.target.value)} />
+                    value={form.joinDate} onChange={e => handleCustomDate('joinDate', e.target.value)} />
                 </div>
                 <div>
                   <label className="label text-brand-700">Paid Till (End Date)</label>
                   <input className="input" type="date" min={form.joinDate || undefined}
-                    value={form.paidTill} onChange={e => set('paidTill', e.target.value)} />
+                    value={form.paidTill} onChange={e => handleCustomDate('paidTill', e.target.value)} />
                 </div>
-                {preview && <p className="sm:col-span-2 text-xs text-brand-600 font-semibold -mt-2">Covers: {preview}</p>}
+                {customPricing?.tooLong && (
+                  <p className="sm:col-span-2 text-xs text-red-600 font-semibold -mt-2">
+                    That's {customPricing.monthsSpan} months — check the dates, or use a shorter range.
+                  </p>
+                )}
+                {customPricing && !customPricing.tooLong && (
+                  <div className="sm:col-span-2 -mt-2 space-y-1">
+                    <p className="text-xs text-brand-600 font-semibold">
+                      {customPricing.segments.length === 1
+                        ? `${customPricing.totalDays} day${customPricing.totalDays === 1 ? '' : 's'} × ₹${customPricing.perDayRate.toLocaleString('en-IN')}/day = ₹${customPricing.amount.toLocaleString('en-IN')}`
+                        : `${customPricing.totalDays} days · ${customPricing.fractionalMonths.toFixed(2)} months = ₹${customPricing.amount.toLocaleString('en-IN')}`}
+                    </p>
+                    {customPricing.segments.length > 1 && (
+                      <div className="text-[11px] text-brand-500 space-y-0.5">
+                        {customPricing.segments.map(s => (
+                          <div key={s.label} className="flex justify-between">
+                            <span>{s.label} — {s.days} day{s.days === 1 ? '' : 's'}{s.full ? ' (full month)' : ''}</span>
+                            <span className="font-semibold">₹{s.amount.toLocaleString('en-IN')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[11px] text-gray-400">Pre-filled below — edit it if this student's getting a different rate.</p>
+                  </div>
+                )}
+                {!customPricing && !customMonthlyRate && form.joinDate && form.paidTill && (
+                  <p className="sm:col-span-2 text-xs text-gray-400 -mt-2">
+                    No fee plan matched for this batch yet — enter the amount manually below.
+                  </p>
+                )}
               </div>
             )}
           </div>

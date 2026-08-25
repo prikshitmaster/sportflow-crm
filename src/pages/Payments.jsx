@@ -13,6 +13,7 @@ import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/
 import { todayStr, toLocalDateStr, toLocalMonthStr } from '../lib/dates'
 import { buildReceiptHTML } from '../lib/paymentReceipt'
 import { resolveBranchTax, computeTax, taxRowLabel } from '../lib/tax'
+import { computeDateRangeProration } from '../lib/proration'
 import { fetchAttendanceForStudents, fetchAttendanceForMonth } from '../lib/db'
 
 // Casing differs either side of the students ↔ fee_plans join — see
@@ -1759,52 +1760,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const customRangeInfo = (() => {
     if (!hasCustomRange || customEnd < customStart) return null
     const perMonthRate = preProrationAmount / Math.max(1, months)
-    if (perMonthRate <= 0) return null
-    const start = new Date(customStart + 'T00:00:00')
-    const end   = new Date(customEnd   + 'T00:00:00')
-    const segments = []
-    let cur = new Date(start.getFullYear(), start.getMonth(), 1)
-    // Hard stop so a fat-fingered year can't spin the loop. Anything past 36
-    // months is rejected below rather than priced.
-    while (cur <= end && segments.length < 600) {
-      const daysInMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate()
-      const monthEnd    = new Date(cur.getFullYear(), cur.getMonth(), daysInMonth)
-      const from = start > cur      ? start : cur
-      const to   = end   < monthEnd ? end   : monthEnd
-      const days = Math.round((to - from) / 86400000) + 1
-      const basisDays = prorationBasisSetting === '30day' ? 30 : daysInMonth
-      segments.push({
-        label: `${MO[cur.getMonth()]} ${cur.getFullYear()}`,
-        days, daysInMonth,
-        // A whole calendar month always costs exactly one month, whatever the
-        // basis — on the 30-day basis, February would otherwise bill 28/30 and
-        // a 31-day month 31/30.
-        fraction: days >= daysInMonth ? 1 : Math.min(days / basisDays, 1),
-        full: days >= daysInMonth,
-        amount: 0,
-      })
-      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
-    }
-    // Refuse rather than silently under-charge. Capping the loop at 36 months
-    // priced a mistyped 5-year range as 36 months while still handing over the
-    // full 60 months of coverage — two free years, no warning anywhere.
-    if (segments.length > 36) return { tooLong: true, monthsSpan: segments.length }
-    const fractionalMonths = segments.reduce((s, x) => s + x.fraction, 0)
-    const amount = Math.max(0, Math.round(perMonthRate * fractionalMonths))
-    // Per-month rupees are for display only, so the last one absorbs the
-    // rounding — otherwise a range covering exactly one quarter shows three
-    // ₹4,333 lines against a ₹13,000 total and looks like a bug.
-    let acc = 0
-    segments.forEach((s, i) => {
-      s.amount = i === segments.length - 1 ? amount - acc : Math.round(perMonthRate * s.fraction)
-      acc += s.amount
-    })
-    const firstBasis = prorationBasisSetting === '30day' ? 30 : (segments[0]?.daysInMonth || 30)
-    return {
-      segments, fractionalMonths, amount,
-      totalDays:  segments.reduce((s, x) => s + x.days, 0),
-      perDayRate: Math.round(perMonthRate / firstBasis),
-    }
+    return computeDateRangeProration(customStart, customEnd, perMonthRate, prorationBasisSetting)
   })()
 
   const rangeTooLong = !!customRangeInfo?.tooLong
