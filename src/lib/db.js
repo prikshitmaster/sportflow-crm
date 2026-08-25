@@ -1564,6 +1564,15 @@ export async function createStudentWithPayment(s) {
     // own branch server-side (RPC overrides p_branch_id when staff has a branch).
     p_token:          _sessionToken(),
     p_branch_id:      s.branchId ?? null,
+    // Migration 0192 — without these the resulting payment record silently
+    // dropped the discount, hardcoded payment_type to 'monthly' regardless
+    // of the plan actually picked, month-truncated coverage_start on a
+    // custom mid-month join, and never stored coverage_end at all.
+    p_discount_pct:   Number(s.discountPct) || 0,
+    p_payment_type:   s.feePlan || null,
+    p_coverage_start: s.payment?.coverageStart || null,
+    p_coverage_end:   s.payment?.coverageEnd   || null,
+    p_mode:           s.payment?.mode || 'Cash',
   })
   if (error) throw error
   return data  // BIGINT student id
