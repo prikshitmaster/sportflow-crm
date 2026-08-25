@@ -1255,6 +1255,20 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     }))
   }
 
+  // A trial scheduled into a specific batch arrives here with form.batchId
+  // already set — but handleBatch (the only thing that ever looks up a fee
+  // plan and fills `fees`) is wired to the <select>'s onChange only. With
+  // no change event to fire, a pre-selected batch left `fees` sitting at
+  // trial.quotedFee (a rough trial-stage guess, not the batch's real rate)
+  // or blank, indistinguishable in the UI from "the plan just doesn't
+  // exist" since the dropdown already shows the right batch. Run the same
+  // lookup once on mount so a pre-filled batch fills the fee exactly like
+  // picking it manually would.
+  useEffect(() => {
+    if (trial.batchId) handleBatch(String(trial.batchId))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleFeePlanPick = (planId) => {
     const plan = feePlans.find(p => String(p.id) === String(planId))
     if (!plan) { setForm(f => ({ ...f, feePlanId: '' })); return }
