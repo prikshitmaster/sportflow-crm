@@ -1332,6 +1332,7 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
       // leave a stale number sitting in the box until dates are chosen —
       // also resets the "has this been hand-edited" tracking below.
       lastAutoFee.current = null
+      setCustomRateBasis('monthly')
       return {
         ...f, feePlan: plan,
         paidTill: plan !== 'custom' ? calcPaidTill(f.joinDate, plan) : '',
@@ -1340,13 +1341,36 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     })
   }
 
-  // The monthly rate to price a custom range against — same matched-plan
-  // lookup handleBatch/handleTrainingType already did, falling back to the
-  // batch's own default rate when the batch has no named fee plans at all
-  // (mirrors the batchPlans.length === 0 fallback in handleBatch above).
+  // Same matched-plan lookup handleBatch/handleTrainingType already do
+  // (by training type, independent of which fee-duration pill is active) —
+  // needed here so Custom can price against the Quarterly/Yearly rate too,
+  // not just Monthly.
+  const matchedPlanForCustom = (() => {
+    if (form.feePlanId) {
+      const p = feePlans.find(p => String(p.id) === String(form.feePlanId))
+      if (p) return p
+    }
+    return feePlans.find(p => p.batchId === Number(form.batchId) && normTrainingType(p.trainingType) === normTrainingType(form.trainingType)) || null
+  })()
+
+  // Which named-plan tier to price a Custom range against — Monthly by
+  // default (unchanged behavior), but Quarterly/Yearly are selectable when
+  // the batch's plan actually has that rate, so a mid-quarter conversion
+  // isn't stuck paying the (higher) standalone monthly rate for every day.
+  const [customRateBasis, setCustomRateBasis] = useState('monthly')
+
+  // The per-month rate to price a custom range against. Quarterly/Yearly
+  // divide their flat period total down to a per-month-equivalent basis —
+  // same idea as Payments.jsx keeping its plan pills selectable alongside
+  // Custom coverage dates. Falls back to the batch's own default monthly
+  // rate when there's no named plan at all (mirrors the batchPlans.length
+  // === 0 fallback in handleBatch above); Quarterly/Yearly have nothing to
+  // fall back to if the plan doesn't carry that rate, so those options are
+  // simply not offered in that case (see the UI below).
   const customMonthlyRate = (() => {
-    const matchedPlan = form.feePlanId ? feePlans.find(p => String(p.id) === String(form.feePlanId)) : null
-    if (matchedPlan) return matchedPlan.monthlyFee || 0
+    if (customRateBasis === 'quarterly' && matchedPlanForCustom?.quarterlyFee) return matchedPlanForCustom.quarterlyFee / 3
+    if (customRateBasis === 'yearly' && matchedPlanForCustom?.yearlyFee) return matchedPlanForCustom.yearlyFee / 12
+    if (matchedPlanForCustom?.monthlyFee) return matchedPlanForCustom.monthlyFee
     const b = batches.find(b => String(b.id) === String(form.batchId))
     return b?.defaultFee || 0
   })()
@@ -1616,6 +1640,39 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
                   <input className="input" type="date" min={form.joinDate || undefined}
                     value={form.paidTill} onChange={e => handleCustomDate('paidTill', e.target.value)} />
                 </div>
+                {matchedPlanForCustom && (matchedPlanForCustom.quarterlyFee || matchedPlanForCustom.yearlyFee) && (
+                  <div className="sm:col-span-2 -mt-2">
+                    <label className="text-[11px] text-brand-700 font-semibold block mb-1">Price this range using</label>
+                    <div className="flex gap-1.5">
+                      {[
+                        { key: 'monthly',   label: 'Monthly',   rate: matchedPlanForCustom.monthlyFee },
+                        { key: 'quarterly', label: 'Quarterly', rate: matchedPlanForCustom.quarterlyFee },
+                        { key: 'yearly',    label: 'Yearly',    rate: matchedPlanForCustom.yearlyFee },
+                      ].filter(o => o.rate).map(o => (
+                        <button key={o.key} type="button"
+                          onClick={() => {
+                            setCustomRateBasis(o.key)
+                            // Explicit basis change — recompute and overwrite
+                            // regardless of any manual edit, same as picking a
+                            // batch/training type elsewhere in this form does.
+                            const rate = o.key === 'quarterly' ? matchedPlanForCustom.quarterlyFee / 3
+                                       : o.key === 'yearly'    ? matchedPlanForCustom.yearlyFee / 12
+                                       : matchedPlanForCustom.monthlyFee
+                            if (form.joinDate && form.paidTill) {
+                              const priced = computeDateRangeProration(form.joinDate, form.paidTill, rate, prorationBasis)
+                              if (priced && !priced.tooLong) {
+                                lastAutoFee.current = String(priced.amount)
+                                setForm(f => ({ ...f, fees: String(priced.amount) }))
+                              }
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${customRateBasis === o.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-brand-600 border-brand-200 hover:bg-brand-50'}`}>
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {customPricing?.tooLong && (
                   <p className="sm:col-span-2 text-xs text-red-600 font-semibold -mt-2">
                     That's {customPricing.monthsSpan} months — check the dates, or use a shorter range.
