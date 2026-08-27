@@ -2186,42 +2186,50 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
           )}
         </div>
 
-        {/* Payment plan pills */}
-        {!customDates && (
-          <div>
-            <label className="label">Payment Plan</label>
-            <div className="grid grid-cols-4 gap-2">
-              {PLAN_OPTS.map(pt => (
-                <button key={pt.key} type="button"
-                  onClick={() => {
-                    setAmountOverride(null)
-                    const planData = getFeePlanRate(form.batchId, selectedStudent?.trainingType, pt.key)
-                    setForm(f => ({ ...f, paymentType: pt.key, baseAmount: planData?.rate ?? f.baseAmount }))
-                  }}
-                  className={`py-2.5 rounded-xl text-xs font-bold border transition ${
-                    form.paymentType === pt.key
-                      ? 'bg-brand-600 text-white border-brand-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <div>{pt.label}</div>
-                  <div className={`font-normal mt-0.5 ${form.paymentType === pt.key ? 'text-brand-200' : 'text-gray-400'}`}>{pt.sub}</div>
-                </button>
-              ))}
-            </div>
-            {form.paymentType === 'custom' && (
-              <div className="mt-2 flex items-center gap-2">
-                <label className="text-xs text-gray-500 whitespace-nowrap">Number of months:</label>
-                <input
-                  className="input w-24 text-center font-bold"
-                  type="number" min="1" max="36"
-                  value={customMonths}
-                  onChange={e => { setCustomMonths(Math.max(1, Number(e.target.value))); setAmountOverride(null) }}
-                />
-              </div>
-            )}
+        {/* Payment plan pills — stay visible with Custom coverage dates too,
+            so a mid-quarter (or mid-year) join can be priced off the
+            quarterly/yearly rate instead of always falling back to Monthly.
+            Only the "Custom" (arbitrary month count, no dates) pill drops
+            out here — it would conflict with the exact date range below. */}
+        <div>
+          <label className="label">Payment Plan</label>
+          <div className={`grid gap-2 ${customDates ? 'grid-cols-3' : 'grid-cols-4'}`}>
+            {PLAN_OPTS.filter(pt => !(customDates && pt.key === 'custom')).map(pt => (
+              <button key={pt.key} type="button"
+                onClick={() => {
+                  setAmountOverride(null)
+                  const planData = getFeePlanRate(form.batchId, selectedStudent?.trainingType, pt.key)
+                  setForm(f => ({ ...f, paymentType: pt.key, baseAmount: planData?.rate ?? f.baseAmount }))
+                }}
+                className={`py-2.5 rounded-xl text-xs font-bold border transition ${
+                  form.paymentType === pt.key
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <div>{pt.label}</div>
+                <div className={`font-normal mt-0.5 ${form.paymentType === pt.key ? 'text-brand-200' : 'text-gray-400'}`}>{pt.sub}</div>
+              </button>
+            ))}
           </div>
-        )}
+          {customDates && (
+            <p className="text-[11px] text-gray-400 mt-1.5">
+              Picks which rate the day-by-day proration below is based on — Quarterly/Yearly price a
+              partial month against their per-month-equivalent rate instead of the standalone monthly one.
+            </p>
+          )}
+          {!customDates && form.paymentType === 'custom' && (
+            <div className="mt-2 flex items-center gap-2">
+              <label className="text-xs text-gray-500 whitespace-nowrap">Number of months:</label>
+              <input
+                className="input w-24 text-center font-bold"
+                type="number" min="1" max="36"
+                value={customMonths}
+                onChange={e => { setCustomMonths(Math.max(1, Number(e.target.value))); setAmountOverride(null) }}
+              />
+            </div>
+          )}
+        </div>
 
         {/* Custom coverage date range — for a non-month-aligned billing
             period (e.g. a student who joined mid-month). Manual override:
@@ -2229,7 +2237,18 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         <div>
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input type="checkbox" checked={customDates}
-              onChange={e => { setCustomDates(e.target.checked); setAmountOverride(null) }}
+              onChange={e => {
+                setCustomDates(e.target.checked)
+                setAmountOverride(null)
+                // The "Custom" PILL (arbitrary month count, no dates) and
+                // "Custom coverage dates" (arbitrary date range) are two
+                // different things that both used the word "custom" — can't
+                // let both be active at once, so land on Monthly instead of
+                // leaving a nonsensical combination in place.
+                if (e.target.checked && form.paymentType === 'custom') {
+                  setForm(f => ({ ...f, paymentType: 'monthly' }))
+                }
+              }}
               className="w-4 h-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
             <span className="text-xs font-semibold text-gray-700">Custom coverage dates</span>
           </label>
