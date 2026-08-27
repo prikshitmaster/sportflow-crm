@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import Paginator, { PAGE_SIZE } from '../components/Paginator'
 import { useApp } from '../context/AppContext'
 import {
@@ -1327,10 +1327,15 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     setForm(f => {
       const sel = f.feePlanId ? feePlans.find(p => String(p.id) === String(f.feePlanId)) : null
       const feeMap = sel ? { monthly: sel.monthlyFee, quarterly: sel.quarterlyFee, yearly: sel.yearlyFee } : null
+      // Switching TO Custom: the old Monthly/Quarterly/Yearly rate means
+      // nothing for a not-yet-picked date range, so clear it rather than
+      // leave a stale number sitting in the box until dates are chosen —
+      // also resets the "has this been hand-edited" tracking below.
+      lastAutoFee.current = null
       return {
         ...f, feePlan: plan,
         paidTill: plan !== 'custom' ? calcPaidTill(f.joinDate, plan) : '',
-        ...(feeMap && feeMap[plan] ? { fees: feeMap[plan] } : {}),
+        fees: plan === 'custom' ? '' : (feeMap && feeMap[plan] ? feeMap[plan] : f.fees),
       }
     })
   }
@@ -1346,6 +1351,16 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     return b?.defaultFee || 0
   })()
 
+  // Tracks the last value THIS component computed and wrote into `fees`,
+  // so a later date tweak can tell "still whatever we last auto-filled" (safe
+  // to recompute) apart from "staff typed a different number in between"
+  // (leave it alone). Without this, adjusting either date after typing a
+  // negotiated one-off rate silently threw the typed number away and
+  // replaced it with the freshly recomputed one — exactly the kind of thing
+  // that looks like "the calculation is wrong" when it's really "the form
+  // overwrote what I just entered."
+  const lastAutoFee = useRef(null)
+
   // "Custom" used to mean "pick two dates, then type a number yourself" —
   // no different from a sticky note. Prices the range by the day, exactly
   // like Payments.jsx's custom coverage dates, and pre-fills `fees` with
@@ -1355,8 +1370,12 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     setForm(f => {
       const next = { ...f, [key]: value }
       if (next.feePlan === 'custom' && next.joinDate && next.paidTill) {
+        const untouched = f.fees === '' || f.fees === lastAutoFee.current
         const priced = computeDateRangeProration(next.joinDate, next.paidTill, customMonthlyRate, prorationBasis)
-        if (priced && !priced.tooLong) next.fees = String(priced.amount)
+        if (priced && !priced.tooLong && untouched) {
+          next.fees = String(priced.amount)
+          lastAutoFee.current = next.fees
+        }
       }
       return next
     })
