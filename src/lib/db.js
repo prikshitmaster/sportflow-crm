@@ -32,6 +32,43 @@ function _sessionToken() {
   } catch { return null }
 }
 
+// Loops PostgREST .range() pages until a query is fully exhausted, so a
+// table that grows past this project's max-rows cap (10000, raised from the
+// default — see AppContext.jsx STUDENTS_PAGE_SIZE comment) never gets
+// silently truncated. That bug was fixed for the students roster on
+// 2026-08-01 but payments/attendance-for-month were never covered — a large
+// academy's revenue and attendance numbers would quietly drop rows with no
+// error.
+//
+// `buildQuery(withCount)` must return a fresh `supabase.from(...)` query each
+// call — `withCount` is only true for page 1, so `{ count: 'exact' }` (a full
+// COUNT(*) scan) doesn't get re-run on every parallel page.
+//
+// The `.order()` MUST be ascending on a column that only grows with new
+// inserts (a bigint/bigserial id, or an atomically-assigned sequence like
+// invoice numbers) — never a mutable/DESC-on-recency column. Pages after
+// page 1 are fetched in parallel against independent snapshots; if a new row
+// can sort *before* already-fetched rows (e.g. `created_at DESC` on a live
+// table), an insert landing mid-fetch shifts every later page's offsets by
+// one, duplicating one row and silently dropping the true last one. Ordering
+// ascending by an insert-monotonic column means new rows only ever land past
+// the already-computed `total`, so at worst they're missed this round, never
+// duplicated or corrupted.
+async function _fetchAllRows(buildQuery, pageSize = 10000) {
+  const first = await buildQuery(true).range(0, pageSize - 1)
+  if (first.error) throw first.error
+  const total = first.count ?? first.data?.length ?? 0
+  const firstData = first.data || []
+  if (total <= firstData.length) return firstData
+  const pages = []
+  for (let offset = pageSize; offset < total; offset += pageSize) {
+    pages.push(buildQuery(false).range(offset, offset + pageSize - 1))
+  }
+  const rest = await Promise.all(pages)
+  for (const r of rest) if (r.error) throw r.error
+  return firstData.concat(...rest.map(r => r.data || []))
+}
+
 // ── Students ──────────────────────────────────────────────
 export async function fetchStudents(academyId) {
   let query = supabase.from('students').select('*').order('name')
@@ -326,13 +363,29 @@ export async function removeStudentFromBatch(studentId, lastBatchId, lastBatchNa
 
 // ── Payments ──────────────────────────────────────────────
 export async function fetchPayments(academyId) {
-  let query = supabase.from('payments').select('*').order('created_at', { ascending: false })
-  if (academyId) query = query.eq('academy_id', academyId)
-  const { data, error } = await query
-  if (error) {
+  let data
+  try {
+    // Ordered ascending by id (atomically assigned 'INV-YYYY-NNN', see
+    // next_invoice_id RPC) rather than `created_at DESC` — a live table paged
+    // with parallel range() requests must sort on a column where new inserts
+    // only ever land past what's already been counted, or a payment saved
+    // mid-fetch shifts every later page's offsets and duplicates/drops a row
+    // (see _fetchAllRows comment). Re-sorted to newest-first below to keep
+    // this function's existing output contract for callers.
+    data = await _fetchAllRows((withCount) => {
+      let q = supabase.from('payments').select('*', withCount ? { count: 'exact' } : undefined)
+        .order('id', { ascending: true })
+      if (academyId) q = q.eq('academy_id', academyId)
+      return q
+    })
+  } catch (error) {
     if (error.code === '42P01') return []
     throw error
   }
+  data.sort((a, b) => {
+    if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1
+    return a.id < b.id ? 1 : -1
+  })
   return data.map(row => ({
     id:            row.id,
     studentId:     row.student_id,
@@ -1399,10 +1452,13 @@ export async function fetchAttendanceForMonth(year, month, batchId = null) {
   const lastDay = new Date(year, month + 1, 0).getDate()
   const start = `${year}-${pad(month + 1)}-01`
   const end   = `${year}-${pad(month + 1)}-${pad(lastDay)}`
-  let q = supabase.from('attendance').select('student_id, date, present, status').gte('date', start).lte('date', end)
-  if (batchId != null) q = q.eq('batch_id', batchId)
-  const { data, error } = await q
-  if (error) throw error
+  const data = await _fetchAllRows((withCount) => {
+    let q = supabase.from('attendance').select('student_id, date, present, status', withCount ? { count: 'exact' } : undefined)
+      .gte('date', start).lte('date', end)
+      .order('id', { ascending: true }) // insert-monotonic — safe for parallel range() paging
+    if (batchId != null) q = q.eq('batch_id', batchId)
+    return q
+  })
   const result = {}
   data.forEach(row => {
     const day = parseInt(String(row.date).slice(8, 10), 10)
