@@ -25,7 +25,7 @@ export default function StudentLogin() {
       navigate('/student/dashboard')
     } catch (err) {
       recordFailure()
-      setError(err.message || 'Invalid Student ID or password')
+      setError(err.name === 'AbortError' ? 'This is taking longer than expected. Please check your connection and try again.' : (err.message || 'Invalid Student ID or password'))
     } finally { setLoading(false) }
   }
 

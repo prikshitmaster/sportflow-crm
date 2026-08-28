@@ -193,14 +193,14 @@ export default function NotificationBell({ recipientType, recipientId, academyId
 
   useEffect(() => {
     if (!recipientId) return
-    const ch = subscribeToNotifications(
+    const unsubscribe = subscribeToNotifications(
       recipientType, recipientId,
       n => setNotifs(p => [n, ...p]),
       // Keeps the badge in sync when a notice is marked read/actioned from
       // somewhere other than this dropdown (e.g. StaffNotices' "Got it").
       n => setNotifs(p => p.map(x => x.id === n.id ? n : x)),
     )
-    return () => ch.unsubscribe()
+    return unsubscribe
   }, [recipientType, recipientId])
 
   useEffect(() => {

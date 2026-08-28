@@ -105,8 +105,13 @@ export async function fetchNoticeReceipts(announcementId) {
 // directly against the DB to drive their own "Got it" buttons. Without an
 // UPDATE listener the bell's local list never learns about that write, so its
 // badge count stays stuck at the old number until the component remounts.
+// Returns an unsubscribe function rather than the raw channel — `.unsubscribe()`
+// alone leaves the channel registered in the client's internal channel list,
+// so over a long-lived SPA session (or repeated login/logout) dead channels
+// pile up instead of being released. `removeChannel` does the unsubscribe AND
+// deregisters it.
 export function subscribeToNotifications(recipientType, recipientId, onNew, onUpdate) {
-  return supabase
+  const channel = supabase
     .channel(`notif:${recipientType}:${recipientId}`)
     .on('postgres_changes', {
       event: 'INSERT',
@@ -126,6 +131,7 @@ export function subscribeToNotifications(recipientType, recipientId, onNew, onUp
       if (payload.new.recipient_type === recipientType) onUpdate?.(payload.new)
     })
     .subscribe()
+  return () => supabase.removeChannel(channel)
 }
 
 // ── Web Push ──────────────────────────────────────────────────────────────────
