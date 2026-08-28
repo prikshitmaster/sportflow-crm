@@ -27,6 +27,16 @@ if (!url || !key) {
 // Inject session tokens as request headers so PostgREST RLS policies can
 // validate them server-side (see 0004_session_header_rls.sql).
 // Harmless before 0004 is applied — the DB ignores unrecognised headers.
+//
+// Every request also gets a hard timeout. Without this, a degraded backend
+// (e.g. the 2026-08-28 Auth outage, where /auth/v1/token hung with no
+// response at all) leaves the request pending forever — login spins
+// indefinitely with no way to recover, and background refreshes (see
+// refreshAllSilent in AppContext.jsx) pile up unresolved requests on every
+// focus event instead of failing fast and backing off. Aborting after 20s
+// turns "silent infinite hang" into "clear error, button re-enables."
+const REQUEST_TIMEOUT_MS = 20_000
+
 function fetchWithSessionHeaders(input, init = {}) {
   const headers = new Headers(init.headers || {})
 
@@ -36,7 +46,11 @@ function fetchWithSessionHeaders(input, init = {}) {
   const studentSession = getStudentSession()
   if (studentSession?.token) headers.set('x-student-token', studentSession.token)
 
-  return fetch(input, { ...init, headers })
+  if (init.signal) return fetch(input, { ...init, headers }) // caller owns cancellation
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  return fetch(input, { ...init, headers, signal: controller.signal })
+    .finally(() => clearTimeout(timer))
 }
 
 export const supabase = createClient(url || 'http://localhost', key || 'placeholder', {

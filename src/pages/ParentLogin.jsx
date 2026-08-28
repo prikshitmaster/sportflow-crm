@@ -35,7 +35,7 @@ export default function ParentLogin() {
       await sendParentOtp(p)
       setStage('otp')
     } catch (err) {
-      setError(err?.message || 'Could not send code')
+      setError(err.name === 'AbortError' ? 'This is taking longer than expected. Please check your connection and try again.' : (err?.message || 'Could not send code'))
     } finally { setLoading(false) }
   }
 
@@ -61,7 +61,7 @@ export default function ParentLogin() {
       await verifyParentOtp(p, otp)
       navigate('/parent/home')
     } catch (err) {
-      setError(err?.message || 'Invalid code or this number is not registered as a parent')
+      setError(err.name === 'AbortError' ? 'This is taking longer than expected. Please check your connection and try again.' : (err?.message || 'Invalid code or this number is not registered as a parent'))
     } finally { setLoading(false) }
   }
 

@@ -25,7 +25,7 @@ export default function Login() {
       navigate('/dashboard')
     } catch (err) {
       recordFailure()
-      setError(err.message || 'Login failed')
+      setError(err.name === 'AbortError' ? 'This is taking longer than expected. Please check your connection and try again.' : (err.message || 'Login failed'))
     } finally { setLoading(false) }
   }
 
