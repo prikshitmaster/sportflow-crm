@@ -4,6 +4,7 @@ import * as db from '../../lib/db'
 import { supabase } from '../../lib/supabase'
 import { saveOrShareFile } from '../../lib/nativeSave'
 import { ChevronLeft, ChevronRight, CalendarCheck, Download } from 'lucide-react'
+import Spinner from '../../components/Spinner'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -154,10 +155,7 @@ export default function StudentAttendance() {
         {/* Calendar grid */}
         {loading ? (
           <div className="h-40 flex items-center justify-center">
-            <svg className="animate-spin h-6 w-6 text-brand-600" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-            </svg>
+            <Spinner className="h-6 w-6 text-brand-600" />
           </div>
         ) : (
           <div className="grid grid-cols-7 gap-1">

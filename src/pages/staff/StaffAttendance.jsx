@@ -10,6 +10,7 @@ import { ArrowLeft, Check, Users, Clock, Search, ChevronRight, RefreshCw } from 
 import { fetchBatchEnrolments } from '../../lib/db'
 import * as db from '../../lib/db'   // pickBatch needs db.fetchAttendanceForDate — was missing, marks weren't pre-loading
 import StudentAvatar from '../../components/StudentAvatar'
+import Spinner from '../../components/Spinner'
 
 // Status cycle: blank → Present → Absent → Late → blank (tap again to clear mistake)
 const NEXT_STATUS = { '': 'Present', Present: 'Absent', Absent: 'Late', Late: '' }
@@ -439,10 +440,7 @@ export default function StaffAttendance() {
           >
             {saving ? (
               <span className="flex items-center gap-2">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                </svg>
+                <Spinner className="h-4 w-4" />
                 Saving…
               </span>
             ) : (
