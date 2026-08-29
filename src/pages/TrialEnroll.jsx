@@ -1579,7 +1579,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                   background: `radial-gradient(circle at 30% 30%, ${A}4D, ${A}00 70%)` }} />
                     <div style={{ position: 'absolute', bottom: -46, left: -30, width: 120, height: 120, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.06)' }} />
 
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 13 }}>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 13 }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: `${A}24`,
                                     border: `1px solid ${A}4D`, borderRadius: R.pill, padding: '5px 11px 5px 9px' }}>
                         <span style={{ position: 'relative', display: 'flex', width: 7, height: 7 }}>
@@ -1587,10 +1587,6 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                           <span style={{ position: 'relative', width: 7, height: 7, borderRadius: '50%', background: A }} />
                         </span>
                         <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.9, color: A_SOFT, textTransform: 'uppercase' }}>Admissions open</span>
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: '#fff', lineHeight: 1, ...NUM }}>₹0</div>
-                        <div style={{ ...T.badge, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>To register</div>
                       </div>
                     </div>
                     <div style={{ position: 'relative', ...T.h2, color: '#fff', marginBottom: 5 }}>Book a free trial session</div>
