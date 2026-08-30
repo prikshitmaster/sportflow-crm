@@ -5,13 +5,14 @@ import { App as CapacitorApp } from '@capacitor/app'
 import {
   Phone, ArrowLeft, MapPin, Trophy, Camera, X, User,
   Home as HomeIcon, CalendarDays, Search, Bell, ChevronDown, ChevronRight,
-  LogOut, Download, Check, Eye, Bookmark, Info,
+  LogOut, Download, Check, Eye, Bookmark, Info, Share, Plus,
 } from 'lucide-react'
 import * as db from '../lib/db'
 import DevFillButton from '../components/DevFillButton'
 import { fillPublicRegistration } from '../lib/devFill'
 import { RELATIONSHIP_OPTIONS, MEDICAL_OPTIONS, GENDER_OPTIONS } from '../lib/studentIntake'
 import { computeTrialTotal, taxRowLabel } from '../lib/tax'
+import { useJoinManifest, useInstallPrompt } from '../lib/joinPwa'
 import { downloadTrialReceipt, viewTrialReceipt, buildTrialReceiptHTML } from '../lib/trialReceipt'
 
 // Public, no-auth-to-browse, multi-tenant student self-registration funnel.
@@ -622,10 +623,77 @@ const REQUIRED_FIELDS = [
 // eyeball a preference against a batch's days without translating.
 const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
+// ── Install-to-home-screen row (Academy tab) ──────────────────────────────
+// Lives here rather than in components/ because every style token it needs
+// (N, T, R, Tappable) is module-private to this file, and lifting the whole
+// design system out is unrelated scope.
+//
+// Two different mechanisms, because the platforms genuinely differ: Chrome
+// fires beforeinstallprompt and hands us a prompt() we can call from a real
+// tap, while Safari fires nothing and exposes no install API at all — on iOS
+// the only route is the user doing Share → Add to Home Screen themselves, so
+// the row opens a sheet showing those steps. Renders nothing once installed,
+// and nothing on a desktop browser that offers no install at all.
+function InstallAppRow({ C }) {
+  const { canInstall, promptInstall, isIOS, isInstalled } = useInstallPrompt()
+  const [showSteps, setShowSteps] = useState(false)
+
+  if (isInstalled) return null
+  if (!canInstall && !isIOS) return null
+
+  const steps = [
+    { icon: Share, text: 'Tap the Share button in Safari’s toolbar' },
+    { icon: Plus,  text: 'Choose "Add to Home Screen"' },
+    { icon: Check, text: 'Tap Add — the academy appears with your other apps' },
+  ]
+
+  return (
+    <>
+      <Tappable className="jf-row" onClick={() => (isIOS ? setShowSteps(true) : promptInstall())}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 14, ...T.label, fontSize: 14, borderTop: `1px solid ${N.hair}` }}>
+        Install app
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, ...T.metaB, color: N.muted }}>
+          Add to home screen
+          <Download size={15} color={C.main} />
+        </span>
+      </Tappable>
+
+      {showSteps && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(19,26,43,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}
+          onClick={() => setShowSteps(false)}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 440, background: '#fff', borderRadius: `${R.tile}px ${R.tile}px 0 0`,
+                     padding: '18px 20px calc(24px + env(safe-area-inset-bottom))', boxSizing: 'border-box',
+                     animation: 'jfFooter .32s cubic-bezier(.2,.8,.2,1) both' }}>
+            <div style={{ width: 36, height: 4, borderRadius: R.pill, background: N.line, margin: '0 auto 16px' }} />
+            <div style={{ ...T.h3, fontSize: 17, marginBottom: 4 }}>Add to your home screen</div>
+            <div style={{ ...T.sub, color: N.muted, marginBottom: 16 }}>
+              Three taps, and it opens like an app — no App Store needed.
+            </div>
+            {steps.map(({ icon: Icon, text }, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: i ? `1px solid ${N.hair}` : 'none' }}>
+                <div style={{ width: 32, height: 32, flexShrink: 0, borderRadius: R.icon, background: N.page, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon size={16} color={C.main} />
+                </div>
+                <span style={{ ...T.body, color: N.dim }}>{text}</span>
+              </div>
+            ))}
+            <Cta onClick={() => setShowSteps(false)} C={C}>Got it</Cta>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 export default function TrialEnroll({ academySlug: slugProp }) {
   const { academySlug: slugParam } = useParams()
   const slug = slugProp || slugParam
   useJoinFont()
+  // Repoint the document at /join.webmanifest for as long as the funnel is
+  // mounted. Without this, installing from here produced an app called
+  // "Khelit" that opened the owner login — see src/lib/joinPwa.js.
+  useJoinManifest()
 
   // Branding is fetched before anything renders — the whole point is showing
   // the RIGHT academy immediately, never a flash of wrong/default branding.
@@ -1912,6 +1980,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       </div>
                     </a>
                   )}
+                  <InstallAppRow C={C} />
                   {isAuthed && (
                     <Tappable className="jf-row" onClick={logout}
                       style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 14, ...T.label, fontSize: 14, borderTop: `1px solid ${N.hair}`, color: DANGER_TEXT }}>

@@ -51,6 +51,12 @@ export default defineConfig({
           '**/index.es-*.js',               // PDF toolchain (~151 KB)
           '**/generateCategoricalChart-*.js', // recharts    (~351 KB)
           '**/jsQR-*.js',                   // QR scanner    (~130 KB)
+          // PWA install icons for the /join funnel (~175 KB). The browser and
+          // the OS fetch these directly when the app is installed or pinned —
+          // nothing in the page ever requests them through the service worker,
+          // so precaching them only costs every visitor the download.
+          'join-icon-*.png',
+          'apple-touch-icon.png',
         ],
       },
       // NOTE: no `workbox` block here on purpose. With strategies:'injectManifest'
