@@ -3918,6 +3918,14 @@ const _mapPublicTrialBatch = (row) => ({
   batchType:     row.batch_type || 'development',
   coach:         row.coach || null,
   coachPhotoUrl: row.coach_photo_url || null,
+  // Seat policy (0198). isFull is decided server-side off the same roster the
+  // capacity trigger uses, so the card never has to recompute "full" from
+  // seatsLeft and reach a different answer. fullSelectable / fullPayable are
+  // the academy's two Registration settings, sent down with the batches so the
+  // form doesn't need a second round-trip to know what it may offer.
+  isFull:         row.is_full === true,
+  fullSelectable: row.full_selectable !== false,
+  fullPayable:    row.full_payable !== false,
 })
 
 export async function fetchPublicTrialBatches(slug, branchId) {

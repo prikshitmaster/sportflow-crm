@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import {
   Building, Bell, MessageCircle, Shield, CreditCard, Check, ToggleLeft, Key,
   Database, Upload, FileJson, AlertTriangle, Loader2, CheckCircle2, X, Wand2, Link2,
+  UserPlus,
 } from 'lucide-react'
 import { parseImportFile, importSportData } from '../lib/exportImport'
 import DevFillButton, { setDemoMode, isDemoModeEnabled } from '../components/DevFillButton'
@@ -12,6 +13,7 @@ import WhatsAppSettings from '../components/WhatsAppSettings'
 const tabs = [
   { id: 'academy',       label: 'Academy Profile', icon: Building },
   { id: 'features',      label: 'Features',        icon: ToggleLeft },
+  { id: 'registration',  label: 'Registration',    icon: UserPlus },
   { id: 'fees',          label: 'Fees & Tax',       icon: CreditCard },
   { id: 'notifications', label: 'Notifications',    icon: Bell },
   { id: 'whatsapp',      label: 'WhatsApp',         icon: MessageCircle },
@@ -56,6 +58,7 @@ export default function Settings() {
         <div className="flex-1 card p-6">
           {activeTab === 'academy'       && <AcademyTab user={user} />}
           {activeTab === 'features'      && <FeaturesTab />}
+          {activeTab === 'registration'  && <RegistrationTab />}
           {activeTab === 'fees'          && <FeePlansTab onSave={handleSave} saved={saved} />}
           {activeTab === 'notifications' && <NotificationsTab onSave={handleSave} saved={saved} />}
           {activeTab === 'whatsapp'      && <WhatsAppSettings />}
@@ -823,6 +826,74 @@ function NotificationsTab({ onSave, saved }) {
 
 // ── Features Tab (owner only) ──────────────────────────────
 // Each toggle calls AppContext.toggleFeature() which saves to DB immediately
+// Everything that governs the public /join funnel, in one place. Two of these
+// (batch choice, auto-assign by age) used to live under Features, mixed in with
+// module on/off switches they have nothing to do with.
+//
+// The two "full batch" settings exist because a full batch used to be bookable
+// AND chargeable: the card said "Waitlist" but stayed tappable, Razorpay opened
+// anyway, and nobody discovered there was no seat until staff tried to convert
+// the trial weeks later — fee already collected. See migration 0198, which
+// enforces both of these server-side; these toggles only choose the policy.
+function RegistrationTab() {
+  const { features, toggleFeature } = useApp()
+
+  const ROWS = [
+    { key: 'join_batch_choice', label: 'Batch Choice on Registration',
+      desc: 'Public /join form lets the student pick a batch — turn off to skip that step and assign batches yourself' },
+    { key: 'auto_assign_batch_by_age', label: 'Auto-Assign Batch by Age', defaultOff: true,
+      desc: 'Only applies when Batch Choice above is off — places the student in a matching Development batch by age as soon as they enter date of birth, and shows the assigned coach' },
+    { key: 'join_full_batch_selectable', label: 'Allow Registering for a Full Batch',
+      desc: 'When a batch has no seats left, families can still register for it. Turn off and the batch is shown but greyed out, so they pick one with room instead' },
+    { key: 'join_full_batch_payment', label: 'Take Payment for a Full Batch',
+      desc: 'Charge the trial fee even when the batch has no seat. Turn OFF and the family still fills the whole form, pays nothing, and lands in Trials as “Enquired” with the branch address shown — call them when a seat frees up' },
+  ]
+
+  return (
+    <div>
+      <SectionHeader
+        title="Registration"
+        desc="Controls the public /join form families use to sign up."
+      />
+      <div className="space-y-1">
+        {ROWS.map(({ key, label, desc, defaultOff }) => {
+          const isOn = defaultOff ? features[key] === true : features[key] !== false
+          // Charging for a seat you cannot give is the one combination worth
+          // calling out — it is the pre-0198 behaviour, kept as the default
+          // only so nothing changes for academies that never open this tab.
+          const warn = key === 'join_full_batch_payment'
+            && isOn && features['join_full_batch_selectable'] !== false
+          return (
+            <div key={key} className="py-3.5 border-b border-gray-50 last:border-0">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">{label}</p>
+                  <p className="text-xs text-gray-400">{desc}</p>
+                </div>
+                <button
+                  onClick={() => toggleFeature(key, !isOn)}
+                  className={`relative inline-flex w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                    isOn ? 'bg-brand-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span className={`inline-block w-4 h-4 bg-white rounded-full shadow transition-transform mt-1 ${
+                    isOn ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+              {warn && (
+                <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                  ⚠ Families can currently pay a trial fee for a batch with no seat left.
+                </p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function FeaturesTab() {
   const { features, toggleFeature, user } = useApp()
 
@@ -840,11 +911,8 @@ function FeaturesTab() {
     { key: 'backups',    label: 'Backups',             desc: 'Data backup and restore' },
     { key: 'student_code_login', label: 'Student Direct Login', desc: 'Students log in with their own Student ID + Join Code' },
     { key: 'family_login',       label: 'Family (Parent) Login', desc: 'Parents log in with just their phone number and pick a child — supports siblings under one number' },
-    { key: 'join_batch_choice',  label: 'Batch Choice on Registration', desc: 'Public /join form lets the student pick a batch — turn off to skip that step and assign batches yourself' },
-    // Opt-in, unlike everything above — new behaviour that silently assigns
-    // a batch for the family rather than something already true until you
-    // turn it off. Only takes effect while Batch Choice above is off.
-    { key: 'auto_assign_batch_by_age', label: 'Auto-Assign Batch by Age', desc: 'Only applies when Batch Choice on Registration is off — places the student in a matching Development batch by age as soon as they enter date of birth, and shows the assigned coach', defaultOff: true },
+    // join_batch_choice and auto_assign_batch_by_age moved to the Registration
+    // tab, so everything governing the public /join funnel sits in one place.
     { key: 'payment_recent_history', label: 'Recent Payments in Payment Form', desc: 'Show the student’s last 3 payments inside Record Payment, so staff can spot duplicates before saving — turn off for a simpler form' },
   ]
 

@@ -1344,7 +1344,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
       })
       setResult(res)
       refreshMyTrials() // keeps the Sessions list + next sibling-picker current; fire-and-forget
-      if (feeMode === 'online') {
+      // 0198: a full batch at an academy that has turned off "Take payment for
+      // a full batch" comes back parked as 'enquired' with a zero fee — there
+      // is no seat, so there is nothing to charge for. Skipping Razorpay here
+      // is the visible half; secure_book_trial_payment refuses an enquired row
+      // outright, so a client that ignored this still could not take the money.
+      if (feeMode === 'online' && res?.stage !== 'enquired') {
         await runOnlinePayment(res.id)
       } else {
         setStep('confirm'); bump('fwd')
@@ -2109,6 +2114,16 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       const seatsLeft = Math.max(0, b.seatsLeft ?? 0)
                       const cap = b.capacity || 0
                       const openSeats = seatsLeft > 0
+                      // Seat policy (0198). "Waitlist" used to be a label on a
+                      // fully tappable card: the family could pick a full batch,
+                      // pay the trial fee, and only weeks later — when staff
+                      // tried to convert them — did anyone discover there had
+                      // never been a seat. The academy now decides, in
+                      // Settings > Registration, whether a full batch can be
+                      // booked at all and whether it can be charged. Both
+                      // default on, so this changes nothing until they opt in.
+                      const blocked  = b.isFull && !b.fullSelectable
+                      const freeOnly = b.isFull && b.fullSelectable && !b.fullPayable
                       // Threshold scales with capacity (typically 15–30) rather
                       // than a flat count, so "nearly full" still means
                       // something on a small batch.
@@ -2119,10 +2134,17 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                       // carry (0160) — same one Add Student's picker shows.
                       const label = capFirst(b.code || b.name)
                       return (
-                        <Tappable key={b.id} onClick={() => { setBatchId(b.id); setStep('form'); bump('fwd') }}
-                          pressed={sel} label={`${label}, ${openSeats ? `${seatsLeft} of ${cap} seats left` : 'waitlist'}`}
+                        <Tappable key={b.id}
+                          onClick={() => { if (blocked) return; setBatchId(b.id); setStep('form'); bump('fwd') }}
+                          pressed={sel}
+                          label={`${label}, ${openSeats ? `${seatsLeft} of ${cap} seats left` : blocked ? 'full, not accepting registrations' : freeOnly ? 'full, join the list at no charge' : 'waitlist'}`}
                           style={{ background: '#fff', border: `1px solid ${sel ? C.main : N.line}`, borderRadius: R.card,
-                                   padding: 14, animationDelay: `${Math.min(i, 6) * 60}ms` }}>
+                                   padding: 14, animationDelay: `${Math.min(i, 6) * 60}ms`,
+                                   // Dimmed and inert rather than hidden: the family
+                                   // can still see the batch exists and when it runs,
+                                   // which is what they need in order to ask about it.
+                                   opacity: blocked ? 0.5 : 1,
+                                   cursor: blocked ? 'not-allowed' : undefined }}>
                           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                             <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${sel ? C.main : N.radio}`,
                                           background: sel ? C.main : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2136,7 +2158,10 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                 </div>
                                 {cap > 0 && (
                                   <div style={{ ...T.metaB, fontWeight: 700, ...NUM, color: tight ? DANGER_TEXT : N.muted, flexShrink: 0 }}>
-                                    {openSeats ? `${seatsLeft} of ${cap} left` : 'Waitlist'}
+                                    {openSeats ? `${seatsLeft} of ${cap} left`
+                                      : blocked  ? 'Full'
+                                      : freeOnly ? 'Full · no fee'
+                                      : 'Waitlist'}
                                   </div>
                                 )}
                               </div>
@@ -2515,10 +2540,29 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                               animation: 'jfPop .46s cubic-bezier(.2,.9,.2,1) both' }}>
                   <Check size={28} color={A} strokeWidth={2.4} />
                 </div>
-                <div style={{ ...T.h1, marginBottom: 8 }}>Request submitted</div>
-                <div style={{ ...T.sub, fontSize: 13.5, color: N.dim, lineHeight: 1.6, maxWidth: 272, marginBottom: 22 }}>
-                  {form.name.trim() || 'Your student'} is registered for {formBreadcrumb || 'the programme'}. The academy will call to confirm.
+                {/* 0198: an 'enquired' result means the batch was full and the
+                    academy chose not to charge for it. Saying "Request
+                    submitted · we'll call to confirm" there would imply a seat
+                    that does not exist, so both the heading and the body change
+                    — and the branch address is shown, because "come and see us"
+                    is useless without it. */}
+                <div style={{ ...T.h1, marginBottom: 8 }}>
+                  {result?.stage === 'enquired' ? 'You are on the list' : 'Request submitted'}
                 </div>
+                <div style={{ ...T.sub, fontSize: 13.5, color: N.dim, lineHeight: 1.6, maxWidth: 272, marginBottom: 22 }}>
+                  {result?.stage === 'enquired'
+                    ? <>This batch is full right now, so <strong>nothing has been charged</strong>. {form.name.trim() || 'Your student'}&rsquo;s details are with the academy and they will call the moment a seat opens. You are welcome to visit us in the meantime.</>
+                    : <>{form.name.trim() || 'Your student'} is registered for {formBreadcrumb || 'the programme'}. The academy will call to confirm.</>}
+                </div>
+
+                {result?.stage === 'enquired' && chosenRow?.address && (
+                  <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: `1px solid ${N.line}`,
+                                borderRadius: R.card, padding: 14, textAlign: 'left', marginBottom: 14 }}>
+                    <div style={{ ...T.sub, color: N.muted, marginBottom: 4 }}>Visit us at</div>
+                    <div style={{ ...T.sub, fontWeight: 700, lineHeight: 1.5 }}>{chosenRow.branchName}</div>
+                    <div style={{ ...T.sub, color: N.dim, lineHeight: 1.5 }}>{chosenRow.address}</div>
+                  </div>
+                )}
 
                 <div style={{ width: '100%', maxWidth: 300, background: '#fff', border: `1px solid ${N.line}`,
                               borderRadius: R.card, padding: 14, textAlign: 'left', marginBottom: 20 }}>
@@ -2535,8 +2579,15 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, ...T.sub, padding: '9px 0', borderBottom: `1px solid ${N.hair}` }}>
                     <span style={{ color: N.muted, flexShrink: 0 }}>{kitFee > 0 ? 'Trial + kit fee' : 'Trial fee'}</span>
                     <span style={{ fontWeight: 700, textAlign: 'right', ...NUM,
-                                   color: paymentStatus === 'paid' ? C.main : paymentStatus === 'failed' ? DANGER_TEXT : N.text }}>
-                      {feeMode === 'online'
+                                   color: result?.stage === 'enquired' ? C.main
+                                        : paymentStatus === 'paid' ? C.main
+                                        : paymentStatus === 'failed' ? DANGER_TEXT : N.text }}>
+                      {/* Never quote a rupee figure on an enquired row — the
+                          server stored the fee as 0, and showing the trial fee
+                          here would read as an amount still owed. */}
+                      {result?.stage === 'enquired'
+                        ? 'No fee — batch full'
+                        : feeMode === 'online'
                         ? (paymentStatus === 'paid' ? `₹${totalDue.toLocaleString('en-IN')} paid ✓`
                            : paymentStatus === 'failed' ? `₹${totalDue.toLocaleString('en-IN')} — pay at academy`
                            : `₹${totalDue.toLocaleString('en-IN')}`)
