@@ -97,7 +97,16 @@ function AcademyTab({ user }) {
   const [form, setForm] = useState({
     name:  user?.academy || '',
     owner: user?.name    || '',
-    email: user?.email   || '',
+    // NOT seeded from user.email. This field is written straight back by
+    // handleSave, so pre-filling it with the owner's login address meant that
+    // saving this form for any reason (address, GSTIN, phone) persisted that
+    // private address into academies.contact_email — which
+    // secure_public_academy_branding serves pre-auth to every /join visitor
+    // and every trial receipt prints. Migration 0152's own column comment
+    // says this column is "Not the owner's auth login email". The login
+    // address is offered as a placeholder below instead, so it can be chosen
+    // deliberately rather than inherited by accident.
+    email: '',
     phone: '', address: '', city: '', state: '', gstin: '',
   })
   const [loading, setLoading] = useState(true)
@@ -117,9 +126,10 @@ function AcademyTab({ user }) {
           ...f,
           name:  p.name || f.name,
           phone: p.contactPhone,
-          // Falls back to the owner's login address so receipts have something
-          // to print before anyone sets a dedicated contact address.
-          email: p.contactEmail || f.email,
+          // Empty stays empty — see the form initialiser above. A blank
+          // contact email prints no email row rather than the owner's
+          // personal one.
+          email: p.contactEmail || '',
           address: p.address, city: p.city, state: p.state, gstin: p.gstin,
         }))
       })
@@ -200,8 +210,12 @@ function AcademyTab({ user }) {
         </div>
         <div className="col-span-2">
           <label className="label">Contact Email</label>
-          <input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
-          <p className="text-xs text-gray-400 mt-1">Shown on receipts. Separate from your login email, which stays {user?.email}.</p>
+          <input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)}
+            placeholder="e.g. info@youracademy.com" />
+          <p className="text-xs text-gray-400 mt-1">
+            Public — printed on receipts and shown to anyone who opens your registration page.
+            Leave blank to show no email at all. Your login address ({user?.email}) is separate and is never published.
+          </p>
         </div>
         <div className="col-span-2">
           <label className="label">Address</label>

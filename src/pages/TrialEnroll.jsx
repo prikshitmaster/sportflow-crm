@@ -1902,7 +1902,12 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                   {branding?.contactEmail && (
                     <a href={`mailto:${branding.contactEmail}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 14, ...T.label, fontSize: 14, borderTop: `1px solid ${N.hair}` }}>
-                        Email
+                        {/* "Email the academy", not "Email" — this card is the
+                            visitor's own account (it ends in Log out) and the
+                            visitor signs in by PHONE, so a bare "Email" label
+                            reads as their address rather than the academy's.
+                            Mirrors "Call the academy" directly above. */}
+                        Email the academy
                         <span style={{ ...T.metaB, color: N.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{branding.contactEmail}</span>
                       </div>
                     </a>
