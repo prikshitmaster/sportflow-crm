@@ -108,6 +108,68 @@ Deno.serve(async (req) => {
   const coverageStart  = notes.coverage_start || null
   const paymentLinkId  = notes.payment_link_id || null
 
+  // ── Trial backstop ────────────────────────────────────────────────
+  // A trial order has no notes.student_id (the payer is not a student yet),
+  // so it used to land in the branch below, get logged 'failed', and 400 —
+  // which made Razorpay retry the same event for 24h while the captured
+  // money stayed out of the ledger entirely. The normal path for a trial is
+  // razorpay-verify-trial-payment, called synchronously from the browser;
+  // this covers the case where the phone loses network or the app is closed
+  // between capture and that call.
+  //
+  // Matched on order_id, stamped onto the trial by razorpay-create-trial-order:
+  // an order's `notes` are NOT copied onto the payment entity delivered here,
+  // so notes.trial_id cannot be relied on.
+  if (!studentId && payment.order_id) {
+    const { data: trial } = await supabase
+      .from('trials')
+      .select('id, academy_id, trial_fee_paid, razorpay_payment_id')
+      .eq('razorpay_order_id', payment.order_id)
+      .maybeSingle()
+
+    if (trial) {
+      if (trial.razorpay_payment_id) {
+        // The browser's verify call already booked it. Nothing to do.
+        await supabase.from('razorpay_events')
+          .upsert({ event_id: eventId, event_type: eventType, payload: evt, status: 'skipped' },
+                  { onConflict: 'event_id' })
+        return ok({ ok: true, alreadyRecorded: true, trialId: trial.id })
+      }
+
+      // Razorpay's own richer method → the four values trials.trial_fee_mode
+      // allows, same mapping razorpay-verify-trial-payment uses.
+      const method  = payment.method
+      const feeMode = method === 'upi' ? 'UPI' : 'Card'
+
+      const { data: booked, error: bookErr } = await supabase.rpc('secure_book_trial_payment', {
+        p_trial_id:           trial.id,
+        p_amount:             Number(payment.amount) / 100,
+        p_mode:               feeMode,
+        p_gateway_payment_id: payment.id,
+        p_gateway_order_id:   payment.order_id,
+        // Tax breakdown lives on the order's notes, which this payload does
+        // not carry. The trial keeps whatever the branch config stamped; the
+        // gross amount above is authoritative either way.
+        p_tax_percent:        null,
+        p_tax_amount:         null,
+      })
+
+      if (bookErr) {
+        console.error('trial backstop booking failed', bookErr)
+        await supabase.from('razorpay_events')
+          .upsert({ event_id: eventId, event_type: eventType, payload: evt, status: 'failed' },
+                  { onConflict: 'event_id' })
+        return ok({ error: bookErr.message }, 500)
+      }
+
+      await supabase.from('razorpay_events')
+        .upsert({ event_id: eventId, event_type: eventType, payload: evt,
+                  status: 'processed', processed_at: new Date().toISOString() },
+                { onConflict: 'event_id' })
+      return ok({ ok: true, kind: 'trial', trialId: trial.id, result: booked })
+    }
+  }
+
   if (!academyId || !studentId) {
     console.error('webhook missing notes.academy_id or notes.student_id', notes)
     await supabase.from('razorpay_events')

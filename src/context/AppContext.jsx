@@ -1830,6 +1830,31 @@ export function AppProvider({ children }) {
         p.id === id ? { ...p, status: 'Paid', mode, date: today } : p
       ))
 
+      // Collecting a linked Due balance settles the shortfall recorded on the
+      // ORIGINAL payment — clear it there too. Nothing used to, so a student
+      // who paid the balance the same morning still showed a red
+      // "Amount due · part-payment balance" on their card indefinitely, and
+      // the Payments tab's "Part-payment due" tile never went back to zero.
+      // The `Balance due from <invoiceId>` prefix is the same link
+      // removePayment already keys off.
+      const dueLink = /^Balance due from (\S+)/.exec(payment?.notes || '')
+      if (dueLink) {
+        const sourceId = dueLink[1]
+        const source   = payments.find(p => p.id === sourceId)
+        if (source && Number(source.dueAmount) > 0) {
+          try {
+            await db.updatePaymentDueAmount(sourceId, 0)
+            setPayments(prev => prev.map(p =>
+              p.id === sourceId ? { ...p, dueAmount: 0 } : p
+            ))
+          } catch (err) {
+            // Non-fatal: the balance really was collected, and the tile is
+            // now derived to ignore settled shortfalls anyway (StudentDetail).
+            logger.warn?.('could not clear source due_amount', err) ?? console.warn('could not clear source due_amount', err)
+          }
+        }
+      }
+
       // When clearing a cheque (Pending→Paid), advance the student's paidTill.
       // A cheque taken for a custom date range stored its exact end in
       // coverage_end — recomputing from monthsCovered would snap it back to a

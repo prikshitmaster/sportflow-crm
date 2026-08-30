@@ -715,6 +715,19 @@ export async function updatePaymentStatus(id, status, mode) {
   if (error) throw error
 }
 
+// Clears (or resets) the part-payment shortfall recorded on a payment row.
+// Used when the linked "Balance due from INV-…" row is collected: without
+// this the original row kept its due_amount forever, so the student's card
+// showed a red "Amount due" for money they had already handed over.
+export async function updatePaymentDueAmount(id, dueAmount) {
+  const { error } = await supabase.rpc('secure_update_payment', {
+    p_payment_id: id,
+    p_payload: { dueAmount: Number(dueAmount) || 0 },
+    p_token: _sessionToken(),
+  })
+  if (error) throw error
+}
+
 export async function updatePaymentAmount(id, amount, monthsCovered) {
   const { error } = await supabase.rpc('secure_update_payment', {
     p_payment_id: id,
@@ -780,7 +793,16 @@ export async function fetchTrials(academyId) {
     dob:            row.dob            || null,
     ageGroup:       row.age_group      || null,
     programType:    row.program_type   || 'academy',
-    trialFeePaid:   row.trial_fee_paid ?? 590,
+    // `?? 590` here is what every "trialFeePaid always defaults to 590
+    // regardless of whether it was collected" comment across Trials.jsx and
+    // StaffTrials.jsx was working around: it manufactured a fee for rows that
+    // never had one, so `trial.trialFeePaid > 0` read as true for every trial
+    // and could never be used to mean "they paid". The column is NOT NULL-safe
+    // (DB default 0, zero NULL rows) so the fallback only ever lied.
+    // trialFeeMode is the signal for whether money changed hands; this is the
+    // amount, which on a /join registration is what's still DUE until the
+    // Razorpay flow flips the mode.
+    trialFeePaid:   row.trial_fee_paid ?? 0,
     trialFeeMode:   row.trial_fee_mode || 'Not collected',
     receiptNo:      row.receipt_no     || null,
     converted:      row.converted,
@@ -1629,6 +1651,12 @@ export async function createStudentWithPayment(s) {
     p_coverage_start: s.payment?.coverageStart || null,
     p_coverage_end:   s.payment?.coverageEnd   || null,
     p_mode:           s.payment?.mode || 'Cash',
+    // Migration 0197 — lets the RPC take the trial's advisory lock and refuse
+    // a second conversion of the same trial. The client sets trials.converted
+    // optimistically to stop a double click, but two staff on two devices
+    // never see each other's flag (cross-session sync is a 60s poll), and the
+    // loser used to get a duplicate student plus a duplicate payment row.
+    p_trial_id:       s.trialId ?? null,
   })
   if (error) throw error
   return data  // BIGINT student id

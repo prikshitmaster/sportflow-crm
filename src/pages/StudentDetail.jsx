@@ -27,6 +27,38 @@ const TABS = [
   { id: 'profile',     label: 'Profile',     icon: FileText },
 ]
 
+// ── Part-payment shortfalls ────────────────────────────────────────────────
+// A partial payment writes TWO rows: the collected amount (carrying
+// due_amount = the shortfall) and a linked Pending "Balance due from INV-…"
+// row for that same shortfall. Summing due_amount naively therefore reported
+// the same money twice — once here, once in whatever counts Pending rows —
+// and kept reporting it after the balance was collected, because nothing
+// cleared due_amount when the linked row was marked Paid.
+//
+// linkedBalanceRow() finds that partner row so both counts below can be
+// honest about which shortfalls are actually still owed.
+const linkedBalanceRow = (rows, sourceId) =>
+  rows.find(r => (r.notes || '').startsWith(`Balance due from ${sourceId}`)) || null
+
+// Still genuinely owed: the linked row is unpaid, or was never written at all.
+// This is the ONE number that should reach a "what does this student owe" view.
+const unsettledDue = (rows) => rows.reduce((sum, p) => {
+  const due = Number(p.dueAmount || 0)
+  if (due <= 0) return sum
+  const linked = linkedBalanceRow(rows, p.id)
+  return linked && linked.status === 'Paid' ? sum : sum + due
+}, 0)
+
+// Owed AND missing its Pending row — i.e. the balance-row insert failed, so
+// this shortfall appears in no Pending total anywhere. Normally ₹0; anything
+// else is a real bookkeeping leak worth surfacing rather than a duplicate of
+// the Pending tile next to it.
+const untrackedDue = (rows) => rows.reduce((sum, p) => {
+  const due = Number(p.dueAmount || 0)
+  if (due <= 0) return sum
+  return linkedBalanceRow(rows, p.id) ? sum : sum + due
+}, 0)
+
 const countAttendance = (map) => {
   const c = { Present: 0, Absent: 0, Late: 0, Leave: 0 }
   Object.values(map || {}).forEach(st => { if (c[st] != null) c[st] += 1 })
@@ -108,7 +140,9 @@ export default function StudentDetail({ id, students, payments, batches, staff, 
   const owedAmount   = owed * Number(student.fees || 0)
   const overdueDays  = daysOverdue(student)
   // Partial payments (migration 0172) leave a Due balance on the payment row.
-  const dueBalance   = myPayments.reduce((sum, p) => sum + Number(p.dueAmount || 0), 0)
+  // Only the ones whose linked balance row is still unpaid count — see
+  // unsettledDue above.
+  const dueBalance   = unsettledDue(myPayments)
   const thisMonthAtt = attMonths[thisKey] && attMonths[thisKey] !== 'loading' ? countAttendance(attMonths[thisKey]) : null
 
   const ctx = {
@@ -425,11 +459,16 @@ function FeesTab({ myPayments, goDetail }) {
     (status === 'All' || p.status === status) &&
     (mode === 'All'   || p.mode === mode))
 
+  // `pending` already contains every linked "Balance due from …" row, so the
+  // third tile must NOT re-add the same shortfall from due_amount — that is
+  // what made one ₹8,000 balance read as ₹8,000 Pending AND ₹8,000 due, side
+  // by side. It shows only shortfalls that never got a Pending row, which is
+  // a bookkeeping leak rather than a duplicate.
   const totals = rows.reduce((t, p) => ({
     paid: t.paid + (p.status === 'Paid' ? Number(p.amount || 0) : 0),
     pending: t.pending + (p.status !== 'Paid' ? Number(p.amount || 0) : 0),
-    due: t.due + Number(p.dueAmount || 0),
-  }), { paid: 0, pending: 0, due: 0 })
+  }), { paid: 0, pending: 0 })
+  totals.due = untrackedDue(rows)
 
   const sel = 'input w-auto text-xs py-1.5'
   return (
@@ -437,7 +476,7 @@ function FeesTab({ myPayments, goDetail }) {
       <div className="grid grid-cols-3 gap-3">
         <Tile icon={IndianRupee} label="Collected" value={fmtMoney(totals.paid)} sub={`${rows.length} record${rows.length === 1 ? '' : 's'}`} tone="text-emerald-600" />
         <Tile icon={Clock} label="Pending" value={fmtMoney(totals.pending)} sub="not yet paid" tone={totals.pending ? 'text-amber-600' : 'text-gray-900'} />
-        <Tile icon={AlertTriangle} label="Part-payment due" value={fmtMoney(totals.due)} sub="balance carried" tone={totals.due ? 'text-red-600' : 'text-gray-900'} />
+        <Tile icon={AlertTriangle} label="Untracked due" value={fmtMoney(totals.due)} sub="no Pending entry" tone={totals.due ? 'text-red-600' : 'text-gray-900'} />
       </div>
 
       <Section icon={CreditCard} title="Payment history"

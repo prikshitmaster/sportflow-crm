@@ -17,10 +17,11 @@
 // read the AUTHORITATIVE charged amount before writing anything, and only
 // update the exact trial row that the order was created for.
 //
-// A razorpay-webhook (payment.captured) backstop for the case where the
-// browser closes before this call fires is a documented fast-follow, not
-// required for correctness here — signature verification alone is enough
-// to trust this update.
+// If the browser closes between Razorpay's capture and this call, the
+// razorpay-webhook (payment.captured) backstop books the same payment by
+// matching trials.razorpay_order_id — see that function. Both paths go
+// through secure_book_trial_payment, which is idempotent, so whichever
+// arrives first wins and the other is a no-op.
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -151,25 +152,35 @@ Deno.serve(async (req) => {
   const method = paymentEntity?.method
   const feeMode = method === 'upi' ? 'UPI' : method === 'card' ? 'Card' : 'Card' // netbanking/wallet/emi -> closest non-cash bucket
 
-  const { error: updErr } = await supabase
-    .from('trials')
-    .update({
-      trial_fee_paid:       amount,
-      trial_fee_mode:       feeMode,
-      razorpay_payment_id:  paymentId,
-      razorpay_order_id:    orderId,
-      tax_percent:          taxAmt > 0 ? taxPct : null,
-      tax_amount:           taxAmt > 0 ? taxAmt : null,
-    })
-    .eq('id', trialId)
+  // Book it through secure_book_trial_payment (migration 0197) rather than
+  // UPDATEing `trials` directly. A raw update marked the trial paid but wrote
+  // NOTHING to the payments ledger, so the money existed on the trial row and
+  // in no revenue report — Reports reads trial revenue as
+  // payments.payment_type='trial'. The RPC writes both halves in one
+  // transaction, mints the receipt number, and is idempotent, so it is safe
+  // for this call and the webhook backstop to race.
+  const { data: booked, error: bookErr } = await supabase.rpc('secure_book_trial_payment', {
+    p_trial_id:           Number(trialId),
+    p_amount:             amount,
+    p_mode:               feeMode,
+    p_gateway_payment_id: paymentId,
+    p_gateway_order_id:   orderId,
+    p_tax_percent:        taxAmt > 0 ? taxPct : null,
+    p_tax_amount:         taxAmt > 0 ? taxAmt : null,
+  })
 
-  if (updErr) {
+  if (bookErr) {
     // Unique index on razorpay_payment_id — this exact payment was already
     // recorded against a different trial row (replay), refuse cleanly.
-    if (updErr.code === '23505') return json({ error: 'payment already recorded' }, 409)
-    console.error('trial payment update failed', updErr)
+    if (bookErr.code === '23505') return json({ error: 'payment already recorded' }, 409)
+    console.error('trial payment booking failed', bookErr)
     return json({ error: 'could not record payment' }, 500)
   }
 
-  return json({ ok: true, amount })
+  return json({
+    ok:              true,
+    amount,
+    receiptNo:       booked?.receiptNo ?? null,
+    alreadyRecorded: Boolean(booked?.already),
+  })
 })
