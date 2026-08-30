@@ -408,19 +408,26 @@ function ErrorBox({ msg }) {
 // v2's CTA: 48px, radius 12, solid brand when live and a flat grey when not —
 // the disabled state is a real design state here, not a 55%-opacity version
 // of the live one, so "what's missing" reads before the tap rather than after.
-function Cta({ children, onClick, loading, disabled, C, type = 'button', style }) {
-  const off = loading || disabled
+//
+// `inactive` paints that same grey but leaves the button LIVE. It is what the
+// form's CTA uses: a genuinely disabled button announces "not yet" and then
+// refuses to say which field is missing, so the tap that should have scrolled
+// the parent to the empty box does nothing at all. Greyed-but-tappable keeps
+// the design's read and keeps the answer one tap away. `disabled` proper is
+// still used where a tap really has nothing to do (in-flight submits).
+function Cta({ children, onClick, loading, disabled, inactive, C, type = 'button', style }) {
+  const off = loading || disabled || inactive
   return (
     <button
       type={type}
       className="jf-tap"
       onClick={onClick}
-      disabled={off}
+      disabled={loading || disabled}
       style={{
         width: '100%', height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         background: off ? N.ctaOff : C.main, color: off ? N.ctaOffTx : '#fff',
         fontSize: 14.5, fontWeight: 700, border: 'none', borderRadius: 12,
-        cursor: off ? 'default' : 'pointer', fontFamily: FONT,
+        cursor: (loading || disabled) ? 'default' : 'pointer', fontFamily: FONT,
         boxShadow: off ? 'none' : E.cta,
         ...style,
       }}
@@ -2564,7 +2571,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                 {trialFee > 0 ? `₹${totalDue.toLocaleString('en-IN')}` : 'Free trial'}
               </div>
             </div>
-            <Cta onClick={goToPayment} C={C} disabled={!formComplete}>
+            <Cta onClick={goToPayment} C={C} inactive={!formComplete}>
               {formComplete ? 'Continue' : 'Complete required fields'}
             </Cta>
           </div>
