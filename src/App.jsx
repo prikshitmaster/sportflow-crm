@@ -20,6 +20,7 @@ import { Capacitor } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
 import { AppProvider, useApp } from './context/AppContext'
 import { logger } from './lib/logger'
+import BrandMark from './components/BrandMark'
 
 // EVERY route component below is lazy, with no exceptions — that's the rule
 // this file follows, and the reason is the public funnel. A parent opening
@@ -172,14 +173,22 @@ class ErrorBoundary extends Component {
   }
 }
 
+// Stopwatch-style ring instead of a generic spinner arc — the bold lane +
+// centered brand mark reads as a sports-timer, not a stock Bootstrap loader.
 function PageLoading() {
   return (
     <div className="min-h-screen bg-canvas flex items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <svg className="animate-spin h-8 w-8 text-brand-600" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-        </svg>
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative w-14 h-14">
+          <svg className="w-14 h-14 animate-spin" viewBox="0 0 44 44" fill="none">
+            <circle cx="22" cy="22" r="18" stroke="currentColor" strokeWidth="4" className="text-gray-200" />
+            <circle cx="22" cy="22" r="18" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
+              strokeDasharray="34 113" className="text-brand-600" />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <BrandMark size={16} className="text-brand-600" />
+          </div>
+        </div>
         <p className="text-sm text-gray-500">Loading Khelit…</p>
       </div>
     </div>

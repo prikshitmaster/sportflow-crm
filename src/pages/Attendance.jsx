@@ -8,6 +8,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import * as db from '../lib/db'
 import { fetchBatchEnrolments, fetchAllBatchEnrolments, fetchAttendanceForStudents } from '../lib/db'
 import { saveOrShareFile } from '../lib/nativeSave'
+import Spinner from '../components/Spinner'
 
 // ── constants ──────────────────────────────────────────────────
 // Trailing '' is deliberate: a tap on 'Leave' must return to unmarked so a
@@ -346,7 +347,7 @@ function StudentAttendancePanel({ student, allMonthData, onClose, onCycle, showT
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex justify-center py-12">
-              <svg className="animate-spin h-6 w-6 text-brand-600" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              <Spinner className="h-6 w-6 text-brand-600" />
             </div>
           ) : (
             <>
@@ -776,7 +777,7 @@ export default function Attendance() {
           <button onClick={() => markAll('Present')} className="px-3 py-1.5 text-xs font-bold border-2 border-emerald-500 text-emerald-600 rounded-lg hover:bg-emerald-50 transition">✓ All Present</button>
           <button onClick={() => markAll('Absent')}  className="px-3 py-1.5 text-xs font-bold border-2 border-red-400    text-red-600    rounded-lg hover:bg-red-50    transition">✗ All Absent</button>
           <button onClick={handleSave} disabled={saving || dirty.size===0} className="btn-primary text-xs py-1.5">
-            {saving ? <span className="flex items-center gap-1"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Saving…</span>
+            {saving ? <span className="flex items-center gap-1"><Spinner className="h-3 w-3" />Saving…</span>
                     : <><Save size={13}/> Save{dirty.size>0?` (${dirty.size})`:''}</>}
           </button>
         </div>
@@ -844,7 +845,7 @@ export default function Attendance() {
         </div>
 
         {loading ? (
-          <div className="card py-10 flex justify-center"><svg className="animate-spin h-5 w-5 text-brand-600" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg></div>
+          <div className="card py-10 flex justify-center"><Spinner className="h-5 w-5 text-brand-600" /></div>
         ) : (
           <div className="card divide-y divide-gray-50 overflow-hidden">
             {displayed.length === 0 && <p className="text-center py-10 text-sm text-gray-400">No students in this batch</p>}
@@ -893,7 +894,7 @@ export default function Attendance() {
       <div className="hidden lg:block card overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-16 gap-2">
-            <svg className="animate-spin h-5 w-5 text-brand-600" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+            <Spinner className="h-5 w-5 text-brand-600" />
             <span className="text-sm text-gray-400">Loading…</span>
           </div>
         ) : (
@@ -1106,7 +1107,7 @@ export default function Attendance() {
               <button className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold transition disabled:opacity-50"
                 onClick={async () => { setExporting(true); await exportToExcel({students:displayed,batchName:selectedBatch?.name,fromDate:exportFrom,toDate:exportTo,showToast}); setExporting(false); setShowExport(false) }}
                 disabled={exporting}>
-                {exporting ? <span className="flex items-center gap-1.5"><svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Exporting…</span>
+                {exporting ? <span className="flex items-center gap-1.5"><Spinner className="h-3 w-3" />Exporting…</span>
                            : <><FileSpreadsheet size={14}/> Export .xlsx</>}
               </button>
             </div>

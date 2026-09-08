@@ -1890,7 +1890,26 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const _now = new Date()
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
   const firstOfMonth = todayStr.slice(0, 7) + '-01'
-  const isUpToDate = !isSuspended && selectedStudent?.paidTill && selectedStudent.paidTill >= firstOfMonth
+  // Suspended students were excluded from the advance path outright, so that one
+  // returning after a gap starts coverage from the month they come back rather
+  // than from the month after a long-stale paidTill. But that also caught the
+  // suspended student whose paidTill ALREADY covers this month — most commonly
+  // straight after an all-inactive ₹0 write-off, which advances paidTill and
+  // deliberately leaves the status Suspended (see addPayment's noChargeOnly
+  // branch). With no advance start, coverage fell back to the 1st of the
+  // collection month — a period they were already covered for. The form flagged
+  // a false "Possible duplicate", and typing CONFIRM booked the money while the
+  // forward-only paid_till guard refused to move coverage at all: cash in, zero
+  // months bought, announced only by a toast.
+  //
+  // Being already covered through this month is the whole test, and a stale
+  // paidTill still fails it, so the returning-after-a-gap path is untouched.
+  // Backdating stays excluded — for a suspended student that is an explicit
+  // "bill the skipped months too" action, and an advance start would silently
+  // override the date staff just picked.
+  const isUpToDate = !!(selectedStudent?.paidTill
+    && selectedStudent.paidTill >= firstOfMonth
+    && (!isSuspended || paymentDate === toLocalDateStr()))
 
   // Outstanding Pending rows for this student — most commonly a linked
   // Due-balance row left over from an earlier partial payment (see
@@ -1958,11 +1977,17 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
 
   const planExpectedRate = activePlanData?.rate || 0
   const referenceRate = planExpectedRate || typicalBatchFee
+  // Custom used to be excluded here on the assumption that no reference rate
+  // exists for it. It does: getFeePlanRate falls through to plan.monthlyFee for
+  // any type that isn't quarterly/yearly, and Custom's fee field is literally
+  // labelled "Monthly Fee (₹)" — so referenceRate is the same monthly rate the
+  // Monthly plan compares against, and the comparison is exactly as meaningful.
+  // The `referenceRate > 0` guard above already no-ops this where no rate is
+  // knowable, which is the case the exclusion was really reaching for.
   const feePlanMismatch = !!(
     form.studentId &&
     referenceRate > 0 &&
     form.baseAmount !== referenceRate &&
-    !['custom'].includes(form.paymentType) &&
     // Only warn if entered amount is >20% off the reference
     Math.abs(form.baseAmount - referenceRate) / referenceRate > 0.20
   )
@@ -1999,11 +2024,16 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const expectedTaxableBase = Math.max(0, expectedSubtotal - discountFor(expectedSubtotal) - prorationDeduction)
   const { taxAmount: expectedTaxAmt } = computeTax(expectedTaxableBase, taxPct)
   const expectedTotal = expectedTaxableBase + expectedTaxAmt + lateFeeAmt
+  // Custom is no longer excluded — see feePlanMismatch above for why the
+  // "can't compute an expected total for Custom" premise was wrong. It matters
+  // more here than there: this is the hard gate, so excluding Custom left the
+  // ₹800-vs-₹8,000 typo block switched off entirely on the one plan where staff
+  // type the month count by hand. expectedFullSubtotal already prices Custom
+  // correctly (referenceRate × months, same branch as Monthly).
   const sanityMismatch = !!(
     form.studentId &&
     referenceRate > 0 &&
     expectedTotal > 0 &&
-    form.paymentType !== 'custom' &&
     Math.abs(finalAmount - expectedTotal) / expectedTotal > 0.30
   )
   const sanityRatio = sanityMismatch ? (finalAmount / expectedTotal) : 1
@@ -2028,6 +2058,47 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     ? customStart
     : `${coverageBase.getFullYear()}-${String(coverageBase.getMonth() + 1).padStart(2, '0')}-01`
   const isDuplicate = !!(form.studentId && selectedStudent?.paidTill && selectedStudent.paidTill >= coverageStartStr)
+
+  // ── Skipped months ───────────────────────────────────────────────────────
+  // Whole months sitting between the student's paidTill and where this payment
+  // starts covering — owed by nobody, charged to nobody, and gone from "due"
+  // the moment paidTill leaps past them.
+  //
+  // Monthly makes this visible: the picker lists every pending month and prints
+  // "Writing off ₹X" when one is unticked. But the picker only runs for Monthly
+  // with no custom range (see monthPickerOn), so on Quarterly, Yearly, the
+  // Custom pill, and any custom date range, coverage silently jumps to the 1st
+  // of the collection month and the arrears just evaporate — no picker, no
+  // banner, nothing. A student owing Jun+Jul paid Quarterly in Aug got Aug–Oct
+  // and lost two months' fees with no trace anywhere in the UI.
+  //
+  // Deliberately a warning, not a gate: Monthly's write-off is a *deliberate*
+  // untick and only earns a banner, so making this one block the save would put
+  // more friction on the accidental path than the intentional one. Staff who
+  // want the arrears collected can move the coverage start; staff writing them
+  // off can now at least see what it costs.
+  const skippedMonths = (() => {
+    if (!form.studentId || monthPickerOn || !selectedStudent?.paidTill) return []
+    const [py, pm] = selectedStudent.paidTill.split('-').map(Number)
+    // pm is 1-based, so using it as a 0-based index already means "the month
+    // after paidTill" — same trick as dueMonths above.
+    let y = py, m = pm
+    if (m > 11) { m = 0; y += 1 }
+    const [cy, cm] = coverageStartStr.split('-').map(Number)
+    const out = []
+    // Strictly BEFORE the coverage-start month: the start month itself is being
+    // paid for (in full, or in part when a custom range begins mid-month).
+    while ((y < cy || (y === cy && m < cm - 1)) && out.length < 24) {
+      out.push(`${MO[m]} ${y}`)
+      m += 1
+      if (m > 11) { m = 0; y += 1 }
+    }
+    return out
+  })()
+  // Priced off the monthly rate, never form.baseAmount — for Quarterly/Yearly
+  // that field holds a flat multi-month total and would overstate the write-off
+  // roughly 3x / 12x. Falls back to hiding the figure rather than guessing.
+  const skippedValue = monthlyRateForProration * skippedMonths.length
   // CONFIRM gate covers BOTH soft duplicate (paidTill already covers this period) and sanity mismatch.
   // Without this, the duplicate warning was visual-only — server-side 60s dedupe only catches rapid double-clicks.
   const confirmTyped = confirmText.trim().toUpperCase() === 'CONFIRM'
@@ -2492,11 +2563,35 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
           </div>
         )}
 
+        {/* Months this payment jumps over. The Monthly picker has its own
+            write-off banner above; this is the same message for every mode the
+            picker can't run in (Quarterly, Yearly, Custom, custom date range),
+            where the skip would otherwise be completely invisible. */}
+        {skippedMonths.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 text-xs text-amber-800">
+            <strong>
+              {skippedMonths.length} month{skippedMonths.length !== 1 ? 's' : ''} will be skipped
+            </strong>
+            {' — '}{skippedMonths.join(', ')}
+            {skippedValue > 0 && ` (₹${skippedValue.toLocaleString('en-IN')})`}
+            {' '}will be marked covered but never charged. Coverage jumps straight to{' '}
+            <strong>{MO[coverageBase.getMonth()]} {coverageBase.getFullYear()}</strong>.
+          </div>
+        )}
+
         {/* Amount breakdown */}
         <div className="bg-gray-50 rounded-xl p-3.5 space-y-1.5">
           {form.studentId && (
             <div className="flex justify-between items-start text-xs font-semibold text-brand-600 mb-0.5">
               <span>Coverage</span>
+              {/* With "Custom coverage dates" ticked but not yet filled in, the
+                  month-count math below is NOT what will be saved — it quoted a
+                  confident "Aug–Oct 2026" for a range the staff hadn't picked
+                  yet. Confirm is already disabled in this state; say so instead
+                  of showing a period that cannot happen. */}
+              {customDates && !hasCustomRange ? (
+                <span className="text-gray-400 font-normal">Pick both dates above</span>
+              ) : (
               <div className="text-right">
                 <div>{coverageLabel}</div>
                 <div className="text-[10px] font-normal text-gray-400 mt-0.5">
@@ -2505,6 +2600,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                   {coverageEnd.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </div>
               </div>
+              )}
             </div>
           )}
           <div className="flex justify-between text-xs text-gray-500">
@@ -2562,10 +2658,22 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
               <span>+₹{taxAmt.toLocaleString('en-IN')}</span>
             </div>
           )}
-          {form.baseAmount <= 0 && lateFeeAmt > 0 && (
+          {/* A fee of 0 buys no months (addPayment's `buysCoverage` guard), so any
+              money collected against it extends nothing. This used to be gated on
+              lateFeeAmt > 0, which covered the late-fee-only case but missed the
+              other way real money reaches a zero-fee payment: ticking "partial
+              payment" and typing a total by hand. The Total box is not clamped, so
+              that path took the cash, moved coverage nowhere, and said nothing at
+              all — the one unguarded shape left in the form. Keyed on the amount
+              actually being collected instead, so it covers both. */}
+          {form.baseAmount <= 0 && finalAmount > 0 && (
             <div className="flex items-start gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mt-1">
               <span className="text-sm leading-none mt-0.5">⚠</span>
-              <span>Late fee only — no months are being charged, so this does not extend coverage. {form.student || 'The student'} stays due for the same period.</span>
+              <span>
+                {lateFeeAmt > 0 && finalAmount === lateFeeAmt ? 'Late fee only' : 'No months are being charged'}
+                {' '}— this ₹{finalAmount.toLocaleString('en-IN')} does not extend coverage.
+                {' '}{form.student || 'The student'} stays due for the same period.
+              </span>
             </div>
           )}
           <label className="flex items-center gap-2 text-xs text-gray-600 pt-2 mt-1 border-t border-gray-200 cursor-pointer">

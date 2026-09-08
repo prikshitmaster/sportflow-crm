@@ -119,6 +119,18 @@
 .press-scale { transition: transform 0.1s ease; }
 .press-scale:active { transform: scale(0.97); }
 
+/* Respect OS-level "Reduce Motion" — same accessibility behavior Apple's own
+   UIs follow. Only affects users who've explicitly opted into it. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in, .animate-slide-up, .animate-slide-in-right,
+  .page-enter, .press-scale {
+    animation: none !important;
+    transition: none !important;
+  }
+  /* Spinners stay animated even under Reduce Motion — they communicate
+     "still loading", not decorative motion, and freezing them looks broken. */
+}
+
 /* Page enter animation — opacity-only so it doesn't break position: fixed on modal children */
 @keyframes fadeIn {
   from { opacity: 0; }

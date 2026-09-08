@@ -1,5 +1,5 @@
 import { useApp } from '../context/AppContext'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, memo } from 'react'
 import {
   Users, CreditCard, TrendingUp, UserPlus, ChevronRight,
   AlertCircle, CalendarDays, CheckCircle, XCircle, UserCog,
@@ -243,7 +243,7 @@ export default function Dashboard() {
 
   if (dataLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 animate-fade-in">
         <Skeleton className="h-24 w-full rounded-xl" />
         <SkeletonCards count={4} />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -297,7 +297,7 @@ export default function Dashboard() {
     <div className="space-y-5 max-w-[1400px]">
 
       {/* ── Page header ──────────────────────────────────────── */}
-      <div className="bg-white border border-gray-200 rounded-xl px-5 py-4">
+      <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 animate-fade-in">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider">{dateLabel}</p>
@@ -374,6 +374,7 @@ export default function Dashboard() {
             ? `₹${fmtAmt(thisMonthCollected)} for ${now.toLocaleDateString('en-IN',{month:'short'})} · ₹${fmtAmt(advanceCollected)} advance`
             : `${thisMoPct}% of ₹${fmtAmt(expectedAmt)} target`}
           icon={TrendingUp}
+          className="[animation-delay:40ms]"
         />
         <KpiCard
           label="Overdue"
@@ -381,12 +382,14 @@ export default function Dashboard() {
           sub={overdueList.length > 0 ? `${overdueList.length} students · ${pendingList.length} pending` : 'All clear'}
           icon={CreditCard}
           tone={overdueList.length > 0 ? 'negative' : 'muted'}
+          className="[animation-delay:80ms]"
         />
         <KpiCard
           label={selectedSport === 'All' ? 'Active Staff' : `${selectedSport} Staff`}
           value={activeStaff.length}
           sub={`of ${staff.length} total`}
           icon={UserCog}
+          className="[animation-delay:120ms]"
         />
         {ghostStats.count > 0 && (
           <KpiCard
@@ -395,6 +398,7 @@ export default function Dashboard() {
             sub={`₹${fmtAmt(ghostStats.feeAmt)}/mo fees · ₹${fmtAmt(ghostStats.overdueAmt)} overdue — excluded above`}
             icon={UserX}
             tone="muted"
+            className="[animation-delay:160ms]"
           />
         )}
       </div>
@@ -406,7 +410,7 @@ export default function Dashboard() {
         <div className="lg:col-span-2 space-y-5">
 
           {/* Fee collection — 3 clear columns */}
-          <div className="bg-white border border-gray-200 rounded-xl">
+          <div className="bg-white border border-gray-200 rounded-xl animate-slide-up [animation-delay:80ms]">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
               <div>
                 <h3 className="text-sm font-semibold text-gray-900">Fee Collection</h3>
@@ -428,7 +432,7 @@ export default function Dashboard() {
                   <>
                     <p className="text-xs text-gray-500 mt-1.5 tabular-nums">{thisMoPct}% of ₹{fmtAmt(expectedAmt)} target</p>
                     <div className="mt-3 h-1 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-700"
+                      <div className="h-full rounded-full transition-all duration-500 ease-out"
                         style={{ width: `${Math.min(thisMoPct, 100)}%`, background: thisMoPct >= 80 ? '#059669' : thisMoPct >= 50 ? '#d97706' : '#dc2626' }} />
                     </div>
                   </>
@@ -464,7 +468,7 @@ export default function Dashboard() {
           {/* Today's batches */}
           {batches.length > 0 && (() => {
             return (
-              <div>
+              <div className="animate-slide-up [animation-delay:160ms]">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                     <Layers size={14} className="text-gray-400" />
@@ -487,7 +491,7 @@ export default function Dashboard() {
                 ) : (
                   <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
                     {todayBatches.map(({ b, stats: { count, activeCount, present, pct, marked } }) => (
-                      <div key={b.id} className="bg-white border border-gray-200 rounded-xl p-4 transition-colors hover:border-gray-300">
+                      <div key={b.id} className="bg-white border border-gray-200 rounded-xl p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:shadow-sm">
                         <div className="flex items-start justify-between mb-3">
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium truncate text-gray-900">{b.name}</p>
@@ -512,7 +516,7 @@ export default function Dashboard() {
                                 <span className={`font-medium tabular-nums ${!marked ? 'text-gray-300' : pct >= 80 ? 'text-emerald-700' : pct >= 60 ? 'text-amber-700' : 'text-red-600'}`}>{marked ? `${pct}%` : '—'}</span>
                               </div>
                               <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all ${!marked ? 'bg-gray-200' : pct >= 80 ? 'bg-emerald-600' : pct >= 60 ? 'bg-amber-500' : 'bg-red-500'}`}
+                                <div className={`h-full rounded-full transition-all duration-500 ease-out ${!marked ? 'bg-gray-200' : pct >= 80 ? 'bg-emerald-600' : pct >= 60 ? 'bg-amber-500' : 'bg-red-500'}`}
                                   style={{ width: marked ? `${pct}%` : '30%' }} />
                               </div>
                             </div>
@@ -563,7 +567,7 @@ export default function Dashboard() {
 
           {/* Needs Attention — counts only, actionable */}
           {attentionItems.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden animate-slide-up [animation-delay:80ms]">
               <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-2">
                 <AlertCircle size={13} className="text-gray-400" />
                 <h3 className="text-sm font-semibold text-gray-900">Needs Attention</h3>
@@ -599,7 +603,7 @@ export default function Dashboard() {
 
           {/* Leave requests — inline approve/reject */}
           {pendingLeaves.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 animate-slide-up [animation-delay:120ms]">
               <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                 <CalendarDays size={14} className="text-gray-400" />
                 Leave Requests
@@ -620,7 +624,7 @@ export default function Dashboard() {
 
           {/* Staff on duty */}
           {activeStaff.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 animate-slide-up [animation-delay:160ms]">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-900">
                   {selectedSport === 'All' ? 'Staff' : `${selectedSport} Staff`}
@@ -653,7 +657,7 @@ export default function Dashboard() {
 
           {/* Trials pipeline */}
           {trials.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 animate-slide-up [animation-delay:200ms]">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-900">Trial Pipeline</h3>
                 <Link to="/trials" className="text-xs text-gray-500 font-medium hover:text-gray-900 transition-colors">View all</Link>
@@ -681,7 +685,7 @@ export default function Dashboard() {
 
 // ── Leave request card ────────────────────────────────────────
 
-function LeaveCard({ request: r, onUpdate }) {
+const LeaveCard = memo(function LeaveCard({ request: r, onUpdate }) {
   const [loading, setLoading] = useState(null)
   const handle = async (status) => {
     setLoading(status)
@@ -706,18 +710,18 @@ function LeaveCard({ request: r, onUpdate }) {
       </div>
     </div>
   )
-}
+})
 
 // ── Sub-components ────────────────────────────────────────────
 
-function KpiCard({ label, value, sub, icon: Icon, tone = 'default' }) {
+const KpiCard = memo(function KpiCard({ label, value, sub, icon: Icon, tone = 'default', className = '' }) {
   const valueColor = {
     default:  'text-gray-900',
     negative: 'text-red-600',
     muted:    'text-gray-300',
   }[tone]
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 transition-colors hover:border-gray-300">
+    <div className={`bg-white border border-gray-200 rounded-xl p-4 transition-all duration-200 ease-out hover:border-gray-300 hover:shadow-sm animate-slide-up ${className}`}>
       <div className="flex items-start justify-between gap-2 mb-3">
         <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider leading-tight">{label}</p>
         <Icon size={15} className="text-gray-300 flex-shrink-0" />
@@ -726,7 +730,7 @@ function KpiCard({ label, value, sub, icon: Icon, tone = 'default' }) {
       <p className="text-xs text-gray-400 mt-1.5 leading-tight">{sub}</p>
     </div>
   )
-}
+})
 
 // ── Helpers ───────────────────────────────────────────────────
 

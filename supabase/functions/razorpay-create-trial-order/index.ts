@@ -166,6 +166,23 @@ Deno.serve(async (req) => {
   const rzpJson = await rzpResp.json().catch(() => ({}))
   if (!rzpResp.ok) return json({ error: 'razorpay order failed', details: rzpJson }, 502)
 
+  // Stamp the order id on the trial NOW, before the payer is sent to Checkout.
+  // This is what lets razorpay-webhook find the trial if the browser dies
+  // between Razorpay capturing the money and razorpay-verify-trial-payment
+  // running: an order's `notes` do not propagate to the payment entity the
+  // webhook receives, so order_id is the only reliable link back.
+  // razorpay_payment_id stays NULL, so nothing treats the trial as paid yet
+  // and the "already paid" guard above still works on a retry.
+  if (rzpJson?.id) {
+    const { error: stampErr } = await supabase
+      .from('trials')
+      .update({ razorpay_order_id: rzpJson.id })
+      .eq('id', trialId)
+    // Non-fatal: a failed stamp only costs the webhook backstop, and the
+    // synchronous verify path does not need it. Never block a payment for it.
+    if (stampErr) console.error('could not stamp order id on trial', stampErr)
+  }
+
   // rawCallerPhone is Supabase Auth's raw auth.users.phone — digits only, no
   // leading '+' but WITH the country code (e.g. "919998887777"). Razorpay
   // Checkout's prefill.contact expects proper E.164 (+91XXXXXXXXXX); the

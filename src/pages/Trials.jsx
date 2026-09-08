@@ -1232,7 +1232,13 @@ function ConvertModal({ trial, batches, feePlans, onClose, onConvert }) {
     feePlan:     'monthly',
     feePlanId:   '',
     trainingType:'Daily',
-    paidTill:    trial.trialFeePaid > 0 ? autoMonth : '',
+    // trialFeeMode, not trialFeePaid — on a /join registration trialFeePaid
+    // holds what is still DUE (the funnel writes the total and leaves the mode
+    // 'Not collected' until Razorpay succeeds), so `> 0` meant "we quoted
+    // them a fee", not "they paid". handleJoinDate/handleFeePlan recompute
+    // this via calcPaidTill the moment either is touched, so this only decides
+    // the value a straight-through convert starts from.
+    paidTill:    trial.trialFeeMode !== 'Not collected' ? autoMonth : '',
     joiningFee:  '',
   })
   const [errors, setErrors] = useState({})
@@ -2267,7 +2273,16 @@ export default function Trials() {
       // "enquired" parks them where they belong: wanted, waiting for a seat.
       // The hint comes from the DB trigger — ERRCODE alone can't be trusted
       // here, 23514 is also the alternate-day one-batch rule.
-      if (err?.hint === 'batch_capacity') {
+      // Somebody else already converted this trial (migration 0197 refuses the
+      // second one server-side, since the optimistic `converted` flag below
+      // never reaches the other person's device inside the 60s sync poll).
+      // Do NOT run the revert path here: `converted: false` would undo the
+      // conversion that genuinely succeeded and drop the trial back into the
+      // pipeline with a real student already behind it.
+      if (err?.hint === 'trial_already_converted') {
+        updateTrialStatus(trial.id, { stage: 'converted', converted: true }, { silent: true })
+        showToast(err.message || 'This trial was already converted — refresh to see the student', 'error')
+      } else if (err?.hint === 'batch_capacity') {
         updateTrialStatus(trial.id, {
           stage: 'enquired',
           // `converted: true` was set optimistically above to stop a double
