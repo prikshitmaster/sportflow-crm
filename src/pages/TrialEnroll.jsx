@@ -420,7 +420,7 @@ const DAY_OPTIONS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 // White rounded-bottom header with a round back button — branch/batch/form screens.
 function TopBar({ title, subtitle, onBack, C, children }) {
   return (
-    <div style={{ background: '#fff', padding: '56px 22px 20px', borderRadius: `0 0 ${R.sheet}px ${R.sheet}px`, boxShadow: E.rest }}>
+    <div style={{ background: '#fff', padding: 'calc(56px + env(safe-area-inset-top, var(--safe-area-inset-top, 0px))) 22px 20px', borderRadius: `0 0 ${R.sheet}px ${R.sheet}px`, boxShadow: E.rest }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         {onBack && (
           <Tappable onClick={onBack} label="Go back"
@@ -1196,7 +1196,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
             </div>
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(8,28,16,0.72) 0%, rgba(8,28,16,0.45) 35%, rgba(8,28,16,0.9) 78%)', pointerEvents: 'none' }} />
 
-            <div style={{ position: 'absolute', top: 58, left: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ position: 'absolute', top: 'calc(58px + env(safe-area-inset-top, var(--safe-area-inset-top, 0px)))', left: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
               {branding?.logoUrl ? (
                 <img src={branding.logoUrl} alt={displayName} style={{ width: 56, height: 56, borderRadius: 999, objectFit: 'cover' }} />
               ) : (
@@ -1273,7 +1273,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
               {/* Sticky — previously scrolled away with the rest of the page,
                   so the status bar ended up sitting on top of raw content
                   the moment you scrolled the sports list. */}
-              <div style={{ position: 'sticky', top: 0, zIndex: 15, background: `linear-gradient(160deg, ${C.main} 0%, ${C.dark} 100%)`, padding: '56px 22px 28px', borderRadius: '0 0 32px 32px' }}>
+              <div style={{ position: 'sticky', top: 0, zIndex: 15, background: `linear-gradient(160deg, ${C.main} 0%, ${C.dark} 100%)`, padding: 'calc(56px + env(safe-area-inset-top, var(--safe-area-inset-top, 0px))) 22px 28px', borderRadius: '0 0 32px 32px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {branding?.logoUrl ? (
