@@ -2160,14 +2160,21 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                 <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: -0.15, ...NUM }}>
                                   {b.startTime ? `${b.startTime} – ${b.endTime}` : label}
                                 </div>
-                                {cap > 0 && (
-                                  <div style={{ ...T.metaB, fontWeight: 700, ...NUM, color: tight ? DANGER_TEXT : N.muted, flexShrink: 0 }}>
-                                    {openSeats ? `${seatsLeft} of ${cap} left`
-                                      : blocked  ? 'Full'
-                                      : freeOnly ? 'Full · no fee'
-                                      : 'Waitlist'}
-                                  </div>
-                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                  {b.ageMin != null && b.ageMax != null && (
+                                    <div style={{ ...T.badge, padding: '3px 6px', borderRadius: 5, background: N.hair, color: N.muted, whiteSpace: 'nowrap' }}>
+                                      Ages {b.ageMin}–{b.ageMax}
+                                    </div>
+                                  )}
+                                  {cap > 0 && (
+                                    <div style={{ ...T.metaB, fontWeight: 700, ...NUM, color: tight ? DANGER_TEXT : N.muted }}>
+                                      {openSeats ? `${seatsLeft} of ${cap} left`
+                                        : blocked  ? 'Full'
+                                        : freeOnly ? 'Full · no fee'
+                                        : 'Waitlist'}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                               <div style={{ ...T.sub, color: N.muted, marginBottom: 10 }}>
                                 {[b.startTime ? label : null, b.coach].filter(Boolean).join(' · ') || label}
@@ -2184,7 +2191,6 @@ export default function TrialEnroll({ academySlug: slugProp }) {
                                 <Check size={13} color={A} strokeWidth={2} style={{ flexShrink: 0 }} />
                                 <span>
                                   {trialFee > 0 ? `₹${trialFee.toLocaleString('en-IN')} trial fee` : 'Free trial session'}
-                                  {b.ageMin != null && b.ageMax != null ? ` · ages ${b.ageMin}–${b.ageMax}` : ''}
                                 </span>
                               </div>
                             </div>
