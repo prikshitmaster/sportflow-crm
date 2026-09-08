@@ -1128,14 +1128,14 @@ export default function TrialEnroll({ academySlug: slugProp }) {
   // ── branding gates ───────────────────────────────────────────
   if (brandingStatus === 'loading' || !authChecked) {
     return (
-      <div style={{ minHeight: '100vh', background: N.page, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.main, fontFamily: FONT }}>
+      <div style={{ minHeight: '100dvh', background: N.page, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.main, fontFamily: FONT }}>
         <Spinner size={26} color={C.main} />
       </div>
     )
   }
   if (brandingStatus === 'not-found') {
     return (
-      <div style={{ minHeight: '100vh', background: N.page, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: FONT }}>
+      <div style={{ minHeight: '100dvh', background: N.page, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: FONT }}>
         <div style={{ width: '100%', maxWidth: 360, background: '#fff', border: `1.5px solid ${N.line}`, borderRadius: 24, padding: 24, textAlign: 'center' }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: N.text, marginBottom: 8 }}>Link not found</div>
           <div style={{ fontSize: 14, color: N.muted }}>
@@ -1183,14 +1183,14 @@ export default function TrialEnroll({ academySlug: slugProp }) {
     : 'Register in under 2 minutes.'
 
   return (
-    <div style={{ minHeight: '100vh', background: N.page, fontFamily: FONT,
+    <div style={{ minHeight: '100dvh', background: N.page, fontFamily: FONT,
                   '--jf-accent': C.main, '--jf-accent-soft': `${C.main}2E` }}>
       <style>{JOIN_CSS}</style>
-      <div style={{ margin: '0 auto', width: '100%', maxWidth: 440, minHeight: '100vh', position: 'relative', overflow: 'hidden', background: N.page }}>
+      <div style={{ margin: '0 auto', width: '100%', maxWidth: 440, minHeight: '100dvh', position: 'relative', overflow: 'hidden', background: N.page }}>
 
         {/* ── LOGIN ─────────────────────────────────────────── */}
         {step === 'login' && (
-          <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative', overflow: 'hidden', background: '#0B1F12' }}>
+          <div className="jf-screen" style={{ minHeight: '100dvh', position: 'relative', overflow: 'hidden', background: '#0B1F12' }}>
             <div style={{ position: 'absolute', inset: 0 }}>
               <Photo fallback={heroFallback} C={C} alt={displayName} />
             </div>
@@ -1268,8 +1268,8 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
         {/* ── HOME ──────────────────────────────────────────── */}
         {step === 'home' && (<>
-          <div className="jf-screen" style={{ minHeight: '100vh', position: 'relative' }}>
-            <div style={{ minHeight: '100vh', overflowY: 'auto' }}>
+          <div className="jf-screen" style={{ minHeight: '100dvh', position: 'relative' }}>
+            <div style={{ minHeight: '100dvh', overflowY: 'auto' }}>
               {/* Sticky — previously scrolled away with the rest of the page,
                   so the status bar ended up sitting on top of raw content
                   the moment you scrolled the sports list. */}
@@ -1551,7 +1551,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
           {/* Bottom nav — outside jf-screen so the animation's transform
               can't trap position:fixed into a local containing block. */}
-          <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(18px + env(safe-area-inset-bottom, 0px))', zIndex: 20,
+          <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 'calc(18px + env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px)))', zIndex: 20,
             background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)',
             borderRadius: 999, boxShadow: '0 12px 28px rgba(11,50,26,0.22)', display: 'flex', gap: 2, padding: 6, border: '1px solid rgba(255,255,255,0.7)' }}>
             {[
@@ -1573,7 +1573,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
         {/* ── BRANCH ────────────────────────────────────────── */}
         {step === 'branch' && (
-          <div className="jf-screen" style={{ minHeight: '100vh' }}>
+          <div className="jf-screen" style={{ minHeight: '100dvh' }}>
             <div style={{ position: 'relative', height: 210 }}>
               <Photo fallback={sportFallback(chosenSport, 900, 500)} C={C} alt={chosenSport} />
               <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(6,24,13,0.6) 0%, rgba(6,24,13,0.15) 45%, rgba(6,24,13,0.88) 100%)', pointerEvents: 'none' }} />
@@ -1636,7 +1636,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
         {/* ── BATCH ─────────────────────────────────────────── */}
         {step === 'batch' && (
-          <div className="jf-screen" style={{ minHeight: '100vh' }}>
+          <div className="jf-screen" style={{ minHeight: '100dvh' }}>
             <TopBar title="Choose a Batch" onBack={() => setStep('branch')} C={C}>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: C.tint, color: C.dark, borderRadius: R.chip, padding: '7px 12px', ...T.label, fontWeight: 700, marginTop: 12 }}>
                 {chosenSport} • {chosenRow?.branchName}
@@ -1701,8 +1701,8 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
         {/* ── FORM ──────────────────────────────────────────── */}
         {step === 'form' && (<>
-          <div className="jf-screen" style={{ minHeight: '100vh' }}>
-            <div style={{ minHeight: '100vh', paddingBottom: 'calc(116px + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="jf-screen" style={{ minHeight: '100dvh' }}>
+            <div style={{ minHeight: '100dvh', paddingBottom: 'calc(116px + env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px)))' }}>
               <TopBar title="Student Registration" subtitle={`${chosenSport} · ${chosenRow?.branchName}`} onBack={() => setStep(batchChoice ? 'batch' : 'branch')} C={C} />
 
               <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -1936,7 +1936,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
           <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 0,
                         width: '100%', maxWidth: 440, boxSizing: 'border-box', zIndex: 20,
-                        padding: '13px 22px calc(24px + env(safe-area-inset-bottom, 0px))',
+                        padding: '13px 22px calc(24px + env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px)))',
                         background: 'rgba(244,248,244,0.88)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
                         borderTop: `1px solid ${N.line}` }}>
             <Cta onClick={goToPayment} C={C}>Continue</Cta>
@@ -1945,8 +1945,8 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
         {/* ── PAY ───────────────────────────────────────────── */}
         {step === 'pay' && (<>
-          <div className="jf-screen" style={{ minHeight: '100vh' }}>
-            <div style={{ minHeight: '100vh', paddingBottom: 'calc(116px + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="jf-screen" style={{ minHeight: '100dvh' }}>
+            <div style={{ minHeight: '100dvh', paddingBottom: 'calc(116px + env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px)))' }}>
               <TopBar title="Payment" subtitle={`${chosenSport} · ${chosenRow?.branchName}`} onBack={() => setStep('form')} C={C} />
 
               <div style={{ padding: '18px 22px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -2024,7 +2024,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
           <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: 0,
                         width: '100%', maxWidth: 440, boxSizing: 'border-box', zIndex: 20,
-                        padding: '13px 22px calc(24px + env(safe-area-inset-bottom, 0px))',
+                        padding: '13px 22px calc(24px + env(safe-area-inset-bottom, var(--safe-area-inset-bottom, 0px)))',
                         background: 'rgba(244,248,244,0.88)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
                         borderTop: `1px solid ${N.line}` }}>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -2039,7 +2039,7 @@ export default function TrialEnroll({ academySlug: slugProp }) {
 
         {/* ── CONFIRM ───────────────────────────────────────── */}
         {step === 'confirm' && (
-          <div className="jf-screen" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '40px 30px', textAlign: 'center' }}>
+          <div className="jf-screen" style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '40px 30px', textAlign: 'center' }}>
             <div style={{ width: 88, height: 88, borderRadius: R.pill, background: C.main, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 14px 30px ${C.main}52`, marginBottom: 10 }}>
               <CheckCircle2 size={38} color="#fff" strokeWidth={2.2} />
             </div>

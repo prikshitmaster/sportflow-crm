@@ -1,46 +1,15 @@
 package com.khelit.enroll;
 
-import android.os.Bundle;
-import android.view.View;
-
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
-
 import com.getcapacitor.BridgeActivity;
 
-public class MainActivity extends BridgeActivity {
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        // targetSdk 36 makes edge-to-edge mandatory (Android 15+) — the
-        // WebView draws behind the system status/navigation bars by default,
-        // which let the /join page's fixed-position bottom nav pill render
-        // underneath (visually mixing with) the phone's own 3-button nav
-        // bar. Consuming the bottom inset as real WebView padding keeps
-        // content clear of the system bar natively, instead of depending on
-        // CSS env(safe-area-inset-*) being correctly propagated through
-        // Capacitor's WebView bridge — that alone wasn't enough on the
-        // device this was tested on.
-        //
-        // Two things a bare OnApplyWindowInsetsListener alone was missing:
-        // 1. setDecorFitsSystemWindows(false) — the documented way to opt
-        //    the window into dispatching real WindowInsets to children at
-        //    all; without it the listener can silently receive zeroed
-        //    insets even though the window still draws edge-to-edge.
-        // 2. requestApplyInsets() — the very first insets dispatch happens
-        //    during window setup, which can fire before a listener attached
-        //    this late in onCreate is registered, so the first (and only,
-        //    until something else changes) pass gets missed entirely.
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        View webView = getBridge().getWebView();
-        ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
-            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            view.setPadding(0, 0, 0, bars.bottom);
-            return insets;
-        });
-        ViewCompat.requestApplyInsets(webView);
-    }
-}
+// Capacitor 8's core SystemBars plugin already handles Android 15's mandatory
+// edge-to-edge layout — it pads the WebView (or, on newer WebView builds with
+// the page's viewport-fit=cover, defers to the WebView's own native
+// env(safe-area-inset-*) support) and separately injects reliable
+// --safe-area-inset-* CSS variables as a backstop for Chromium builds where
+// env() itself doesn't populate correctly inside an embedded WebView
+// (https://issues.chromium.org/issues/40699457). A hand-rolled
+// OnApplyWindowInsetsListener here ran downstream of that plugin's own
+// listener and only fought it — see the /join page's CSS, which now reads
+// the injected --safe-area-inset-bottom variable as env()'s fallback instead.
+public class MainActivity extends BridgeActivity {}
