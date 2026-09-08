@@ -1815,6 +1815,21 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   const dueAmount = isPartialPayment ? Math.max(0, calcAmount - finalAmount) : 0
   const noteRequired = dueAmount > 0 && !form.notes.trim()
 
+  // "All months inactive" is a ₹0 write-off, and addPayment's noChargeOnly
+  // branch returns BEFORE inserting any row — it deliberately records nothing.
+  // But two paths put real money on a form where every month is unticked: a
+  // late fee, and ticking "partial payment" and typing a total by hand (the
+  // fee-plan total is ₹0 there, so the box unlocks at zero and accepts
+  // anything). Both used to be handed to noChargeOnly, which threw the amount
+  // away — cash over the counter, no invoice, no revenue, and a toast that
+  // said "nothing collected".
+  //
+  // So the no-invoice shortcut is now keyed on nothing ACTUALLY being
+  // collected. With money on the form it takes the normal path instead: the
+  // amount is recorded, and coverageMonths still advances paidTill across the
+  // inactive months exactly as before.
+  const nothingCollected = isAllInactive && finalAmount <= 0
+
   const filteredStudents = studentSearch
     ? students.filter(s => s.name.toLowerCase().includes(studentSearch.toLowerCase()))
     : students
@@ -1871,7 +1886,9 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
         coverageMonths,              // months paidTill advances by (charged + inactive)
         inactiveCount: inactiveList.length,
         // Nothing collected → AppContext skips the invoice insert entirely.
-        noChargeOnly: isAllInactive,
+        // Keyed on the amount, not on the ticks: all-inactive WITH a late fee
+        // or a hand-typed total is still real money and must be written.
+        noChargeOnly: nothingCollected,
         lateFee: lateFeeAmt, paymentDate,
         confirmedMismatch: confirmTyped,
         taxPercent: taxPct, taxAmount: taxAmt,
@@ -2200,7 +2217,10 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                   <span className="text-base leading-none mr-1">⚠</span>
                   <strong>₹{studentPendingTotal.toLocaleString('en-IN')} pending</strong>
                   {' '}from {studentPendingRows.length === 1 ? (studentPendingRows[0].month || 'an earlier payment') : `${studentPendingRows.length} earlier payments`}
-                  {' '}still uncollected — separate from whatever you record below. Clear it here, or it stays invisible outside the Pending filter.
+                  {' '}still uncollected — separate from whatever you record below.
+                  {onClearDue
+                    ? ' Clear it here, or it stays invisible outside the Pending filter.'
+                    : ' It stays invisible outside the Pending filter.'}
                 </span>
                 {studentPendingRows.length === 1 && onClearDue && (
                   <button type="button" onClick={() => onClearDue(studentPendingRows[0].id)}
@@ -2209,6 +2229,29 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                   </button>
                 )}
               </div>
+              {/* The single-row case gets the inline button above. With two or
+                  more, "Clear it here" used to point at a button that was never
+                  rendered — the only affordance was the Pending filter the same
+                  sentence calls invisible. onClearDue opens a confirm modal for
+                  ONE payment, so they are cleared one at a time, listed here. */}
+              {studentPendingRows.length > 1 && onClearDue && (
+                <div className="mt-2 pt-2 border-t border-amber-200 space-y-1">
+                  {studentPendingRows.map(p => (
+                    <div key={p.id} className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 truncate">
+                        <span className="font-mono text-[10px] text-amber-700 mr-1.5">{p.id}</span>
+                        {p.month || '—'}
+                        <span className="text-amber-700 mx-1">·</span>
+                        <strong>₹{Number(p.amount || 0).toLocaleString('en-IN')}</strong>
+                      </span>
+                      <button type="button" onClick={() => onClearDue(p.id)}
+                        className="flex-shrink-0 text-amber-800 font-bold underline whitespace-nowrap">
+                        Clear now
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {isUpToDate && (
@@ -2552,8 +2595,19 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
               <strong className="text-gray-900">
                 All {dueMonths.length} month{dueMonths.length !== 1 ? 's' : ''} marked inactive.
               </strong>{' '}
-              Nothing is collected, so <strong>no invoice is created</strong> and revenue
-              is untouched. {form.student || 'The student'} stops being due through{' '}
+              {nothingCollected ? (
+                <>
+                  Nothing is collected, so <strong>no invoice is created</strong> and revenue
+                  is untouched.
+                </>
+              ) : (
+                <>
+                  No month is being charged, but <strong>₹{finalAmount.toLocaleString('en-IN')} is
+                  still being collected</strong> — it is recorded as its own invoice and counts
+                  as revenue.
+                </>
+              )}{' '}
+              {form.student || 'The student'} stops being due through{' '}
               {dueMonths[dueMonths.length - 1].label}.
             </p>
             <p className="text-gray-500">
@@ -2673,6 +2727,22 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                 {lateFeeAmt > 0 && finalAmount === lateFeeAmt ? 'Late fee only' : 'No months are being charged'}
                 {' '}— this ₹{finalAmount.toLocaleString('en-IN')} does not extend coverage.
                 {' '}{form.student || 'The student'} stays due for the same period.
+              </span>
+            </div>
+          )}
+          {/* Every amount guard in this form — the soft feePlanMismatch warning,
+              the hard >30% sanityMismatch gate, and the server's own check in
+              secure_insert_payment — is switched off when no rate can be
+              resolved for the batch (`referenceRate > 0` / `IF v_expected > 0`).
+              For those students a ₹800-vs-₹8,000 typo passes both layers in
+              silence. Can't invent a rate, but staff must know the net is down. */}
+          {form.studentId && referenceRate <= 0 && finalAmount > 0 && (
+            <div className="flex items-start gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mt-1">
+              <span className="text-sm leading-none mt-0.5">⚠</span>
+              <span>
+                No fee plan set for this batch, so the amount can't be checked against
+                anything — <strong>typos will not be caught</strong>. Re-read ₹{finalAmount.toLocaleString('en-IN')}
+                {' '}before saving, or set a fee plan for {form.batchName || 'this batch'} in Settings.
               </span>
             </div>
           )}

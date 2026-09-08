@@ -1021,6 +1021,26 @@ function coveragePreview(joinDate, paidTill) {
   return `${label} · ${months} month${months > 1 ? 's' : ''}`
 }
 
+// Same inclusive month span coveragePreview and AppContext's
+// calcHistoricalPayment both use — kept here so the form can warn about a
+// paid-till that is about to book a payment far larger than anyone intended.
+function coverageMonths(joinDate, paidTill) {
+  if (!joinDate || !paidTill) return 0
+  const startYr = Number(joinDate.slice(0, 4))
+  const startMo = Number(joinDate.slice(5, 7)) - 1
+  const endYr   = Number(paidTill.slice(0, 4))
+  const endMo   = Number(paidTill.slice(5, 7)) - 1
+  return Math.max(1, (endYr - startYr) * 12 + (endMo - startMo) + 1)
+}
+
+// A paid-till this far out is a mistyped year, not a real prepayment. Adding a
+// student books `fees × months` as a real Paid payment (calcHistoricalPayment),
+// so "2036" instead of "2026" silently records ~₹5.7L of revenue that was never
+// collected AND covers the student for a decade, so they never show as overdue
+// again. Nothing downstream catches it: the server's >30% mismatch check scales
+// its expectation by the same inflated month count, so the amount matches.
+const MAX_COVERAGE_MONTHS = 24
+
 const FEE_PLAN_OPTIONS = [
   { key: 'monthly',   label: 'Monthly',   sub: '1 month'   },
   { key: 'quarterly', label: 'Quarterly', sub: '3 months'  },
@@ -1214,6 +1234,12 @@ function AddStudentModal({ onClose, onSave }) {
     if (!form.trainingType)             e.trainingType = 'Select a training type'
     if (!form.fees || Number(form.fees) <= 0) e.fees   = 'Enter fee amount'
     if (!form.paidTill)                 e.paidTill     = 'Required'
+    else {
+      const cm = coverageMonths(form.joinDate || form.paidTill, form.paidTill)
+      if (cm > MAX_COVERAGE_MONTHS) {
+        e.paidTill = `${cm} months of coverage — check the year. Max ${MAX_COVERAGE_MONTHS}.`
+      }
+    }
     // The /join form insists on both halves of the emergency contact, so this
     // form does too — otherwise the same student is a complete record when
     // they sign up online and an incomplete one when the office types them in.
@@ -1543,6 +1569,23 @@ function AddStudentModal({ onClose, onSave }) {
           {form.paidTill && form.fees > 0 && (() => {
             const p = coveragePreview(form.joinDate || form.paidTill, form.paidTill)
             return p ? <p className="text-[11px] text-brand-600 font-semibold mt-1">Covers: {p}</p> : null
+          })()}
+          {/* The form used to show the period but never the money. Adding a
+              student with a paid-till books `fees × months` as a real payment
+              straight into revenue — that figure has to be on screen BEFORE
+              Save, not discovered in Reports afterwards. */}
+          {form.paidTill && form.fees > 0 && !errors.paidTill && (() => {
+            const cm  = coverageMonths(form.joinDate || form.paidTill, form.paidTill)
+            const amt = (form.feePlan === 'monthly' ? Number(form.fees) * cm : Number(form.fees))
+                        + (Number(form.joiningFee) || 0)
+            if (!(amt > 0)) return null
+            return (
+              <p className={`text-[11px] mt-1 ${cm > 12 ? 'text-amber-600 font-bold' : 'text-gray-500'}`}>
+                Will record a paid payment of <strong>₹{amt.toLocaleString('en-IN')}</strong>
+                {form.feePlan === 'monthly' && cm > 1 ? ` (₹${Number(form.fees).toLocaleString('en-IN')} × ${cm})` : ''}
+                {Number(form.joiningFee) > 0 ? ` incl. ₹${Number(form.joiningFee).toLocaleString('en-IN')} joining fee` : ''}
+              </p>
+            )
           })()}
           {form.paidTill && form.fees > 0 && new Date(form.paidTill) < new Date() && (
             <p className="text-[11px] text-amber-600 mt-1">Past date — student will show as Overdue</p>

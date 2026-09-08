@@ -1791,8 +1791,32 @@ export function AppProvider({ children }) {
           })
           newPaidTill = withEnd.sort((a, b) => b.end - a.end)[0].endStr
         }
-        await db.updateStudentPaidTill(student.id, newPaidTill, null)
-        setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: newPaidTill } : s))
+
+        // Coverage that this payment did not create must survive its deletion.
+        //
+        // A ₹0 inactive write-off (noChargeOnly above) moves paid_till forward
+        // WITHOUT inserting a payment row — by design, nothing was collected.
+        // The recompute above only sees rows, so it silently undid the
+        // write-off: a student forgiven 4 months went straight back to owing
+        // them the next time any unrelated payment of theirs was deleted, and
+        // the auto-suspend job started chasing months the academy had already
+        // decided to waive. The same applies to any paid_till set by hand.
+        //
+        // So: work out where the DELETED row's own coverage ended. If the
+        // student's paid_till currently runs past that, something else put it
+        // there and this delete has no business pulling it back.
+        const deletedEnd = payment.coverageEnd
+          ? payment.coverageEnd
+          : (() => {
+              const base = new Date((payment.coverageStart || payment.date) + 'T00:00:00')
+              const m    = payment.monthsCovered || 1
+              return toLocalDateStr(new Date(base.getFullYear(), base.getMonth() + m, 0))
+            })()
+        const keepExisting = !!student.paidTill && student.paidTill > deletedEnd
+        const finalPaidTill = keepExisting ? student.paidTill : newPaidTill
+
+        await db.updateStudentPaidTill(student.id, finalPaidTill, null)
+        setStudents(prev => prev.map(s => s.id === student.id ? { ...s, paidTill: finalPaidTill } : s))
       }
       // Deleting a payment is the highest-risk action in the app — it is how
       // collected cash stops existing on paper. So it records the most, not the
