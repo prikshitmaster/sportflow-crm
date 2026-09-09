@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useApp } from '../../context/AppContext'
 import * as db from '../../lib/db'
-import { isOutstanding, firstOfMonthIso } from '../../lib/studentRules'
+import { isOutstanding, firstOfMonthIso, isDueBalanceRow } from '../../lib/studentRules'
 import { CreditCard, CheckCircle2, Clock, AlertCircle, IndianRupee } from 'lucide-react'
 
 const statusIcon = {
@@ -47,7 +47,7 @@ export default function StudentPayments() {
   // read persisted rows, so a student whose dues are virtual-only saw nothing.
   // Mirror the owner logic (lib/studentRules) so the two views agree.
   const records = useMemo(() => {
-    const hasOpenRecord = payments.some(p => p.status === 'Overdue' || p.status === 'Pending')
+    const hasOpenRecord = payments.some(p => (p.status === 'Overdue' || p.status === 'Pending') && !isDueBalanceRow(p))
     const outstanding = !!studentUser && isOutstanding(
       { status: studentUser.status, paidTill: studentUser.paid_till },
       firstOfMonthIso(),

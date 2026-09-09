@@ -6,7 +6,7 @@ import {
   BarChart3, Layers, ArrowRight, Clock, FileText, UserX,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { isOutstanding, isGhost } from '../lib/studentRules'
+import { isOutstanding, isGhost, isDueBalanceRow } from '../lib/studentRules'
 import { Skeleton, SkeletonCards } from '../components/Skeleton'
 import { fetchAllBatchEnrolments, getTodayCheckin, clockIn, clockOut, fetchAttendanceForMonth } from '../lib/db'
 import { toLocalDateStr, toLocalMonthStr } from '../lib/dates'
@@ -155,8 +155,12 @@ export default function Dashboard() {
   }, [payments, currentMonth])
 
   const { overdueList, pendingList, overdueAmt, pendingAmt } = useMemo(() => {
+    // A linked "Balance due from …" shortfall row doesn't cover the current
+    // month (see isDueBalanceRow) — it must NOT suppress this virtual row,
+    // or a years-old tracked shortfall permanently hides brand-new, unrelated
+    // overdue months for that student.
     const studentsWithRecord = new Set(
-      payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => String(p.studentId))
+      payments.filter(p => (p.status === 'Overdue' || p.status === 'Pending') && !isDueBalanceRow(p)).map(p => String(p.studentId))
     )
     const virtualOverdue = students
       .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithRecord.has(String(s.id)) && !ghostIds.has(s.id))

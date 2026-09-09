@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 import { CreditCard, Plus, Search, CheckCircle, Clock, AlertCircle, UserX, X, Pencil, Trash2, Printer, Link as LinkIcon, MessageCircle, FileSpreadsheet, Download, ChevronLeft, ChevronRight, ChevronDown, SlidersHorizontal, Wallet } from 'lucide-react'
 import { Modal } from './Students'
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { isOutstanding, normTrainingType, trainingTypeLabel, isGhost } from '../lib/studentRules'
+import { isOutstanding, normTrainingType, trainingTypeLabel, isGhost, isDueBalanceRow } from '../lib/studentRules'
 import DevFillButton from '../components/DevFillButton'
 import { fillPayment } from '../lib/devFill'
 import SendPayLinkModal from '../components/SendPayLinkModal'
@@ -171,8 +171,13 @@ export default function Payments() {
   // instead of inflating the main Overdue total with money from a student
   // who's stopped showing up.
   const overdueRows = useMemo(() => {
+    // A linked "Balance due from …" shortfall row doesn't cover the current
+    // month (see isDueBalanceRow) — it must NOT suppress this virtual row,
+    // or a years-old tracked shortfall permanently hides brand-new, unrelated
+    // overdue months for that student. Only a real pending collection (e.g.
+    // an uncleared cheque) legitimately means "already accounted for."
     const studentsWithPendingRecord = new Set(
-      payments.filter(p => p.status === 'Overdue' || p.status === 'Pending').map(p => p.studentId)
+      payments.filter(p => (p.status === 'Overdue' || p.status === 'Pending') && !isDueBalanceRow(p)).map(p => p.studentId)
     )
     return students
       .filter(s => isOutstanding(s, firstOfMonth) && !studentsWithPendingRecord.has(s.id) && !ghostIds.has(s.id))

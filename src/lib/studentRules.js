@@ -183,6 +183,21 @@ export function isGhost(s, sessionsLast2Mo, minSessions = 0) {
 }
 
 /**
+ * A linked "Balance due from INV-…" row (the shortfall addPayment creates for
+ * a partial payment, see AppContext.jsx addPayment) is NOT a stand-in for the
+ * student's whole-month obligation — it never touches paidTill or carries
+ * coverage dates, unlike a real pending collection (e.g. an uncleared
+ * cheque). Callers that suppress a virtual overdue/outstanding row whenever
+ * *any* Pending payment exists for a student must exclude these first, or a
+ * years-old, already-fully-tracked shortfall permanently hides that student
+ * from Overdue/Dashboard/reminders even once they rack up brand-new,
+ * unrelated unpaid months — found 2026-09-10: 201 students, ₹8.24L hidden.
+ */
+export function isDueBalanceRow(p) {
+  return /^Balance due from /.test(p?.notes || '')
+}
+
+/**
  * Ageing bucket label for a number of days overdue.
  * Matches Reports.jsx exactly: 1–30, 31–60, 61–90, 90+.
  */
