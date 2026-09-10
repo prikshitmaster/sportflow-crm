@@ -538,6 +538,12 @@ export default function Payments() {
                     <button className="font-semibold text-gray-900 text-sm hover:text-brand-600 transition" onClick={e => { e.stopPropagation(); const s = studentMap[p.studentId]; if (s) setSelectedStudentHistory(s) }}>{p.student}</button>
                     {p.isSuspended && <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-gray-400" />Suspended</span>}
                   </div>
+                  {studentMap[p.studentId] && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {studentMap[p.studentId].batch || 'No batch'}
+                      {studentMap[p.studentId].studentCode ? ` · ${studentMap[p.studentId].studentCode}` : ''}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500 mt-0.5">{p.month}{p.mode ? ` · ${p.mode}` : ''}{p.date ? ` · ${p.date}` : ''}{p.mode==='Cheque'&&p.notes?.startsWith('Cheque #') ? ` · ${p.notes.split('\n')[0]}` : ''}</p>
                   {!p.isVirtual && <p className="text-[10px] font-mono text-gray-300 mt-0.5">{p.id}</p>}
                 </div>
@@ -604,8 +610,20 @@ export default function Payments() {
                   >
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.isVirtual ? <span className="text-gray-300">—</span> : p.id}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900" onClick={e => { e.stopPropagation(); const s = studentMap[p.studentId]; if (s) setSelectedStudentHistory(s) }}>
-                      <span className="hover:text-brand-600 cursor-pointer transition">{p.student}</span>
-                      {p.isSuspended && <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-gray-400" />Suspended</span>}
+                      <div className="flex items-center gap-2">
+                        <span className="hover:text-brand-600 cursor-pointer transition">{p.student}</span>
+                        {p.isSuspended && <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-gray-400" />Suspended</span>}
+                      </div>
+                      {/* Same name, different kid: nothing else in this row (invoice id,
+                          amount) tells two "Aarav Patel"s apart at a glance, and this is
+                          the only column an operator scans before hitting Mark Paid — a
+                          real production mix-up (SG0080 vs SG0200) is what surfaced this. */}
+                      {studentMap[p.studentId] && (
+                        <div className="text-[10px] font-normal text-gray-400 mt-0.5">
+                          {studentMap[p.studentId].batch || 'No batch'}
+                          {studentMap[p.studentId].studentCode ? ` · ${studentMap[p.studentId].studentCode}` : ''}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{p.month}</td>
                     <td className="px-4 py-3 font-bold text-gray-900">₹{(p.amount ?? 0).toLocaleString('en-IN')}</td>
