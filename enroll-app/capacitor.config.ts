@@ -23,13 +23,13 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: false,
-    backgroundColor:   '#1B4332', // placeholder green — swap for the real logo hex
+    backgroundColor:   '#031B40', // ARA FC crest navy, sampled from the real logo
   },
   plugins: {
     SplashScreen: {
       launchShowDuration:   2000,
       launchAutoHide:       true,
-      backgroundColor:      '#1B4332', // placeholder green — swap for the real logo hex
+      backgroundColor:      '#031B40', // ARA FC crest navy, sampled from the real logo
       androidSplashResourceName: 'splash',
       showSpinner:          false,
     },
