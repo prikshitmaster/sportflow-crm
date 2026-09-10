@@ -191,6 +191,14 @@ export function groupRowsByPattern(rows, slotBatches, days, ceilings) {
     const activeIds = (slotBatches || [])
       .filter(b => (b.days || []).includes(d))
       .map(b => b.id).sort().join(',')
+    // No non-full-week batch trains this day — it's only covered by a Daily
+    // batch's own tile (dailyBatchRows). Without this guard, days left over
+    // after the real pattern batches claim theirs (e.g. Mon/Wed/Fri once a
+    // TTS batch has taken Tue/Thu/Sat) fell into their own group here and,
+    // purely because that leftover set of days happened to match a known
+    // pattern's day-set, got labeled "MWF" — inventing a phantom batch tile
+    // for a pattern nothing in the slot actually runs.
+    if (!activeIds) return
     if (!groups.has(activeIds)) groups.set(activeIds, [])
     groups.get(activeIds).push(d)
   })

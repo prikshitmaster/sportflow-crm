@@ -440,7 +440,22 @@ export default function Batches() {
       })}
 
       {/* ── Grouped branch sections (when branches configured) ── */}
-      {grouped && activeBranch === 'All' ? (
+      {/* While picking members for a shared ground, ignore the active section
+          tab entirely. A slot can span batches whose "home" section (getBatchSection
+          picks just one) differs from whichever tab happens to be open — editing
+          a slot preselects every member into pickedIds (openSlotForEdit) and the
+          "N batches selected" count above already includes all of them, but the
+          tab-filtered grid below only rendered cards for the active section. Any
+          member outside it had no card at all — counted, but with no tick to see
+          or toggle. Group mode now always shows every batch so every member (and
+          every possible pick) has a visible, tickable card. */}
+      {groupMode ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {batches.map((b) => (
+            <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} seat={seatByBatch[b.id]} selectable selected={pickedIds.has(b.id)} onToggleSelect={togglePicked} />
+          ))}
+        </div>
+      ) : grouped && activeBranch === 'All' ? (
         <div className="space-y-8">
           {grouped.map(({ branch, batches: branchBatches }) => (
             <div key={branch}>
@@ -474,8 +489,10 @@ export default function Batches() {
         </div>
       )}
 
-      {/* Fallback flat grid when no branches configured */}
-      {!grouped && (
+      {/* Fallback flat grid when no branches configured. Group mode already
+          rendered its own full grid above, so skip this one then — otherwise
+          every batch would render twice when no batch carries a sport tag. */}
+      {!grouped && !groupMode && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {batches.map((b) => <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} seat={seatByBatch[b.id]} selectable={groupMode} selected={pickedIds.has(b.id)} onToggleSelect={togglePicked} />)}
         </div>

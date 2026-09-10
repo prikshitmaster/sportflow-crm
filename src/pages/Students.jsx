@@ -1121,13 +1121,12 @@ function AddStudentModal({ onClose, onSave }) {
   // earned, so they're only reachable from Edit Student, never at registration.
   // Rows written before batch_type existed default to 'development'.
   const allDevBatches = batches.filter(b => (b.batchType || 'development') !== 'advance')
-  // The code (not the full name) is what staff actually scan for here —
-  // it's the short unique label batches are now required to carry (0160).
-  // Falls back to the name only for batches created before that, which
-  // may still have no code.
-  // First letter capitalized for display only — codes are stored lowercase
-  // (uniqueness is case-insensitive, 0160), e.g. "u15-tts" shows as "U15-tts".
-  const batchLabel = (b) => { const s = b.code || b.name; return s ? s.charAt(0).toUpperCase() + s.slice(1) : s }
+  // Name first — the code alone (often an auto-generated string like
+  // "foo25-dev") isn't something a person registering a student recognizes,
+  // and near-identical codes (foo25-dev vs foo25-dev-2) made distinct batches
+  // look interchangeable in the picker. Code stays visible in parens as a
+  // secondary hint, matching EditStudentModal's existing convention below.
+  const batchLabel = (b) => b.name + (b.code ? ` (${b.code})` : '')
   // Combine sports from both tables: old academy_branches + new sport_branches.
   // Cricket (and any sport added via sport_branches) was missing from the dropdown
   // because it only existed in sport_branches, not academy_branches.
