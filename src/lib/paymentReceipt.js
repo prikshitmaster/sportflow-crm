@@ -40,11 +40,15 @@ export function buildReceiptHTML(p, student, academyName, logoUrl) {
   if (p.paymentType === 'trial') {
     // Trial receipts have no student, batch or fee plan — the generic
     // branch would print "Monthly Training Fee" with an empty ' · ' subtitle.
-    lineItems.push({ desc: 'Trial Registration Fee', sub: p.sport || student?.sport || '', qty: '', unit: '', total: p.amount ?? 0 })
+    lineItems.push({ desc: 'Trial Registration Fee', sub: p.sport || student?.sport || '', total: p.amount ?? 0 })
   } else {
-    lineItems.push({ desc: `${planLabel} Training Fee${months > 1 ? ` × ${months} months` : ''}`, sub: `${student?.sport || ''} · ${student?.batch || ''}`, qty: months, unit: Math.round(baseFee / months), total: baseFee })
-    if (trialAmt > 0)   lineItems.push({ desc: 'Trial Fee Adjustment', sub: 'Paid separately at trial — see trial receipt', qty: '', unit: '', total: -trialAmt, cls: 'red' })
-    if (joiningAmt > 0) lineItems.push({ desc: 'Joining Fee', sub: 'One-time registration', qty: '', unit: '', total: joiningAmt, cls: 'purple' })
+    // A multi-month fee is one payment, not N units of something — no
+    // Qty/Unit Price split (that read like a retail invoice for a training
+    // fee). The month count lives in the description text instead, and the
+    // covered period is already shown above in Payment Info.
+    lineItems.push({ desc: `${planLabel} Training Fee${months > 1 ? ` × ${months} months` : ''}`, sub: `${student?.sport || ''} · ${student?.batch || ''}`, total: baseFee })
+    if (trialAmt > 0)   lineItems.push({ desc: 'Trial Fee Adjustment', sub: 'Paid separately at trial — see trial receipt', total: -trialAmt, cls: 'red' })
+    if (joiningAmt > 0) lineItems.push({ desc: 'Joining Fee', sub: 'One-time registration', total: joiningAmt, cls: 'purple' })
   }
 
   const subtotal = lineItems.reduce((s, l) => s + l.total, 0)
@@ -179,18 +183,14 @@ export function buildReceiptHTML(p, student, academyName, logoUrl) {
     <table>
       <thead>
         <tr>
-          <th style="width:50%">Description</th>
-          <th class="r" style="width:15%">Qty</th>
-          <th class="r" style="width:17%">Unit Price</th>
-          <th class="r" style="width:18%">Amount</th>
+          <th style="width:75%">Description</th>
+          <th class="r" style="width:25%">Amount</th>
         </tr>
       </thead>
       <tbody>
         ${lineItems.map(l => `
         <tr>
           <td><div class="item-name">${esc(l.desc)}</div>${l.sub ? `<div class="item-sub">${esc(l.sub)}</div>` : ''}</td>
-          <td class="r">${l.qty !== '' ? l.qty : '—'}</td>
-          <td class="r">${l.unit !== '' ? `₹${Number(l.unit).toLocaleString('en-IN')}` : '—'}</td>
           <td class="r ${l.cls === 'red' ? 'td-red' : l.cls === 'purple' ? 'td-purple' : ''}">
             ${l.cls === 'red' ? `− ₹${Math.abs(l.total).toLocaleString('en-IN')}` : `₹${l.total.toLocaleString('en-IN')}`}
           </td>
