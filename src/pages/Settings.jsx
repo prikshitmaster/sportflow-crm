@@ -916,6 +916,8 @@ function FeaturesTab() {
     { key: 'payment_recent_history', label: 'Recent Payments in Payment Form', desc: 'Show the student’s last 3 payments inside Record Payment, so staff can spot duplicates before saving — turn off for a simpler form' },
     { key: 'lock_grouped_batches', label: 'Lock Grouped Batches When Grouping',
       desc: 'In "Group batches", a batch already sharing a ground with another group is shown locked and can\'t be picked into a new one — open that group to move it instead. Turn off to freely re-pick already-grouped batches (a pick there silently moves the batch out of its current group).' },
+    { key: 'fy_quarterly_billing', label: 'Indian Financial-Year Quarterly Billing', defaultOff: true,
+      desc: 'A Quarterly payment always covers through the end of the current FY quarter (Apr–Jun / Jul–Sep / Oct–Dec / Jan–Mar) — 1, 2 or 3 whole months depending on where the student joins the cycle, priced at the monthly rate × those months. Off (default) keeps the old behavior: every Quarterly payment is a flat 3-month block starting from whenever it’s collected, with no link to the financial year.' },
   ]
 
   return (

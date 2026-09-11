@@ -10,7 +10,7 @@ import { fillPayment } from '../lib/devFill'
 import SendPayLinkModal from '../components/SendPayLinkModal'
 import WhatsAppBulkModal from '../components/WhatsAppBulkModal'
 import { openWhatsAppLink, buildFeesReminderMessage, daysOverdue } from '../lib/whatsapp'
-import { todayStr, toLocalDateStr, toLocalMonthStr } from '../lib/dates'
+import { todayStr, toLocalDateStr, toLocalMonthStr, fyQuarterMonthsRemaining, fyQuarterLabel } from '../lib/dates'
 import { buildReceiptHTML } from '../lib/paymentReceipt'
 import { resolveBranchTax, computeTax, taxRowLabel } from '../lib/tax'
 import { computeDateRangeProration } from '../lib/proration'
@@ -1567,8 +1567,12 @@ function SummaryCard({ label, value, count, color, icon: Icon, onClick, active }
 }
 
 export function RecordPaymentModal({ onClose, onSave, students, batches = [], feePlans = [], payments = [], initialStudentId, onClearDue }) {
-  const { sportBranches, isFeatureOn } = useApp()
+  const { sportBranches, isFeatureOn, features } = useApp()
   const showRecentPayments = isFeatureOn('payment_recent_history')
+  // Opt-in (default off) — unlike isFeatureOn's usual "unset = on" semantics,
+  // this must default OFF so no academy's Quarterly billing changes behavior
+  // without them explicitly turning it on. See Settings > Feature Toggles.
+  const fyQuarterlyOn = features['fy_quarterly_billing'] === true
   const initStudent = initialStudentId
     ? (students.find(s => s.id === initialStudentId) || {})
     : {}
@@ -1702,9 +1706,73 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // Nothing is being charged — mark the months inactive and write no invoice.
   const isAllInactive  = monthPickerOn && billedMonths.length === 0
 
+  // Advance payment: student is up-to-date, coverage should start after their current paidTill
+  const _now = new Date()
+  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
+  const firstOfMonth = todayStr.slice(0, 7) + '-01'
+  // Suspended students were excluded from the advance path outright, so that one
+  // returning after a gap starts coverage from the month they come back rather
+  // than from the month after a long-stale paidTill. But that also caught the
+  // suspended student whose paidTill ALREADY covers this month — most commonly
+  // straight after an all-inactive ₹0 write-off, which advances paidTill and
+  // deliberately leaves the status Suspended (see addPayment's noChargeOnly
+  // branch). With no advance start, coverage fell back to the 1st of the
+  // collection month — a period they were already covered for. The form flagged
+  // a false "Possible duplicate", and typing CONFIRM booked the money while the
+  // forward-only paid_till guard refused to move coverage at all: cash in, zero
+  // months bought, announced only by a toast.
+  //
+  // Being already covered through this month is the whole test, and a stale
+  // paidTill still fails it, so the returning-after-a-gap path is untouched.
+  // Backdating stays excluded — for a suspended student that is an explicit
+  // "bill the skipped months too" action, and an advance start would silently
+  // override the date staff just picked.
+  const isUpToDate = !!(selectedStudent?.paidTill
+    && selectedStudent.paidTill >= firstOfMonth
+    && (!isSuspended || paymentDate === toLocalDateStr()))
+  const advanceStart = isUpToDate
+    ? (() => {
+        const [yr, mo] = selectedStudent.paidTill.split('-').map(Number)
+        // Build string directly to avoid toISOString() UTC rollback in IST (UTC+5:30)
+        const nextMo = mo === 12 ? 1 : mo + 1
+        const nextYr = mo === 12 ? yr + 1 : yr
+        return `${nextYr}-${String(nextMo).padStart(2, '0')}-01`
+      })()
+    : null
+
+  // Deliberately NOT gated on customEnd >= customStart — the reversed-dates
+  // error message and the disabled Confirm button both key off that check.
+  const hasCustomRange = customDates && customStart && customEnd
+
+  // With the month picker on, coverage starts at the first pending month so the
+  // payment clears arrears instead of pushing the student forward from today.
+  const coverageStart = hasCustomRange ? customStart
+    : monthPickerOn ? `${dueMonths[0].key}-01` : advanceStart
+  // No explicit start → fall back to the 1st of the collection month, never the
+  // collection day. Coverage always ends on a month boundary, so a mid-month
+  // start bills for days that already elapsed (see addPayment for the full note).
+  // Mirrors what addPayment actually writes, so this preview can't disagree.
+  const coverageBase = coverageStart
+    ? new Date(coverageStart + 'T00:00:00')
+    : (() => {
+        const d = new Date(paymentDate + 'T00:00:00')
+        return new Date(d.getFullYear(), d.getMonth(), 1)
+      })()
+
+  // FY-quarter billing (opt-in, Settings > Feature Toggles): a Quarterly
+  // payment covers through the end of the current FY quarter (Apr–Jun /
+  // Jul–Sep / Oct–Dec / Jan–Mar) instead of a flat 3 months from wherever
+  // collection happens to land. Only applies to the plain auto-computed
+  // path — an explicit Custom date range or the Monthly due-months picker
+  // already have their own, more specific coverage logic.
+  const fyQuarterlyActive = fyQuarterlyOn && form.paymentType === 'quarterly'
+    && !hasCustomRange && !monthPickerOn
+  const fyQuarterlyMonths = fyQuarterlyActive ? fyQuarterMonthsRemaining(coverageBase) : null
+
   // Months actually charged for. Inactive months cost nothing but are still
   // covered, so the student stops showing as pending for them.
   const months = monthPickerOn ? billedMonths.length
+               : fyQuarterlyActive                ? fyQuarterlyMonths
                : form.paymentType === 'quarterly' ? 3
                : form.paymentType === 'yearly'    ? 12
                : form.paymentType === 'custom'    ? customMonths
@@ -1751,6 +1819,16 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     return null
   }
 
+  // Under FY-quarter billing, Quarterly is priced like Monthly (months × rate,
+  // see preProrationAmount) rather than a flat quarterlyFee, so every rate
+  // lookup for 'quarterly' needs to ask for the MONTHLY rate instead — except
+  // when Custom coverage dates are already toggled on, which keeps pricing off
+  // the flat quarterly total the way customRangeInfo expects (see its comment).
+  // Narrow known gap: turning Custom dates on AFTER Quarterly was already
+  // selected under FY billing does not re-seed the amount back to the flat
+  // rate — staff would need to reselect Quarterly once Custom dates is on.
+  const fyRateType = (pt) => (pt === 'quarterly' && fyQuarterlyOn && !customDates) ? 'monthly' : pt
+
   // Custom coverage starting mid-month: deduct the days BEFORE the start date
   // (not covered) from whatever total the plan already charges, priced off
   // the MONTHLY rate — the only rate with a meaningful per-day price —
@@ -1767,13 +1845,18 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // discount is a support ticket, a wrong one is a trust problem.
   const prorationBasisSetting = branchForProration?.prorationBasis || 'calendar'
   const monthlyRateForProration = getFeePlanRate(form.batchId, selectedStudent?.trainingType, 'monthly')?.rate || 0
-  // monthly & custom: fee × months; quarterly/yearly: entered amount is the flat total
-  const preProrationAmount = (form.paymentType === 'monthly' || form.paymentType === 'custom')
+  // monthly & custom: fee × months; quarterly/yearly: entered amount is the flat
+  // total — EXCEPT active FY-quarter billing (fyQuarterlyActive), which prices
+  // the same way as monthly (form.baseAmount holds the MONTHLY rate in that
+  // mode — seeded that way everywhere baseAmount gets set for 'quarterly', see
+  // fyRateType below) since `months` there is 1-3, not a fixed flat-quarter
+  // total. A quarterly payment combined with an explicit Custom date range
+  // stays on the flat-total path on purpose — fyQuarterlyActive is false
+  // there, matching customRangeInfo below which day-prorates that flat total.
+  const preProrationAmount = (form.paymentType === 'monthly' || form.paymentType === 'custom'
+      || fyQuarterlyActive)
     ? form.baseAmount * months
     : form.baseAmount
-  // Deliberately NOT gated on customEnd >= customStart — the reversed-dates
-  // error message and the disabled Confirm button both key off that check.
-  const hasCustomRange = customDates && customStart && customEnd
 
   // A complete custom range is priced BY THE DAY instead of being left for
   // staff to type: every calendar month the range touches contributes
@@ -1866,7 +1949,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     setPaymentDate(toLocalDateStr())
     const batchId = String(s.batchId || s.lastBatchId || '')
     const paymentType = s.feePlan || 'monthly'
-    const planData = getFeePlanRate(batchId, s.trainingType, paymentType)
+    const planData = getFeePlanRate(batchId, s.trainingType, fyRateType(paymentType))
     setForm(f => ({
       ...f,
       studentId:   s.id,
@@ -1926,31 +2009,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     }
   }
 
-  // Advance payment: student is up-to-date, coverage should start after their current paidTill
-  const _now = new Date()
-  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`
-  const firstOfMonth = todayStr.slice(0, 7) + '-01'
-  // Suspended students were excluded from the advance path outright, so that one
-  // returning after a gap starts coverage from the month they come back rather
-  // than from the month after a long-stale paidTill. But that also caught the
-  // suspended student whose paidTill ALREADY covers this month — most commonly
-  // straight after an all-inactive ₹0 write-off, which advances paidTill and
-  // deliberately leaves the status Suspended (see addPayment's noChargeOnly
-  // branch). With no advance start, coverage fell back to the 1st of the
-  // collection month — a period they were already covered for. The form flagged
-  // a false "Possible duplicate", and typing CONFIRM booked the money while the
-  // forward-only paid_till guard refused to move coverage at all: cash in, zero
-  // months bought, announced only by a toast.
-  //
-  // Being already covered through this month is the whole test, and a stale
-  // paidTill still fails it, so the returning-after-a-gap path is untouched.
-  // Backdating stays excluded — for a suspended student that is an explicit
-  // "bill the skipped months too" action, and an advance start would silently
-  // override the date staff just picked.
-  const isUpToDate = !!(selectedStudent?.paidTill
-    && selectedStudent.paidTill >= firstOfMonth
-    && (!isSuspended || paymentDate === toLocalDateStr()))
-
   // Outstanding Pending rows for this student — most commonly a linked
   // Due-balance row left over from an earlier partial payment (see
   // addPayment), but also catches an uncleared cheque. paidTill already
@@ -1963,15 +2021,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     ? payments.filter(p => p.status === 'Pending' && String(p.studentId) === String(form.studentId))
     : []
   const studentPendingTotal = studentPendingRows.reduce((s, p) => s + (p.amount || 0), 0)
-  const advanceStart = isUpToDate
-    ? (() => {
-        const [yr, mo] = selectedStudent.paidTill.split('-').map(Number)
-        // Build string directly to avoid toISOString() UTC rollback in IST (UTC+5:30)
-        const nextMo = mo === 12 ? 1 : mo + 1
-        const nextYr = mo === 12 ? yr + 1 : yr
-        return `${nextYr}-${String(nextMo).padStart(2, '0')}-01`
-      })()
-    : null
 
   // Mismatch warnings
   const PLAN_LABELS = { daily: 'Daily', alternate: 'Alternate Day', monthly: 'Monthly', quarterly: 'Quarterly', yearly: 'Yearly', custom: 'Custom' }
@@ -1990,7 +2039,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
 
   // Fee plan for selected student's batch + training type
   const activePlanData = form.studentId
-    ? getFeePlanRate(form.batchId, selectedStudent?.trainingType, form.paymentType)
+    ? getFeePlanRate(form.batchId, selectedStudent?.trainingType, fyRateType(form.paymentType))
     : null
 
   // Fallback reference: median fee of other students in same batch
@@ -2053,7 +2102,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
   // -entry error, forcing CONFIRM on a perfectly normal payment. Most likely
   // to bite a Monthly plan, where the deduction is a large share of the one
   // month being charged.
-  const expectedFullSubtotal = (form.paymentType === 'monthly' || form.paymentType === 'custom')
+  const expectedFullSubtotal = (form.paymentType === 'monthly' || form.paymentType === 'custom' || fyQuarterlyActive)
     ? referenceRate * months
     : referenceRate
   // A day-priced custom range has to be compared against a day-priced
@@ -2077,21 +2126,6 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
     Math.abs(finalAmount - expectedTotal) / expectedTotal > 0.30
   )
   const sanityRatio = sanityMismatch ? (finalAmount / expectedTotal) : 1
-
-  // With the month picker on, coverage starts at the first pending month so the
-  // payment clears arrears instead of pushing the student forward from today.
-  const coverageStart = hasCustomRange ? customStart
-    : monthPickerOn ? `${dueMonths[0].key}-01` : advanceStart
-  // No explicit start → fall back to the 1st of the collection month, never the
-  // collection day. Coverage always ends on a month boundary, so a mid-month
-  // start bills for days that already elapsed (see addPayment for the full note).
-  // Mirrors what addPayment actually writes, so this preview can't disagree.
-  const coverageBase = coverageStart
-    ? new Date(coverageStart + 'T00:00:00')
-    : (() => {
-        const d = new Date(paymentDate + 'T00:00:00')
-        return new Date(d.getFullYear(), d.getMonth(), 1)
-      })()
 
   // Duplicate guard: paidTill already covers the start of the new coverage period
   const coverageStartStr = hasCustomRange
@@ -2159,7 +2193,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
 
   const PLAN_OPTS = [
     { key: 'monthly',   label: 'Monthly',   sub: '1 month'    },
-    { key: 'quarterly', label: 'Quarterly', sub: '3 months'   },
+    { key: 'quarterly', label: 'Quarterly', sub: fyQuarterlyOn ? 'to end of FY qtr' : '3 months' },
     { key: 'yearly',    label: 'Yearly',    sub: '12 months'  },
     { key: 'custom',    label: 'Custom',    sub: 'any months' },
   ]
@@ -2335,7 +2369,7 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
               <button key={pt.key} type="button"
                 onClick={() => {
                   setAmountOverride(null)
-                  const planData = getFeePlanRate(form.batchId, selectedStudent?.trainingType, pt.key)
+                  const planData = getFeePlanRate(form.batchId, selectedStudent?.trainingType, fyRateType(pt.key))
                   setForm(f => ({ ...f, paymentType: pt.key, baseAmount: planData?.rate ?? f.baseAmount }))
                 }}
                 className={`py-2.5 rounded-xl text-xs font-bold border transition ${
@@ -2670,7 +2704,14 @@ export function RecordPaymentModal({ onClose, onSave, students, batches = [], fe
                 <span className="text-gray-400 font-normal">Pick both dates above</span>
               ) : (
               <div className="text-right">
-                <div>{coverageLabel}</div>
+                <div>
+                  {coverageLabel}
+                  {fyQuarterlyActive && (
+                    <span className="ml-1.5 text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
+                      {fyQuarterLabel(coverageBase)}
+                    </span>
+                  )}
+                </div>
                 <div className="text-[10px] font-normal text-gray-400 mt-0.5">
                   {coverageBase.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   {' → '}
