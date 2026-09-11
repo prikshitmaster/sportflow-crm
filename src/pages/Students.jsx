@@ -1280,7 +1280,7 @@ function AddStudentModal({ onClose, onSave }) {
   }
 
   const handleDevFill = () => {
-    const data = fillStudent({ sportOptions, batches: devBatches })
+    const data = fillStudent({ sportOptions, batches: devBatches, feePlans })
     // When sport is locked to a branch, don't override it
     if (sportLocked) delete data.sport
     setForm(f => ({ ...f, ...data }))
