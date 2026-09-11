@@ -1099,16 +1099,6 @@ export const batchMatchesSport = (b, sport) => {
   return list.some(sp => sp?.toLowerCase() === sport.toLowerCase())
 }
 
-// A batch's own schedule type (migration 0186) narrows which batches make
-// sense to offer for a given training type — picking "Daily" should only
-// surface batches that actually run every day, not an MWF/TTS pattern batch.
-// No training type picked yet → show everything (nothing to narrow by).
-export const batchMatchesTrainingType = (b, trainingType) => {
-  if (!trainingType) return true
-  const want = trainingType.toLowerCase() === 'daily' ? 'daily' : 'alternate'
-  return (b.scheduleType || 'alternate') === want
-}
-
 function AddStudentModal({ onClose, onSave }) {
   const { batches, feePlans, selectedSport, selectedBranch, sportBranches, branches, user, allStudents } = useApp()
   // New students always start in a Development batch — Advance squads are
@@ -1460,14 +1450,14 @@ function AddStudentModal({ onClose, onSave }) {
           <label className="label">Primary Batch *</label>
           <select className={`input ${errors.batchId ? 'border-red-400' : ''}`} value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— Select Batch —</option>
-            {/* Narrowed to the chosen Training Type's schedule (0186) — a
-                Daily pick only offers batches that actually run every day.
-                Switching Training Type clears a batch that no longer
-                matches (see the button below) rather than leaving a
-                Daily/MWF-style mismatch selected but hidden from view. */}
-            {devBatches
-              .filter(b => batchMatchesTrainingType(b, form.trainingType) || b.id === Number(form.batchId))
-              .map(b => <option key={b.id} value={b.id}>{batchLabel(b)}</option>)}
+            {/* Every batch for this sport is offered regardless of Training
+                Type — a batch's own schedule (Daily/MWF/TTS) doesn't have to
+                match the type picked below (that pairing only drives which
+                named Fee Plan auto-fills, see plansFor). Narrowing this list
+                by schedule used to hide legitimate batches (e.g. only the
+                Daily batch showing once "Daily" was picked, with MWF/TTS
+                gone from the list entirely). */}
+            {devBatches.map(b => <option key={b.id} value={b.id}>{batchLabel(b)}</option>)}
           </select>
           {errors.batchId && <p className="text-[11px] text-red-500 mt-1">{errors.batchId}</p>}
           {form.batchId && (() => {
@@ -1488,23 +1478,17 @@ function AddStudentModal({ onClose, onSave }) {
             {['Daily', 'Alternate'].map(t => (
               <button key={t} type="button"
                 onClick={() => {
-                  // A batch picked before Training Type (or before switching it)
-                  // can be the wrong schedule for the new type — e.g. an MWF
-                  // batch left selected under "Daily". Clear it instead of
-                  // silently keeping a mismatched Primary Batch selected.
+                  // The Primary Batch itself is untouched by this — only the
+                  // named-Fee-Plan lookup depends on Training Type, so
+                  // re-run it now that the type changed rather than leaving
+                  // the fee silently keeping whatever plan matched the OLD
+                  // type.
                   setForm(f => {
-                    const b = devBatches.find(x => x.id === Number(f.batchId))
-                    const stillMatches = !b || batchMatchesTrainingType(b, t)
-                    const keptBatchId = stillMatches ? f.batchId : ''
-                    // Re-run the same named-Fee-Plan lookup handleBatch does,
-                    // now that the type changed — otherwise the fee silently
-                    // keeps whatever plan matched the OLD type.
-                    const matches = keptBatchId ? plansFor(keptBatchId, t) : []
+                    const matches = f.batchId ? plansFor(f.batchId, t) : []
                     const matchedPlan = matches.length === 1 ? matches[0] : null
                     const feeMap = matchedPlan ? { monthly: matchedPlan.monthlyFee, quarterly: matchedPlan.quarterlyFee, yearly: matchedPlan.yearlyFee } : null
                     return {
                       ...f, trainingType: t,
-                      ...(stillMatches ? {} : { batchId: '', batchName: '' }),
                       feePlanId: matchedPlan ? matchedPlan.id : '',
                       // Same rule as handleBatch: drop a fee that was
                       // auto-filled from the now-stale plan, keep one typed
@@ -2106,13 +2090,12 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <label className="label">Batch</label>
           <select className="input" value={form.batchId} onChange={e => handleBatch(e.target.value)}>
             <option value="">— No Batch —</option>
-            {/* Same rule as Add Student: only batches for this student's sport
-                AND matching their Training Type's schedule (0186) — Daily only
-                offers batches that run every day. Switching Training Type
-                (below) clears a batch that no longer matches. */}
+            {/* Same rule as Add Student: only batches for this student's
+                sport — every batch for that sport is offered regardless of
+                Training Type. Narrowing by schedule (Daily/MWF/TTS) used to
+                hide legitimate batches from this list entirely. */}
             {batches
-              .filter(b => (batchMatchesSport(b, form.sport) && batchMatchesTrainingType(b, form.trainingType))
-                || String(b.id) === String(form.batchId))
+              .filter(b => batchMatchesSport(b, form.sport) || String(b.id) === String(form.batchId))
               .map(b => <option key={b.id} value={b.id}>{b.name}{b.code ? ` (${b.code})` : ''}</option>)}
           </select>
         </div>
@@ -2121,16 +2104,7 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <div className="flex gap-2">
             {['Daily','Alternate'].map(t => (
               <button key={t} type="button"
-                onClick={() => {
-                  // A batch picked before Training Type (or before switching it)
-                  // can be the wrong schedule for the new type — clear it
-                  // instead of silently keeping a mismatched batch selected.
-                  setForm(f => {
-                    const b = batches.find(x => String(x.id) === String(f.batchId))
-                    const stillMatches = !b || batchMatchesTrainingType(b, t)
-                    return stillMatches ? { ...f, trainingType: t } : { ...f, trainingType: t, batchId: '', batchName: '' }
-                  })
-                }}
+                onClick={() => set('trainingType', t)}
                 className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition active:scale-95 ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 {t}
               </button>
