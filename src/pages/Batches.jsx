@@ -1019,6 +1019,12 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
     setPosSaving(false)
   }
   const coaches = staff.filter(s => s.staffType !== 'office')
+  // Assigned coach's real role/title — was a hardcoded "Head Coach" label
+  // regardless of who's actually assigned (e.g. office staff filling in as a
+  // batch contact, role "Front Desk"). Look up by name in the FULL staff
+  // list (not just `coaches`, which excludes office staff) since a batch can
+  // carry any staff member's name in b.coach.
+  const assignedCoachStaff = b.coach ? staff.find(s => s.name === b.coach) : null
 
   useEffect(() => {
     fetchBatchEnrolments(b.id).then(rows => setMbEnrolments(rows)).catch(() => {})
@@ -1220,7 +1226,7 @@ function BatchDetailPanel({ batch: b, students, staff, canManageBatches, canMana
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-gray-800">{b.coach || 'Unassigned'}</p>
-                  <p className="text-xs text-gray-400">Head Coach</p>
+                  {b.coach && <p className="text-xs text-gray-400">{assignedCoachStaff?.role || 'Coach'}</p>}
                 </div>
               </div>
             )}
