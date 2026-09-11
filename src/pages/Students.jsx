@@ -1101,10 +1101,6 @@ export const batchMatchesSport = (b, sport) => {
 
 function AddStudentModal({ onClose, onSave }) {
   const { batches, feePlans, selectedSport, selectedBranch, sportBranches, branches, user, allStudents } = useApp()
-  // New students always start in a Development batch — Advance squads are
-  // earned, so they're only reachable from Edit Student, never at registration.
-  // Rows written before batch_type existed default to 'development'.
-  const allDevBatches = batches.filter(b => (b.batchType || 'development') !== 'advance')
   // Name first — the code alone (often an auto-generated string like
   // "foo25-dev") isn't something a person registering a student recognizes,
   // and near-identical codes (foo25-dev vs foo25-dev-2) made distinct batches
@@ -1161,7 +1157,11 @@ function AddStudentModal({ onClose, onSave }) {
   const [medicalFile, setMedicalFile] = useState(null)
   const [errors,  setErrors]  = useState({})
   // What the batch pickers actually offer — scoped to the selected sport.
-  const devBatches = allDevBatches.filter(b => batchMatchesSport(b, form.sport))
+  // Every batch for the sport is offered at registration, regardless of
+  // batch_type — restricting to "development" batches hid Adult Morning
+  // and Advance batches entirely (6 of 9 Table Tennis batches for this
+  // academy), with no way for staff to register a student into them.
+  const devBatches = batches.filter(b => batchMatchesSport(b, form.sport))
   const [loading, setLoading] = useState(false)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
