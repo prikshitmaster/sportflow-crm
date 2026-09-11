@@ -1203,11 +1203,19 @@ function AddStudentModal({ onClose, onSave }) {
 
   const handleBatch = (id) => {
     const b = batches.find(b => String(b.id) === id)
-    const matches = id ? plansFor(id, form.trainingType) : []
+    // Sync Training Type to the batch's own schedule the moment it's picked
+    // — looking up the Fee Plan against whatever Training Type happened to
+    // be selected before (often just the leftover default) let a batch
+    // named "... Daily" get saved with "Alternate" still selected, with a
+    // fee matching neither plan. The buttons below still let staff override
+    // this afterward if they really mean to.
+    const trainingType = b ? ((b.scheduleType || 'alternate') === 'daily' ? 'Daily' : 'Alternate') : form.trainingType
+    const matches = id ? plansFor(id, trainingType) : []
     const matchedPlan = matches.length === 1 ? matches[0] : null
     const feeMap = matchedPlan ? { monthly: matchedPlan.monthlyFee, quarterly: matchedPlan.quarterlyFee, yearly: matchedPlan.yearlyFee } : null
     setForm(f => ({
       ...f, batchId: id ? Number(id) : '', batchName: b ? b.name : '',
+      trainingType,
       feePlanId: matchedPlan ? matchedPlan.id : '',
       // No plan matches the new batch — reset a fee that was auto-filled
       // from the OLD plan (it no longer applies), but leave one the staff
@@ -1994,7 +2002,14 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
 
   const handleBatch = (batchId) => {
     const b = batches.find(x => String(x.id) === String(batchId))
-    setForm(f => ({ ...f, batchId: batchId ? Number(batchId) : '', batchName: b?.name || '' }))
+    // Sync Training Type to the batch's own schedule the moment it's
+    // picked — same fix as Add Student: leaving Training Type at whatever
+    // it happened to be let a batch named "... Daily" get saved with
+    // "Alternate" still selected.
+    setForm(f => ({
+      ...f, batchId: batchId ? Number(batchId) : '', batchName: b?.name || '',
+      trainingType: b ? ((b.scheduleType || 'alternate') === 'daily' ? 'Daily' : 'Alternate') : f.trainingType,
+    }))
   }
 
   const handleJoinDate = (date) => {
