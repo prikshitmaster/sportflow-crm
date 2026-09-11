@@ -18,7 +18,7 @@ import { fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition, fe
 import StudentAvatar from '../components/StudentAvatar'
 import useBodyScrollLock from '../hooks/useBodyScrollLock'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
-import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment, isLowAttendanceUnpaid as ruleIsLowAttendanceUnpaid } from '../lib/studentRules'
+import { isOverdue as ruleIsOverdue, isNoPayment as ruleIsNoPayment, isLowAttendanceUnpaid as ruleIsLowAttendanceUnpaid, normTrainingType } from '../lib/studentRules'
 import { buildReceiptHTML } from '../lib/paymentReceipt'
 import ReceiptActions from '../components/ReceiptActions'
 import { toLocalDateStr } from '../lib/dates'
@@ -1110,7 +1110,7 @@ export const batchMatchesTrainingType = (b, trainingType) => {
 }
 
 function AddStudentModal({ onClose, onSave }) {
-  const { batches, selectedSport, selectedBranch, sportBranches, branches, user, allStudents } = useApp()
+  const { batches, feePlans, selectedSport, selectedBranch, sportBranches, branches, user, allStudents } = useApp()
   // New students always start in a Development batch — Advance squads are
   // earned, so they're only reachable from Edit Student, never at registration.
   // Rows written before batch_type existed default to 'development'.
@@ -1160,7 +1160,7 @@ function AddStudentModal({ onClose, onSave }) {
     : null
   const [form, setForm] = useState({
     name: '', parent: '', phone: '', parentPhone: '', dob: '', sport: defaultSport,
-    joinDate: '', paidTill: '', batchId: '', batchName: '', trainingType: '', fees: '', feePlan: 'monthly', joiningFee: '',
+    joinDate: '', paidTill: '', batchId: '', batchName: '', trainingType: '', fees: '', feePlan: 'monthly', feePlanId: '', joiningFee: '',
     // Everything below is the public /join registration form's field set, so a
     // walk-in typed in here and an online sign-up produce the same record.
     // Relationship is deliberately NOT asked here — see lib/studentIntake.js.
@@ -1187,11 +1187,22 @@ function AddStudentModal({ onClose, onSave }) {
   // staff always types it directly into the (already editable) date input.
   const autoCalcDates = sportBranches.find(b => b.id === selectedBranch)?.autoCalcDates ?? true
 
+  // Named Fee Plans (Batches → Fee Plans) matching a given batch + training
+  // type — the same lookup ConvertModal (Trials.jsx) uses so registering a
+  // walk-in gets the same auto-filled fee a trial conversion already does.
+  const plansFor = (batchId, trainingType) => feePlans.filter(p =>
+    p.batchId === Number(batchId) && normTrainingType(p.trainingType) === normTrainingType(trainingType))
+
   const handleFeePlan = (plan) => {
-    setForm(f => ({
-      ...f, feePlan: plan,
-      paidTill: (autoCalcDates && plan !== 'custom') ? calcPaidTillFull(f.joinDate, plan) : f.paidTill,
-    }))
+    setForm(f => {
+      const sel = f.feePlanId ? feePlans.find(p => String(p.id) === String(f.feePlanId)) : null
+      const feeMap = sel ? { monthly: sel.monthlyFee, quarterly: sel.quarterlyFee, yearly: sel.yearlyFee } : null
+      return {
+        ...f, feePlan: plan,
+        fees: (feeMap && plan !== 'custom' && feeMap[plan]) ? feeMap[plan] : f.fees,
+        paidTill: (autoCalcDates && plan !== 'custom') ? calcPaidTillFull(f.joinDate, plan) : f.paidTill,
+      }
+    })
   }
   const handleJoinDateAdd = (date) => {
     setForm(f => ({
@@ -1202,7 +1213,17 @@ function AddStudentModal({ onClose, onSave }) {
 
   const handleBatch = (id) => {
     const b = batches.find(b => String(b.id) === id)
-    setForm(f => ({ ...f, batchId: id ? Number(id) : '', batchName: b ? b.name : '' }))
+    const matches = id ? plansFor(id, form.trainingType) : []
+    const matchedPlan = matches.length === 1 ? matches[0] : null
+    const feeMap = matchedPlan ? { monthly: matchedPlan.monthlyFee, quarterly: matchedPlan.quarterlyFee, yearly: matchedPlan.yearlyFee } : null
+    setForm(f => ({
+      ...f, batchId: id ? Number(id) : '', batchName: b ? b.name : '',
+      feePlanId: matchedPlan ? matchedPlan.id : '',
+      // No plan matches the new batch — reset a fee that was auto-filled
+      // from the OLD plan (it no longer applies), but leave one the staff
+      // typed in by hand alone.
+      fees: matchedPlan ? (feeMap[f.feePlan] || matchedPlan.monthlyFee || '') : (f.feePlanId ? '' : f.fees),
+    }))
   }
 
   const validate = () => {
@@ -1474,7 +1495,22 @@ function AddStudentModal({ onClose, onSave }) {
                   setForm(f => {
                     const b = devBatches.find(x => x.id === Number(f.batchId))
                     const stillMatches = !b || batchMatchesTrainingType(b, t)
-                    return stillMatches ? { ...f, trainingType: t } : { ...f, trainingType: t, batchId: '', batchName: '' }
+                    const keptBatchId = stillMatches ? f.batchId : ''
+                    // Re-run the same named-Fee-Plan lookup handleBatch does,
+                    // now that the type changed — otherwise the fee silently
+                    // keeps whatever plan matched the OLD type.
+                    const matches = keptBatchId ? plansFor(keptBatchId, t) : []
+                    const matchedPlan = matches.length === 1 ? matches[0] : null
+                    const feeMap = matchedPlan ? { monthly: matchedPlan.monthlyFee, quarterly: matchedPlan.quarterlyFee, yearly: matchedPlan.yearlyFee } : null
+                    return {
+                      ...f, trainingType: t,
+                      ...(stillMatches ? {} : { batchId: '', batchName: '' }),
+                      feePlanId: matchedPlan ? matchedPlan.id : '',
+                      // Same rule as handleBatch: drop a fee that was
+                      // auto-filled from the now-stale plan, keep one typed
+                      // in by hand.
+                      fees: matchedPlan ? (feeMap[f.feePlan] || matchedPlan.monthlyFee || '') : (f.feePlanId ? '' : f.fees),
+                    }
                   })
                 }}
                 className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition active:scale-95 ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
@@ -1483,6 +1519,30 @@ function AddStudentModal({ onClose, onSave }) {
             ))}
           </div>
           {errors.trainingType && <p className="text-[11px] text-red-500 mt-1">{errors.trainingType}</p>}
+          {/* When a batch has more than one named plan for this Training Type
+              (e.g. separate Beginner/Advanced pricing), auto-fill can't guess
+              which one — offer the pick instead of silently choosing one. */}
+          {form.batchId && (() => {
+            const matches = plansFor(form.batchId, form.trainingType)
+            if (matches.length > 1) {
+              return (
+                <select className="input mt-2" value={form.feePlanId} onChange={e => {
+                  const plan = feePlans.find(p => String(p.id) === e.target.value)
+                  setForm(f => ({
+                    ...f, feePlanId: e.target.value,
+                    fees: plan ? ({ monthly: plan.monthlyFee, quarterly: plan.quarterlyFee, yearly: plan.yearlyFee }[f.feePlan] || plan.monthlyFee || '') : f.fees,
+                  }))
+                }}>
+                  <option value="">— Select Fee Plan —</option>
+                  {matches.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              )
+            }
+            if (form.feePlanId && matches.length === 1) {
+              return <p className="text-[11px] text-emerald-600 mt-1.5">Fee auto-filled from "{matches[0].name}"</p>
+            }
+            return null
+          })()}
         </div>
 
         {/* Payment Plan */}
