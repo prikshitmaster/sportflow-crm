@@ -65,7 +65,11 @@ export function fillStudent({ sportOptions = [], batches = [] } = {}) {
     paidTill:      addMonths(joinDate, 1),
     batchId:       batch ? Number(batch.id) : '',
     batchName:     batch?.name || '',
-    trainingType:  'Daily',
+    // Must match the picked batch's actual schedule (0186) — a random batch
+    // paired with a hardcoded 'Daily' silently mismatched (Primary Batch
+    // showing an MWF/TTS batch under a "Daily" Training Type) whenever the
+    // random pick landed on a non-daily batch.
+    trainingType:  (batch?.scheduleType || 'alternate') === 'daily' ? 'Daily' : 'Alternate',
     fees:          String(pick([800, 1000, 1200, 1500, 2000])),
     feePlan:       'monthly',
     joiningFee:    '',

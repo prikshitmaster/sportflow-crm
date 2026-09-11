@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from './Payments'
-import { assignStudentToBatch, fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition, fetchAttendanceForMonth } from '../lib/db'
+import { fetchBatchEnrolments, fetchAllStudentBatches, updateStudentPosition, fetchAttendanceForMonth } from '../lib/db'
 import StudentAvatar from '../components/StudentAvatar'
 import useBodyScrollLock from '../hooks/useBodyScrollLock'
 import { FOOTBALL_POSITIONS, POSITION_COLORS } from '../lib/performance'
@@ -870,12 +870,6 @@ export default function Students() {
           onClose={() => setShowModal(false)}
           onSave={async (data) => {
             const newStudent = await addStudent(data)
-            if (newStudent && data.additionalBatchIds?.length > 0) {
-              for (const bid of data.additionalBatchIds) {
-                const bObj = batches.find(b => b.id === bid)
-                await assignStudentToBatch(newStudent.id, bid, bObj?.name || '', newStudent.academyId || null).catch(() => {})
-              }
-            }
             setShowModal(false)
             // A fee was collected right at registration — show its slip.
             // Nothing shows when there was no payment (fees left blank).
@@ -1175,7 +1169,6 @@ function AddStudentModal({ onClose, onSave }) {
     hasMedical: '', medicalNotes: '',
   })
   const [medicalFile, setMedicalFile] = useState(null)
-  const [additionalBatchIds, setAdditionalBatchIds] = useState([])
   const [errors,  setErrors]  = useState({})
   // What the batch pickers actually offer — scoped to the selected sport.
   const devBatches = allDevBatches.filter(b => batchMatchesSport(b, form.sport))
@@ -1205,12 +1198,6 @@ function AddStudentModal({ onClose, onSave }) {
       ...f, joinDate: date,
       paidTill: (autoCalcDates && f.feePlan !== 'custom') ? calcPaidTillFull(date, f.feePlan) : f.paidTill,
     }))
-  }
-
-  const toggleAdditionalBatch = (id) => {
-    setAdditionalBatchIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    )
   }
 
   const handleBatch = (id) => {
@@ -1263,7 +1250,6 @@ function AddStudentModal({ onClose, onSave }) {
       await onSave({
         ...form,
         age: calcAge(form.dob),
-        additionalBatchIds,
         // Blank once the answer is No — see lib/studentIntake.js on why there
         // is no separate boolean column for the answer itself.
         medicalNotes: form.hasMedical === 'yes' ? form.medicalNotes.trim() : '',
@@ -1439,7 +1425,6 @@ function AddStudentModal({ onClose, onSave }) {
                 // Changing sport invalidates any batch already picked — clear it
                 // rather than silently keeping a batch from the previous sport.
                 setForm(f => ({ ...f, sport: e.target.value, batchId: '', batchName: '' }))
-                setAdditionalBatchIds([])
                 setErrors(er => ({ ...er, sport: undefined, batchId: undefined }))
               }}>
               <option value="">— Select Sport —</option>
@@ -1456,8 +1441,9 @@ function AddStudentModal({ onClose, onSave }) {
             <option value="">— Select Batch —</option>
             {/* Narrowed to the chosen Training Type's schedule (0186) — a
                 Daily pick only offers batches that actually run every day.
-                The already-selected batch stays listed even if Training
-                Type changes afterward, so the field never silently blanks. */}
+                Switching Training Type clears a batch that no longer
+                matches (see the button below) rather than leaving a
+                Daily/MWF-style mismatch selected but hidden from view. */}
             {devBatches
               .filter(b => batchMatchesTrainingType(b, form.trainingType) || b.id === Number(form.batchId))
               .map(b => <option key={b.id} value={b.id}>{batchLabel(b)}</option>)}
@@ -1480,7 +1466,17 @@ function AddStudentModal({ onClose, onSave }) {
           <div className="flex gap-2">
             {['Daily', 'Alternate'].map(t => (
               <button key={t} type="button"
-                onClick={() => { set('trainingType', t); if (t === 'Alternate') setAdditionalBatchIds([]) }}
+                onClick={() => {
+                  // A batch picked before Training Type (or before switching it)
+                  // can be the wrong schedule for the new type — e.g. an MWF
+                  // batch left selected under "Daily". Clear it instead of
+                  // silently keeping a mismatched Primary Batch selected.
+                  setForm(f => {
+                    const b = devBatches.find(x => x.id === Number(f.batchId))
+                    const stillMatches = !b || batchMatchesTrainingType(b, t)
+                    return stillMatches ? { ...f, trainingType: t } : { ...f, trainingType: t, batchId: '', batchName: '' }
+                  })
+                }}
                 className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition active:scale-95 ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 {t}
               </button>
@@ -1488,31 +1484,6 @@ function AddStudentModal({ onClose, onSave }) {
           </div>
           {errors.trainingType && <p className="text-[11px] text-red-500 mt-1">{errors.trainingType}</p>}
         </div>
-
-        {/* Additional Batches — Daily only, max 1 extra */}
-        {devBatches.length > 1 && form.trainingType === 'Daily' && (
-          <div className="sm:col-span-2">
-            <label className="label">Additional Batch <span className="text-gray-400 font-normal">(optional, max 1)</span></label>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {devBatches.filter(b => form.batchId ? b.id !== Number(form.batchId) : true).map(b => {
-                const sel = additionalBatchIds.includes(b.id)
-                const disabled = !sel && additionalBatchIds.length >= 1
-                return (
-                  <button key={b.id} type="button"
-                    onClick={() => !disabled && toggleAdditionalBatch(b.id)}
-                    className={`px-3 py-2 rounded-lg text-xs font-semibold border transition active:scale-95 ${sel ? 'bg-purple-600 text-white border-purple-600' : disabled ? 'bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
-                    {sel ? '✓ ' : ''}{batchLabel(b)}
-                  </button>
-                )
-              })}
-            </div>
-            {additionalBatchIds.length > 0 && (
-              <p className="text-[11px] text-purple-600 mt-1.5 font-medium">
-                +1 additional batch selected
-              </p>
-            )}
-          </div>
-        )}
 
         {/* Payment Plan */}
         <div className="sm:col-span-2">
@@ -2077,10 +2048,8 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
             <option value="">— No Batch —</option>
             {/* Same rule as Add Student: only batches for this student's sport
                 AND matching their Training Type's schedule (0186) — Daily only
-                offers batches that run every day. The student's CURRENT batch
-                is always kept in the list, so an existing cross-sport or
-                cross-schedule assignment stays visible and fixable rather than
-                silently blanking the field. */}
+                offers batches that run every day. Switching Training Type
+                (below) clears a batch that no longer matches. */}
             {batches
               .filter(b => (batchMatchesSport(b, form.sport) && batchMatchesTrainingType(b, form.trainingType))
                 || String(b.id) === String(form.batchId))
@@ -2092,7 +2061,16 @@ function EditStudentModal({ student: s, batches, onClose, onSave }) {
           <div className="flex gap-2">
             {['Daily','Alternate'].map(t => (
               <button key={t} type="button"
-                onClick={() => set('trainingType', t)}
+                onClick={() => {
+                  // A batch picked before Training Type (or before switching it)
+                  // can be the wrong schedule for the new type — clear it
+                  // instead of silently keeping a mismatched batch selected.
+                  setForm(f => {
+                    const b = batches.find(x => String(x.id) === String(f.batchId))
+                    const stillMatches = !b || batchMatchesTrainingType(b, t)
+                    return stillMatches ? { ...f, trainingType: t } : { ...f, trainingType: t, batchId: '', batchName: '' }
+                  })
+                }}
                 className={`flex-1 py-2.5 rounded-lg text-sm font-bold border transition active:scale-95 ${form.trainingType === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
                 {t}
               </button>
