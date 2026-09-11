@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus, Link2, Unlink, Check } from 'lucide-react'
+import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus, Link2, Unlink, Check, Lock } from 'lucide-react'
 import { slotSummary, groupRowsByPattern, dailyBatchRows, isFullWeekBatch } from '../lib/batchCapacity'
 import { Modal } from './Students'
 import { SPORT_CATALOG, academySportOptions } from '../lib/sportCatalog'
@@ -20,8 +20,12 @@ const NAVY_HEX  = '#0f172a'
 
 export default function Batches() {
   const { batches, addBatch, updateBatch, deleteBatch, staff, students, updateBatchCoach, branches, selectedSport, selectedBranch, role, user, hasPermission,
-          batchRoster, refreshBatchEnrolments,
+          batchRoster, refreshBatchEnrolments, features,
           batchSlots, saveBatchSlot, groupBatchesIntoSlot, removeBatchSlot } = useApp()
+  // Settings → Feature Toggles → "Lock Grouped Batches When Grouping". Default
+  // ON (unset reads as true) — matches the safer behavior of not letting a pick
+  // in a NEW group silently steal a batch out of an existing one.
+  const lockGroupedBatches = features['lock_grouped_batches'] !== false
   const canManageBatches  = hasPermission('batches.manage')
   const canManageStudents = hasPermission('students.manage')
   // Branch is mandatory — a branchless batch would show across every branch.
@@ -451,9 +455,16 @@ export default function Batches() {
           every possible pick) has a visible, tickable card. */}
       {groupMode ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {batches.map((b) => (
-            <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} seat={seatByBatch[b.id]} selectable selected={pickedIds.has(b.id)} onToggleSelect={togglePicked} />
-          ))}
+          {batches.map((b) => {
+            // A batch already sitting in a DIFFERENT slot is locked out of this
+            // pick — grabbing it here would silently steal it from its existing
+            // group instead of erroring. Editing that other slot is the only way
+            // to move it (openSlotForEdit preselects its own members as pickable).
+            const lockedInOtherSlot = lockGroupedBatches && Boolean(b.slotId) && b.slotId !== editingSlot?.id
+            return (
+              <BatchCard key={b.id} b={b} liveCount={countByBatch[b.id] || 0} staff={staff} onSelect={setSelectedBatch} onEdit={setEditingBatch} canEdit={canManageBatches} seat={seatByBatch[b.id]} selectable={!lockedInOtherSlot} locked={lockedInOtherSlot} lockedReason={lockedInOtherSlot ? `Already in "${slotById.get(b.slotId)?.name || 'another group'}" — edit that group to move it` : ''} selected={pickedIds.has(b.id)} onToggleSelect={togglePicked} />
+            )
+          })}
         </div>
       ) : grouped && activeBranch === 'All' ? (
         <div className="space-y-8">
@@ -566,7 +577,8 @@ function DayLoadStrip({ rows }) {
 }
 
 function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit,
-                     seat = null, selectable = false, selected = false, onToggleSelect }) {
+                     seat = null, selectable = false, selected = false, onToggleSelect,
+                     locked = false, lockedReason = '' }) {
   const enrolled      = liveCount
   const pct           = Math.min(Math.round((enrolled / b.capacity) * 100), 100)
   // A grouped batch is full when EITHER its own cap or the shared ground is
@@ -580,9 +592,10 @@ function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit,
 
   return (
     <div
+      title={locked ? lockedReason : undefined}
       onClick={selectable ? () => onToggleSelect?.(b.id) : undefined}
       className={`bg-white rounded-2xl shadow-sm transition-all border relative ${
-        selectable ? 'cursor-pointer' : 'hover:shadow-lg active:scale-[0.98]'
+        selectable ? 'cursor-pointer' : locked ? 'cursor-not-allowed opacity-50' : 'hover:shadow-lg active:scale-[0.98]'
       } ${selected ? 'border-gray-900 ring-2 ring-gray-900' : 'border-gray-200'}`}>
       {/* Selection tick — only in group mode, where the whole card is the target */}
       {selectable && (
@@ -592,14 +605,21 @@ function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit,
           {selected && <Check size={14} strokeWidth={3} />}
         </div>
       )}
+      {/* Locked — already a member of a different ground slot. Shown instead of
+          the tick so it's visually obvious this card can't be picked here. */}
+      {locked && (
+        <div className="absolute top-3 right-3 z-10 w-6 h-6 rounded-md bg-gray-900/80 text-white flex items-center justify-center">
+          <Lock size={12} />
+        </div>
+      )}
       {/* Header — click opens detail panel. Solid deep-navy band, inset with
           its own rounded corners so adjacent cards read as clearly separate
           chips instead of merging into one dark strip at a glance. */}
       <div className="p-2 pb-0">
         <div
-          className={`relative rounded-xl px-4 pt-3.5 pb-3.5 ${selectable ? '' : 'cursor-pointer'}`}
+          className={`relative rounded-xl px-4 pt-3.5 pb-3.5 ${selectable || locked ? '' : 'cursor-pointer'}`}
           style={{ background: NAVY_HEX }}
-          onClick={() => { if (!selectable) onSelect(b) }}
+          onClick={() => { if (!selectable && !locked) onSelect(b) }}
         >
           {/* Edit button top-right */}
           {canEdit && !selectable && (
@@ -645,8 +665,8 @@ function BatchCard({ b, liveCount = 0, staff = [], onSelect, onEdit, canEdit,
       </div>
 
       {/* Card body */}
-      <div className={`px-4 py-3 ${selectable ? '' : 'cursor-pointer'}`}
-           onClick={() => { if (!selectable) onSelect(b) }}>
+      <div className={`px-4 py-3 ${selectable || locked ? '' : 'cursor-pointer'}`}
+           onClick={() => { if (!selectable && !locked) onSelect(b) }}>
         {/* Capacity bar */}
         <div className="mb-2">
           <div className="flex justify-between text-xs mb-1">

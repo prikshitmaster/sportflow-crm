@@ -914,6 +914,8 @@ function FeaturesTab() {
     // join_batch_choice and auto_assign_batch_by_age moved to the Registration
     // tab, so everything governing the public /join funnel sits in one place.
     { key: 'payment_recent_history', label: 'Recent Payments in Payment Form', desc: 'Show the student’s last 3 payments inside Record Payment, so staff can spot duplicates before saving — turn off for a simpler form' },
+    { key: 'lock_grouped_batches', label: 'Lock Grouped Batches When Grouping',
+      desc: 'In "Group batches", a batch already sharing a ground with another group is shown locked and can\'t be picked into a new one — open that group to move it instead. Turn off to freely re-pick already-grouped batches (a pick there silently moves the batch out of its current group).' },
   ]
 
   return (
