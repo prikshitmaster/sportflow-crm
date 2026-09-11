@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import { Layers, Plus, Users, Clock, UserCog, AlertCircle, X, ChevronRight, Pencil, Trash2, UserPlus, Search, UserMinus, Link2, Unlink, Check } from 'lucide-react'
 import { slotSummary, groupRowsByPattern, dailyBatchRows, isFullWeekBatch } from '../lib/batchCapacity'
 import { Modal } from './Students'
-import { SPORTS } from '../data/mockData'
+import { SPORT_CATALOG, academySportOptions } from '../lib/sportCatalog'
 import DevFillButton from '../components/DevFillButton'
 import { fillBatch } from '../lib/devFill'
 import { fetchBatchEnrolments, assignStudentToBatch, unassignStudentFromBatch } from '../lib/db'
@@ -741,7 +741,7 @@ const SCHEDULE_BADGE = {
 const DAILY_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function AddBatchModal({ onClose, onSave, staff, initialData }) {
-  const { selectedSport, selectedBranch, sportBranches, user, role } = useApp()
+  const { selectedSport, selectedBranch, sportBranches, branches, user, role } = useApp()
   const isEdit = !!initialData
   // Sport context: owners use the selected-sport switcher; staff use their single
   // assigned sport. When there's one clear sport, lock the new batch to it (no picker).
@@ -798,12 +798,19 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
   }))
 
   const sportOptions = [...new Set(
-    (sportBranches || []).map(b => b.sportName).filter(Boolean).concat(SPORTS)
+    (sportBranches || []).map(b => b.sportName).filter(Boolean).concat(SPORT_CATALOG)
   )]
   // Staff may only tag a batch with sports they're assigned to — otherwise they
   // could create a batch in a sport their own sport-scoped view then hides.
-  // Owners and sport-less office staff get the full catalogue.
-  const pickerSports = role === 'staff' && user?.sports?.length > 0 ? user.sports : SPORTS
+  // Owners and sport-less office staff get the sports this academy actually
+  // runs (falls back to the full catalog when nothing is configured yet) —
+  // NOT the full catalog unconditionally, which used to omit sports the
+  // academy has (e.g. Table Tennis) while offering ones it doesn't, so a
+  // batch could only be tagged with the wrong sport and vanish from every
+  // sport-scoped view.
+  const pickerSports = role === 'staff' && user?.sports?.length > 0
+    ? user.sports
+    : academySportOptions({ branches, sportBranches })
   const handleDevFill = () => {
     if (isEdit) return
     // Constrain the random sport to what the user is allowed to pick, so DevFill
