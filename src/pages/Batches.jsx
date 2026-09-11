@@ -887,21 +887,26 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
           </div>
         </div>
         <div>
-          <label className="label">Sport</label>
+          <label className="label">Sport *</label>
           {sportLocked ? (
             <div className="input flex items-center gap-2 bg-gray-50 cursor-default">
               <span className="text-sm font-semibold text-gray-800">{scopedSport}</span>
               {branchName && <span className="text-xs text-gray-400 font-medium">· {branchName}</span>}
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {pickerSports.map(s => (
-                <button key={s} type="button" onClick={() => toggleSport(s)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                    form.sports.includes(s) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}>{s}</button>
-              ))}
-            </div>
+            <>
+              <div className="flex flex-wrap gap-2">
+                {pickerSports.map(s => (
+                  <button key={s} type="button" onClick={() => toggleSport(s)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                      form.sports.includes(s) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                    }`}>{s}</button>
+                ))}
+              </div>
+              {form.sports.length === 0 && (
+                <p className="text-xs text-red-500 font-medium mt-1.5">Select at least one sport — a batch with no sport tag disappears from every sport-scoped view.</p>
+              )}
+            </>
           )}
         </div>
         <div>
@@ -946,7 +951,11 @@ function AddBatchModal({ onClose, onSave, staff, initialData }) {
       </div>
       <div className="flex justify-end gap-3 mt-6">
         <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={() => onSave({ ...form, branchId: isEdit ? (initialData?.branchId || null) : (selectedBranch || null) })}>
+        <button
+          className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={form.sports.length === 0}
+          onClick={() => onSave({ ...form, branchId: isEdit ? (initialData?.branchId || null) : (selectedBranch || null) })}
+        >
           {isEdit ? 'Save Changes' : 'Create Batch'}
         </button>
       </div>
