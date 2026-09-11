@@ -2328,9 +2328,15 @@ export async function fetchFeatureFlags(academyId) {
 
 // Toggle a single feature on/off
 export async function upsertFeatureFlag(academyId, feature, enabled) {
-  const { error } = await supabase
-    .from('feature_flags')
-    .upsert({ academy_id: academyId, feature, enabled })
+  // Owner writes go through this RPC too (current_actor resolves the owner
+  // via auth.uid() when p_token is empty) — kept as one path instead of an
+  // owner-only raw upsert + a separate staff RPC, so there's only one place
+  // this can drift. Staff need settings.manage; students are never allowed.
+  const { error } = await supabase.rpc('secure_toggle_feature_flag', {
+    p_feature: feature,
+    p_enabled: enabled,
+    p_token:   _sessionToken(),
+  })
   if (error) throw error
 }
 
